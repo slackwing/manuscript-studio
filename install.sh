@@ -101,40 +101,20 @@ log_info "Private directory: $PRIVATE_DIR"
 log_step "Validating directories..."
 
 if [[ ! -d "$PUBLIC_DIR" ]]; then
-    log_warn "Public directory does not exist: $PUBLIC_DIR"
-    echo -n "Create it? [y/N]: "
-    read -r response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        mkdir -p "$PUBLIC_DIR"
-        log_info "Created $PUBLIC_DIR"
-    else
-        log_error "Public directory must exist to continue"
-    fi
+    mkdir -p "$PUBLIC_DIR"
+    log_info "Created $PUBLIC_DIR"
 fi
 
 if [[ ! -d "$PRIVATE_DIR" ]]; then
-    log_warn "Private directory does not exist: $PRIVATE_DIR"
-    echo -n "Create it? [y/N]: "
-    read -r response
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        mkdir -p "$PRIVATE_DIR"
-        log_info "Created $PRIVATE_DIR"
-    else
-        log_error "Private directory must exist to continue"
-    fi
+    mkdir -p "$PRIVATE_DIR"
+    log_info "Created $PRIVATE_DIR"
 fi
 
 # Step 5: Test database connection
 log_step "Testing database connection..."
 
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" &>/dev/null || {
-    log_warn "Cannot connect to database"
-    echo "Database may not exist yet. This is normal for first installation."
-    echo -n "Continue anyway? [y/N]: "
-    read -r response
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-        log_error "Installation cancelled"
-    fi
+    log_warn "Cannot connect to database (may not exist yet, continuing)"
 }
 
 # Step 6: Clone/update manuscript repositories
