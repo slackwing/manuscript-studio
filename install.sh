@@ -236,21 +236,31 @@ echo ""
 echo "Next steps:"
 echo "1. Configure your web server (Apache/Nginx) to proxy to localhost:5001"
 echo ""
-echo "Example Apache configuration:"
+echo "Example Apache configuration (path-prefix hosting under /manuscripts):"
+echo "Set server.base_path: \"/manuscripts\" in your config.yaml to match."
 echo "----------------------------------------"
 cat << 'EOF'
-<VirtualHost *:80>
-    ServerName your-domain.com
-
+<Location /manuscripts>
+    ProxyPass http://127.0.0.1:5001/manuscripts
+    ProxyPassReverse http://127.0.0.1:5001/manuscripts
     ProxyPreserveHost On
-    ProxyPass / http://localhost:5001/
-    ProxyPassReverse / http://localhost:5001/
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+</Location>
+EOF
+echo "----------------------------------------"
+echo ""
+echo "Or for a dedicated subdomain (no base_path needed):"
+echo "----------------------------------------"
+cat << 'EOF'
+<VirtualHost *:443>
+    ServerName manuscripts.your-domain.com
 
-    # For WebSocket support (if needed later)
-    RewriteEngine On
-    RewriteCond %{HTTP:Upgrade} websocket [NC]
-    RewriteCond %{HTTP:Connection} upgrade [NC]
-    RewriteRule ^/?(.*) ws://localhost:5001/$1 [P,L]
+    ProxyPass / http://127.0.0.1:5001/
+    ProxyPassReverse / http://127.0.0.1:5001/
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
 </VirtualHost>
 EOF
 echo "----------------------------------------"

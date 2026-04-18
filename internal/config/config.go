@@ -38,9 +38,10 @@ type AuthConfig struct {
 
 // ServerConfig contains server settings
 type ServerConfig struct {
-	Port int    `yaml:"port"`
-	Host string `yaml:"host"`
-	Env  string `yaml:"env"`
+	Port     int    `yaml:"port"`
+	Host     string `yaml:"host"`
+	Env      string `yaml:"env"`
+	BasePath string `yaml:"base_path"` // URL prefix when mounted under a path (e.g. "/manuscripts"). No trailing slash.
 }
 
 // PathsConfig contains file path settings
@@ -128,6 +129,7 @@ func Load() (*Config, error) {
 	if config.Database.Port == 0 {
 		config.Database.Port = 5432
 	}
+	config.Server.BasePath = normalizeBasePath(config.Server.BasePath)
 
 	// Expand paths
 	config.Paths.PublicDir = expandPath(config.Paths.PublicDir)
@@ -136,6 +138,20 @@ func Load() (*Config, error) {
 	config.Logging.Directory = expandPath(config.Logging.Directory)
 
 	return &config, nil
+}
+
+// normalizeBasePath ensures leading slash, no trailing slash, empty if root.
+func normalizeBasePath(p string) string {
+	if p == "" || p == "/" {
+		return ""
+	}
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	for len(p) > 1 && p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+	return p
 }
 
 // expandPath expands ~ to home directory

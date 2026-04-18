@@ -173,12 +173,12 @@
   </div>
 
   <script>
-    const API_URL = window.location.origin;
+    // All URLs are relative so <base href> injected by the server handles path prefix.
 
     // Load users on page load
     async function loadUsers() {
       try {
-        const response = await fetch(`${API_URL}/api/users`);
+        const response = await fetch('api/users');
         if (!response.ok) throw new Error('Failed to load users');
 
         const data = await response.json();
@@ -234,7 +234,7 @@
       loginBtn.textContent = 'Logging in...';
 
       try {
-        const response = await fetch(`${API_URL}/api/login`, {
+        const response = await fetch('api/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -259,7 +259,7 @@
         }
 
         // Login successful, redirect to main app
-        window.location.href = '/';
+        window.location.href = './';
       } catch (error) {
         showError(error.message);
         loginBtn.disabled = false;

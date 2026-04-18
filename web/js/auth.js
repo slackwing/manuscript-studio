@@ -1,6 +1,5 @@
 // Authentication utilities
-
-const API_URL = window.location.origin;
+// All URLs are relative so <base href> set by the server handles the path prefix.
 
 /**
  * Check if user is authenticated
@@ -8,13 +7,13 @@ const API_URL = window.location.origin;
  */
 async function checkAuth() {
   try {
-    const response = await fetch(`${API_URL}/api/session`, {
+    const response = await fetch('api/session', {
       credentials: 'include'
     });
 
     if (!response.ok) {
       // Not logged in, redirect to login page
-      window.location.href = '/login.html';
+      window.location.href = 'login.html';
       return null;
     }
 
@@ -22,7 +21,7 @@ async function checkAuth() {
     return session;
   } catch (error) {
     console.error('Auth check failed:', error);
-    window.location.href = '/login.html';
+    window.location.href = 'login.html';
     return null;
   }
 }
@@ -32,14 +31,14 @@ async function checkAuth() {
  */
 async function logout() {
   try {
-    await fetch(`${API_URL}/api/logout`, {
+    await fetch('api/logout', {
       method: 'POST',
       credentials: 'include'
     });
   } catch (error) {
     console.error('Logout failed:', error);
   } finally {
-    window.location.href = '/login.html';
+    window.location.href = 'login.html';
   }
 }
 
@@ -48,7 +47,7 @@ async function logout() {
  */
 async function getSession() {
   try {
-    const response = await fetch(`${API_URL}/api/session`, {
+    const response = await fetch('api/session', {
       credentials: 'include'
     });
 

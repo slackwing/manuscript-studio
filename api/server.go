@@ -1,7 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -73,6 +77,22 @@ func (s *Server) setupRouter() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 
+	// Strip base path prefix so internal routes are always root-relative
+	basePath := s.config.Server.BasePath
+	if basePath != "" {
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.HasPrefix(req.URL.Path, basePath) {
+					req.URL.Path = strings.TrimPrefix(req.URL.Path, basePath)
+					if req.URL.Path == "" {
+						req.URL.Path = "/"
+					}
+				}
+				next.ServeHTTP(w, req)
+			})
+		})
+	}
+
 	// Health check (no auth required)
 	r.Get("/health", s.healthHandler)
 
@@ -109,12 +129,35 @@ func (s *Server) setupRouter() {
 	})
 
 	// Serve static files from web directory (must be last)
-	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
+	r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+		path := req.URL.Path
 		if path == "/" {
 			path = "/index.html"
 		}
-		http.ServeFile(w, r, "web"+path)
+		filePath := filepath.Join("web", path)
+
+		// Inject <base href> into HTML so relative URLs work under a base path.
+		if strings.HasSuffix(path, ".html") {
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				http.NotFound(w, req)
+				return
+			}
+			baseHref := basePath + "/"
+			if baseHref == "/" {
+				baseHref = "/"
+			}
+			injected := bytes.Replace(
+				data,
+				[]byte("<head>"),
+				[]byte("<head>\n  <base href=\""+baseHref+"\">"),
+				1,
+			)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(injected)
+			return
+		}
+		http.ServeFile(w, req, filePath)
 	})
 
 	s.router = r

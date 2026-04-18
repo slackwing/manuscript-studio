@@ -88,6 +88,11 @@ server:
   host: "0.0.0.0"
   env: "production"  # or "development"
 
+  # URL prefix when hosted under a path (e.g. "/manuscripts" for example.com/manuscripts).
+  # Leave empty or "/" when hosted at the root of a domain/subdomain.
+  # Must match the Apache <Location> path.
+  base_path: ""
+
 # ============================================================
 # Logging Configuration
 # ============================================================

@@ -2,7 +2,7 @@
 // Handles multiple annotations per sentence with per-note color controls
 
 const WriteSysAnnotations = {
-  apiBaseUrl: 'http://localhost:5003/api',
+  apiBaseUrl: 'api',
   currentSentenceId: null,
   currentSentenceText: '',
   annotations: [], // Array of all annotations for current sentence

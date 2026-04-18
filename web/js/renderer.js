@@ -2,7 +2,7 @@
 // Simplified version using JS segmenter for accurate sentence boundaries
 
 const WriteSysRenderer = {
-  apiBaseUrl: 'http://localhost:5003/api',
+  apiBaseUrl: 'api',
   currentManuscript: null,
   currentSentences: [],
   currentAnnotations: [],
