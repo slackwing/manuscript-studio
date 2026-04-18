@@ -8,7 +8,13 @@ set -euo pipefail
 VERSION="${1:-latest}"
 CONFIG_DIR="$HOME/.config/manuscript-studio"
 CONFIG_FILE="$CONFIG_DIR/config.yaml"
+LOG_DIR="$CONFIG_DIR/logs"
+INSTALL_LOG="$LOG_DIR/install.log"
 REPO_URL="https://github.com/slackwing/manuscript-studio"
+
+# Ensure log directory exists and tee all output to log file
+mkdir -p "$LOG_DIR"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
 
 # Colors for output
 RED='\033[0;31m'
@@ -26,9 +32,11 @@ log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 # Header
 echo "========================================="
 echo "   Manuscript Studio Installation"
+echo "   $(date '+%Y-%m-%d %H:%M:%S')"
 echo "========================================="
 echo ""
 log_info "Config file: $CONFIG_FILE"
+log_info "Install log: $INSTALL_LOG"
 echo ""
 
 # Step 1: Check for configuration file
