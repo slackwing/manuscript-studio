@@ -137,25 +137,25 @@ if [[ -n "$MANUSCRIPT_REPO_URL" && -n "$MANUSCRIPT_NAME" ]]; then
         git clone "$MANUSCRIPT_REPO_URL" "$REPO_DIR" || log_warn "Failed to clone repository"
     else
         log_info "Updating manuscript repository..."
-        cd "$REPO_DIR" && git pull || log_warn "Failed to update repository"
+        git -C "$REPO_DIR" pull --ff-only || log_warn "Failed to update repository"
     fi
 fi
 
 # Step 7: Download and build Docker images
 log_step "Building Docker images..."
 
-cd "$PRIVATE_DIR"
+SRC_DIR="$PRIVATE_DIR/manuscript-studio-src"
 
 # Clone or update Manuscript Studio
-if [[ ! -d "manuscript-studio-src" ]]; then
+if [[ ! -d "$SRC_DIR" ]]; then
     log_info "Cloning Manuscript Studio..."
-    git clone "$REPO_URL.git" manuscript-studio-src
+    git clone "$REPO_URL.git" "$SRC_DIR"
 else
     log_info "Updating Manuscript Studio..."
-    cd manuscript-studio-src && git pull
+    git -C "$SRC_DIR" pull --ff-only
 fi
 
-cd manuscript-studio-src
+cd "$SRC_DIR"
 
 # Build Liquibase image
 log_info "Building Liquibase migration image..."

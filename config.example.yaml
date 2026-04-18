@@ -23,7 +23,7 @@ database:
 # Both directories must already exist before running install.sh.
 paths:
   # Where frontend files are served from (by your web server)
-  public_dir: "/var/www/html/manuscript"
+  public_dir: "/var/www/html/manuscripts"
 
   # Where server files and data are stored
   private_dir: "/var/www/manuscript-studio"
@@ -37,8 +37,6 @@ paths:
 # You can define multiple manuscripts here.
 manuscripts:
   - name: "example-book"  # Internal identifier (URL-safe)
-    title: "Example Book"  # Display title
-    author: "Your Name"
 
     repository:
       # GitHub repository URL (HTTPS)
@@ -60,8 +58,6 @@ manuscripts:
 
   # Example of second manuscript (uncomment to use)
   # - name: "another-book"
-  #   title: "Another Book"
-  #   author: "Your Name"
   #   repository:
   #     url: "https://github.com/yourusername/another-repo"
   #     branch: "main"

@@ -62,8 +62,6 @@ type LoggingConfig struct {
 // ManuscriptConfig represents a single manuscript configuration
 type ManuscriptConfig struct {
 	Name          string           `yaml:"name"`
-	Title         string           `yaml:"title"`
-	Author        string           `yaml:"author"`
 	Repository    RepositoryConfig `yaml:"repository"`
 	WebhookSecret string           `yaml:"webhook_secret,omitempty"`
 }
