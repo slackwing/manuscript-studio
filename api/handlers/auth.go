@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/slackwing/manuscript-studio/internal/auth"
+	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 )
 
@@ -14,6 +15,7 @@ type AuthHandlers struct {
 	DB            *database.DB
 	SessionStore  *auth.SessionStore
 	IsProduction  bool
+	Config        *config.Config
 }
 
 // LoginRequest represents login credentials
@@ -193,5 +195,18 @@ func (h *AuthHandlers) HandleGetSession(w http.ResponseWriter, r *http.Request) 
 		"manuscript_name":        session.ManuscriptName,
 		"csrf_token":             session.CSRFToken,
 		"accessible_manuscripts": manuscriptNames,
+	})
+}
+
+// HandleGetManuscripts returns the list of configured manuscript names
+// (for the login page dropdown). No auth required.
+func (h *AuthHandlers) HandleGetManuscripts(w http.ResponseWriter, r *http.Request) {
+	names := make([]string, 0, len(h.Config.Manuscripts))
+	for _, m := range h.Config.Manuscripts {
+		names = append(names, m.Name)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"manuscripts": names,
 	})
 }

@@ -44,6 +44,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			IsProduction: cfg.Server.Env == "production",
+			Config:       cfg,
 		},
 		migrationHandlers: &handlers.MigrationHandlers{
 			DB: dbWrapper,
@@ -108,6 +109,7 @@ func (s *Server) setupRouter() {
 		// Public auth endpoints
 		r.Post("/login", s.authHandlers.HandleLogin)
 		r.Get("/users", s.authHandlers.HandleGetUsers)
+		r.Get("/manuscripts", s.authHandlers.HandleGetManuscripts)
 
 		// Session-protected endpoints
 		r.Group(func(r chi.Router) {

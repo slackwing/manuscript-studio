@@ -197,24 +197,27 @@
       }
     }
 
-    // Load manuscripts when user is selected
-    document.getElementById('username').addEventListener('change', async function() {
-      const username = this.value;
-      const manuscriptSelect = document.getElementById('manuscript');
+    // Load manuscripts from the server
+    async function loadManuscripts() {
+      try {
+        const response = await fetch('api/manuscripts');
+        if (!response.ok) throw new Error('Failed to load manuscripts');
 
-      if (!username) {
-        manuscriptSelect.innerHTML = '<option value="">Select a manuscript</option>';
-        return;
+        const data = await response.json();
+        const select = document.getElementById('manuscript');
+
+        select.innerHTML = '<option value="">Select a manuscript</option>';
+        (data.manuscripts || []).forEach(name => {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          select.appendChild(option);
+        });
+      } catch (error) {
+        showError('Failed to load manuscripts. Please refresh the page.');
+        console.error(error);
       }
-
-      // For now, show all available manuscripts
-      // In a real app, we'd fetch user-specific manuscripts from the API
-      manuscriptSelect.innerHTML = `
-        <option value="">Select a manuscript</option>
-        <option value="test.manuscript">test.manuscript</option>
-        <option value="the-wildfire.manuscript">the-wildfire.manuscript</option>
-      `;
-    });
+    }
 
     // Handle login form submission
     document.getElementById('login-form').addEventListener('submit', async function(e) {
@@ -277,8 +280,9 @@
       }, 5000);
     }
 
-    // Load users on page load
+    // Load users and manuscripts on page load
     loadUsers();
+    loadManuscripts();
   </script>
 </body>
 </html>
