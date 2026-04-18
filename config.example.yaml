@@ -3,8 +3,13 @@
 
 version: 1.0
 
+# ============================================================
 # Database Connection
-# For GCP Managed PostgreSQL, use the private IP address
+# ============================================================
+# For GCP Managed PostgreSQL, use the private IP address.
+# The database itself must already exist — create it with:
+#   CREATE DATABASE "<name>";
+# Liquibase will create the schema automatically.
 database:
   host: "localhost"
   port: 5432
@@ -12,27 +17,10 @@ database:
   user: "manuscript_user"
   password: "changeme-secure-password"
 
-# Authentication Settings
-auth:
-  # System token for admin API endpoints
-  # Generate with: openssl rand -hex 32
-  system_token: "changeme-generate-secure-token"
-
-  # Secret for signing session cookies
-  # Generate with: openssl rand -hex 32
-  session_secret: "changeme-generate-secure-secret"
-
-  # GitHub webhook validation secret (optional)
-  # Must match the secret configured in GitHub webhook settings
-  webhook_secret: "changeme-if-using-webhooks"
-
-# Server Configuration
-server:
-  port: 5001
-  host: "0.0.0.0"
-  env: "production"  # or "development"
-
+# ============================================================
 # File Paths
+# ============================================================
+# Both directories must already exist before running install.sh.
 paths:
   # Where frontend files are served from (by your web server)
   public_dir: "/var/www/html/manuscript"
@@ -43,16 +31,10 @@ paths:
   # Where manuscript repositories are cloned
   manuscript_repos: "~/.config/manuscript-studio/repos"
 
-# Logging Configuration
-logging:
-  directory: "~/.config/manuscript-studio/logs"
-  level: "info"  # debug, info, warn, error
-  max_age_days: 30
-  max_size_mb: 100
-  rotate: true
-
+# ============================================================
 # Manuscript Definitions
-# You can define multiple manuscripts here
+# ============================================================
+# You can define multiple manuscripts here.
 manuscripts:
   - name: "example-book"  # Internal identifier (URL-safe)
     title: "Example Book"  # Display title
@@ -86,7 +68,43 @@ manuscripts:
   #     path: "book.manuscript"
   #     auth_token: "github_pat_yyyyyyyyyyyyyyyyyyyyy"
 
+# ============================================================
+# Authentication Settings
+# ============================================================
+auth:
+  # System token for admin API endpoints
+  # Generate with: openssl rand -hex 32
+  system_token: "changeme-generate-secure-token"
+
+  # Secret for signing session cookies
+  # Generate with: openssl rand -hex 32
+  session_secret: "changeme-generate-secure-secret"
+
+  # GitHub webhook validation secret (optional)
+  # Must match the secret configured in GitHub webhook settings
+  webhook_secret: "changeme-if-using-webhooks"
+
+# ============================================================
+# Server Configuration
+# ============================================================
+server:
+  port: 5001
+  host: "0.0.0.0"
+  env: "production"  # or "development"
+
+# ============================================================
+# Logging Configuration
+# ============================================================
+logging:
+  directory: "~/.config/manuscript-studio/logs"
+  level: "info"  # debug, info, warn, error
+  max_age_days: 30
+  max_size_mb: 100
+  rotate: true
+
+# ============================================================
 # Migration Settings
+# ============================================================
 migrations:
   # Lock manuscript during migration to prevent concurrent edits
   lock_during_migration: true

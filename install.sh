@@ -47,11 +47,11 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 
     log_warn "Configuration template created at: $CONFIG_FILE"
     echo ""
-    echo "Please edit this file with your settings:"
+    echo "Please edit this file with your settings (in order):"
     echo "  1. Database connection details"
-    echo "  2. System token (generate with: openssl rand -hex 32)"
+    echo "  2. File paths (public_dir, private_dir)"
     echo "  3. Manuscript repository settings"
-    echo "  4. File paths"
+    echo "  4. Auth tokens (generate with: openssl rand -hex 32)"
     echo ""
     echo "Then run this script again to complete installation."
     exit 0
@@ -90,6 +90,8 @@ DB_USER=$(get_config "user")
 DB_PASSWORD=$(get_config "password")
 PUBLIC_DIR=$(get_config "public_dir")
 PRIVATE_DIR=$(get_config "private_dir")
+MANUSCRIPT_REPO_URL=$(grep -A5 "repository:" "$CONFIG_FILE" | grep "url:" | head -1 | sed 's/.*url:[[:space:]]*"\(.*\)".*/\1/')
+MANUSCRIPT_NAME=$(grep -A5 "manuscripts:" "$CONFIG_FILE" | grep "name:" | head -1 | sed 's/.*name:[[:space:]]*"\(.*\)".*/\1/')
 
 # Expand paths
 PUBLIC_DIR="${PUBLIC_DIR/#\~/$HOME}"
@@ -98,19 +100,9 @@ PRIVATE_DIR="${PRIVATE_DIR/#\~/$HOME}"
 log_info "Database: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
 log_info "Public directory: $PUBLIC_DIR"
 log_info "Private directory: $PRIVATE_DIR"
+log_info "Manuscript: $MANUSCRIPT_NAME ($MANUSCRIPT_REPO_URL)"
 
-# Step 4: Validate directories
-log_step "Validating directories..."
-
-if [[ ! -d "$PUBLIC_DIR" ]]; then
-    log_error "Public directory does not exist: $PUBLIC_DIR. Please create it and try again."
-fi
-
-if [[ ! -d "$PRIVATE_DIR" ]]; then
-    log_error "Private directory does not exist: $PRIVATE_DIR. Please create it and try again."
-fi
-
-# Step 5: Test database connection
+# Step 4: Test database connection
 log_step "Testing database connection..."
 
 log_info "psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
@@ -121,19 +113,28 @@ DB_ERR=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER
     echo "$DB_ERR" | sed 's/^/    /'
 }
 
+# Step 5: Validate directories
+log_step "Validating directories..."
+
+if [[ ! -d "$PUBLIC_DIR" ]]; then
+    log_error "Public directory does not exist: $PUBLIC_DIR. Please create it and try again."
+fi
+log_info "✓ Public directory exists"
+
+if [[ ! -d "$PRIVATE_DIR" ]]; then
+    log_error "Private directory does not exist: $PRIVATE_DIR. Please create it and try again."
+fi
+log_info "✓ Private directory exists"
+
 # Step 6: Clone/update manuscript repositories
 log_step "Setting up manuscript repositories..."
 
-# Parse manuscript repos from config (simplified - assumes one for now)
-REPO_URL=$(grep -A5 "repository:" "$CONFIG_FILE" | grep "url:" | head -1 | sed 's/.*url:[[:space:]]*"\(.*\)".*/\1/')
-REPO_NAME=$(grep -A5 "manuscripts:" "$CONFIG_FILE" | grep "name:" | head -1 | sed 's/.*name:[[:space:]]*"\(.*\)".*/\1/')
-
-if [[ -n "$REPO_URL" && -n "$REPO_NAME" ]]; then
-    REPO_DIR="$CONFIG_DIR/repos/$REPO_NAME"
+if [[ -n "$MANUSCRIPT_REPO_URL" && -n "$MANUSCRIPT_NAME" ]]; then
+    REPO_DIR="$CONFIG_DIR/repos/$MANUSCRIPT_NAME"
 
     if [[ ! -d "$REPO_DIR" ]]; then
         log_info "Cloning manuscript repository..."
-        git clone "$REPO_URL" "$REPO_DIR" || log_warn "Failed to clone repository"
+        git clone "$MANUSCRIPT_REPO_URL" "$REPO_DIR" || log_warn "Failed to clone repository"
     else
         log_info "Updating manuscript repository..."
         cd "$REPO_DIR" && git pull || log_warn "Failed to update repository"
