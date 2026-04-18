@@ -20,12 +20,9 @@ database:
 # ============================================================
 # File Paths
 # ============================================================
-# Both directories must already exist before running install.sh.
+# The private directory must already exist before running install.sh.
 paths:
-  # Where frontend files are served from (by your web server)
-  public_dir: "/var/www/html/manuscripts"
-
-  # Where server files and data are stored
+  # Where server source and data are stored
   private_dir: "/var/www/manuscript-studio"
 
   # Where manuscript repositories are cloned

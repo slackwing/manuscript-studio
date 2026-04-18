@@ -46,7 +46,6 @@ type ServerConfig struct {
 
 // PathsConfig contains file path settings
 type PathsConfig struct {
-	PublicDir       string `yaml:"public_dir"`
 	PrivateDir      string `yaml:"private_dir"`
 	ManuscriptRepos string `yaml:"manuscript_repos"`
 }
@@ -132,7 +131,6 @@ func Load() (*Config, error) {
 	config.Server.BasePath = normalizeBasePath(config.Server.BasePath)
 
 	// Expand paths
-	config.Paths.PublicDir = expandPath(config.Paths.PublicDir)
 	config.Paths.PrivateDir = expandPath(config.Paths.PrivateDir)
 	config.Paths.ManuscriptRepos = expandPath(config.Paths.ManuscriptRepos)
 	config.Logging.Directory = expandPath(config.Logging.Directory)

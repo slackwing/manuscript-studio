@@ -77,15 +77,22 @@ func (s *Server) setupRouter() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 
-	// Strip base path prefix so internal routes are always root-relative
+	// Strip base path prefix so internal routes are always root-relative.
+	// Must rewrite both req.URL.Path AND chi's RoutePath, and handle the
+	// exact-match case (e.g. "/manuscripts" with no trailing slash).
 	basePath := s.config.Server.BasePath
 	if basePath != "" {
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				if strings.HasPrefix(req.URL.Path, basePath) {
-					req.URL.Path = strings.TrimPrefix(req.URL.Path, basePath)
-					if req.URL.Path == "" {
-						req.URL.Path = "/"
+				p := req.URL.Path
+				if p == basePath || strings.HasPrefix(p, basePath+"/") {
+					stripped := strings.TrimPrefix(p, basePath)
+					if stripped == "" {
+						stripped = "/"
+					}
+					req.URL.Path = stripped
+					if rctx := chi.RouteContext(req.Context()); rctx != nil {
+						rctx.RoutePath = stripped
 					}
 				}
 				next.ServeHTTP(w, req)

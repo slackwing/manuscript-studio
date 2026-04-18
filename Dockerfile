@@ -32,8 +32,8 @@ RUN addgroup -g 1000 manuscript && \
     adduser -D -u 1000 -G manuscript manuscript
 
 # Create necessary directories
-RUN mkdir -p /config /logs /repos /public && \
-    chown -R manuscript:manuscript /config /logs /repos /public
+RUN mkdir -p /config /logs /repos && \
+    chown -R manuscript:manuscript /config /logs /repos
 
 # Copy binary from builder
 COPY --from=builder /app/manuscript-studio /usr/local/bin/manuscript-studio

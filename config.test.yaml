@@ -22,7 +22,6 @@ manuscripts:
 
 server:
   port: 5001
-  public_dir: /tmp/manuscript-studio/public
   private_dir: /tmp/manuscript-studio/private
   log_level: debug
   production: false

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Manuscript Studio Installation Script
 # One-liner: curl -sSL https://raw.githubusercontent.com/slackwing/manuscript-studio/main/install.sh | bash
+#
+# SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
+# Format: YYYY-MM-DD.N (N increments within the same day).
+SCRIPT_VERSION="2026-04-18.3"
 
 set -euo pipefail
 
@@ -26,6 +30,7 @@ log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 # Header
 echo "========================================="
 echo "   Manuscript Studio Installation"
+echo "   Script version: $SCRIPT_VERSION"
 echo "========================================="
 echo ""
 log_info "Config file: $CONFIG_FILE"
@@ -49,7 +54,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     echo ""
     echo "Please edit this file with your settings (in order):"
     echo "  1. Database connection details"
-    echo "  2. File paths (public_dir, private_dir)"
+    echo "  2. File paths (private_dir)"
     echo "  3. Manuscript repository settings"
     echo "  4. Auth tokens (generate with: openssl rand -hex 32)"
     echo ""
@@ -88,17 +93,14 @@ DB_PORT=$(get_config "port")
 DB_NAME=$(get_config "name")
 DB_USER=$(get_config "user")
 DB_PASSWORD=$(get_config "password")
-PUBLIC_DIR=$(get_config "public_dir")
 PRIVATE_DIR=$(get_config "private_dir")
 MANUSCRIPT_REPO_URL=$(grep -A5 "repository:" "$CONFIG_FILE" | grep "url:" | head -1 | sed 's/.*url:[[:space:]]*"\(.*\)".*/\1/')
 MANUSCRIPT_NAME=$(grep -A5 "manuscripts:" "$CONFIG_FILE" | grep "name:" | head -1 | sed 's/.*name:[[:space:]]*"\(.*\)".*/\1/')
 
 # Expand paths
-PUBLIC_DIR="${PUBLIC_DIR/#\~/$HOME}"
 PRIVATE_DIR="${PRIVATE_DIR/#\~/$HOME}"
 
 log_info "Database: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
-log_info "Public directory: $PUBLIC_DIR"
 log_info "Private directory: $PRIVATE_DIR"
 log_info "Manuscript: $MANUSCRIPT_NAME ($MANUSCRIPT_REPO_URL)"
 
@@ -115,11 +117,6 @@ DB_ERR=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER
 
 # Step 5: Validate directories
 log_step "Validating directories..."
-
-if [[ ! -d "$PUBLIC_DIR" ]]; then
-    log_error "Public directory does not exist: $PUBLIC_DIR. Please create it and try again."
-fi
-log_info "✓ Public directory exists"
 
 if [[ ! -d "$PRIVATE_DIR" ]]; then
     log_error "Private directory does not exist: $PRIVATE_DIR. Please create it and try again."
@@ -207,7 +204,6 @@ docker run -d \
     -v "$CONFIG_FILE:/config/config.yaml:ro" \
     -v "$CONFIG_DIR/logs:/logs" \
     -v "$CONFIG_DIR/repos:/repos" \
-    -v "$PUBLIC_DIR:/public" \
     manuscript-studio:latest || {
     log_error "Failed to start server"
 }
