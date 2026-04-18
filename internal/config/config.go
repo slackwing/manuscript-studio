@@ -34,6 +34,8 @@ type AuthConfig struct {
 	SystemToken    string `yaml:"system_token"`
 	SessionSecret  string `yaml:"session_secret"`
 	WebhookSecret  string `yaml:"webhook_secret"`
+	AdminUsername  string `yaml:"admin_username"`
+	AdminPassword  string `yaml:"admin_password"`
 }
 
 // ServerConfig contains server settings

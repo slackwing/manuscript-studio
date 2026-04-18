@@ -18,8 +18,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o manuscript-studio cmd/server/main.go
+# Build both binaries
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o manuscript-studio cmd/server/main.go && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o admin-upsert cmd/admin-upsert/main.go
 
 # Stage 2: Create the runtime image
 FROM alpine:3.19
@@ -35,8 +36,9 @@ RUN addgroup -g 1000 manuscript && \
 RUN mkdir -p /config /logs /repos && \
     chown -R manuscript:manuscript /config /logs /repos
 
-# Copy binary from builder
+# Copy binaries from builder
 COPY --from=builder /app/manuscript-studio /usr/local/bin/manuscript-studio
+COPY --from=builder /app/admin-upsert /usr/local/bin/admin-upsert
 
 # Copy web assets
 COPY --from=builder /app/web /app/web

@@ -5,10 +5,8 @@
     xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
     http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Consolidated schema with multi-annotation support -->
+    <!-- Starter schema consolidated before first release. -->
+    <!-- Future schema changes must be added as new changesets (002+), never by editing 001. -->
     <include file="changelog/001-initial-schema.xml"/>
-    <include file="changelog/002-seed-default-user.xml"/>
-    <include file="changelog/003-add-annotation-position.xml"/>
-    <include file="changelog/004-add-manuscript-access.xml"/>
 
 </databaseChangeLog>

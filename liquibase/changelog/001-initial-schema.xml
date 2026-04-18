@@ -216,6 +216,11 @@
                 <constraints nullable="false"/>
             </column>
 
+            <!-- Fractional indexing position for annotation ordering -->
+            <column name="position" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+
             <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
                 <constraints nullable="false"/>
             </column>
@@ -261,6 +266,12 @@
             ON annotation(sentence_id, user_id)
             WHERE deleted_at IS NULL;
         </sql>
+
+        <!-- Position index for efficient ordering queries -->
+        <createIndex indexName="idx_annotation_position" tableName="annotation">
+            <column name="sentence_id"/>
+            <column name="position"/>
+        </createIndex>
 
         <!-- Annotation Version Table -->
         <createTable tableName="annotation_version">
@@ -441,7 +452,42 @@
             <column name="tag_id"/>
         </createIndex>
 
+        <!-- Manuscript Access Table -->
+        <createTable tableName="manuscript_access">
+            <column name="username" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="manuscript_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey
+            tableName="manuscript_access"
+            columnNames="username, manuscript_name"
+            constraintName="pk_manuscript_access"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_manuscript_access_user"
+            baseTableName="manuscript_access"
+            baseColumnNames="username"
+            referencedTableName="user"
+            referencedColumnNames="username"
+            onDelete="CASCADE"/>
+
+        <createIndex tableName="manuscript_access" indexName="idx_manuscript_access_username">
+            <column name="username"/>
+        </createIndex>
+
+        <createIndex tableName="manuscript_access" indexName="idx_manuscript_access_manuscript">
+            <column name="manuscript_name"/>
+        </createIndex>
+
         <rollback>
+            <dropTable tableName="manuscript_access"/>
             <dropTable tableName="annotation_tag"/>
             <dropTable tableName="tag"/>
             <dropTable tableName="annotation_version"/>

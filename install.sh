@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-18.3"
+SCRIPT_VERSION="2026-04-18.4"
 
 set -euo pipefail
 
@@ -183,6 +183,17 @@ docker run --rm \
     --password="$DB_PASSWORD" \
     update || {
     log_warn "Migration failed - database may already be up to date"
+}
+
+# Step 8b: Upsert admin user from config
+log_step "Upserting admin user..."
+
+docker run --rm \
+    --network host \
+    -v "$CONFIG_FILE:/config/config.yaml:ro" \
+    manuscript-studio:latest \
+    admin-upsert || {
+    log_error "Failed to upsert admin user. Check auth.admin_username and auth.admin_password in config."
 }
 
 # Step 9: Start the server

@@ -65,6 +65,11 @@ manuscripts:
 # Authentication Settings
 # ============================================================
 auth:
+  # Admin user — seeded/updated on every install.sh run.
+  # Automatically granted access to every manuscript defined below.
+  admin_username: "admin"
+  admin_password: "changeme-strong-admin-password"
+
   # System token for admin API endpoints
   # Generate with: openssl rand -hex 32
   system_token: "changeme-generate-secure-token"
