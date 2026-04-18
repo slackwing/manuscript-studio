@@ -28,6 +28,8 @@ echo "========================================="
 echo "   Manuscript Studio Installation"
 echo "========================================="
 echo ""
+log_info "Config file: $CONFIG_FILE"
+echo ""
 
 # Step 1: Check for configuration file
 log_step "Checking for configuration file..."
