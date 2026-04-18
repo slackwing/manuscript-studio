@@ -101,13 +101,11 @@ log_info "Private directory: $PRIVATE_DIR"
 log_step "Validating directories..."
 
 if [[ ! -d "$PUBLIC_DIR" ]]; then
-    mkdir -p "$PUBLIC_DIR"
-    log_info "Created $PUBLIC_DIR"
+    log_error "Public directory does not exist: $PUBLIC_DIR. Please create it and try again."
 fi
 
 if [[ ! -d "$PRIVATE_DIR" ]]; then
-    mkdir -p "$PRIVATE_DIR"
-    log_info "Created $PRIVATE_DIR"
+    log_error "Private directory does not exist: $PRIVATE_DIR. Please create it and try again."
 fi
 
 # Step 5: Test database connection
