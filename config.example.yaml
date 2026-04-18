@@ -1,0 +1,98 @@
+# Manuscript Studio Configuration
+# Copy this file to ~/.config/manuscript-studio/config.yaml and edit
+
+version: 1.0
+
+# Database Connection
+# For GCP Managed PostgreSQL, use the private IP address
+database:
+  host: "localhost"
+  port: 5432
+  name: "manuscript_studio"
+  user: "manuscript_user"
+  password: "changeme-secure-password"
+
+# Authentication Settings
+auth:
+  # System token for admin API endpoints
+  # Generate with: openssl rand -hex 32
+  system_token: "changeme-generate-secure-token"
+
+  # Secret for signing session cookies
+  # Generate with: openssl rand -hex 32
+  session_secret: "changeme-generate-secure-secret"
+
+  # GitHub webhook validation secret (optional)
+  # Must match the secret configured in GitHub webhook settings
+  webhook_secret: "changeme-if-using-webhooks"
+
+# Server Configuration
+server:
+  port: 5001
+  host: "0.0.0.0"
+  env: "production"  # or "development"
+
+# File Paths
+paths:
+  # Where frontend files are served from (by your web server)
+  public_dir: "/var/www/html/manuscript"
+
+  # Where server files and data are stored
+  private_dir: "/var/www/manuscript-studio"
+
+  # Where manuscript repositories are cloned
+  manuscript_repos: "~/.config/manuscript-studio/repos"
+
+# Logging Configuration
+logging:
+  directory: "~/.config/manuscript-studio/logs"
+  level: "info"  # debug, info, warn, error
+  max_age_days: 30
+  max_size_mb: 100
+  rotate: true
+
+# Manuscript Definitions
+# You can define multiple manuscripts here
+manuscripts:
+  - name: "example-book"  # Internal identifier (URL-safe)
+    title: "Example Book"  # Display title
+    author: "Your Name"
+
+    repository:
+      # GitHub repository URL (HTTPS)
+      url: "https://github.com/yourusername/your-repo"
+
+      # Branch to track
+      branch: "main"
+
+      # Path to manuscript file within the repository
+      path: "manuscript.md"
+
+      # GitHub Personal Access Token with repo read access
+      # Create at: https://github.com/settings/tokens
+      auth_token: "github_pat_xxxxxxxxxxxxxxxxxxxxx"
+
+    # Per-manuscript webhook secret (optional)
+    # Overrides global webhook_secret for this manuscript
+    # webhook_secret: "manuscript-specific-secret"
+
+  # Example of second manuscript (uncomment to use)
+  # - name: "another-book"
+  #   title: "Another Book"
+  #   author: "Your Name"
+  #   repository:
+  #     url: "https://github.com/yourusername/another-repo"
+  #     branch: "main"
+  #     path: "book.manuscript"
+  #     auth_token: "github_pat_yyyyyyyyyyyyyyyyyyyyy"
+
+# Migration Settings
+migrations:
+  # Lock manuscript during migration to prevent concurrent edits
+  lock_during_migration: true
+
+  # Whether to backup before migration (relies on DB backups if false)
+  backup_before_migration: false
+
+  # Queue annotations created during migration
+  queue_annotations: true

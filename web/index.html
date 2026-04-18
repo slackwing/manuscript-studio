@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WriteSys - Book Annotation System</title>
+
+  <!-- Book-style CSS -->
+  <link rel="stylesheet" href="/css/book.css?v=65">
+
+  <!-- Paged.js for book pagination - loaded but not auto-run -->
+  <script>
+    // Prevent Paged.js from auto-running on page load
+    window.PagedConfig = {
+      auto: false
+    };
+  </script>
+  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
+</head>
+<body>
+  <!-- Info bar (not paginated) -->
+  <div id="controls" class="pagedjs_ignore">
+    <div class="control-group">
+      <label>Migration:</label>
+      <span id="migration-info">Loading...</span>
+      <label>Repo:</label>
+      <input type="text" id="repo-path" value="manuscripts/test-repo" />
+      <label>File:</label>
+      <input type="text" id="file-path" value="the-wildfire.manuscript" />
+    </div>
+    <div class="control-group">
+      <span id="status">Ready</span>
+      <span id="sentence-count"></span>
+      <button id="logout-btn" onclick="logout()" style="margin-left: 20px; padding: 5px 10px; cursor: pointer;">Logout</button>
+    </div>
+  </div>
+
+  <!-- Annotation margin container (floating in right grey margin) -->
+  <div id="annotation-margin" class="pagedjs_ignore">
+    <div class="annotation-margin-inner">
+      <!-- Sentence preview (first 3 words) -->
+      <div id="sentence-preview" class="sentence-preview"></div>
+
+      <!-- Container for all sticky notes (rendered dynamically) -->
+      <div id="sticky-notes-container">
+        <!-- Multiple sticky notes will be rendered here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Container for entire app -->
+  <div id="app-container">
+    <!-- Manuscript content (will be paginated by Paged.js) -->
+    <div id="manuscript-content">
+    </div>
+  </div>
+
+  <!-- Auth check (must run first) -->
+  <script src="/js/auth.js"></script>
+  <script>
+    // Check authentication before loading the app
+    (async function() {
+      const session = await checkAuth();
+      if (!session) return; // Will redirect to login
+
+      // Store session info for the app to use
+      window.currentSession = session;
+
+      // Store CSRF token in sessionStorage if present
+      if (session.csrf_token) {
+        sessionStorage.setItem('csrf_token', session.csrf_token);
+      }
+
+      // Update UI with user info
+      const statusEl = document.getElementById('status');
+      if (statusEl) {
+        statusEl.textContent = `Logged in as ${session.username} | ${session.manuscript_name}`;
+      }
+    })();
+  </script>
+
+  <!-- External libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/smartquotes/2.3.2/smartquotes.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Paged.js configuration (must load after Paged.js, before renderer) -->
+  <script src="/js/pagedjs-config.js"></script>
+
+  <!-- Segmenter (must load before renderer) -->
+  <script src="/js/segmenter.js"></script>
+
+  <!-- Rainbow slice utility (must load before renderer) -->
+  <script src="/js/rainbow-slice.js"></script>
+
+  <!-- Application scripts -->
+  <script src="/js/renderer.js?v=62"></script>
+  <script src="/js/annotations.js?v=51"></script>
+</body>
+</html>

@@ -1,0 +1,1236 @@
+/* Spacing constants - critical invariants tested in spacing-invariants-test.js */
+:root {
+  --page-gap: 2em;              /* Vertical gap between pages (32px) */
+  --horizontal-gap: 32px;        /* Gap from page edge to annotation margin */
+  --annotation-top: 150px;       /* Top margin from viewport to annotations */
+  --annotation-width: 272px;     /* Fixed width of annotation container (240 + 32px page gap) */
+
+  /* Color system - Kindle-like highlights and sticky notes */
+  /* Highlight colors (sentence backgrounds) - used across highlight classes and rainbow bars */
+  --highlight-yellow: #FFF3A3;
+  --highlight-green: #C3FDB8;
+  --highlight-blue: #AEDFF7;
+  --highlight-purple: #E0BBE4;
+  --highlight-red: #FFCCCB;
+  --highlight-orange: #FFD8A8;
+
+  /* Sticky note backgrounds (lighter versions) */
+  --sticky-yellow: #fef3c7;
+  --sticky-green: #d4f4cc;
+  --sticky-blue: #cce7f5;
+  --sticky-purple: #e8d4ec;
+  --sticky-red: #ffe0de;
+  --sticky-orange: #ffe7d1;
+
+  /* Tag/chip colors (darker shades for contrast) */
+  --chip-yellow: #f4d03f;
+  --chip-yellow-text: #5a4a0f;
+  --chip-green: #85e085;
+  --chip-green-text: #1e4d1e;
+  --chip-blue: #6fc3ed;
+  --chip-blue-text: #1a4d6b;
+  --chip-purple: #c299d4;
+  --chip-purple-text: #4a2d5a;
+  --chip-red: #ff9999;
+  --chip-red-text: #660000;
+  --chip-orange: #ffc170;
+  --chip-orange-text: #663800;
+
+  /* Palette outline colors (active state) */
+  --outline-yellow: #D4C300;
+  --outline-green: #7BC473;
+  --outline-blue: #6BB9DB;
+  --outline-purple: #B57BB8;
+  --outline-red: #E69999;
+  --outline-orange: #E6A85C;
+
+  /* Neutral colors */
+  --sticky-default: #e8e8e8;     /* Default grey (no annotation) */
+
+  /* Color circle dimensions and spacing */
+  --circle-size: 22px;           /* Inner circle size (excluding border) */
+  --circle-border: 2px;          /* Border width */
+  --circle-total: 26px;          /* Total outer diameter: 22 + 2*2 = 26px */
+  --circle-radius: 13px;         /* Half of total: 26 / 2 = 13px */
+  --circle-gap: 6px;             /* Gap between circle edges */
+  --circle-spacing: 32px;        /* Center-to-center distance: 26 + 6 = 32px */
+  --palette-hover-padding: 16px; /* Hover zone padding around palette circles */
+}
+
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Georgia, serif;
+  font-size: 12pt;
+  line-height: 1.6;
+  color: #222;
+  background: #f5f5f5;
+  margin: 0;
+  padding: 0;
+  quotes: """ """ "'" "'";
+}
+
+/* Controls at top - completely outside Paged.js */
+#controls {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-bottom: 1px solid #ddd;
+  padding: 10px 20px;
+  z-index: 10000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.control-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+#controls label {
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  color: #666;
+}
+
+#controls input {
+  font-family: "Monaco", monospace;
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+#controls button {
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  padding: 6px 12px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#controls button:hover {
+  background: #0056b3;
+}
+
+#status {
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  color: #666;
+}
+
+#sentence-count {
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  color: #999;
+  margin-left: 15px;
+}
+
+/* App container - wraps manuscript for Paged.js */
+#app-container {
+  position: relative;
+  z-index: 1;
+}
+
+/* Manuscript content container */
+#manuscript-content {
+  /* Content will be replaced by Paged.js output */
+}
+
+/* Paged.js container styling */
+.pagedjs_pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--page-gap);
+  padding: 2em;
+  background: #f5f5f5;
+  min-height: calc(100vh - 60px);
+  margin-top: 60px !important; /* Space for fixed controls */
+}
+
+/* Paged.js page styling - force exact dimensions to match reference */
+.pagedjs_page {
+  background: white !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #ccc;
+  width: 576px !important;
+  height: 864px !important;
+}
+
+/* Force ALL internal Paged.js containers to correct size */
+.pagedjs_sheet,
+.pagedjs_pagebox {
+  width: 576px !important;
+  height: 864px !important;
+}
+
+/* Grid template is set by JavaScript in pagedjs-config.js after rendering */
+
+/* Force margin boxes to our desired dimensions */
+.pagedjs_margin-top,
+.pagedjs_margin-bottom {
+  height: 72px !important;  /* 0.75in top/bottom margins */
+}
+
+.pagedjs_margin-left,
+.pagedjs_margin-right {
+  width: 48px !important;   /* 0.5in left/right margins */
+}
+
+/* Content area should fill remaining space */
+.pagedjs_area {
+  width: 480px !important;   /* 576 - 2*48 */
+  height: 720px !important;  /* 864 - 2*72 */
+}
+
+/* Page content area fills the area exactly */
+.pagedjs_page_content {
+  width: 480px !important;
+  height: 720px !important;
+  margin: 0 !important;  /* No margin - area handles spacing */
+  padding: 0 !important;
+}
+
+/* Page number styling - force visibility */
+.pagedjs_margin-bottom-right {
+  font-family: Georgia, serif !important;
+  font-size: 10pt !important;
+  color: #222 !important;
+  visibility: visible !important;
+}
+
+/* Book-style pages with Paged.js */
+@page {
+  size: 6in 9in;
+  margin: 0.75in 0.5in;
+  @bottom-right {
+    content: counter(page);
+    font-family: Georgia, serif;
+    font-size: 10pt;
+  }
+}
+
+/* Hide page number on first page */
+@page :first {
+  @bottom-right {
+    content: none;
+  }
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: normal;
+  margin: 1.5em 0 0.5em 0;
+  page-break-after: avoid;
+}
+
+h1 {
+  font-size: 18pt;
+  text-align: center;
+  font-style: italic;
+  font-weight: normal;
+  margin-top: 0;
+  margin-bottom: 2em;
+  page-break-before: always;
+  page-break-after: avoid;
+}
+
+h1:first-of-type {
+  page-break-before: auto;
+}
+
+h2 {
+  font-size: 18pt;
+  margin-top: 2em;
+}
+
+h3 {
+  font-size: 14pt;
+  font-style: italic;
+}
+
+p {
+  text-align: justify;
+  text-indent: 0;
+  margin: 0;
+  orphans: 2;
+  widows: 2;
+  hanging-punctuation: first last;
+}
+
+/* Indented paragraphs (marked with tab in .manuscript format) */
+p.indented {
+  text-indent: 2em;
+}
+
+/* Sentence spans (for annotation) */
+.sentence {
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+  display: inline;
+  white-space: normal;
+}
+
+/* Hover state - applies to all sentences, even when another is selected */
+/* But NOT to highlighted sentences */
+.sentence:not(.selected):not([class*="highlight-"]):hover,
+.sentence:not(.selected):not([class*="highlight-"]).hover {
+  background-color: #e0e0e0 !important; /* Light grey for mouseover */
+}
+
+/* Selected state - higher specificity, overrides hover */
+/* But NOT for highlighted sentences */
+.sentence.selected:not([class*="highlight-"]) {
+  background-color: #d0d0d0 !important; /* Medium grey for selection */
+}
+
+/* Keep selected highlighted even when hovering over it */
+.sentence.selected:not([class*="highlight-"]):hover {
+  background-color: #d0d0d0 !important;
+}
+
+/* Kindle-like highlight colors */
+.sentence.highlight-yellow {
+  background-color: var(--highlight-yellow) !important;
+  border-radius: 2px;
+}
+
+.sentence.highlight-green {
+  background-color: var(--highlight-green) !important;
+  border-radius: 2px;
+}
+
+.sentence.highlight-blue {
+  background-color: var(--highlight-blue) !important;
+  border-radius: 2px;
+}
+
+.sentence.highlight-purple {
+  background-color: var(--highlight-purple) !important;
+  border-radius: 2px;
+}
+
+.sentence.highlight-red {
+  background-color: var(--highlight-red) !important;
+  border-radius: 2px;
+}
+
+.sentence.highlight-orange {
+  background-color: var(--highlight-orange) !important;
+  border-radius: 2px;
+}
+
+/* Utility classes */
+.hidden {
+  display: none !important;
+}
+
+/* Annotation margin container - floats in right grey margin */
+#annotation-margin {
+  position: fixed;
+  top: var(--annotation-top);
+  right: 0;
+  z-index: 100;
+  pointer-events: none; /* Allow clicks through to page */
+  overflow: visible;
+}
+
+.annotation-margin-inner {
+  position: relative;
+  width: var(--annotation-width);
+  pointer-events: auto; /* Re-enable clicks on actual content */
+}
+
+/* Sentence preview (first 3 words) */
+.sentence-preview {
+  display: none;
+  text-align: center;
+  font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
+  font-size: 16px;
+  color: #999;
+  margin-bottom: 12px;
+  padding: 0 8px;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+  font-style: italic;
+}
+
+.sentence-preview.visible {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Color palette for highlights */
+.color-palette {
+  display: none; /* Hidden by default */
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 0;
+  position: relative;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.color-palette.visible {
+  display: flex; /* Show when sentence is selected */
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.color-circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ddd;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.color-circle:hover {
+  border-color: #999;
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.color-circle.active {
+  border: none;
+  outline: 4px solid;
+  outline-offset: -4px;
+}
+
+/* Darker outline colors for each highlight color */
+.color-circle[data-color="yellow"].active {
+  outline-color: var(--outline-yellow);
+}
+
+.color-circle[data-color="green"].active {
+  outline-color: var(--outline-green);
+}
+
+.color-circle[data-color="blue"].active {
+  outline-color: var(--outline-blue);
+}
+
+.color-circle[data-color="purple"].active {
+  outline-color: var(--outline-purple);
+}
+
+.color-circle[data-color="red"].active {
+  outline-color: var(--outline-red);
+}
+
+.color-circle[data-color="orange"].active {
+  outline-color: var(--outline-orange);
+}
+
+/* Sticky Note Container */
+#sticky-note-container {
+  display: none; /* Hidden by default */
+  margin: 0 0 16px 0;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+  background: var(--sticky-default);
+  padding: 12px;
+  border-radius: 2px;
+  box-shadow:
+    2px 2px 4px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  position: relative;
+  width: 100%; /* Fill container width */
+  box-sizing: border-box;
+  min-height: 272px; /* Square dimensions: 272x272 (240 + 32px page gap) */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Color-specific backgrounds (lighter versions for readability) */
+#sticky-note-container.color-yellow { background: var(--sticky-yellow); }
+#sticky-note-container.color-green { background: var(--sticky-green); }
+#sticky-note-container.color-blue { background: var(--sticky-blue); }
+#sticky-note-container.color-purple { background: var(--sticky-purple); }
+#sticky-note-container.color-red { background: var(--sticky-red); }
+#sticky-note-container.color-orange { background: var(--sticky-orange); }
+
+#sticky-note-container.visible {
+  display: flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Color-specific tag and priority chip colors (darker shades matching sticky) */
+/* Exclude .new-tag and .editable-tag from color styling */
+#sticky-note-container.color-yellow .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-yellow .priority-chip.active {
+  background: var(--chip-yellow);
+  border-color: var(--chip-yellow);
+  color: var(--chip-yellow-text);
+}
+
+#sticky-note-container.color-green .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-green .priority-chip.active {
+  background: var(--chip-green);
+  border-color: var(--chip-green);
+  color: var(--chip-green-text);
+}
+
+#sticky-note-container.color-blue .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-blue .priority-chip.active {
+  background: var(--chip-blue);
+  border-color: var(--chip-blue);
+  color: var(--chip-blue-text);
+}
+
+#sticky-note-container.color-purple .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-purple .priority-chip.active {
+  background: var(--chip-purple);
+  border-color: var(--chip-purple);
+  color: var(--chip-purple-text);
+}
+
+#sticky-note-container.color-red .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-red .priority-chip.active {
+  background: var(--chip-red);
+  border-color: var(--chip-red);
+  color: var(--chip-red-text);
+}
+
+#sticky-note-container.color-orange .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-orange .priority-chip.active {
+  background: var(--chip-orange);
+  border-color: var(--chip-orange);
+  color: var(--chip-orange-text);
+}
+
+/* Note textbox */
+.note-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* Take up available space */
+  min-height: 120px;
+}
+
+.note-input {
+  width: 100%;
+  font-family: "Helvetica", sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #333;
+  resize: none;
+  overflow: hidden; /* Hide scrollbar - will auto-resize via JS */
+  min-height: 80px;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+.note-input:focus {
+  outline: none;
+}
+
+.note-input::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+/* Sticky note bottom controls container */
+.sticky-bottom-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Tags section */
+.tags-container {
+  display: inline-flex;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #e0e0e0;
+  border-radius: 16px;
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  color: #333;
+  cursor: default;
+  transition: background 0.2s;
+}
+
+.tag-chip:hover {
+  background: #d0d0d0;
+}
+
+.tag-chip-remove {
+  cursor: pointer;
+  font-weight: bold;
+  color: #666;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.tag-chip-remove:hover {
+  color: #333;
+}
+
+.tag-chip.new-tag {
+  background: transparent;
+  border: 1px dashed #ccc;
+  color: #999;
+  cursor: pointer;
+}
+
+.tag-chip.new-tag:hover {
+  background: #f5f5f5;
+  border-color: #999;
+  color: #666;
+}
+
+.tag-chip.editable-tag {
+  background: #f5f5f5;
+  border: 1px solid #999;
+  padding: 2px 6px;
+}
+
+.tag-input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  color: #333;
+  width: 80px;
+  padding: 2px 4px;
+}
+
+.tag-input::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+/* Trash icon for deletion */
+.trash-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  color: #999;
+  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.trash-icon:hover {
+  color: #666;
+  transform: scale(1.1);
+}
+
+.trash-icon.ran-away {
+  transform: translateX(0px);
+  color: #dc3545;
+  font-weight: bold;
+  z-index: 3;
+}
+
+/* Cancel X (appears when trash runs away) */
+.cancel-delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  color: #666;
+  opacity: 0;
+  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.cancel-delete.visible {
+  display: flex;
+  opacity: 1;
+}
+
+.cancel-delete:hover {
+  color: #333;
+  transform: scale(1.1);
+}
+
+/* Annotation item styling */
+.annotation-item {
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 4px;
+  border-left: 4px solid #007bff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.annotation-item:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateX(-2px);
+}
+
+.annotation-item.yellow { border-left-color: #FFF3A3; background-color: rgba(255, 243, 163, 0.1); }
+.annotation-item.green { border-left-color: #C3FDB8; background-color: rgba(195, 253, 184, 0.1); }
+.annotation-item.blue { border-left-color: #AEDFF7; background-color: rgba(174, 223, 247, 0.1); }
+.annotation-item.purple { border-left-color: #E0BBE4; background-color: rgba(224, 187, 228, 0.1); }
+.annotation-item.red { border-left-color: #FFCCCB; background-color: rgba(255, 204, 203, 0.1); }
+.annotation-item.orange { border-left-color: #FFD8A8; background-color: rgba(255, 216, 168, 0.1); }
+
+/* Priority/Flag section - always on separate line */
+.priority-flag-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  opacity: 1;
+}
+
+.priority-flag-container[style*="display: none"] {
+  display: none !important;
+}
+
+.priority-flag-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.priority-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border-radius: 16px;
+  background: transparent;
+  border: 1px dashed #ccc;
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  font-weight: normal;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.priority-chip:hover {
+  background: #f5f5f5;
+  border-color: #999;
+  color: #666;
+}
+
+.priority-chip.active {
+  background: #e0e0e0;
+  border: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.flag-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  height: 28px;
+  border-radius: 16px;
+  background: transparent;
+  border: 1px dashed #ccc;
+  font-family: "Helvetica", sans-serif;
+  font-size: 11px;
+  font-weight: normal;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.flag-chip .flag-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.flag-chip .flag-staff {
+  stroke: #999;
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.flag-chip .flag-shape {
+  stroke: #999;
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.flag-chip:hover {
+  background: #f5f5f5;
+  border-color: #999;
+}
+
+.flag-chip:hover .flag-staff,
+.flag-chip:hover .flag-shape {
+  stroke: #666;
+}
+
+.flag-chip.active {
+  background: #fee;
+  border: 1px solid #dc3545;
+  color: #dc3545;
+}
+
+.flag-chip.active .flag-staff {
+  stroke: #dc3545;
+  fill: none;
+}
+
+.flag-chip.active .flag-shape {
+  stroke: #dc3545;
+  fill: #dc3545;
+}
+
+/* Trash icon in priority container */
+.note-trash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  border: 1px dashed #ccc;
+  border-radius: 50%;
+  color: #999;
+}
+
+.note-trash:hover {
+  background: #fee;
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.note-trash.confirming {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+  animation: pulse 0.3s ease-in-out;
+}
+
+.note-trash svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+
+/* ===== MULTI-NOTE UI STYLES ===== */
+
+/* Container for all sticky notes (vertical stack) */
+#sticky-notes-container {
+  display: none; /* Hidden by default */
+  flex-direction: column;
+  gap: 16px;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+
+  /* Make scrollable when content overflows */
+  max-height: calc(100vh - var(--annotation-top) - 32px); /* Leave 32px bottom padding */
+  overflow-y: auto;
+
+  /* Add left padding to prevent animation from being cut off */
+  padding-left: 8px;
+  overflow-x: hidden;
+  padding-right: var(--page-gap); /* Space for scrollbar (2em = 32px) */
+  padding-top: var(--circle-radius); /* Space for color circle (13px) so it doesn't get cut off */
+}
+
+#sticky-notes-container.visible {
+  display: flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Individual Sticky Note */
+.sticky-note {
+  background: var(--sticky-default);
+  border-radius: 2px;
+  padding: 12px;
+  box-shadow:
+    2px 2px 4px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;  /* Prevent compression when scrollable */
+  transition: all 0.2s ease;
+  overflow: visible;  /* Allow circles to extend beyond note bounds */
+}
+
+/* Color-specific backgrounds */
+.sticky-note.color-yellow { background: var(--sticky-yellow); }
+.sticky-note.color-green { background: var(--sticky-green); }
+.sticky-note.color-blue { background: var(--sticky-blue); }
+.sticky-note.color-purple { background: var(--sticky-purple); }
+.sticky-note.color-red { background: var(--sticky-red); }
+.sticky-note.color-orange { background: var(--sticky-orange); }
+
+/* Color-specific tag and priority chip colors */
+.sticky-note.color-yellow .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-yellow .priority-chip.active {
+  background: var(--chip-yellow);
+  border-color: var(--chip-yellow);
+  color: var(--chip-yellow-text);
+}
+
+.sticky-note.color-green .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-green .priority-chip.active {
+  background: var(--chip-green);
+  border-color: var(--chip-green);
+  color: var(--chip-green-text);
+}
+
+.sticky-note.color-blue .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-blue .priority-chip.active {
+  background: var(--chip-blue);
+  border-color: var(--chip-blue);
+  color: var(--chip-blue-text);
+}
+
+.sticky-note.color-purple .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-purple .priority-chip.active {
+  background: var(--chip-purple);
+  border-color: var(--chip-purple);
+  color: var(--chip-purple-text);
+}
+
+.sticky-note.color-red .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-red .priority-chip.active {
+  background: var(--chip-red);
+  border-color: var(--chip-red);
+  color: var(--chip-red-text);
+}
+
+.sticky-note.color-orange .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-orange .priority-chip.active {
+  background: var(--chip-orange);
+  border-color: var(--chip-orange);
+  color: var(--chip-orange-text);
+}
+
+/* Per-note color circle (centered on upper-right corner) */
+.sticky-note-color-circle {
+  position: absolute;
+  /* Center on exact corner: offset by half total size in both directions */
+  top: calc(-1 * var(--circle-radius));
+  right: calc(-1 * var(--circle-radius));
+  width: var(--circle-size);
+  height: var(--circle-size);
+  border-radius: 50%;
+  border: var(--circle-border) solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer; /* Default for rainbow circle */
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  z-index: 10;
+  box-sizing: content-box;  /* Border adds to size */
+}
+
+.sticky-note:hover .sticky-note-color-circle {
+  opacity: 1;
+}
+
+/* Pie chart with 6 distinct colors (60deg each) */
+.sticky-note-color-circle.rainbow {
+  background: conic-gradient(
+    from 0deg,
+    var(--highlight-yellow) 0deg 60deg,
+    var(--highlight-green) 60deg 120deg,
+    var(--highlight-blue) 120deg 180deg,
+    var(--highlight-purple) 180deg 240deg,
+    var(--highlight-red) 240deg 300deg,
+    var(--highlight-orange) 300deg 360deg
+  );
+}
+
+/* Solid color for committed notes */
+.sticky-note-color-circle.color-yellow { background-color: var(--highlight-yellow); }
+.sticky-note-color-circle.color-green { background-color: var(--highlight-green); }
+.sticky-note-color-circle.color-blue { background-color: var(--highlight-blue); }
+.sticky-note-color-circle.color-purple { background-color: var(--highlight-purple); }
+.sticky-note-color-circle.color-red { background-color: var(--highlight-red); }
+.sticky-note-color-circle.color-orange { background-color: var(--highlight-orange); }
+
+/* Draggable cursor for colored (non-rainbow) circles */
+.sticky-note-color-circle.color-yellow,
+.sticky-note-color-circle.color-green,
+.sticky-note-color-circle.color-blue,
+.sticky-note-color-circle.color-purple,
+.sticky-note-color-circle.color-red,
+.sticky-note-color-circle.color-orange {
+  cursor: move !important;
+}
+
+/* Expandable color palette (floating circles without background) */
+.sticky-note-palette {
+  position: absolute;
+  /* Palette is child of color-circle, so position relative to it */
+  /* Offset from color circle center, accounting for top hover padding */
+  top: calc(var(--circle-radius) - var(--circle-border) - 2px - var(--palette-hover-padding));
+  /* Align horizontally, accounting for left hover padding */
+  right: calc(-1 * var(--circle-radius) - var(--palette-hover-padding));
+  display: none;
+  /* Width and height expanded to include hover padding on all sides */
+  width: calc(60px + 2 * var(--palette-hover-padding));
+  height: calc(200px + 2 * var(--palette-hover-padding));
+  z-index: 20;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.sticky-note-palette.visible {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Wrapper for each circle to create hover zones */
+.sticky-note-palette > div {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Extend hover zone equally on all sides using CSS variable */
+  padding: var(--palette-hover-padding);
+  /* Positioned by nth-child rules below */
+}
+
+/* Position each wrapper so circle centers are 32px apart */
+/* Add palette-hover-padding to compensate for palette container's shifted top position */
+.sticky-note-palette > div:nth-child(1) { top: calc(var(--circle-spacing) - var(--circle-radius) + 2px + var(--palette-hover-padding)); }
+.sticky-note-palette > div:nth-child(2) { top: calc(var(--circle-spacing) * 2 - var(--circle-radius) + 2px + var(--palette-hover-padding)); }
+.sticky-note-palette > div:nth-child(3) { top: calc(var(--circle-spacing) * 3 - var(--circle-radius) + 2px + var(--palette-hover-padding)); }
+.sticky-note-palette > div:nth-child(4) { top: calc(var(--circle-spacing) * 4 - var(--circle-radius) + 2px + var(--palette-hover-padding)); }
+.sticky-note-palette > div:nth-child(5) { top: calc(var(--circle-spacing) * 5 - var(--circle-radius) + 2px + var(--palette-hover-padding)); }
+.sticky-note-palette > div:nth-child(6) { top: calc(var(--circle-spacing) * 6 - var(--circle-radius) + 2px + var(--palette-hover-padding)); }
+
+.sticky-note-palette .color-circle {
+  width: var(--circle-size);
+  height: var(--circle-size);
+  border-radius: 50%;
+  border: var(--circle-border) solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: content-box;  /* Border adds to size */
+  position: absolute;
+  /* Align centers with note right edge, accounting for wrapper padding */
+  right: calc(var(--circle-radius) - 2px + var(--palette-hover-padding));
+  top: 0;
+}
+
+.sticky-note-palette .color-circle:hover {
+  width: 24px;  /* 22px * 1.09 ≈ 24px */
+  height: 24px;
+  border-width: 3px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  /* Compensate for size increase to keep centered, accounting for wrapper padding */
+  right: calc(var(--circle-radius) - 4px + var(--palette-hover-padding));
+  top: -2px;
+}
+
+.sticky-note-palette .color-circle.active {
+  border-color: #333;
+  border-width: 3px;
+}
+
+/* Trash icon in palette */
+.sticky-note-palette .palette-trash {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #666;
+}
+
+.sticky-note-palette .palette-trash:hover {
+  border-color: #dc3545;
+  background: #fee;
+  width: 24px;
+  height: 24px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sticky-note-palette .palette-trash.confirming {
+  border-color: #dc3545;
+  border-width: 3px;
+  background: #dc3545;
+  color: white;
+  animation: pulse 0.3s ease-in-out;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.sticky-note-palette .palette-trash svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+
+/* Uncreated notes - base styles */
+.uncreated-note {
+  cursor: text;
+  /* Match the minimum height of colored notes:
+     - note padding (12+12) + note-container min-height (120)
+     + bottom-controls (8+1) + tag-chip (~27) + priority-flag (6) + priority-chip (~27)
+     = 24 + 120 + 9 + 27 + 6 + 27 = 213px + ~2px rounding = 215px */
+  min-height: 215px;
+}
+
+/* First uncreated note - full grey UI, always visible */
+.first-uncreated {
+  background: var(--sticky-default);
+}
+
+/* Subsequent uncreated notes - gradient transparency (fades entire note) */
+.subsequent-uncreated {
+  background: var(--sticky-default);
+  position: relative;
+  /* Use mask to fade entire note including borders/shadows */
+  -webkit-mask-image: linear-gradient(to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.8) 30%,
+    rgba(0, 0, 0, 0.4) 50%,
+    rgba(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.8) 30%,
+    rgba(0, 0, 0, 0.4) 50%,
+    rgba(0, 0, 0, 0) 100%);
+}
+
+/* + sign for subsequent uncreated notes */
+.uncreated-plus {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 56px;
+  color: #888;  /* Darker grey */
+  font-weight: 400;  /* Slightly bolder */
+  opacity: 0.9;  /* More opaque */
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 5;
+}
+
+/* Hide content on subsequent uncreated until hovered */
+.subsequent-uncreated .note-container,
+.subsequent-uncreated .sticky-bottom-controls {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* On hover or when focused, remove mask and show full UI */
+.subsequent-uncreated.hovered {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.subsequent-uncreated.hovered .uncreated-plus {
+  opacity: 0;
+}
+
+.subsequent-uncreated.hovered .note-container,
+.subsequent-uncreated.hovered .sticky-bottom-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Flash animation for rainbow bar clicks */
+@keyframes flashHighlight {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.sticky-note.flash-highlight {
+  animation: flashHighlight 0.6s ease-in-out;
+  /* Scale from center to prevent shifting */
+  transform-origin: center center;
+}
+
+/* Print styles */
+@media print {
+  #controls,
+  #annotation-sidebar,
+  #annotation-margin {
+    display: none;
+  }
+
+  .sentence:hover {
+    background-color: transparent;
+  }
+}

@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database (for local development only)
+  postgres:
+    image: postgres:16-alpine
+    container_name: manuscript-studio-db
+    environment:
+      POSTGRES_DB: manuscript_studio
+      POSTGRES_USER: manuscript_user
+      POSTGRES_PASSWORD: changeme_dev_password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - manuscript-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U manuscript_user -d manuscript_studio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Liquibase for database migrations
+  liquibase:
+    build:
+      context: .
+      dockerfile: Dockerfile.liquibase
+    container_name: manuscript-studio-liquibase
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - manuscript-network
+    command:
+      - --changeLogFile=changelog/db.changelog-master.xml
+      - --url=jdbc:postgresql://postgres:5432/manuscript_studio
+      - --username=manuscript_user
+      - --password=changeme_dev_password
+      - update
+    profiles:
+      - migrate
+
+  # Manuscript Studio API server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: manuscript-studio-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # These will be overridden by config file in production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: manuscript_studio
+      POSTGRES_USER: manuscript_user
+      POSTGRES_PASSWORD: changeme_dev_password
+    ports:
+      - "127.0.0.1:5001:5001"
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./web:/app/web:ro
+      - logs:/logs
+      - repos:/repos
+    networks:
+      - manuscript-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  logs:
+  repos:
+
+networks:
+  manuscript-network:
+    driver: bridge

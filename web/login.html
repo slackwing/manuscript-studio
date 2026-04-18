@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WriteSys - Login</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .login-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .error {
+      background: #fee;
+      color: #c33;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    .password-toggle {
+      position: relative;
+    }
+
+    .password-toggle input {
+      padding-right: 40px;
+    }
+
+    .password-toggle button {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 40px;
+      padding: 0;
+      background: transparent;
+      color: #666;
+      font-size: 12px;
+      margin: 0;
+    }
+
+    .password-toggle button:hover {
+      transform: none;
+      box-shadow: none;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>WriteSys</h1>
+    <p class="subtitle">Book Annotation System</p>
+
+    <div id="error" class="error"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label for="username">User</label>
+        <select id="username" name="username" required>
+          <option value="">Loading users...</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <div class="password-toggle">
+          <input type="password" id="password" name="password" required autocomplete="current-password" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="manuscript">Manuscript</label>
+        <select id="manuscript" name="manuscript" required>
+          <option value="">Select a manuscript</option>
+        </select>
+      </div>
+
+      <button type="submit" id="login-btn">Log In</button>
+    </form>
+  </div>
+
+  <script>
+    const API_URL = window.location.origin;
+
+    // Load users on page load
+    async function loadUsers() {
+      try {
+        const response = await fetch(`${API_URL}/api/users`);
+        if (!response.ok) throw new Error('Failed to load users');
+
+        const data = await response.json();
+        const select = document.getElementById('username');
+
+        select.innerHTML = '<option value="">Select a user</option>';
+        data.users.forEach(user => {
+          const option = document.createElement('option');
+          option.value = user.username;
+          option.textContent = user.username;
+          select.appendChild(option);
+        });
+      } catch (error) {
+        showError('Failed to load users. Please refresh the page.');
+        console.error(error);
+      }
+    }
+
+    // Load manuscripts when user is selected
+    document.getElementById('username').addEventListener('change', async function() {
+      const username = this.value;
+      const manuscriptSelect = document.getElementById('manuscript');
+
+      if (!username) {
+        manuscriptSelect.innerHTML = '<option value="">Select a manuscript</option>';
+        return;
+      }
+
+      // For now, show all available manuscripts
+      // In a real app, we'd fetch user-specific manuscripts from the API
+      manuscriptSelect.innerHTML = `
+        <option value="">Select a manuscript</option>
+        <option value="test.manuscript">test.manuscript</option>
+        <option value="the-wildfire.manuscript">the-wildfire.manuscript</option>
+      `;
+    });
+
+    // Handle login form submission
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const manuscript = document.getElementById('manuscript').value;
+
+      if (!username || !password || !manuscript) {
+        showError('Please fill in all fields');
+        return;
+      }
+
+      const loginBtn = document.getElementById('login-btn');
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Logging in...';
+
+      try {
+        const response = await fetch(`${API_URL}/api/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            username,
+            password,
+            manuscript_name: manuscript
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || 'Login failed');
+        }
+
+        // Store CSRF token in sessionStorage
+        const data = await response.json();
+        if (data.csrf_token) {
+          sessionStorage.setItem('csrf_token', data.csrf_token);
+        }
+
+        // Login successful, redirect to main app
+        window.location.href = '/';
+      } catch (error) {
+        showError(error.message);
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Log In';
+      }
+    });
+
+    function showError(message) {
+      const errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.classList.add('show');
+
+      setTimeout(() => {
+        errorDiv.classList.remove('show');
+      }, 5000);
+    }
+
+    // Load users on page load
+    loadUsers();
+  </script>
+</body>
+</html>

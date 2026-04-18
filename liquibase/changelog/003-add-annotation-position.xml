@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.0.xsd">
+
+    <changeSet id="003-add-annotation-position" author="claude">
+        <comment>Add position column for fractional indexing to support annotation reordering</comment>
+
+        <!-- Add position column -->
+        <addColumn tableName="annotation">
+            <column name="position" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <!-- Create index for efficient ordering queries -->
+        <createIndex indexName="idx_annotation_position" tableName="annotation">
+            <column name="sentence_id"/>
+            <column name="position"/>
+        </createIndex>
+
+        <!-- Backfill existing annotations with position based on created_at order -->
+        <sql>
+            WITH ranked_annotations AS (
+                SELECT
+                    annotation_id,
+                    sentence_id,
+                    ROW_NUMBER() OVER (PARTITION BY sentence_id ORDER BY created_at) - 1 AS row_num
+                FROM annotation
+            )
+            UPDATE annotation a
+            SET position = 'a' || LPAD(ra.row_num::text, 4, '0')
+            FROM ranked_annotations ra
+            WHERE a.annotation_id = ra.annotation_id;
+        </sql>
+
+        <!-- Make position NOT NULL after backfill -->
+        <addNotNullConstraint tableName="annotation" columnName="position" columnDataType="TEXT"/>
+
+        <rollback>
+            <dropIndex indexName="idx_annotation_position" tableName="annotation"/>
+            <dropColumn tableName="annotation" columnName="position"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

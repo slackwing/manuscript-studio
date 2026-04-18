@@ -1,0 +1,31 @@
+# Test configuration for Manuscript Studio
+database:
+  host: localhost
+  port: 5432
+  name: manuscript_test
+  user: manuscript_user
+  password: test_password
+  ssl_mode: disable
+  max_connections: 10
+  max_idle: 5
+
+auth:
+  session_duration: 24h
+  system_token: test_system_token_12345
+
+manuscripts:
+  - name: writesys-test
+    repository:
+      url: file:///home/slackwing/src/feathers/14.writesys/.git
+      branch: master
+    path: "PLAN.md"
+
+server:
+  port: 5001
+  public_dir: /tmp/manuscript-studio/public
+  private_dir: /tmp/manuscript-studio/private
+  log_level: debug
+  production: false
+
+webhook:
+  secret: test_webhook_secret

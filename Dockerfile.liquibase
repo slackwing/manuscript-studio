@@ -1,0 +1,11 @@
+# Dockerfile for Liquibase migrations
+FROM liquibase/liquibase:4.25-alpine
+
+# Copy changelog files
+COPY liquibase/changelog /liquibase/changelog
+
+# Set working directory
+WORKDIR /liquibase
+
+# Default command (will be overridden by docker-compose or install script)
+ENTRYPOINT ["liquibase"]

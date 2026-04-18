@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Consolidated Initial Schema for WriteSys -->
+    <!-- Supports multiple annotations per sentence per user -->
+
+    <changeSet id="001-initial-schema" author="andrew">
+
+        <!-- User Table -->
+        <createTable tableName="user">
+            <column name="username" type="VARCHAR(50)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="password_hash" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE "user" ADD CONSTRAINT chk_user_role CHECK (role IN ('author', 'editor', 'reviewer'));
+        </sql>
+
+        <!-- Manuscript Table -->
+        <createTable tableName="manuscript">
+            <column name="manuscript_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="repo_path" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_path" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint
+            tableName="manuscript"
+            columnNames="repo_path, file_path"
+            constraintName="uq_manuscript_repo_file"/>
+
+        <!-- Migration Table -->
+        <createTable tableName="migration">
+            <column name="migration_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="manuscript_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="commit_hash" type="VARCHAR(40)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="segmenter" type="VARCHAR(50)" defaultValue="segman-1.0.0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="parent_migration_id" type="INTEGER">
+                <constraints nullable="true"/>
+            </column>
+            <column name="branch_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="processed_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sentence_count" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="additions_count" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="deletions_count" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="changes_count" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sentence_id_array" type="JSONB">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint
+            tableName="migration"
+            columnNames="manuscript_id, commit_hash, segmenter"
+            constraintName="unique_migration_commit_segmenter"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_migration_manuscript"
+            baseTableName="migration"
+            baseColumnNames="manuscript_id"
+            referencedTableName="manuscript"
+            referencedColumnNames="manuscript_id"
+            onDelete="CASCADE"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_migration_parent"
+            baseTableName="migration"
+            baseColumnNames="parent_migration_id"
+            referencedTableName="migration"
+            referencedColumnNames="migration_id"
+            onDelete="SET NULL"/>
+
+        <createIndex tableName="migration" indexName="idx_migration_manuscript">
+            <column name="manuscript_id"/>
+        </createIndex>
+
+        <createIndex tableName="migration" indexName="idx_migration_commit">
+            <column name="commit_hash"/>
+        </createIndex>
+
+        <createIndex tableName="migration" indexName="idx_migration_segmenter">
+            <column name="segmenter"/>
+        </createIndex>
+
+        <createIndex tableName="migration" indexName="idx_migration_branch">
+            <column name="branch_name"/>
+        </createIndex>
+
+        <createIndex tableName="migration" indexName="idx_migration_processed_at">
+            <column name="processed_at"/>
+        </createIndex>
+
+        <sql>
+            CREATE INDEX idx_migration_sentence_array ON migration USING GIN(sentence_id_array);
+        </sql>
+
+        <!-- Sentence Table -->
+        <createTable tableName="sentence">
+            <column name="sentence_id" type="VARCHAR(100)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="migration_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="commit_hash" type="VARCHAR(40)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="text" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="word_count" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ordinal" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint
+            constraintName="fk_sentence_migration"
+            baseTableName="sentence"
+            baseColumnNames="migration_id"
+            referencedTableName="migration"
+            referencedColumnNames="migration_id"
+            onDelete="CASCADE"/>
+
+        <addUniqueConstraint
+            tableName="sentence"
+            columnNames="migration_id, ordinal"
+            constraintName="uq_sentence_migration_ordinal"/>
+
+        <createIndex tableName="sentence" indexName="idx_sentence_migration">
+            <column name="migration_id"/>
+        </createIndex>
+
+        <createIndex tableName="sentence" indexName="idx_sentence_commit">
+            <column name="commit_hash"/>
+        </createIndex>
+
+        <createIndex tableName="sentence" indexName="idx_sentence_ordinal">
+            <column name="migration_id"/>
+            <column name="ordinal"/>
+        </createIndex>
+
+        <!-- Annotation Table -->
+        <!-- KEY CHANGE: No unique constraint - allows multiple annotations per sentence per user -->
+        <createTable tableName="annotation">
+            <column name="annotation_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="sentence_id" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Core: Every annotation must have a color -->
+            <column name="color" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Optional components -->
+            <column name="note" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="priority" type="VARCHAR(10)" defaultValue="none">
+                <constraints nullable="false"/>
+            </column>
+            <column name="flagged" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="deleted_at" type="TIMESTAMPTZ">
+                <constraints nullable="true"/>
+            </column>
+        </createTable>
+
+        <!-- Validation constraints -->
+        <sql>
+            ALTER TABLE annotation ADD CONSTRAINT chk_annotation_color
+            CHECK (color IN ('yellow', 'green', 'blue', 'purple', 'red', 'orange'));
+        </sql>
+
+        <sql>
+            ALTER TABLE annotation ADD CONSTRAINT chk_annotation_priority
+            CHECK (priority IN ('none', 'P0', 'P1', 'P2', 'P3'));
+        </sql>
+
+        <!-- Indexes for performance (no unique constraint) -->
+        <createIndex tableName="annotation" indexName="idx_annotation_sentence">
+            <column name="sentence_id"/>
+        </createIndex>
+
+        <createIndex tableName="annotation" indexName="idx_annotation_user">
+            <column name="user_id"/>
+        </createIndex>
+
+        <createIndex tableName="annotation" indexName="idx_annotation_sentence_user">
+            <column name="sentence_id"/>
+            <column name="user_id"/>
+        </createIndex>
+
+        <sql>
+            CREATE INDEX idx_annotation_deleted_at ON annotation(deleted_at) WHERE deleted_at IS NULL;
+        </sql>
+
+        <sql>
+            CREATE INDEX idx_annotation_sentence_user_active
+            ON annotation(sentence_id, user_id)
+            WHERE deleted_at IS NULL;
+        </sql>
+
+        <!-- Annotation Version Table -->
+        <createTable tableName="annotation_version">
+            <column name="annotation_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sentence_id" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Annotation data at this version -->
+            <column name="color" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="priority" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="flagged" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Migration tracking -->
+            <column name="sentence_id_history" type="JSONB">
+                <constraints nullable="false"/>
+            </column>
+            <column name="migration_confidence" type="NUMERIC(3, 2)">
+                <constraints nullable="true"/>
+            </column>
+            <column name="origin_sentence_id" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="origin_migration_id" type="INTEGER">
+                <constraints nullable="true"/>
+            </column>
+            <column name="origin_commit_hash" type="VARCHAR(40)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey
+            tableName="annotation_version"
+            columnNames="annotation_id, version"
+            constraintName="pk_annotation_version"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_annotation_version_annotation"
+            baseTableName="annotation_version"
+            baseColumnNames="annotation_id"
+            referencedTableName="annotation"
+            referencedColumnNames="annotation_id"
+            onDelete="CASCADE"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_annotation_version_sentence"
+            baseTableName="annotation_version"
+            baseColumnNames="sentence_id"
+            referencedTableName="sentence"
+            referencedColumnNames="sentence_id"
+            onDelete="RESTRICT"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_annotation_version_origin_sentence"
+            baseTableName="annotation_version"
+            baseColumnNames="origin_sentence_id"
+            referencedTableName="sentence"
+            referencedColumnNames="sentence_id"
+            onDelete="SET NULL"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_annotation_version_origin_migration"
+            baseTableName="annotation_version"
+            baseColumnNames="origin_migration_id"
+            referencedTableName="migration"
+            referencedColumnNames="migration_id"
+            onDelete="SET NULL"/>
+
+        <createIndex tableName="annotation_version" indexName="idx_annotation_version_annotation">
+            <column name="annotation_id"/>
+        </createIndex>
+
+        <createIndex tableName="annotation_version" indexName="idx_annotation_version_sentence">
+            <column name="sentence_id"/>
+        </createIndex>
+
+        <createIndex tableName="annotation_version" indexName="idx_annotation_version_created_at">
+            <column name="created_at"/>
+        </createIndex>
+
+        <!-- Tag Table -->
+        <createTable tableName="tag">
+            <column name="tag_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="tag_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="migration_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint
+            tableName="tag"
+            columnNames="tag_name, migration_id"
+            constraintName="uq_tag_name_migration"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_tag_migration"
+            baseTableName="tag"
+            baseColumnNames="migration_id"
+            referencedTableName="migration"
+            referencedColumnNames="migration_id"
+            onDelete="CASCADE"/>
+
+        <createIndex tableName="tag" indexName="idx_tag_migration">
+            <column name="migration_id"/>
+        </createIndex>
+
+        <createIndex tableName="tag" indexName="idx_tag_name">
+            <column name="tag_name"/>
+        </createIndex>
+
+        <!-- Annotation Tag Junction Table -->
+        <createTable tableName="annotation_tag">
+            <column name="annotation_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tag_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey
+            tableName="annotation_tag"
+            columnNames="annotation_id, tag_id"
+            constraintName="pk_annotation_tag"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_annotation_tag_annotation"
+            baseTableName="annotation_tag"
+            baseColumnNames="annotation_id"
+            referencedTableName="annotation"
+            referencedColumnNames="annotation_id"
+            onDelete="CASCADE"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_annotation_tag_tag"
+            baseTableName="annotation_tag"
+            baseColumnNames="tag_id"
+            referencedTableName="tag"
+            referencedColumnNames="tag_id"
+            onDelete="CASCADE"/>
+
+        <createIndex tableName="annotation_tag" indexName="idx_annotation_tag_annotation">
+            <column name="annotation_id"/>
+        </createIndex>
+
+        <createIndex tableName="annotation_tag" indexName="idx_annotation_tag_tag">
+            <column name="tag_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="annotation_tag"/>
+            <dropTable tableName="tag"/>
+            <dropTable tableName="annotation_version"/>
+            <dropTable tableName="annotation"/>
+            <dropTable tableName="sentence"/>
+            <dropTable tableName="migration"/>
+            <dropTable tableName="manuscript"/>
+            <dropTable tableName="user"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

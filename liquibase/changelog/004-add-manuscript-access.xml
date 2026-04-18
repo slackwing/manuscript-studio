@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Add manuscript access control table -->
+    <changeSet id="004-add-manuscript-access" author="andrew">
+
+        <!-- Manuscript Access Table -->
+        <createTable tableName="manuscript_access">
+            <column name="username" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="manuscript_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey
+            tableName="manuscript_access"
+            columnNames="username, manuscript_name"
+            constraintName="pk_manuscript_access"/>
+
+        <addForeignKeyConstraint
+            constraintName="fk_manuscript_access_user"
+            baseTableName="manuscript_access"
+            baseColumnNames="username"
+            referencedTableName="user"
+            referencedColumnNames="username"
+            onDelete="CASCADE"/>
+
+        <createIndex tableName="manuscript_access" indexName="idx_manuscript_access_username">
+            <column name="username"/>
+        </createIndex>
+
+        <createIndex tableName="manuscript_access" indexName="idx_manuscript_access_manuscript">
+            <column name="manuscript_name"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="manuscript_access"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
