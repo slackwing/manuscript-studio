@@ -245,6 +245,9 @@ func (db *DB) MarkMigrationRunning(ctx context.Context, migrationID int) error {
 }
 
 // MarkMigrationDone updates a row with the result of a successful migration.
+// commit_hash is updated too: the pending row may have been inserted with a
+// symbolic ref like "HEAD" or a branch name; by the time we mark it done we
+// know the resolved SHA.
 func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error {
 	sentenceIDArrayJSON, err := json.Marshal(m.SentenceIDArray)
 	if err != nil {
@@ -255,16 +258,17 @@ func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error 
 			status = 'done',
 			finished_at = NOW(),
 			processed_at = NOW(),
-			parent_migration_id = $2,
-			branch_name = $3,
-			sentence_count = $4,
-			additions_count = $5,
-			deletions_count = $6,
-			changes_count = $7,
-			sentence_id_array = $8,
+			commit_hash = $2,
+			parent_migration_id = $3,
+			branch_name = $4,
+			sentence_count = $5,
+			additions_count = $6,
+			deletions_count = $7,
+			changes_count = $8,
+			sentence_id_array = $9,
 			error = NULL
 		WHERE migration_id = $1
-	`, m.MigrationID, m.ParentMigrationID, m.BranchName, m.SentenceCount,
+	`, m.MigrationID, m.CommitHash, m.ParentMigrationID, m.BranchName, m.SentenceCount,
 		m.AdditionsCount, m.DeletionsCount, m.ChangesCount, sentenceIDArrayJSON)
 	if err != nil {
 		return fmt.Errorf("failed to mark migration done: %w", err)

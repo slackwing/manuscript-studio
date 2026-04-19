@@ -85,9 +85,10 @@ build:
 
 .PHONY: liquibase-image
 liquibase-image:
-	@if ! docker image inspect $(LIQUIBASE_IMAGE) >/dev/null 2>&1; then \
-	    docker build -f Dockerfile.liquibase -t $(LIQUIBASE_IMAGE) .; \
-	fi
+	@# Always rebuild — the changelog is COPYed into the image, so a stale
+	@# image will silently use yesterday's schema. Docker's layer cache makes
+	@# this fast when nothing has changed.
+	docker build -q -f Dockerfile.liquibase -t $(LIQUIBASE_IMAGE) .
 
 .PHONY: db-migrate
 db-migrate: liquibase-image postgres-up
