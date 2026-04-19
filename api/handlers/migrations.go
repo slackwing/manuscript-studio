@@ -8,9 +8,11 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/migrations"
+	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
 // MigrationHandlers contains migration-related handlers
@@ -142,12 +144,28 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		}
 	}
 
+	// Fetch annotations for this commit for the logged-in user so rainbow bars
+	// can render on initial page load (faithful to 14.writesys).
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	annotations, err := h.DB.GetAnnotationsByCommit(ctx, migration.CommitHash, session.Username)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get annotations: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if annotations == nil {
+		annotations = []models.Annotation{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"commit_hash": migration.CommitHash,
 		"markdown":    content,
 		"sentences":   sentenceInfos,
-		"annotations": []interface{}{}, // populated by a separate annotations endpoint
+		"annotations": annotations,
 	})
 }
 

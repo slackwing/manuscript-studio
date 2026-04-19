@@ -251,6 +251,23 @@ async function runTests() {
     assert(colorChange.hasBlue && !colorChange.hasGreen,
       `Highlight color changed from green to blue (blue: ${colorChange.hasBlue}, green removed: ${!colorChange.hasGreen}, ${colorChange.fragmentCount} fragments)`);
 
+    // Test 18: Annotation persists across page reload.
+    // Guards the GET /migrations/{id}/manuscript read path — which must include
+    // annotations so rainbow bars render on initial load. Regression for
+    // "annotations: []" hardcoded in the manuscript response.
+    await page.reload();
+    await page.waitForTimeout(8000);
+
+    const persistedHighlight = await page.evaluate((sentenceId) => {
+      const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
+      return {
+        fragmentCount: fragments.length,
+        allBlue: fragments.length > 0 && Array.from(fragments).every(f => f.classList.contains('highlight-blue')),
+      };
+    }, testSentenceId);
+    assert(persistedHighlight.allBlue,
+      `Annotation persists after reload (fragments: ${persistedHighlight.fragmentCount}, all blue: ${persistedHighlight.allBlue})`);
+
     // Take screenshot for visual inspection
     await page.screenshot({ path: 'tests/screenshots/ui-integration.png', fullPage: true });
 
