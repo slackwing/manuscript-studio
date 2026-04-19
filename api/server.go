@@ -123,22 +123,35 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/latest", s.migrationHandlers.HandleGetLatestMigration)
 			r.Get("/migrations/{migration_id}/manuscript", s.migrationHandlers.HandleGetManuscriptByMigration)
 
-			// Annotation endpoints
+			// Annotation endpoints (ported from 14.writesys)
 			r.Get("/annotations/{commit_hash}", s.annotationHandlers.HandleGetAnnotationsByCommit)
+			r.Get("/annotations/sentence/{sentence_id}", s.annotationHandlers.HandleGetAnnotationsBySentence)
 			r.Post("/annotations", s.annotationHandlers.HandleCreateAnnotation)
 			r.Put("/annotations/{annotation_id}", s.annotationHandlers.HandleUpdateAnnotation)
+			r.Put("/annotations/{annotation_id}/reorder", s.annotationHandlers.HandleReorderAnnotation)
 			r.Delete("/annotations/{annotation_id}", s.annotationHandlers.HandleDeleteAnnotation)
+
+			// Tag endpoints
+			r.Get("/annotations/{annotation_id}/tags", s.annotationHandlers.HandleGetTagsForAnnotation)
+			r.Post("/annotations/{annotation_id}/tags", s.annotationHandlers.HandleAddTagToAnnotation)
+			r.Delete("/annotations/{annotation_id}/tags/{tag_id}", s.annotationHandlers.HandleRemoveTagFromAnnotation)
 		})
 
 		// Admin endpoints (webhook and system operations)
 		r.Route("/admin", func(r chi.Router) {
-			r.Post("/webhook", s.adminHandlers.HandleWebhook) // GitHub webhook
-			r.Post("/sync", s.adminHandlers.HandleSync)       // Manual sync (requires system token)
-			r.Get("/status", s.adminHandlers.HandleStatus)    // Migration status (requires system token)
+			r.Post("/webhook", s.adminHandlers.HandleWebhook)       // GitHub webhook
+			r.Post("/sync", s.adminHandlers.HandleSync)             // Manual sync (requires system token)
+			r.Get("/status", s.adminHandlers.HandleStatus)          // Migration status (requires system token)
+			r.Post("/users", s.adminHandlers.HandleCreateUser)      // Create/update user (requires system token)
+			r.Post("/grants", s.adminHandlers.HandleCreateGrant)    // Grant manuscript access (requires system token)
 		})
 	})
 
-	// Serve static files from web directory (must be last)
+	// Serve static files from web directory (must be last).
+	// When base_path is non-empty, inject a <base href="..."> tag so relative
+	// URLs in the page (our html/js use relative paths) resolve under the prefix.
+	// When base_path is empty (root hosting or local dev), skip injection —
+	// an unnecessary <base href="/"> can confuse 3rd-party libraries like Paged.js.
 	r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
 		path := req.URL.Path
 		if path == "/" {
@@ -146,17 +159,13 @@ func (s *Server) setupRouter() {
 		}
 		filePath := filepath.Join("web", path)
 
-		// Inject <base href> into HTML so relative URLs work under a base path.
-		if strings.HasSuffix(path, ".html") {
+		if strings.HasSuffix(path, ".html") && basePath != "" {
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				http.NotFound(w, req)
 				return
 			}
 			baseHref := basePath + "/"
-			if baseHref == "/" {
-				baseHref = "/"
-			}
 			injected := bytes.Replace(
 				data,
 				[]byte("<head>"),

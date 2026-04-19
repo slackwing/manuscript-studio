@@ -237,13 +237,14 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, mig
 			newHistory := append(latestVersion.SentenceIDHistory, newSentenceID)
 
 			// Create new version
+			conf := confidenceMap[oldSentenceID]
 			newVersion := &models.AnnotationVersion{
 				AnnotationID:        annotation.AnnotationID,
 				Version:             latestVersion.Version + 1,
 				SentenceID:          newSentenceID,
 				SentenceIDHistory:   newHistory,
-				OriginMigrationID:   newMigrationID,
-				MigrationConfidence: confidenceMap[oldSentenceID],
+				OriginMigrationID:   &newMigrationID,
+				MigrationConfidence: &conf,
 			}
 
 			// Note: CreateAnnotationVersion not implemented yet

@@ -1,0 +1,29 @@
+# Local dev stack for Manuscript Studio.
+#
+# Brings up ONLY PostgreSQL — the Go server is expected to run natively for
+# fast iteration (see the Makefile targets). Use `make dev-install` to
+# exercise the full install.sh flow against a containerized server.
+#
+# Port 5433 (not 5432) to avoid collision with any host-installed Postgres.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: manuscript-studio-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: manuscript_dev
+      POSTGRES_PASSWORD: manuscript_dev
+      POSTGRES_DB: manuscript_studio_dev
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - manuscript-studio-dev-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U manuscript_dev -d manuscript_studio_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  manuscript-studio-dev-pgdata:

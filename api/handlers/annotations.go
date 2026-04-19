@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,46 +12,54 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
-// AnnotationHandlers contains annotation-related handlers
+// AnnotationHandlers contains annotation-related handlers.
+// Ported faithfully from 14.writesys/api/main.go.
 type AnnotationHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
 }
 
-// CreateAnnotationRequest represents a request to create an annotation
+// CreateAnnotationRequest mirrors 14.writesys.CreateAnnotationRequest.
 type CreateAnnotationRequest struct {
 	SentenceID string  `json:"sentence_id"`
 	Color      string  `json:"color"`
-	Note       string  `json:"note"`
-	Priority   int     `json:"priority"`
-	Position   float64 `json:"position"`
+	Note       *string `json:"note"`
+	Priority   string  `json:"priority"`
 	Flagged    bool    `json:"flagged"`
 }
 
-// HandleGetAnnotationsByCommit returns annotations for a specific commit
+// UpdateAnnotationRequest mirrors 14.writesys.UpdateAnnotationRequest.
+type UpdateAnnotationRequest struct {
+	Color    *string `json:"color,omitempty"`
+	Note     *string `json:"note,omitempty"`
+	Priority *string `json:"priority,omitempty"`
+	Flagged  *bool   `json:"flagged,omitempty"`
+}
+
+// ReorderAnnotationRequest asks to move an annotation to a specific index.
+type ReorderAnnotationRequest struct {
+	SentenceID string `json:"sentence_id"`
+	NewIndex   int    `json:"new_index"`
+}
+
+// HandleGetAnnotationsByCommit returns annotations for a specific commit.
 func (h *AnnotationHandlers) HandleGetAnnotationsByCommit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Get commit_hash from URL
 	commitHash := chi.URLParam(r, "commit_hash")
 	if commitHash == "" {
 		http.Error(w, "commit_hash is required", http.StatusBadRequest)
 		return
 	}
 
-	// Get user from context (set by auth middleware)
-	userVal := ctx.Value("user")
-	if userVal == nil {
-		http.Error(w, "User not found in context", http.StatusInternalServerError)
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	username := userVal.(string)
 
-	// Get annotations for this commit and user
-	// Note: UserID in database is actually the username (VARCHAR)
-	annotations, err := h.DB.GetAnnotationsForCommitAndUser(ctx, commitHash, username)
+	annotations, err := h.DB.GetAnnotationsByCommit(ctx, commitHash, session.Username)
 	if err != nil {
-		http.Error(w, "Failed to get annotations", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get annotations: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -60,73 +69,83 @@ func (h *AnnotationHandlers) HandleGetAnnotationsByCommit(w http.ResponseWriter,
 	})
 }
 
-// HandleCreateAnnotation creates a new annotation
+// HandleGetAnnotationsBySentence returns annotations for a specific sentence.
+func (h *AnnotationHandlers) HandleGetAnnotationsBySentence(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sentenceID := chi.URLParam(r, "sentence_id")
+
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	annotations, err := h.DB.GetAnnotationsBySentence(ctx, sentenceID, session.Username)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get annotations: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"annotations": annotations,
+	})
+}
+
+// HandleCreateAnnotation creates a new annotation.
 func (h *AnnotationHandlers) HandleCreateAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user from context
-	userVal := ctx.Value("user")
-	if userVal == nil {
-		http.Error(w, "User not found in context", http.StatusInternalServerError)
-		return
-	}
-	username := userVal.(string)
-
-	// Parse request
 	var req CreateAnnotationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-
-	// Validate
-	if req.SentenceID == "" {
-		http.Error(w, "sentence_id is required", http.StatusBadRequest)
+	if req.Color == "" || req.SentenceID == "" {
+		http.Error(w, "Missing required fields: color, sentence_id", http.StatusBadRequest)
 		return
 	}
 
-	// Create annotation
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	priority := req.Priority
+	if priority == "" {
+		priority = "none"
+	}
+
 	annotation := &models.Annotation{
 		SentenceID: req.SentenceID,
-		UserID:     username, // UserID is actually username in the database
+		UserID:     session.Username,
 		Color:      req.Color,
 		Note:       req.Note,
-		Priority:   req.Priority,
-		Position:   req.Position,
+		Priority:   priority,
 		Flagged:    req.Flagged,
 	}
 
-	// Default color if not specified
-	if annotation.Color == "" {
-		annotation.Color = "yellow"
-	}
-
-	// Create initial version (required for CreateAnnotation)
 	version := &models.AnnotationVersion{
-		SentenceID:          req.SentenceID,
-		Color:               annotation.Color,
-		Note:                annotation.Note,
-		Priority:            annotation.Priority,
-		Flagged:             annotation.Flagged,
-		MigrationConfidence: 1.0,
-		CreatedBy:           username,
+		MigrationConfidence: nil, // First version, no migration confidence.
 	}
 
 	if err := h.DB.CreateAnnotation(ctx, annotation, version); err != nil {
-		http.Error(w, "Failed to create annotation", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to create annotation: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(annotation)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"annotation_id": annotation.AnnotationID,
+		"version":       version.Version,
+	})
 }
 
-// HandleUpdateAnnotation updates an existing annotation
+// HandleUpdateAnnotation updates an existing annotation (creates a new version).
 func (h *AnnotationHandlers) HandleUpdateAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Get annotation ID from URL
 	annotationIDStr := chi.URLParam(r, "annotation_id")
 	annotationID, err := strconv.Atoi(annotationIDStr)
 	if err != nil {
@@ -134,68 +153,58 @@ func (h *AnnotationHandlers) HandleUpdateAnnotation(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Get user from context
-	userVal := ctx.Value("user")
-	if userVal == nil {
-		http.Error(w, "User not found in context", http.StatusInternalServerError)
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	username := userVal.(string)
 
-	// Verify CSRF token
+	// CSRF check
 	csrfToken := r.Header.Get("X-CSRF-Token")
 	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
 
-	// Get existing annotation to verify ownership
 	existing, err := h.DB.GetAnnotationByID(ctx, annotationID)
 	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get annotation: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
 		http.Error(w, "Annotation not found", http.StatusNotFound)
 		return
 	}
-
-	if existing.UserID != username {
+	if existing.UserID != session.Username {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	// Parse update request
-	var updates map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+	var req UpdateAnnotationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Update allowed fields
-	if color, ok := updates["color"].(string); ok {
-		existing.Color = color
+	if req.Color != nil {
+		existing.Color = *req.Color
 	}
-	if note, ok := updates["note"].(string); ok {
-		existing.Note = note
+	if req.Note != nil {
+		existing.Note = req.Note
 	}
-	if priority, ok := updates["priority"].(float64); ok {
-		existing.Priority = int(priority)
+	if req.Priority != nil {
+		existing.Priority = *req.Priority
 	}
-	if flagged, ok := updates["flagged"].(bool); ok {
-		existing.Flagged = flagged
+	if req.Flagged != nil {
+		existing.Flagged = *req.Flagged
 	}
 
-	// Create new version for update
 	version := &models.AnnotationVersion{
-		SentenceID:          existing.SentenceID,
-		Color:               existing.Color,
-		Note:                existing.Note,
-		Priority:            existing.Priority,
-		Flagged:             existing.Flagged,
-		MigrationConfidence: 1.0,
-		CreatedBy:           username,
+		MigrationConfidence: nil,
 	}
 
-	// Save updates
 	if err := h.DB.UpdateAnnotation(ctx, annotationID, existing, version); err != nil {
-		http.Error(w, "Failed to update annotation", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to update annotation: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -203,11 +212,9 @@ func (h *AnnotationHandlers) HandleUpdateAnnotation(w http.ResponseWriter, r *ht
 	json.NewEncoder(w).Encode(existing)
 }
 
-// HandleDeleteAnnotation deletes an annotation (soft delete)
-func (h *AnnotationHandlers) HandleDeleteAnnotation(w http.ResponseWriter, r *http.Request) {
+// HandleReorderAnnotation moves an annotation to a specific index within its sentence.
+func (h *AnnotationHandlers) HandleReorderAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Get annotation ID from URL
 	annotationIDStr := chi.URLParam(r, "annotation_id")
 	annotationID, err := strconv.Atoi(annotationIDStr)
 	if err != nil {
@@ -215,36 +222,149 @@ func (h *AnnotationHandlers) HandleDeleteAnnotation(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Get user from context
-	userVal := ctx.Value("user")
-	if userVal == nil {
-		http.Error(w, "User not found in context", http.StatusInternalServerError)
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	username := userVal.(string)
 
-	// Verify CSRF token
+	existing, err := h.DB.GetAnnotationByID(ctx, annotationID)
+	if err != nil || existing == nil {
+		http.Error(w, "Annotation not found", http.StatusNotFound)
+		return
+	}
+	if existing.UserID != session.Username {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req ReorderAnnotationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.ReorderAnnotation(ctx, annotationID, req.SentenceID, req.NewIndex); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to reorder: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Annotation reordered successfully"})
+}
+
+// HandleDeleteAnnotation soft-deletes an annotation.
+func (h *AnnotationHandlers) HandleDeleteAnnotation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	annotationIDStr := chi.URLParam(r, "annotation_id")
+	annotationID, err := strconv.Atoi(annotationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid annotation_id", http.StatusBadRequest)
+		return
+	}
+
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	csrfToken := r.Header.Get("X-CSRF-Token")
 	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
 
-	// Get existing annotation to verify ownership
 	existing, err := h.DB.GetAnnotationByID(ctx, annotationID)
-	if err != nil {
+	if err != nil || existing == nil {
 		http.Error(w, "Annotation not found", http.StatusNotFound)
 		return
 	}
-
-	if existing.UserID != username {
+	if existing.UserID != session.Username {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	// Soft delete
-	if err := h.DB.DeleteAnnotation(ctx, annotationID); err != nil {
-		http.Error(w, "Failed to delete annotation", http.StatusInternalServerError)
+	if err := h.DB.SoftDeleteAnnotation(ctx, annotationID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleGetTagsForAnnotation returns the tags on an annotation.
+func (h *AnnotationHandlers) HandleGetTagsForAnnotation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	annotationIDStr := chi.URLParam(r, "annotation_id")
+	annotationID, err := strconv.Atoi(annotationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid annotation_id", http.StatusBadRequest)
+		return
+	}
+
+	tags, err := h.DB.GetTagsForAnnotation(ctx, annotationID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get tags: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"tags": tags})
+}
+
+// AddTagRequest is the body for POST /annotations/{id}/tags.
+type AddTagRequest struct {
+	TagName     string `json:"tag_name"`
+	MigrationID int    `json:"migration_id"`
+}
+
+// HandleAddTagToAnnotation adds a tag to an annotation (creating the tag if needed).
+func (h *AnnotationHandlers) HandleAddTagToAnnotation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	annotationIDStr := chi.URLParam(r, "annotation_id")
+	annotationID, err := strconv.Atoi(annotationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid annotation_id", http.StatusBadRequest)
+		return
+	}
+
+	var req AddTagRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.TagName == "" || req.MigrationID == 0 {
+		http.Error(w, "tag_name and migration_id are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.AddTagToAnnotation(ctx, annotationID, req.TagName, req.MigrationID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to add tag: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+// HandleRemoveTagFromAnnotation removes a tag from an annotation.
+func (h *AnnotationHandlers) HandleRemoveTagFromAnnotation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	annotationIDStr := chi.URLParam(r, "annotation_id")
+	annotationID, err := strconv.Atoi(annotationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid annotation_id", http.StatusBadRequest)
+		return
+	}
+	tagIDStr := chi.URLParam(r, "tag_id")
+	tagID, err := strconv.Atoi(tagIDStr)
+	if err != nil {
+		http.Error(w, "Invalid tag_id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.RemoveTagFromAnnotation(ctx, annotationID, tagID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to remove tag: %v", err), http.StatusInternalServerError)
 		return
 	}
 

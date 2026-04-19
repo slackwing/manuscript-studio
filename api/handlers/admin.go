@@ -10,11 +10,23 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/migrations"
 )
+
+// reposDir returns the directory containing cloned manuscript repos.
+// In Docker the install script mounts the host's repos dir at /repos (default).
+// For native dev, set MANUSCRIPT_STUDIO_REPOS_DIR to point at the host path directly.
+func reposDir() string {
+	if d := os.Getenv("MANUSCRIPT_STUDIO_REPOS_DIR"); d != "" {
+		return d
+	}
+	return "/repos"
+}
 
 // AdminHandlers contains admin/system-level handlers
 type AdminHandlers struct {
@@ -118,10 +130,7 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 // HandleSync manually triggers a sync for a manuscript
 func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
-	// Verify system token
-	authHeader := r.Header.Get("Authorization")
-	expectedToken := "Bearer " + h.Config.Auth.SystemToken
-	if authHeader != expectedToken {
+	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -159,10 +168,7 @@ func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 
 // HandleStatus returns the status of ongoing migrations
 func (h *AdminHandlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
-	// Verify system token
-	authHeader := r.Header.Get("Authorization")
-	expectedToken := "Bearer " + h.Config.Auth.SystemToken
-	if authHeader != expectedToken {
+	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -177,6 +183,106 @@ func (h *AdminHandlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
+}
+
+// HandleCreateUser creates or updates a user. Requires system token.
+// Request body: {"username": "...", "password": "...", "role": "author"}
+func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
+	if !h.checkSystemToken(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "username and password are required", http.StatusBadRequest)
+		return
+	}
+	if req.Role == "" {
+		req.Role = "author"
+	}
+
+	hash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+
+	// Upsert user: insert or update password_hash on conflict.
+	query := `
+		INSERT INTO "user" (username, password_hash, role)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (username) DO UPDATE
+		    SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role
+	`
+	if _, err := h.DB.Pool.Exec(r.Context(), query, req.Username, hash, req.Role); err != nil {
+		log.Printf("Failed to upsert user %s: %v", req.Username, err)
+		http.Error(w, "Failed to create user", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"username": req.Username,
+		"role":     req.Role,
+	})
+}
+
+// HandleCreateGrant grants a user access to a manuscript. Requires system token.
+// Request body: {"username": "...", "manuscript_name": "..."}
+// Idempotent: repeated grants are a no-op.
+func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request) {
+	if !h.checkSystemToken(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		Username       string `json:"username"`
+		ManuscriptName string `json:"manuscript_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Username == "" || req.ManuscriptName == "" {
+		http.Error(w, "username and manuscript_name are required", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		INSERT INTO manuscript_access (username, manuscript_name)
+		VALUES ($1, $2)
+		ON CONFLICT (username, manuscript_name) DO NOTHING
+	`
+	if _, err := h.DB.Pool.Exec(r.Context(), query, req.Username, req.ManuscriptName); err != nil {
+		log.Printf("Failed to grant %s access to %s: %v", req.Username, req.ManuscriptName, err)
+		http.Error(w, "Failed to grant access", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"username":        req.Username,
+		"manuscript_name": req.ManuscriptName,
+	})
+}
+
+// checkSystemToken verifies the Authorization header contains the configured system token.
+func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
+	authHeader := r.Header.Get("Authorization")
+	expected := "Bearer " + h.Config.Auth.SystemToken
+	return h.Config.Auth.SystemToken != "" && authHeader == expected
 }
 
 // validateGitHubSignature validates the GitHub webhook signature
@@ -216,10 +322,10 @@ func (h *AdminHandlers) processMigration(manuscriptConfig *config.ManuscriptConf
 		}
 	}
 
-	// Create git repository handler. The server always reads from /repos
-	// inside the container — install.sh mounts the host's manuscript_repos dir there.
+	// Create git repository handler. Default is /repos (Docker mount).
+	// Native dev sets MANUSCRIPT_STUDIO_REPOS_DIR to the host's repos path.
 	gitRepo := migrations.NewGitRepository(
-		fmt.Sprintf("/repos/%s", manuscriptConfig.Name),
+		fmt.Sprintf("%s/%s", reposDir(), manuscriptConfig.Name),
 		manuscriptConfig.Repository.Branch,
 		manuscriptConfig.Repository.URL,
 		manuscriptConfig.Repository.Path,

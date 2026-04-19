@@ -84,7 +84,18 @@ type MigrationConfig struct {
 
 // Load loads configuration from file
 func Load() (*Config, error) {
-	// Try multiple locations for config file
+	// MANUSCRIPT_STUDIO_CONFIG_FILE env var takes precedence — used by dev mode to point at
+	// ~/.config/manuscript-studio-dev/config.yaml without touching the prod path.
+	var configPath string
+	if envPath := os.Getenv("MANUSCRIPT_STUDIO_CONFIG_FILE"); envPath != "" {
+		if _, err := os.Stat(envPath); err == nil {
+			configPath = envPath
+		} else {
+			return nil, fmt.Errorf("MANUSCRIPT_STUDIO_CONFIG_FILE=%s not found: %w", envPath, err)
+		}
+	}
+
+	// Fall back to conventional search paths.
 	configPaths := []string{
 		"/config/config.yaml",                               // Docker mount
 		filepath.Join(os.Getenv("HOME"), ".config/manuscript-studio/config.yaml"), // User config
@@ -92,11 +103,12 @@ func Load() (*Config, error) {
 		"config.example.yaml",                                // Fallback for testing
 	}
 
-	var configPath string
-	for _, path := range configPaths {
-		if _, err := os.Stat(path); err == nil {
-			configPath = path
-			break
+	if configPath == "" {
+		for _, path := range configPaths {
+			if _, err := os.Stat(path); err == nil {
+				configPath = path
+				break
+			}
 		}
 	}
 
@@ -134,6 +146,9 @@ func Load() (*Config, error) {
 	// Expand paths
 	config.Paths.PrivateDir = expandPath(config.Paths.PrivateDir)
 	config.Logging.Directory = expandPath(config.Logging.Directory)
+	for i := range config.Manuscripts {
+		config.Manuscripts[i].Repository.URL = expandPath(config.Manuscripts[i].Repository.URL)
+	}
 
 	return &config, nil
 }

@@ -8,6 +8,7 @@
 # Go build output
 /manuscript-studio
 /cmd/server/server
+/bin/
 
 # Test binary, built with `go test -c`
 *.test
@@ -54,6 +55,7 @@ test-results/
 coverage/
 playwright-report/
 playwright/.cache/
+tests/screenshots/*.png
 
 # Node modules (for frontend testing)
 node_modules/

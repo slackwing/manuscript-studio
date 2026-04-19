@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/slackwing/manuscript-studio/internal/fractional"
 	"github.com/slackwing/manuscript-studio/internal/models"
@@ -611,10 +610,8 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 		return fmt.Errorf("failed to create annotation: %w", err)
 	}
 
-	// Set the position in the annotation struct
-	// Parse the string position to float64
-	posValue, _ := strconv.ParseFloat(nextPosition, 64)
-	annotation.Position = posValue
+	// Set the position on the annotation struct (stored as string/fractional index).
+	annotation.Position = nextPosition
 
 	// Get commit_hash and migration_id for this sentence (for origin_commit_hash and origin_migration_id)
 	var commitHash string
@@ -635,7 +632,7 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	version.Priority = annotation.Priority
 	version.Flagged = annotation.Flagged
 	version.OriginSentenceID = annotation.SentenceID
-	version.OriginMigrationID = migrationID
+	version.OriginMigrationID = &migrationID
 	version.OriginCommitHash = commitHash
 	version.CreatedBy = annotation.UserID
 
@@ -705,10 +702,7 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 	version.Priority = annotation.Priority
 	version.Flagged = annotation.Flagged
 	version.OriginSentenceID = originSentenceID
-	// Handle nil pointer
-	if originMigrationID != nil {
-		version.OriginMigrationID = *originMigrationID
-	}
+	version.OriginMigrationID = originMigrationID
 	version.OriginCommitHash = originCommitHash
 	version.CreatedBy = createdBy
 

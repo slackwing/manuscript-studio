@@ -55,16 +55,17 @@ type Sentence struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// Annotation represents a user annotation (simplified: all based on highlights with color)
+// Annotation represents a user annotation (simplified: all based on highlights with color).
+// Types faithful to 14.writesys: Priority/Position are strings, Note is *string.
 type Annotation struct {
 	AnnotationID int        `json:"annotation_id"`
 	SentenceID   string     `json:"sentence_id"`
 	UserID       string     `json:"user_id"` // This is username (VARCHAR)
 	Color        string     `json:"color"`   // Required: yellow, green, blue, purple, red, orange
-	Note         string     `json:"note"`    // Can be empty string
-	Priority     int        `json:"priority"`
+	Note         *string    `json:"note"`    // Optional
+	Priority     string     `json:"priority"` // 'none', 'P0', 'P1', 'P2', 'P3'
 	Flagged      bool       `json:"flagged"`
-	Position     float64    `json:"position"` // Fractional index for ordering annotations
+	Position     string     `json:"position"` // Fractional index for ordering annotations
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DeletedAt    *time.Time `json:"deleted_at"`
@@ -86,19 +87,20 @@ type AnnotationTag struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// AnnotationVersion represents a version of an annotation
+// AnnotationVersion represents a version of an annotation.
+// Types faithful to 14.writesys.
 type AnnotationVersion struct {
 	AnnotationID        int       `json:"annotation_id"`
 	Version             int       `json:"version"`
 	SentenceID          string    `json:"sentence_id"`
 	Color               string    `json:"color"`
-	Note                string    `json:"note"`
-	Priority            int       `json:"priority"`
+	Note                *string   `json:"note"`
+	Priority            string    `json:"priority"`
 	Flagged             bool      `json:"flagged"`
 	SentenceIDHistory   []string  `json:"sentence_id_history"`
-	MigrationConfidence float64   `json:"migration_confidence"`
+	MigrationConfidence *float64  `json:"migration_confidence"`
 	OriginSentenceID    string    `json:"origin_sentence_id"`
-	OriginMigrationID   int       `json:"origin_migration_id"` // FK to migration.migration_id
+	OriginMigrationID   *int      `json:"origin_migration_id"` // FK to migration.migration_id
 	OriginCommitHash    string    `json:"origin_commit_hash"`  // Denormalized
 	CreatedAt           time.Time `json:"created_at"`
 	CreatedBy           string    `json:"created_by"`

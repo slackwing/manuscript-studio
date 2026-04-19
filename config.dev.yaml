@@ -1,0 +1,78 @@
+# Local dev configuration for Manuscript Studio.
+#
+# This file is committed and intended to work out of the box when running:
+#   make dev       — native Go server + Postgres in Docker
+#   make test      — runs the test suite against make dev
+#   make dev-install  — runs install.sh --dev end-to-end
+#
+# Dev credentials are intentionally weak; nothing in here should ever be
+# used in production.
+
+version: 1.0
+
+# ============================================================
+# Database (runs in docker-compose.dev.yaml on port 5433)
+# ============================================================
+database:
+  host: "localhost"
+  port: 5433
+  name: "manuscript_studio_dev"
+  user: "manuscript_dev"
+  password: "manuscript_dev"
+
+# ============================================================
+# File Paths
+# ============================================================
+paths:
+  private_dir: "~/.config/manuscript-studio-dev/private"
+
+# ============================================================
+# Manuscripts
+# ============================================================
+# The test manuscript is materialized as a local git repo by
+# testdata/init-test-repo.sh. The URL here points at that local path —
+# git accepts plain local paths as clone/fetch sources.
+manuscripts:
+  - name: "test-manuscripts"
+    repository:
+      url: "~/.config/manuscript-studio-dev/repos/test-manuscripts"
+      branch: "main"
+      path: "test.manuscript"
+      auth_token: ""
+
+# ============================================================
+# Auth
+# ============================================================
+auth:
+  admin_username: "admin"
+  admin_password: "admin"
+  system_token: "dev-system-token-not-for-production"
+  session_secret: "dev-session-secret-not-for-production"
+  webhook_secret: "dev-webhook-secret"
+
+# ============================================================
+# Server
+# ============================================================
+server:
+  port: 5001
+  host: "127.0.0.1"
+  env: "development"
+  base_path: ""
+
+# ============================================================
+# Logging
+# ============================================================
+logging:
+  directory: "~/.config/manuscript-studio-dev/logs"
+  level: "info"
+  max_age_days: 30
+  max_size_mb: 100
+  rotate: true
+
+# ============================================================
+# Migration Settings
+# ============================================================
+migrations:
+  lock_during_migration: true
+  backup_before_migration: false
+  queue_annotations: true

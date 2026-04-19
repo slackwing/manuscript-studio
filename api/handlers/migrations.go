@@ -19,6 +19,14 @@ type MigrationHandlers struct {
 	Config *config.Config
 }
 
+// SentenceInfo is the sentence shape the frontend expects.
+// Faithful to 14.writesys/api/main.go: {id, text, wordCount}.
+type SentenceInfo struct {
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	WordCount int    `json:"wordCount"`
+}
+
 // HandleGetMigrations returns all migrations for a manuscript
 func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -124,11 +132,21 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		return
 	}
 
+	// Convert DB sentences to the frontend's expected shape: {id, text, wordCount}.
+	sentenceInfos := make([]SentenceInfo, len(sentences))
+	for i, s := range sentences {
+		sentenceInfos[i] = SentenceInfo{
+			ID:        s.SentenceID,
+			Text:      s.Text,
+			WordCount: s.WordCount,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"commit_hash": migration.CommitHash,
 		"markdown":    content,
-		"sentences":   sentences,
+		"sentences":   sentenceInfos,
 		"annotations": []interface{}{}, // populated by a separate annotations endpoint
 	})
 }
@@ -146,7 +164,7 @@ func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *conf
 // readGitContent reads the manuscript file contents at a specific commit from the local clone.
 func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (string, error) {
 	gitRepo := migrations.NewGitRepository(
-		fmt.Sprintf("/repos/%s", m.Name),
+		fmt.Sprintf("%s/%s", reposDir(), m.Name),
 		m.Repository.Branch,
 		m.Repository.URL,
 		m.Repository.Path,
