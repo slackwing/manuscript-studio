@@ -216,9 +216,10 @@ func (h *AdminHandlers) processMigration(manuscriptConfig *config.ManuscriptConf
 		}
 	}
 
-	// Create git repository handler
+	// Create git repository handler. The server always reads from /repos
+	// inside the container — install.sh mounts the host's manuscript_repos dir there.
 	gitRepo := migrations.NewGitRepository(
-		fmt.Sprintf("%s/%s", h.Config.Paths.ManuscriptRepos, manuscriptConfig.Name),
+		fmt.Sprintf("/repos/%s", manuscriptConfig.Name),
 		manuscriptConfig.Repository.Branch,
 		manuscriptConfig.Repository.URL,
 		manuscriptConfig.Repository.Path,
@@ -232,8 +233,21 @@ func (h *AdminHandlers) processMigration(manuscriptConfig *config.ManuscriptConf
 	}
 
 	if err := gitRepo.Pull(ctx); err != nil {
-		log.Printf("Failed to pull repository: %v", err)
-		return
+		// Don't fail — the repo may already be up to date, or the container
+		// may lack SSH credentials. We'll still read whatever's already there.
+		log.Printf("Warning: git pull failed (continuing with local HEAD): %v", err)
+	}
+
+	// Resolve symbolic refs (HEAD, branch names) to a real commit SHA
+	// so the migration record stores a usable hash.
+	if commitHash == "" || commitHash == "HEAD" {
+		resolved, err := gitRepo.GetLatestCommitHash(ctx)
+		if err != nil {
+			log.Printf("Failed to resolve HEAD to commit hash: %v", err)
+			return
+		}
+		commitHash = resolved
+		log.Printf("Resolved HEAD to %s", commitHash)
 	}
 
 	// Get manuscript content

@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-18.5"
+SCRIPT_VERSION="2026-04-19.4"
 
 set -euo pipefail
 
@@ -26,6 +26,23 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
+
+# prompt_yn: prompt user yes/no, default Yes. Returns 0 for yes, 1 for no.
+# Works under `bash <(curl ...)` because stdin stays attached to the terminal.
+# Non-interactive (no TTY) → auto-yes so CI/pipes don't hang.
+prompt_yn() {
+    local question="$1"
+    if [[ ! -t 0 ]]; then
+        log_info "$question [auto-yes: non-interactive]"
+        return 0
+    fi
+    local reply
+    read -rp "$(echo -e "${YELLOW}[?]${NC} $question [Y/n]: ")" reply
+    case "$reply" in
+        ""|y|Y|yes|YES) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 
 # Header
 echo "========================================="
@@ -94,6 +111,7 @@ DB_NAME=$(get_config "name")
 DB_USER=$(get_config "user")
 DB_PASSWORD=$(get_config "password")
 PRIVATE_DIR=$(get_config "private_dir")
+MANUSCRIPT_REPOS_DIR="$CONFIG_DIR/repos"
 MANUSCRIPT_REPO_URL=$(grep -A5 "repository:" "$CONFIG_FILE" | grep "url:" | head -1 | sed 's/.*url:[[:space:]]*"\(.*\)".*/\1/')
 MANUSCRIPT_NAME=$(grep -A5 "manuscripts:" "$CONFIG_FILE" | grep "name:" | head -1 | sed 's/.*name:[[:space:]]*"\(.*\)".*/\1/')
 
@@ -111,23 +129,49 @@ log_info "psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
 DB_ERR=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" 2>&1 >/dev/null) && {
     log_info "Database connection OK"
 } || {
-    log_warn "Cannot connect to database (continuing):"
+    log_warn "Cannot connect to database:"
     echo "$DB_ERR" | sed 's/^/    /'
+
+    # If the only problem is that the database doesn't exist, offer to create it.
+    if echo "$DB_ERR" | grep -qi "database .* does not exist"; then
+        if prompt_yn "Create database \"$DB_NAME\" on $DB_HOST:$DB_PORT?"; then
+            if PGPASSWORD="$DB_PASSWORD" createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" 2>&1; then
+                log_info "Created database $DB_NAME"
+            else
+                log_warn "Failed to create database (continuing; the user may lack CREATEDB)"
+            fi
+        fi
+    fi
 }
 
 # Step 5: Validate directories
 log_step "Validating directories..."
 
 if [[ ! -d "$PRIVATE_DIR" ]]; then
-    log_error "Private directory does not exist: $PRIVATE_DIR. Please create it and try again."
+    log_warn "Private directory does not exist: $PRIVATE_DIR"
+    if prompt_yn "Create it (and chown to $USER if sudo is available)?"; then
+        if mkdir -p "$PRIVATE_DIR" 2>/dev/null; then
+            log_info "Created $PRIVATE_DIR"
+        elif command -v sudo &>/dev/null; then
+            sudo mkdir -p "$PRIVATE_DIR" && sudo chown -R "$USER:$USER" "$PRIVATE_DIR" \
+                && log_info "Created $PRIVATE_DIR (as sudo, chowned to $USER)" \
+                || log_error "Failed to create $PRIVATE_DIR even with sudo"
+        else
+            log_error "Failed to create $PRIVATE_DIR (no write access, sudo unavailable)"
+        fi
+    else
+        log_error "Private directory is required. Please create it manually and try again."
+    fi
 fi
 log_info "✓ Private directory exists"
 
 # Step 6: Clone/update manuscript repositories
 log_step "Setting up manuscript repositories..."
 
+mkdir -p "$MANUSCRIPT_REPOS_DIR"
+
 if [[ -n "$MANUSCRIPT_REPO_URL" && -n "$MANUSCRIPT_NAME" ]]; then
-    REPO_DIR="$CONFIG_DIR/repos/$MANUSCRIPT_NAME"
+    REPO_DIR="$MANUSCRIPT_REPOS_DIR/$MANUSCRIPT_NAME"
 
     if [[ ! -d "$REPO_DIR" ]]; then
         log_info "Cloning manuscript repository..."
@@ -214,7 +258,7 @@ docker run -d \
     -p 127.0.0.1:5001:5001 \
     -v "$CONFIG_FILE:/config/config.yaml:ro" \
     -v "$CONFIG_DIR/logs:/logs" \
-    -v "$CONFIG_DIR/repos:/repos" \
+    -v "$MANUSCRIPT_REPOS_DIR:/repos" \
     manuscript-studio:latest || {
     log_error "Failed to start server"
 }

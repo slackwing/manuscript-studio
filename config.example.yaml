@@ -25,9 +25,6 @@ paths:
   # Where server source and data are stored
   private_dir: "/var/www/manuscript-studio"
 
-  # Where manuscript repositories are cloned
-  manuscript_repos: "~/.config/manuscript-studio/repos"
-
 # ============================================================
 # Manuscript Definitions
 # ============================================================

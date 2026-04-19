@@ -23,7 +23,7 @@ A self-hosted, version-controlled manuscript annotation system that seamlessly i
 ### One-Line Installation
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/slackwing/manuscript-studio/main/install.sh | bash
+install_latest_manuscript_studio() { bash <(curl -sSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/slackwing/manuscript-studio/main/install.sh"); }; install_latest_manuscript_studio
 ```
 
 On first run, this creates a configuration template at `~/.config/manuscript-studio/config.yaml`. Edit it with your settings and run again to complete installation.
