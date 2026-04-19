@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-19.4"
+SCRIPT_VERSION="2026-04-19.6"
 
 set -euo pipefail
 
@@ -259,6 +259,7 @@ docker run -d \
     -v "$CONFIG_FILE:/config/config.yaml:ro" \
     -v "$CONFIG_DIR/logs:/logs" \
     -v "$MANUSCRIPT_REPOS_DIR:/repos" \
+    -v "$HOME/.ssh:/home/manuscript/.ssh:ro" \
     manuscript-studio:latest || {
     log_error "Failed to start server"
 }

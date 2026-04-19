@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o manuscript-studio
 FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates git
+RUN apk --no-cache add ca-certificates git openssh-client
 
 # Create non-root user
 RUN addgroup -g 1000 manuscript && \
