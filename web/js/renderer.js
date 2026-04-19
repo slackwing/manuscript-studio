@@ -138,8 +138,11 @@ const WriteSysRenderer = {
       const paged = new Paged.Previewer();
       const appContainer = document.getElementById('app-container');
 
-      // Pass wrapped HTML to Paged.js - it will handle splitting/duplicating sentence spans
-      await paged.preview(wrappedHtml, ['/css/book.css'], appContainer);
+      // Pass wrapped HTML to Paged.js - it will handle splitting/duplicating sentence spans.
+      // Use a <base>-aware absolute URL so Paged.js fetches from /manuscripts/css/book.css
+      // when hosted under a prefix, and /css/book.css at the root.
+      const bookCssUrl = new URL('css/book.css', document.baseURI).href;
+      await paged.preview(wrappedHtml, [bookCssUrl], appContainer);
 
       // Hide the original manuscript-content div (Paged.js created its own)
       const originalContent = document.getElementById('manuscript-content');
