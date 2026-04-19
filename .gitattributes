@@ -1,0 +1,2 @@
+# Mark screenshots as binary to avoid diff noise
+tests/screenshots/*.png binary

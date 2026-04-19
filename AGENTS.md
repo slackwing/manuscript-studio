@@ -1,130 +1,237 @@
 # Agent Instructions
 
-Instructions for AI coding agents (Claude Code, Cursor, etc.) working on this repo.
+For AI coding agents (Claude Code, Cursor, etc.) working on this repo.
 
-## 🚨 CRITICAL TEST RULES — READ FIRST 🚨
+---
 
-### Write tests for EVERYTHING
+## 🚨 CRITICAL NOTICES — READ FIRST 🚨
 
-**Every feature, fix, or change MUST have tests. No exceptions.**
+### N1 — Never modify schema outside Liquibase
 
-**Workflow:**
-1. **Before coding:** write a failing test that demonstrates the issue or desired behavior
-2. **While coding:** run the most-relevant test file to verify progress
-3. **After finishing:** all tests pass
-4. **Before committing:** run `./test-all.sh`
+No `ALTER TABLE` / `CREATE TABLE` in Go code, no manual `psql` schema
+changes. All schema changes go through a new changeset under
+`liquibase/changelog/` (see §3).
 
-**When you discover a bug:**
-1. Immediately write a test that reproduces it
-2. Verify the test fails
-3. Fix the bug
-4. Verify the test passes
-5. Commit test and fix together
+Violation = failed task.
 
-**If you ship code without tests, you have failed the task.**
+### N2 — Every change needs a test
 
-### Test manuscript rules
+No exceptions. See §4. If you fix a bug, first write a test that
+reproduces it, then fix.
 
-Manuscript Studio's dev environment has **one** configured manuscript:
-**`test-manuscripts`** with **`manuscript_id=1`**. Tests use this.
+Violation = failed task.
 
-The real `the-wildfire` manuscript lives on the production VM only and **must
-never** be referenced from this repo's tests or fixtures. If you see
-`the-wildfire` anywhere in `testdata/`, `config.dev.yaml`, or `tests/`,
-delete it.
+### N3 — Update `install.sh` → bump `SCRIPT_VERSION`
 
-### Headless mode is required
+The script is distributed via `curl | bash` and GitHub's CDN caches it for
+several minutes. The version string printed at the top of each run lets the
+user confirm they got the edit, not a cached copy.
 
-Playwright browser launches in tests **MUST** use `{ headless: true }`. The
-tests are meant to run under `make test` and in CI; headed browsers break
-that.
+Format: `YYYY-MM-DD.N`. If today's date is used, increment `.N`; if newer
+date, reset `.N` to `1`. Bump on every change, even trivial ones.
 
-### Test file organization
+### N4 — Never reference `the-wildfire` in this repo
 
-**Gatekeeper tests** (run by `./test-all.sh`):
-- `tests/ui-integration.js` — visual rendering, Paged.js, layout, core UI
-  flows. This is the most important test file; it catches layout regressions.
+`the-wildfire.manuscript` is the user's private working document on the
+production VM. It must not appear in `testdata/`, `tests/`, `config.dev.yaml`,
+or anywhere else in this repo. If you see it, delete it.
 
-**Feature tests** (`tests/test-*.js`, `tests/*-test.js`):
-- Standalone node scripts, each covering a feature (tags, rainbow bars, trash
-  icons, etc.). Run individually with `node tests/<name>.js`.
-- New test files should use the `TEST_URL` / `loginAsTestUser` /
-  `cleanupTestAnnotations` helpers from `tests/test-utils.js`.
+Tests use **`test-manuscripts`** with **`manuscript_id=1`**.
 
-**Go unit tests** (`internal/**/*_test.go`):
-- Pure Go, run with `go test ./...`. No server required.
+### N5 — Playwright must run headless
 
-### Do NOT create debug-* or one-off test files
+Every `chromium.launch(...)` call: `{ headless: true }`. Tests run under
+`make test` and need to work without a display.
 
-Use the existing test files. If you need to investigate a bug, write a
-repeatable test against it and check it in, not a throwaway script.
+### N6 — Don't create `debug-*.js` / `one-off-*.js` test files
 
-### When tests fail
+Use existing test files, or add a properly-named `test-<feature>.js`. No
+throwaway scripts.
 
-- **Test is outdated** → update it to match current behavior
+### N7 — Don't use CSS `scale()` for sizing
+
+When making an element bigger or smaller on hover/focus/state change,
+recalculate explicit dimensions in px/em/rem. `scale()` breaks positioning in
+nested absolute layouts — especially with floating sticky-note / annotation
+margin elements.
+
+```css
+/* ❌ DON'T */
+.circle:hover { transform: scale(1.2); }
+
+/* ✅ DO */
+.circle { width: 22px; height: 22px; }
+.circle:hover { width: 26px; height: 26px; } /* 22 × 1.18 */
+```
+
+### N8 — Segmenter parity
+
+If you touch `web/js/segmenter.js`, you must also update
+`internal/segmenter/segman.go` (or vice versa). Both must split sentences
+identically, or sentence IDs will mismatch between browser and server and
+DOM wrapping will silently fail. The canonical source is the
+[segman](https://github.com/slackwing/segman) project; copy the current
+version into both locations when upgrading.
+
+---
+
+## 1. Core principles
+
+1. **Markdown in git is the source of truth** — annotations are a layer on top.
+2. **Sentences get new IDs when edited** — no false lineage; the migration
+   algorithm tracks lineage separately with confidence scores.
+3. **Append-only annotation history** — never hard-delete, only soft-delete.
+4. **Heuristic migration with confidence** — users review/fix low-confidence
+   matches manually; we don't pretend the match is certain.
+5. **Tests are a specification** — if a test fails, fix the code. If the test
+   is obsolete, ask the user before deleting.
+
+---
+
+## 2. Quick orientation
+
+```
+api/             HTTP handlers
+cmd/server/      Main server entrypoint
+cmd/admin-upsert/ One-shot: seed the admin user from config
+internal/        Core logic: config, database, auth, migrations, sentence,
+                 segmenter, fractional, models
+liquibase/       Database schema
+web/             Frontend (vanilla JS, no build step)
+tests/           Playwright + Node test suite
+testdata/        Fixtures (test.manuscript + init script)
+debug/           User-facing debugging scripts (nuke_database.sh, connect_db.sh)
+install.sh       One-liner installer
+Makefile         Dev workflow targets
+config.dev.yaml  Committed dev config (works out of the box)
+ARCHITECTURE.md  How the pieces fit together
+```
+
+Full layout and design in [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+---
+
+## 3. Database schema changes
+
+### Pre-release exception (current state)
+
+The initial schema is consolidated into `001-initial-schema.xml`. While we
+have no real users, we can still edit 001 directly and `./debug/nuke_database.sh`
++ redeploy is an acceptable migration path.
+
+### Post-release (after the first real user exists)
+
+- Never edit `001-initial-schema.xml`. Liquibase's checksum validation will
+  fail on pre-applied changesets and migrations will block.
+- Every change is a new changeset: `NNN-description.xml` (increment `NNN`).
+- Add `<include file="changelog/NNN-description.xml"/>` to
+  `db.changelog-master.xml`.
+- Verify locally: `make db-reset && make db-migrate`.
+- Add or update tests for the new schema.
+
+---
+
+## 4. Testing
+
+### Workflow for any code change
+
+1. **Before coding:** write a failing test.
+2. **While coding:** run the most-relevant test file.
+3. **After finishing:** all tests pass.
+4. **Before committing:** `./test-all.sh`.
+
+When you discover a bug:
+1. Write a test that reproduces it → verify it fails.
+2. Fix the bug → verify test passes.
+3. Commit test and fix together.
+
+### Where to put tests
+
+| Kind | Location | Run via |
+|------|----------|---------|
+| Gatekeeper UI integration | `tests/ui-integration.js` | `./test-all.sh` or `node tests/ui-integration.js` |
+| Smoke | `tests/smoke.js` | `node tests/smoke.js` |
+| Feature (tags, trash, rainbow, etc.) | `tests/test-*.js` or `tests/*-test.js` | `node tests/<name>.js` |
+| Go unit | `internal/**/*_test.go` | `go test ./...` |
+
+### Helpers
+
+Use `tests/test-utils.js`:
+- `TEST_MANUSCRIPT_ID` (`1`) and `TEST_MANUSCRIPT_NAME` (`"test-manuscripts"`)
+- `TEST_URL` — pre-built URL with the right manuscript_id
+- `TEST_USERNAME` / `TEST_PASSWORD` (both `"test"`)
+- `loginAsTestUser(page)` — logs in with the test user
+- `cleanupTestAnnotations()` — wipes annotation data, re-bootstraps the test
+  manuscript via the admin API
+
+### When a test fails
+
+- **Test is outdated** → update it to match current intended behavior
 - **Test is irrelevant** → ask the user whether to delete it
 - **Code broke something** → fix the code, NOT the test
 
-Never let tests diverge from the codebase.
+### Backend verification without a browser
+
+If you can't open a browser:
+- Check server logs: `docker logs manuscript-studio-dev-server`
+  (or the native process's stdout).
+- Hit endpoints directly: `curl http://127.0.0.1:5001/api/migrations/latest?manuscript_id=1`.
+- Use `debug/connect_db.sh` to run SQL against the dev DB.
 
 ---
 
-## Local dev environment
+## 5. Local dev
 
-Two flows, both documented in the `Makefile`:
+Two flows, both in the `Makefile`:
 
 **Fast iteration (native Go server):**
 ```bash
-make dev          # in one terminal — starts Postgres + server
-make test         # in another — resets DB, seeds, runs tests
+make dev          # terminal 1 — starts Postgres + builds + runs server
+make test         # terminal 2 — resets DB, seeds, runs gatekeeper tests
 ```
 
-**Production-fidelity (Docker-packaged server via install.sh):**
+**Production-fidelity (full Docker install flow):**
 ```bash
-make dev-install  # runs ./install.sh --dev end-to-end
-make test-install # same tests, against the containerized server
+make dev-install    # runs ./install.sh --dev end-to-end
+make test-install   # runs tests against the containerized server
 ```
 
-Dev config namespace: `~/.config/manuscript-studio-dev/`
-Dev DB: `localhost:5433` (not the default 5432, to avoid collision)
-Dev server: `http://127.0.0.1:5001/`
-Test user: `test` / `test`
+Namespaces and defaults:
+- Dev config: `~/.config/manuscript-studio-dev/`
+- Dev DB: `localhost:5433` (non-default port; won't collide)
+- Dev server: `http://127.0.0.1:5001/`
+- Admin user: `admin` / `admin`  •  Test user: `test` / `test`
+
+Dev env vars the server understands:
+- `MANUSCRIPT_STUDIO_CONFIG_FILE` — explicit config path (bypasses default
+  search paths)
+- `MANUSCRIPT_STUDIO_REPOS_DIR` — where manuscript repos are stored
+  (overrides the Docker-mount default of `/repos`)
 
 ---
 
-## install.sh version bump (MANDATORY)
+## 6. Key design decisions
 
-Whenever you modify `install.sh`, you MUST bump `SCRIPT_VERSION` at the top of the file in the same change.
+Documented more fully in [ARCHITECTURE.md](./ARCHITECTURE.md). Highlights:
 
-**Why:** The script is fetched via `curl | bash` from GitHub, which is cached aggressively by GitHub's CDN (up to several minutes). The user needs to see the version string printed at the top of each run to confirm they're running the intended version, not a stale cached copy.
-
-**Format:** `YYYY-MM-DD.N`
-- `YYYY-MM-DD` — today's date
-- `N` — increments within the same day, starting at `1`
-
-**Examples:**
-- First edit on 2026-04-18 → `2026-04-18.1`
-- Second edit the same day → `2026-04-18.2`
-- First edit the next day → `2026-04-19.1`
-
-**How to apply:**
-1. Before you finish editing `install.sh`, update the `SCRIPT_VERSION="..."` line near the top.
-2. If the current date's version already exists, increment `.N`.
-3. If a newer date exists, use today's date with `.1`.
-4. Never leave the version unchanged when the script is modified, even for trivial edits — the point is to prove the fetched version matches the edit.
+- **Single Go binary** for server + static files. No separate web server
+  process.
+- **PostgreSQL outside Docker** — managed by the user (GCP Cloud SQL in prod,
+  docker-compose Postgres in dev). Data durability wins.
+- **API-integrated migration** — the GitHub webhook and the manual
+  `/api/admin/sync` call both enter through the same code path
+  (`api/handlers/admin.go:processMigration`).
+- **Base-path-aware** — `server.base_path` config switches between subdomain
+  hosting and path-prefix hosting; middleware strips the prefix and the
+  server injects `<base href>` into HTML responses.
+- **Timing-safe, enumeration-safe auth** — all login failures return the
+  same "Invalid credentials" message; bcrypt runs even for unknown users.
 
 ---
 
-## Database schema changes MUST go through Liquibase
+## 7. Tone / meta
 
-**Never modify schema directly via `ALTER TABLE` or `CREATE TABLE` in code.**
-All schema changes must be new Liquibase changesets under
-`liquibase/changelog/`.
-
-**Required workflow for schema changes:**
-1. Create new changelog `liquibase/changelog/NNN-description.xml` (increment N)
-2. Add `<include file="changelog/NNN-description.xml"/>` to `db.changelog-master.xml`
-3. Run `make db-migrate` against a fresh database to verify it applies cleanly
-4. Add or update tests for the new schema
-
-**Pre-release exception:** The initial schema is consolidated in `001-initial-schema.xml`. Once this project has real users, never edit 001 — every future change is a new changeset. Appending is the law.
+- If anything here conflicts with the code, the code wins. Propose updates
+  to this file instead of diverging.
+- If you're unsure, ask the user rather than guessing.
+- Keep this file terse. Agents skim; walls of prose get ignored.
