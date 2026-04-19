@@ -1,17 +1,22 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
+	"github.com/slackwing/manuscript-studio/internal/migrations"
 )
 
 // MigrationHandlers contains migration-related handlers
 type MigrationHandlers struct {
-	DB *database.DB
+	DB     *database.DB
+	Config *config.Config
 }
 
 // HandleGetMigrations returns all migrations for a manuscript
@@ -65,18 +70,20 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 		http.Error(w, "Failed to get latest migration", http.StatusInternalServerError)
 		return
 	}
+	if migration == nil {
+		http.Error(w, "No migrations found for this manuscript", http.StatusNotFound)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"migration": migration,
-	})
+	json.NewEncoder(w).Encode(migration)
 }
 
-// HandleGetManuscriptByMigration returns manuscript content for a specific migration
+// HandleGetManuscriptByMigration returns manuscript content for a specific migration.
+// Reads repo/file from the manuscript row + config; no client-supplied params needed.
 func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get migration_id from URL params
 	migrationIDStr := chi.URLParam(r, "migration_id")
 	migrationID, err := strconv.Atoi(migrationIDStr)
 	if err != nil {
@@ -84,37 +91,66 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		return
 	}
 
-	// Get repo and file from query params
-	repoPath := r.URL.Query().Get("repo")
-	filePath := r.URL.Query().Get("file")
-
-	if repoPath == "" || filePath == "" {
-		http.Error(w, "repo and file parameters are required", http.StatusBadRequest)
-		return
-	}
-
-	// Get migration details
 	migration, err := h.DB.GetMigrationByID(ctx, migrationID)
-	if err != nil {
+	if err != nil || migration == nil {
 		http.Error(w, "Migration not found", http.StatusNotFound)
 		return
 	}
 
-	// Get sentences for this migration
 	sentences, err := h.DB.GetSentencesByMigration(ctx, migrationID)
 	if err != nil {
 		http.Error(w, "Failed to get sentences", http.StatusInternalServerError)
 		return
 	}
 
-	// TODO: Get actual manuscript content from git
-	// For now, return placeholder
-	manuscriptContent := "# Manuscript content would be loaded from git here"
+	// Get manuscript row to find which repo/file this migration came from
+	manuscript, err := h.DB.GetManuscriptByID(ctx, migration.ManuscriptID)
+	if err != nil || manuscript == nil {
+		http.Error(w, "Manuscript not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Match manuscript repo URL to a configured manuscript (for name → clone path)
+	manuscriptConfig := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
+	if manuscriptConfig == nil {
+		http.Error(w, "Manuscript not configured in server", http.StatusInternalServerError)
+		return
+	}
+
+	// Read file content at the migration's commit from the local clone
+	content, err := h.readGitContent(ctx, manuscriptConfig, migration.CommitHash)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read manuscript content: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"commit_hash": migration.CommitHash,
-		"manuscript":  manuscriptContent,
+		"markdown":    content,
 		"sentences":   sentences,
+		"annotations": []interface{}{}, // populated by a separate annotations endpoint
 	})
+}
+
+// findManuscriptConfig returns the ManuscriptConfig matching the stored manuscript row.
+func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {
+	for i, m := range h.Config.Manuscripts {
+		if m.Repository.URL == repoURL && m.Repository.Path == filePath {
+			return &h.Config.Manuscripts[i]
+		}
+	}
+	return nil
+}
+
+// readGitContent reads the manuscript file contents at a specific commit from the local clone.
+func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (string, error) {
+	gitRepo := migrations.NewGitRepository(
+		fmt.Sprintf("/repos/%s", m.Name),
+		m.Repository.Branch,
+		m.Repository.URL,
+		m.Repository.Path,
+		m.Repository.AuthToken,
+	)
+	return gitRepo.GetFileContent(ctx, commitHash)
 }

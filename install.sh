@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-19.6"
+SCRIPT_VERSION="2026-04-19.7"
 
 set -euo pipefail
 

@@ -32,14 +32,6 @@ const WriteSysRenderer = {
    */
   async loadLatestMigration() {
     try {
-      const repoPath = document.getElementById('repo-path').value.trim();
-      const filePath = document.getElementById('file-path').value.trim();
-
-      if (!repoPath || !filePath) {
-        this.showStatus('Error: Missing repo or file path', 'error');
-        return;
-      }
-
       this.showStatus('Loading latest migration...');
 
       // Fetch latest migration info
@@ -63,7 +55,7 @@ const WriteSysRenderer = {
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
       // Load manuscript for this migration
-      await this.loadManuscriptByMigration(migration.migration_id, repoPath, filePath);
+      await this.loadManuscriptByMigration(migration.migration_id);
 
     } catch (error) {
       console.error('Failed to load latest migration:', error);
@@ -75,16 +67,12 @@ const WriteSysRenderer = {
   /**
    * Load manuscript from API by migration_id
    */
-  async loadManuscriptByMigration(migrationID, repoPath, filePath) {
+  async loadManuscriptByMigration(migrationID) {
     try {
       this.showStatus('Loading manuscript...');
 
-      // Store repo and file paths for refreshRainbowBars()
-      this.currentRepoPath = repoPath;
-      this.currentFilePath = filePath;
-
-      // Fetch manuscript data from API
-      const url = `${this.apiBaseUrl}/migrations/${migrationID}/manuscript?repo=${encodeURIComponent(repoPath)}&file=${encodeURIComponent(filePath)}`;
+      // Fetch manuscript data from API (server knows repo/file from config)
+      const url = `${this.apiBaseUrl}/migrations/${migrationID}/manuscript`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -1027,12 +1015,12 @@ const WriteSysRenderer = {
    * This is needed when annotations are added/updated/deleted
    */
   async refreshRainbowBars() {
-    if (!this.currentMigrationID || !this.currentRepoPath || !this.currentFilePath) {
+    if (!this.currentMigrationID) {
       return;
     }
 
     try {
-      const url = `${this.apiBaseUrl}/migrations/${this.currentMigrationID}/manuscript?repo=${encodeURIComponent(this.currentRepoPath)}&file=${encodeURIComponent(this.currentFilePath)}`;
+      const url = `${this.apiBaseUrl}/migrations/${this.currentMigrationID}/manuscript`;
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

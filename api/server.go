@@ -47,7 +47,8 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config:       cfg,
 		},
 		migrationHandlers: &handlers.MigrationHandlers{
-			DB: dbWrapper,
+			DB:     dbWrapper,
+			Config: cfg,
 		},
 		annotationHandlers: &handlers.AnnotationHandlers{
 			DB:           dbWrapper,
