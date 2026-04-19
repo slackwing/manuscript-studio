@@ -15,7 +15,7 @@ database:
   port: 5432
   name: "manuscript_studio"
   user: "manuscript_user"
-  password: "changeme-secure-password"
+  password: "REPLACE_ME_OR_SERVER_WONT_START"
 
 # ============================================================
 # File Paths
@@ -24,6 +24,11 @@ database:
 paths:
   # Where server source and data are stored
   private_dir: "/var/www/manuscript-studio"
+
+  # Root directory under which manuscript git checkouts live. Every
+  # manuscript's clone path is validated to resolve inside this directory.
+  # Defaults to /repos (the path the install script mounts into the container).
+  repos_dir: "/repos"
 
 # ============================================================
 # Manuscript Definitions
@@ -44,7 +49,7 @@ manuscripts:
 
       # GitHub Personal Access Token with repo read access
       # Create at: https://github.com/settings/tokens
-      auth_token: "github_pat_xxxxxxxxxxxxxxxxxxxxx"
+      auth_token: "REPLACE_ME_OR_SERVER_WONT_START"
 
     # Per-manuscript webhook secret (optional)
     # Overrides global webhook_secret for this manuscript
@@ -56,7 +61,7 @@ manuscripts:
   #     url: "https://github.com/yourusername/another-repo"
   #     branch: "main"
   #     path: "book.manuscript"
-  #     auth_token: "github_pat_yyyyyyyyyyyyyyyyyyyyy"
+  #     auth_token: "REPLACE_ME_OR_SERVER_WONT_START"
 
 # ============================================================
 # Authentication Settings
@@ -65,19 +70,20 @@ auth:
   # Admin user — seeded/updated on every install.sh run.
   # Automatically granted access to every manuscript defined below.
   admin_username: "admin"
-  admin_password: "changeme-strong-admin-password"
+  admin_password: "REPLACE_ME_OR_SERVER_WONT_START"
 
   # System token for admin API endpoints
   # Generate with: openssl rand -hex 32
-  system_token: "changeme-generate-secure-token"
+  system_token: "REPLACE_ME_OR_SERVER_WONT_START"
 
   # Secret for signing session cookies
   # Generate with: openssl rand -hex 32
-  session_secret: "changeme-generate-secure-secret"
+  session_secret: "REPLACE_ME_OR_SERVER_WONT_START"
 
-  # GitHub webhook validation secret (optional)
-  # Must match the secret configured in GitHub webhook settings
-  webhook_secret: "changeme-if-using-webhooks"
+  # GitHub webhook validation secret (required when env=production)
+  # Must match the secret configured in GitHub webhook settings.
+  # Generate with: openssl rand -hex 32
+  webhook_secret: "REPLACE_ME_OR_SERVER_WONT_START"
 
 # ============================================================
 # Server Configuration
@@ -114,3 +120,13 @@ migrations:
 
   # Queue annotations created during migration
   queue_annotations: true
+
+# ============================================================
+# Rate Limits
+# ============================================================
+# Per-process token-bucket limits on /api/admin/* endpoints. Keyed by the
+# Authorization header (per-token), or remote IP when no header is present.
+# Set to 0 to disable.
+rate_limits:
+  admin_per_token_rpm: 10
+  admin_per_token_burst: 5

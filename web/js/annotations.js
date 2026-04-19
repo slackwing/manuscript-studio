@@ -162,10 +162,12 @@ const WriteSysAnnotations = {
       note.classList.add(`color-${annotation.color}`);
     }
 
-    // Create note structure
+    // Create note structure. The textarea is rendered empty here and the
+    // user-controlled note text is assigned via .value below — never via
+    // innerHTML — to prevent stored-XSS through annotation content.
     note.innerHTML = `
       <div class="note-container">
-        <textarea class="note-input" placeholder="Write a note..." rows="3">${annotation.note || ''}</textarea>
+        <textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>
       </div>
       <div class="sticky-bottom-controls">
         <div class="tags-container">
@@ -207,8 +209,8 @@ const WriteSysAnnotations = {
     // Update priority/flag UI
     this.updatePriorityFlagUIForNote(note, annotation);
 
-    // Auto-resize textarea
     const textarea = note.querySelector('.note-input');
+    textarea.value = annotation.note || '';
     this.autoResizeTextarea(textarea);
 
     return note;
@@ -983,23 +985,31 @@ const WriteSysAnnotations = {
 
     tagsList.innerHTML = '';
 
-    // Render existing tags
+    // Build chips with createElement+textContent. Tag names are server-validated
+    // to a safe charset, but we still treat them as untrusted here as defense
+    // in depth — never interpolate into innerHTML.
     tags.forEach(tag => {
       const chip = document.createElement('div');
       chip.className = 'tag-chip';
       chip.dataset.tagId = tag.tag_id;
       chip.dataset.tagName = tag.tag_name;
-      chip.innerHTML = `
-        <span>${tag.tag_name}</span>
-        <span class="tag-chip-remove">×</span>
-      `;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = tag.tag_name;
+      chip.appendChild(nameSpan);
+
+      const removeSpan = document.createElement('span');
+      removeSpan.className = 'tag-chip-remove';
+      removeSpan.textContent = '×';
+      chip.appendChild(removeSpan);
+
       tagsList.appendChild(chip);
     });
 
-    // Add "new tag" chip
+    // Add "new tag" chip — static text, safe to use textContent.
     const newTagChip = document.createElement('div');
     newTagChip.className = 'tag-chip new-tag';
-    newTagChip.innerHTML = '+ tag';
+    newTagChip.textContent = '+ tag';
     tagsList.appendChild(newTagChip);
   },
 

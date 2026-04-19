@@ -8,6 +8,13 @@
     <!-- Consolidated Initial Schema for WriteSys -->
     <!-- Supports multiple annotations per sentence per user -->
 
+    <!-- ============================================================ -->
+    <!-- FROZEN as of 2026-04-19. Do NOT edit this changeset.          -->
+    <!-- All schema changes go in new changesets (002-*.xml, ...).     -->
+    <!-- Editing this file after first apply will cause Liquibase      -->
+    <!-- checksum failures and block all migrations.                   -->
+    <!-- ============================================================ -->
+
     <changeSet id="001-initial-schema" author="andrew">
 
         <!-- User Table -->

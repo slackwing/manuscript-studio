@@ -22,6 +22,9 @@ func main() {
 	if cfg.Auth.AdminUsername == "" || cfg.Auth.AdminPassword == "" {
 		log.Fatalf("auth.admin_username and auth.admin_password must be set in config")
 	}
+	if err := auth.ValidatePassword(cfg.Auth.AdminPassword); err != nil {
+		log.Fatalf("auth.admin_password: %v", err)
+	}
 
 	ctx := context.Background()
 	pool, err := database.Connect(ctx, cfg.Database)

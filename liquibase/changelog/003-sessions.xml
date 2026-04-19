@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        DB-backed session store. Replaces the in-memory map in
+        internal/auth/auth.go so sessions survive process restarts and
+        can be shared across replicas.
+
+        `id` is the opaque token sent in the cookie. CSRF token lives on
+        the same row. `last_activity_at` enables sliding-window expiry.
+    -->
+
+    <changeSet id="003-sessions" author="codereview">
+
+        <createTable tableName="session">
+            <column name="id" type="VARCHAR(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="username" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="manuscript_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="csrf_token" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_activity_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="session" indexName="idx_session_expires_at">
+            <column name="expires_at"/>
+        </createIndex>
+
+        <createIndex tableName="session" indexName="idx_session_username">
+            <column name="username"/>
+        </createIndex>
+
+    </changeSet>
+
+</databaseChangeLog>

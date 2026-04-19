@@ -25,6 +25,9 @@ database:
 # ============================================================
 paths:
   private_dir: "~/.config/manuscript-studio-dev/private"
+  # Where manuscript git checkouts live. Validated at startup: every
+  # manuscript's clone path must resolve inside this directory.
+  repos_dir: "~/.config/manuscript-studio-dev/repos"
 
 # ============================================================
 # Manuscripts
@@ -76,3 +79,10 @@ migrations:
   lock_during_migration: true
   backup_before_migration: false
   queue_annotations: true
+
+# ============================================================
+# Rate Limits — generous in dev so the test suite doesn't trip them.
+# ============================================================
+rate_limits:
+  admin_per_token_rpm: 600
+  admin_per_token_burst: 60

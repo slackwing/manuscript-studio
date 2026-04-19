@@ -10,68 +10,87 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
-// Processor handles manuscript migration processing
+// SegmenterVersion is the segmenter version used by the processor.
+// Exposed so callers can stamp it onto pending migration rows before
+// kicking off the work.
+const SegmenterVersion = "segman-1.0.0"
+
+// Processor handles manuscript migration processing.
+//
+// The lifecycle is split between caller and processor:
+//   1. Caller calls db.CreatePendingMigration(...) to reserve a row.
+//   2. Caller spawns a goroutine that calls Processor.Run(ctx, migrationID, ...).
+//   3. Processor transitions the row to 'running', does the work, then
+//      writes either 'done' (with results) or 'error' (with message).
 type Processor struct {
 	db               *pgxpool.Pool
 	segmenterVersion string
 }
 
-// NewProcessor creates a new migration processor
+// NewProcessor creates a new migration processor.
 func NewProcessor(db *pgxpool.Pool) *Processor {
 	return &Processor{
 		db:               db,
-		segmenterVersion: "segman-1.0.0", // TODO: Make configurable
+		segmenterVersion: SegmenterVersion,
 	}
 }
 
-// ProcessManuscript processes a manuscript at a specific commit
-func (p *Processor) ProcessManuscript(ctx context.Context, manuscriptID int, commitHash, content string) (*MigrationResult, error) {
-	// Check for existing migration with this commit and segmenter
+// SegmenterVersion returns the segmenter version used by this processor.
+func (p *Processor) SegmenterVersion() string { return p.segmenterVersion }
+
+// Run executes the migration for an already-inserted pending row. It marks
+// the row 'running' on entry and 'done' or 'error' on exit. Errors that
+// occur after the row is marked are recorded on the row and returned.
+//
+// migrationID must be the id of a row created by CreatePendingMigration
+// with matching manuscriptID/commitHash/segmenter. The row will end up in
+// status='done' or status='error' regardless of whether this returns a
+// non-nil error.
+func (p *Processor) Run(ctx context.Context, migrationID, manuscriptID int, commitHash, branchName, content string) (result *MigrationResult, err error) {
 	dbWrapper := &database.DB{Pool: p.db}
-	existingMigration, err := dbWrapper.GetMigrationByCommitAndSegmenter(ctx, manuscriptID, commitHash, p.segmenterVersion)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing migration: %w", err)
+
+	// Mark running. If this fails (DB issue), bail without recording an
+	// error on the row — caller will see the wrapped error.
+	if err := dbWrapper.MarkMigrationRunning(ctx, migrationID); err != nil {
+		return nil, err
 	}
 
-	if existingMigration != nil {
-		return &MigrationResult{
-			MigrationID: existingMigration.MigrationID,
-			Status:      "already_processed",
-			Message:     fmt.Sprintf("Commit %s already processed with segmenter %s", commitHash, p.segmenterVersion),
-		}, nil
-	}
+	// On any failure below, record the error message on the row before returning.
+	defer func() {
+		if err != nil {
+			if markErr := dbWrapper.MarkMigrationError(context.Background(), migrationID, err.Error()); markErr != nil {
+				// Log but don't override the caller's err.
+				fmt.Printf("warning: failed to mark migration %d as error: %v\n", migrationID, markErr)
+			}
+		}
+	}()
 
-	// Get latest migration to determine if this is bootstrap or migration
+	// Get latest completed migration to determine bootstrap vs migrate.
 	latestMigration, err := dbWrapper.GetLatestMigration(ctx, manuscriptID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest migration: %w", err)
 	}
 
-	if latestMigration == nil {
-		// Bootstrap mode
-		return p.bootstrap(ctx, dbWrapper, manuscriptID, commitHash, content)
+	if latestMigration == nil || latestMigration.MigrationID == migrationID {
+		return p.bootstrap(ctx, dbWrapper, migrationID, manuscriptID, commitHash, branchName, content)
 	}
-
-	// Migration mode
-	return p.migrate(ctx, dbWrapper, manuscriptID, commitHash, content, latestMigration)
+	return p.migrate(ctx, dbWrapper, migrationID, manuscriptID, commitHash, branchName, content, latestMigration)
 }
 
-// bootstrap processes the first commit of a manuscript
-func (p *Processor) bootstrap(ctx context.Context, db *database.DB, manuscriptID int, commitHash, content string) (*MigrationResult, error) {
-	// Tokenize into sentences
+// bootstrap processes the first commit of a manuscript.
+func (p *Processor) bootstrap(ctx context.Context, db *database.DB, migrationID, manuscriptID int, commitHash, branchName, content string) (*MigrationResult, error) {
 	tokenizer := sentence.NewTokenizer()
 	sentences := tokenizer.SplitIntoSentences(content)
 
-	// Generate sentence IDs
 	var sentenceIDs []string
 	var sentenceModels []models.Sentence
-
 	for i, sentText := range sentences {
 		sentID := sentence.GenerateSentenceID(sentText, i, commitHash)
 		sentenceIDs = append(sentenceIDs, sentID)
 
 		sentenceModels = append(sentenceModels, models.Sentence{
 			SentenceID:  sentID,
+			MigrationID: migrationID,
 			CommitHash:  commitHash,
 			Text:        sentText,
 			WordCount:   sentence.CountWords(sentText),
@@ -79,36 +98,29 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, manuscriptID
 		})
 	}
 
-	// Create migration record
-	migration := &models.Migration{
+	if err := db.CreateSentences(ctx, sentenceModels); err != nil {
+		return nil, fmt.Errorf("failed to store sentences: %w", err)
+	}
+
+	final := &models.Migration{
+		MigrationID:       migrationID,
 		ManuscriptID:      manuscriptID,
 		CommitHash:        commitHash,
 		Segmenter:         p.segmenterVersion,
 		ParentMigrationID: nil,
-		BranchName:        "main", // TODO: Get actual branch
+		BranchName:        branchName,
 		SentenceCount:     len(sentences),
 		AdditionsCount:    len(sentences),
 		DeletionsCount:    0,
 		ChangesCount:      0,
 		SentenceIDArray:   sentenceIDs,
 	}
-
-	if err := db.CreateMigration(ctx, migration); err != nil {
-		return nil, fmt.Errorf("failed to create migration: %w", err)
-	}
-
-	// Update sentence models with migration ID
-	for i := range sentenceModels {
-		sentenceModels[i].MigrationID = migration.MigrationID
-	}
-
-	// Store sentences
-	if err := db.CreateSentences(ctx, sentenceModels); err != nil {
-		return nil, fmt.Errorf("failed to store sentences: %w", err)
+	if err := db.MarkMigrationDone(ctx, final); err != nil {
+		return nil, fmt.Errorf("failed to mark migration done: %w", err)
 	}
 
 	return &MigrationResult{
-		MigrationID:    migration.MigrationID,
+		MigrationID:    migrationID,
 		Status:         "bootstrap_complete",
 		SentenceCount:  len(sentences),
 		AdditionsCount: len(sentences),
@@ -116,29 +128,24 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, manuscriptID
 	}, nil
 }
 
-// migrate processes a commit with annotation migration
-func (p *Processor) migrate(ctx context.Context, db *database.DB, manuscriptID int, commitHash, content string, parentMigration *models.Migration) (*MigrationResult, error) {
-	// Get old sentences
+// migrate processes a commit with annotation migration.
+func (p *Processor) migrate(ctx context.Context, db *database.DB, migrationID, manuscriptID int, commitHash, branchName, content string, parentMigration *models.Migration) (*MigrationResult, error) {
 	oldSentences, err := db.GetSentencesByMigration(ctx, parentMigration.MigrationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get old sentences: %w", err)
 	}
 
-	// Build map of old sentences
 	oldSentenceMap := make(map[string]string)
 	for _, s := range oldSentences {
 		oldSentenceMap[s.SentenceID] = s.Text
 	}
 
-	// Tokenize new sentences
 	tokenizer := sentence.NewTokenizer()
 	newSentenceTexts := tokenizer.SplitIntoSentences(content)
 
-	// Generate IDs for new sentences
 	var newSentenceIDs []string
 	newSentenceMap := make(map[string]string)
 	var sentenceModels []models.Sentence
-
 	for i, sentText := range newSentenceTexts {
 		sentID := sentence.GenerateSentenceID(sentText, i, commitHash)
 		newSentenceIDs = append(newSentenceIDs, sentID)
@@ -146,6 +153,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, manuscriptID i
 
 		sentenceModels = append(sentenceModels, models.Sentence{
 			SentenceID:  sentID,
+			MigrationID: migrationID,
 			CommitHash:  commitHash,
 			Text:        sentText,
 			WordCount:   sentence.CountWords(sentText),
@@ -153,13 +161,9 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, manuscriptID i
 		})
 	}
 
-	// Compute diff
 	diff := sentence.ComputeSentenceDiff(oldSentenceMap, newSentenceMap)
-
-	// Compute migration map
 	migrations := sentence.ComputeMigrationMap(diff)
 
-	// Build mapping from old to new sentence IDs
 	migrationMap := make(map[string]string)
 	confidenceMap := make(map[string]float64)
 	for _, m := range migrations {
@@ -169,43 +173,37 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, manuscriptID i
 		}
 	}
 
-	// Create migration record
-	migration := &models.Migration{
+	if err := db.CreateSentences(ctx, sentenceModels); err != nil {
+		return nil, fmt.Errorf("failed to store sentences: %w", err)
+	}
+
+	parentID := parentMigration.MigrationID
+	final := &models.Migration{
+		MigrationID:       migrationID,
 		ManuscriptID:      manuscriptID,
 		CommitHash:        commitHash,
 		Segmenter:         p.segmenterVersion,
-		ParentMigrationID: &parentMigration.MigrationID,
-		BranchName:        "main", // TODO: Get actual branch
+		ParentMigrationID: &parentID,
+		BranchName:        branchName,
 		SentenceCount:     len(newSentenceTexts),
 		AdditionsCount:    len(diff.Added),
 		DeletionsCount:    len(diff.Deleted),
 		ChangesCount:      len(diff.Deleted),
 		SentenceIDArray:   newSentenceIDs,
 	}
-
-	if err := db.CreateMigration(ctx, migration); err != nil {
-		return nil, fmt.Errorf("failed to create migration: %w", err)
+	if err := db.MarkMigrationDone(ctx, final); err != nil {
+		return nil, fmt.Errorf("failed to mark migration done: %w", err)
 	}
 
-	// Update sentence models with migration ID
-	for i := range sentenceModels {
-		sentenceModels[i].MigrationID = migration.MigrationID
-	}
-
-	// Store new sentences
-	if err := db.CreateSentences(ctx, sentenceModels); err != nil {
-		return nil, fmt.Errorf("failed to store sentences: %w", err)
-	}
-
-	// Migrate annotations
-	annotationsMigrated, err := p.migrateAnnotations(ctx, db, migrationMap, confidenceMap, migration.MigrationID)
+	annotationsMigrated, err := p.migrateAnnotations(ctx, db, migrationMap, confidenceMap, migrationID)
 	if err != nil {
-		// Log but don't fail the migration
+		// Annotation-migration failures don't fail the run — the new
+		// migration is already marked done. Just log.
 		fmt.Printf("Warning: Some annotations failed to migrate: %v\n", err)
 	}
 
 	return &MigrationResult{
-		MigrationID:         migration.MigrationID,
+		MigrationID:         migrationID,
 		Status:              "migration_complete",
 		SentenceCount:       len(newSentenceTexts),
 		AdditionsCount:      len(diff.Added),
@@ -216,27 +214,23 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, manuscriptID i
 	}, nil
 }
 
-// migrateAnnotations migrates annotations from old sentences to new ones
+// migrateAnnotations migrates annotations from old sentences to new ones.
 func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, migrationMap map[string]string, confidenceMap map[string]float64, newMigrationID int) (int, error) {
 	annotationsMigrated := 0
 
 	for oldSentenceID, newSentenceID := range migrationMap {
 		annotations, err := db.GetActiveAnnotationsForSentence(ctx, oldSentenceID)
 		if err != nil {
-			continue // Skip on error
+			continue
 		}
 
 		for _, annotation := range annotations {
-			// Get latest version
 			latestVersion, err := db.GetLatestAnnotationVersion(ctx, annotation.AnnotationID)
 			if err != nil {
 				continue
 			}
 
-			// Update sentence ID history
 			newHistory := append(latestVersion.SentenceIDHistory, newSentenceID)
-
-			// Create new version
 			conf := confidenceMap[oldSentenceID]
 			newVersion := &models.AnnotationVersion{
 				AnnotationID:        annotation.AnnotationID,
@@ -254,7 +248,6 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, mig
 				continue
 			}
 
-			// Update main annotation record
 			annotation.SentenceID = newSentenceID
 			// TODO: Implement UpdateAnnotationSentenceID in database package
 			if false {
@@ -268,7 +261,7 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, mig
 	return annotationsMigrated, nil
 }
 
-// MigrationResult represents the outcome of a migration
+// MigrationResult represents the outcome of a migration.
 type MigrationResult struct {
 	MigrationID         int    `json:"migration_id"`
 	Status              string `json:"status"`

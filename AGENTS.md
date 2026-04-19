@@ -113,18 +113,11 @@ Full layout and design in [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## 3. Database schema changes
 
-### Pre-release exception (current state)
+`001-initial-schema.xml` is **FROZEN** (as of 2026-04-19). Do not edit it.
 
-The initial schema is consolidated into `001-initial-schema.xml`. While we
-have no real users, we can still edit 001 directly and `./debug/nuke_database.sh`
-+ redeploy is an acceptable migration path.
-
-### Post-release (after the first real user exists)
-
-- Never edit `001-initial-schema.xml`. Liquibase's checksum validation will
-  fail on pre-applied changesets and migrations will block.
-- Every change is a new changeset: `NNN-description.xml` (increment `NNN`).
-- Add `<include file="changelog/NNN-description.xml"/>` to
+Every schema change is a new changeset:
+- File: `liquibase/changelog/NNN-description.xml` (increment `NNN`).
+- Wire it in: add `<include file="changelog/NNN-description.xml"/>` to
   `db.changelog-master.xml`.
 - Verify locally: `make db-reset && make db-migrate`.
 - Add or update tests for the new schema.

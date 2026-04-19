@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,20 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	// Install slog as the global logger. JSON in production (greppable,
+	// pipeable into log aggregators), text in dev (readable). The standard
+	// `log` package is routed through slog so existing log.Printf calls
+	// keep working while we migrate them piecemeal.
+	var handler slog.Handler
+	if cfg.Server.Env == "production" {
+		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})
+	} else {
+		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
+	}
+	slog.SetDefault(slog.New(handler))
+	log.SetFlags(0)
+	log.SetOutput(slogWriter{})
+
 	// Connect to database
 	ctx := context.Background()
 	db, err := database.Connect(ctx, cfg.Database)
@@ -29,6 +44,20 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
+
+	// Recover any migration rows left in pending/running by a previous
+	// process — those goroutines are gone, so the rows are stuck. Mark
+	// them 'error' so the next request can proceed and operators can see
+	// what happened.
+	{
+		dbWrapper := &database.DB{Pool: db}
+		recovered, err := dbWrapper.RecoverInterruptedMigrations(ctx)
+		if err != nil {
+			log.Printf("warning: failed to recover interrupted migrations: %v", err)
+		} else if recovered > 0 {
+			log.Printf("recovered %d interrupted migration(s) at startup", recovered)
+		}
+	}
 
 	// Create API server
 	server := api.NewServer(cfg, db)
@@ -66,4 +95,18 @@ func main() {
 	}
 
 	log.Println("Server shutdown complete")
+}
+
+// slogWriter adapts io.Writer (used by stdlib `log`) to slog. Each Write
+// becomes one slog record at INFO. We strip the trailing newline that
+// `log` always appends.
+type slogWriter struct{}
+
+func (slogWriter) Write(p []byte) (int, error) {
+	msg := string(p)
+	if n := len(msg); n > 0 && msg[n-1] == '\n' {
+		msg = msg[:n-1]
+	}
+	slog.Info(msg)
+	return len(p), nil
 }

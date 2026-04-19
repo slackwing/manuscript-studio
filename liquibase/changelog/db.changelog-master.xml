@@ -8,5 +8,7 @@
     <!-- Starter schema consolidated before first release. -->
     <!-- Future schema changes must be added as new changesets (002+), never by editing 001. -->
     <include file="changelog/001-initial-schema.xml"/>
+    <include file="changelog/002-migration-status.xml"/>
+    <include file="changelog/003-sessions.xml"/>
 
 </databaseChangeLog>

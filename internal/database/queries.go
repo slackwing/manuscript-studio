@@ -3,13 +3,21 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/slackwing/manuscript-studio/internal/fractional"
 	"github.com/slackwing/manuscript-studio/internal/models"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrMigrationInProgress is returned by CreatePendingMigration when a row
+// for the same (manuscript_id, commit_hash, segmenter) already exists —
+// either currently running or previously completed. Callers should map this
+// to HTTP 409 Conflict.
+var ErrMigrationInProgress = errors.New("migration already exists for this commit/segmenter")
 
 // CreateManuscript creates a new manuscript record
 func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (*models.Manuscript, error) {
@@ -60,61 +68,100 @@ func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*mo
 	return &m, nil
 }
 
-// GetLatestMigration gets the most recent migration for a manuscript
-func (db *DB) GetLatestMigration(ctx context.Context, manuscriptID int) (*models.Migration, error) {
-	query := `
-		SELECT migration_id, manuscript_id, commit_hash, segmenter,
-		       parent_migration_id, branch_name, processed_at, sentence_count,
-		       additions_count, deletions_count, changes_count, sentence_id_array
-		FROM migration
-		WHERE manuscript_id = $1
-		ORDER BY processed_at DESC
-		LIMIT 1
-	`
+// migrationSelectColumns is the column list reused across migration reads.
+// Result columns (sentence_count etc.) only have meaningful values when
+// status='done'; callers that read those fields must filter by status.
+const migrationSelectColumns = `migration_id, manuscript_id, commit_hash, segmenter,
+		       parent_migration_id, branch_name, processed_at, status,
+		       started_at, finished_at, error,
+		       sentence_count, additions_count, deletions_count, changes_count,
+		       sentence_id_array`
 
-	var m models.Migration
-	var sentenceIDArrayJSON []byte
-
-	err := db.Pool.QueryRow(ctx, query, manuscriptID).Scan(
+// scanMigration scans one migration row into a model. Handles the nullable
+// columns introduced by changeset 002.
+func scanMigration(row pgx.Row, m *models.Migration) error {
+	var (
+		branchName        *string
+		sentenceCount     *int
+		additionsCount    *int
+		deletionsCount    *int
+		changesCount      *int
+		sentenceIDArrayJSON []byte
+	)
+	err := row.Scan(
 		&m.MigrationID,
 		&m.ManuscriptID,
 		&m.CommitHash,
 		&m.Segmenter,
 		&m.ParentMigrationID,
-		&m.BranchName,
+		&branchName,
 		&m.ProcessedAt,
-		&m.SentenceCount,
-		&m.AdditionsCount,
-		&m.DeletionsCount,
-		&m.ChangesCount,
+		&m.Status,
+		&m.StartedAt,
+		&m.FinishedAt,
+		&m.Error,
+		&sentenceCount,
+		&additionsCount,
+		&deletionsCount,
+		&changesCount,
 		&sentenceIDArrayJSON,
 	)
-	if err == pgx.ErrNoRows {
+	if err != nil {
+		return err
+	}
+	if branchName != nil {
+		m.BranchName = *branchName
+	}
+	if sentenceCount != nil {
+		m.SentenceCount = *sentenceCount
+	}
+	if additionsCount != nil {
+		m.AdditionsCount = *additionsCount
+	}
+	if deletionsCount != nil {
+		m.DeletionsCount = *deletionsCount
+	}
+	if changesCount != nil {
+		m.ChangesCount = *changesCount
+	}
+	if len(sentenceIDArrayJSON) > 0 {
+		if err := json.Unmarshal(sentenceIDArrayJSON, &m.SentenceIDArray); err != nil {
+			return fmt.Errorf("failed to parse sentence_id_array: %w", err)
+		}
+	}
+	return nil
+}
+
+// GetLatestMigration gets the most recent successfully-completed migration
+// for a manuscript. Returns (nil, nil) if none exist.
+func (db *DB) GetLatestMigration(ctx context.Context, manuscriptID int) (*models.Migration, error) {
+	query := `
+		SELECT ` + migrationSelectColumns + `
+		FROM migration
+		WHERE manuscript_id = $1 AND status = 'done'
+		ORDER BY processed_at DESC
+		LIMIT 1
+	`
+	var m models.Migration
+	err := scanMigration(db.Pool.QueryRow(ctx, query, manuscriptID), &m)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest migration: %w", err)
 	}
-
-	// Parse JSONB array
-	if err := json.Unmarshal(sentenceIDArrayJSON, &m.SentenceIDArray); err != nil {
-		return nil, fmt.Errorf("failed to parse sentence_id_array: %w", err)
-	}
-
 	return &m, nil
 }
 
-// GetMigrations gets all migrations for a manuscript, ordered by most recent first
+// GetMigrations returns all completed migrations for a manuscript, newest first.
+// Pending/running/error rows are excluded — see GetActiveMigrations for those.
 func (db *DB) GetMigrations(ctx context.Context, manuscriptID int) ([]models.Migration, error) {
 	query := `
-		SELECT migration_id, manuscript_id, commit_hash, segmenter,
-		       parent_migration_id, branch_name, processed_at, sentence_count,
-		       additions_count, deletions_count, changes_count, sentence_id_array
+		SELECT ` + migrationSelectColumns + `
 		FROM migration
-		WHERE manuscript_id = $1
+		WHERE manuscript_id = $1 AND status = 'done'
 		ORDER BY processed_at DESC
 	`
-
 	rows, err := db.Pool.Query(ctx, query, manuscriptID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get migrations: %w", err)
@@ -124,75 +171,143 @@ func (db *DB) GetMigrations(ctx context.Context, manuscriptID int) ([]models.Mig
 	var migrations []models.Migration
 	for rows.Next() {
 		var m models.Migration
-		var sentenceIDArrayJSON []byte
-
-		err := rows.Scan(
-			&m.MigrationID,
-			&m.ManuscriptID,
-			&m.CommitHash,
-			&m.Segmenter,
-			&m.ParentMigrationID,
-			&m.BranchName,
-			&m.ProcessedAt,
-			&m.SentenceCount,
-			&m.AdditionsCount,
-			&m.DeletionsCount,
-			&m.ChangesCount,
-			&sentenceIDArrayJSON,
-		)
-		if err != nil {
+		if err := scanMigration(rows, &m); err != nil {
 			return nil, fmt.Errorf("failed to scan migration: %w", err)
 		}
-
-		// Parse JSONB array
-		if err := json.Unmarshal(sentenceIDArrayJSON, &m.SentenceIDArray); err != nil {
-			return nil, fmt.Errorf("failed to parse sentence_id_array: %w", err)
-		}
-
 		migrations = append(migrations, m)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating migrations: %w", err)
 	}
-
 	return migrations, nil
 }
 
-// CreateMigration creates a new migration record and returns the migration_id
-func (db *DB) CreateMigration(ctx context.Context, m *models.Migration) error {
-	// Convert sentence ID array to JSON
+// GetActiveMigrations returns all rows that are currently pending or running.
+// Used by the /api/admin/status endpoint.
+func (db *DB) GetActiveMigrations(ctx context.Context) ([]models.Migration, error) {
+	query := `
+		SELECT ` + migrationSelectColumns + `
+		FROM migration
+		WHERE status IN ('pending', 'running')
+		ORDER BY started_at DESC NULLS LAST, migration_id DESC
+	`
+	rows, err := db.Pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active migrations: %w", err)
+	}
+	defer rows.Close()
+
+	var migrations []models.Migration
+	for rows.Next() {
+		var m models.Migration
+		if err := scanMigration(rows, &m); err != nil {
+			return nil, fmt.Errorf("failed to scan migration: %w", err)
+		}
+		migrations = append(migrations, m)
+	}
+	return migrations, rows.Err()
+}
+
+// CreatePendingMigration inserts a new row at status='pending' and returns
+// the new migration_id. If a row already exists for the same
+// (manuscript_id, commit_hash, segmenter), returns ErrMigrationInProgress.
+func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, commitHash, segmenter string) (int, error) {
+	query := `
+		INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, started_at)
+		VALUES ($1, $2, $3, 'pending', NOW())
+		RETURNING migration_id
+	`
+	var id int
+	err := db.Pool.QueryRow(ctx, query, manuscriptID, commitHash, segmenter).Scan(&id)
+	if err != nil {
+		// Postgres unique-violation error code = 23505. Translate to a
+		// typed error so the handler can return 409.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return 0, ErrMigrationInProgress
+		}
+		return 0, fmt.Errorf("failed to insert pending migration: %w", err)
+	}
+	return id, nil
+}
+
+// MarkMigrationRunning transitions a pending row to 'running'. No-op if it's
+// already running (for restart-recovery scenarios).
+func (db *DB) MarkMigrationRunning(ctx context.Context, migrationID int) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE migration SET status = 'running'
+		WHERE migration_id = $1 AND status IN ('pending', 'running')
+	`, migrationID)
+	if err != nil {
+		return fmt.Errorf("failed to mark migration running: %w", err)
+	}
+	return nil
+}
+
+// MarkMigrationDone updates a row with the result of a successful migration.
+func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error {
 	sentenceIDArrayJSON, err := json.Marshal(m.SentenceIDArray)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sentence_id_array: %w", err)
 	}
-
-	query := `
-		INSERT INTO migration (
-			manuscript_id, commit_hash, segmenter, parent_migration_id,
-			branch_name, sentence_count, additions_count, deletions_count,
-			changes_count, sentence_id_array
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING migration_id, processed_at
-	`
-
-	err = db.Pool.QueryRow(ctx, query,
-		m.ManuscriptID,
-		m.CommitHash,
-		m.Segmenter,
-		m.ParentMigrationID,
-		m.BranchName,
-		m.SentenceCount,
-		m.AdditionsCount,
-		m.DeletionsCount,
-		m.ChangesCount,
-		sentenceIDArrayJSON,
-	).Scan(&m.MigrationID, &m.ProcessedAt)
+	_, err = db.Pool.Exec(ctx, `
+		UPDATE migration SET
+			status = 'done',
+			finished_at = NOW(),
+			processed_at = NOW(),
+			parent_migration_id = $2,
+			branch_name = $3,
+			sentence_count = $4,
+			additions_count = $5,
+			deletions_count = $6,
+			changes_count = $7,
+			sentence_id_array = $8,
+			error = NULL
+		WHERE migration_id = $1
+	`, m.MigrationID, m.ParentMigrationID, m.BranchName, m.SentenceCount,
+		m.AdditionsCount, m.DeletionsCount, m.ChangesCount, sentenceIDArrayJSON)
 	if err != nil {
-		return fmt.Errorf("failed to create migration: %w", err)
+		return fmt.Errorf("failed to mark migration done: %w", err)
 	}
-
 	return nil
+}
+
+// MarkMigrationError records that the migration failed. The error message is
+// truncated to a sane size so a giant stack trace can't blow up the row.
+func (db *DB) MarkMigrationError(ctx context.Context, migrationID int, errMsg string) error {
+	const maxErrLen = 4000
+	if len(errMsg) > maxErrLen {
+		errMsg = errMsg[:maxErrLen] + "...[truncated]"
+	}
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE migration SET
+			status = 'error',
+			finished_at = NOW(),
+			error = $2
+		WHERE migration_id = $1
+	`, migrationID, errMsg)
+	if err != nil {
+		return fmt.Errorf("failed to mark migration error: %w", err)
+	}
+	return nil
+}
+
+// RecoverInterruptedMigrations is called once at startup. Any migration
+// row left in pending/running state from a previous process must have been
+// interrupted by a crash or restart — flip them to 'error'. Returns the
+// number of rows recovered.
+func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE migration
+		SET status = 'error',
+		    finished_at = NOW(),
+		    error = COALESCE(error, '') || 'interrupted by server restart'
+		WHERE status IN ('pending', 'running')
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to recover interrupted migrations: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // CreateSentences creates multiple sentence records in a transaction
@@ -229,87 +344,43 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	return nil
 }
 
-// GetMigrationByID retrieves a migration by its ID
+// GetMigrationByID retrieves a completed migration by its ID. Returns
+// (nil, nil) if no row exists or if the row hasn't reached status='done'.
 func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Migration, error) {
 	query := `
-		SELECT migration_id, manuscript_id, commit_hash, segmenter,
-		       parent_migration_id, branch_name, processed_at, sentence_count,
-		       additions_count, deletions_count, changes_count, sentence_id_array
+		SELECT ` + migrationSelectColumns + `
 		FROM migration
-		WHERE migration_id = $1
+		WHERE migration_id = $1 AND status = 'done'
 	`
-
 	var m models.Migration
-	var sentenceIDArrayJSON []byte
-
-	err := db.Pool.QueryRow(ctx, query, migrationID).Scan(
-		&m.MigrationID,
-		&m.ManuscriptID,
-		&m.CommitHash,
-		&m.Segmenter,
-		&m.ParentMigrationID,
-		&m.BranchName,
-		&m.ProcessedAt,
-		&m.SentenceCount,
-		&m.AdditionsCount,
-		&m.DeletionsCount,
-		&m.ChangesCount,
-		&sentenceIDArrayJSON,
-	)
-	if err == pgx.ErrNoRows {
+	err := scanMigration(db.Pool.QueryRow(ctx, query, migrationID), &m)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get migration by ID: %w", err)
 	}
-
-	// Parse JSONB array
-	if err := json.Unmarshal(sentenceIDArrayJSON, &m.SentenceIDArray); err != nil {
-		return nil, fmt.Errorf("failed to parse sentence_id_array: %w", err)
-	}
-
 	return &m, nil
 }
 
-// GetMigrationByCommitAndSegmenter retrieves a migration by commit hash and segmenter version
+// GetMigrationByCommitAndSegmenter retrieves a migration row regardless of
+// status. The processor uses this to detect that a commit/segmenter pair has
+// already been (or is being) handled. Callers that care only about completed
+// work must check the returned Migration.Status.
 func (db *DB) GetMigrationByCommitAndSegmenter(ctx context.Context, manuscriptID int, commitHash, segmenter string) (*models.Migration, error) {
 	query := `
-		SELECT migration_id, manuscript_id, commit_hash, segmenter,
-		       parent_migration_id, branch_name, processed_at, sentence_count,
-		       additions_count, deletions_count, changes_count, sentence_id_array
+		SELECT ` + migrationSelectColumns + `
 		FROM migration
 		WHERE manuscript_id = $1 AND commit_hash = $2 AND segmenter = $3
 	`
-
 	var m models.Migration
-	var sentenceIDArrayJSON []byte
-
-	err := db.Pool.QueryRow(ctx, query, manuscriptID, commitHash, segmenter).Scan(
-		&m.MigrationID,
-		&m.ManuscriptID,
-		&m.CommitHash,
-		&m.Segmenter,
-		&m.ParentMigrationID,
-		&m.BranchName,
-		&m.ProcessedAt,
-		&m.SentenceCount,
-		&m.AdditionsCount,
-		&m.DeletionsCount,
-		&m.ChangesCount,
-		&sentenceIDArrayJSON,
-	)
-	if err == pgx.ErrNoRows {
+	err := scanMigration(db.Pool.QueryRow(ctx, query, manuscriptID, commitHash, segmenter), &m)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get migration by commit and segmenter: %w", err)
 	}
-
-	// Parse JSONB array
-	if err := json.Unmarshal(sentenceIDArrayJSON, &m.SentenceIDArray); err != nil {
-		return nil, fmt.Errorf("failed to parse sentence_id_array: %w", err)
-	}
-
 	return &m, nil
 }
 

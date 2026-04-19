@@ -34,14 +34,9 @@ const WriteSysRenderer = {
     try {
       this.showStatus('Loading latest migration...');
 
-      // Fetch latest migration info
-      const response = await fetch(`${this.apiBaseUrl}/migrations/latest?manuscript_id=${this.manuscriptId}`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-
-      const migration = await response.json();
+      // Fetch latest migration info. fetchJSON validates ok-status AND
+      // Content-Type so a stray HTML error page doesn't blow up json parsing.
+      const migration = await fetchJSON(`${this.apiBaseUrl}/migrations/latest?manuscript_id=${this.manuscriptId}`, {}, false);
       this.currentMigrationID = migration.migration_id;
       this.currentCommitHash = migration.commit_hash;
       this.currentSegmenter = migration.segmenter;
@@ -73,13 +68,7 @@ const WriteSysRenderer = {
 
       // Fetch manuscript data from API (server knows repo/file from config)
       const url = `${this.apiBaseUrl}/migrations/${migrationID}/manuscript`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-
-      const data = await response.json();
+      const data = await fetchJSON(url, {}, false);
       this.currentManuscript = data.markdown;
       this.currentSentences = data.sentences;
       this.currentAnnotations = data.annotations;
@@ -221,6 +210,10 @@ const WriteSysRenderer = {
       }
     };
 
+    // Anyone who can commit to the manuscript repo can put arbitrary content
+    // here, so HTML-escape every chunk before applying our inline-italic
+    // syntax. applyInlineFormatting expects already-escaped input.
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
@@ -238,6 +231,8 @@ const WriteSysRenderer = {
         html.push(`<h${level}>${this.applyInlineFormatting(text)}</h${level}>`);
         continue;
       }
+
+      // (other branches share applyInlineFormatting which now escapes first)
 
       // Line starting with tab - each is its own indented paragraph
       if (line.startsWith('\t')) {
@@ -259,11 +254,26 @@ const WriteSysRenderer = {
   },
 
   /**
-   * Apply inline formatting (*italic*)
+   * HTML-escape a raw string. Used before producing any HTML from
+   * untrusted manuscript content.
+   */
+  escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  /**
+   * Apply inline formatting (*italic*). Escapes the raw text first, then
+   * substitutes our `*..*` syntax for <em>..</em>. The order matters:
+   * if we substituted first, escapeHtml would re-escape our own <em> tags.
    */
   applyInlineFormatting(text) {
-    // Replace *text* with <em>text</em>
-    return text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    const escaped = this.escapeHtml(text);
+    return escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   },
 
   /**
@@ -1024,12 +1034,7 @@ const WriteSysRenderer = {
 
     try {
       const url = `${this.apiBaseUrl}/migrations/${this.currentMigrationID}/manuscript`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await fetchJSON(url, {}, false);
       this.currentAnnotations = data.annotations || [];
 
       // Re-render rainbow bars with updated annotations

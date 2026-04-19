@@ -4,20 +4,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+// placeholderToken is the literal string that config.example.yaml uses for
+// every secret value. The server refuses to start in production if any
+// secret still contains it. Dev configs (env=development) are exempt
+// because dev intentionally uses weak, hard-coded secrets.
+const placeholderToken = "REPLACE_ME"
+
 // Config represents the application configuration
 type Config struct {
-	Version   string           `yaml:"version"`
-	Database  DatabaseConfig   `yaml:"database"`
-	Auth      AuthConfig       `yaml:"auth"`
-	Server    ServerConfig     `yaml:"server"`
-	Paths     PathsConfig      `yaml:"paths"`
-	Logging   LoggingConfig    `yaml:"logging"`
+	Version     string             `yaml:"version"`
+	Database    DatabaseConfig     `yaml:"database"`
+	Auth        AuthConfig         `yaml:"auth"`
+	Server      ServerConfig       `yaml:"server"`
+	Paths       PathsConfig        `yaml:"paths"`
+	Logging     LoggingConfig      `yaml:"logging"`
 	Manuscripts []ManuscriptConfig `yaml:"manuscripts"`
-	Migrations MigrationConfig    `yaml:"migrations"`
+	Migrations  MigrationConfig    `yaml:"migrations"`
+	RateLimits  RateLimitsConfig   `yaml:"rate_limits"`
 }
 
 // DatabaseConfig contains database connection settings
@@ -49,6 +58,12 @@ type ServerConfig struct {
 // PathsConfig contains file path settings
 type PathsConfig struct {
 	PrivateDir string `yaml:"private_dir"`
+
+	// ReposDir is the root under which manuscript git checkouts live.
+	// Every manuscript's clone path must resolve inside this directory.
+	// If unset, the server falls back to the legacy /repos default
+	// (matching the Docker mount the install script sets up).
+	ReposDir string `yaml:"repos_dir"`
 }
 
 // LoggingConfig contains logging settings
@@ -82,6 +97,16 @@ type MigrationConfig struct {
 	QueueAnnotations      bool `yaml:"queue_annotations"`
 }
 
+// RateLimitsConfig tunes the per-process rate limiter. Zero disables the
+// corresponding limit.
+type RateLimitsConfig struct {
+	// AdminPerTokenRPM is the steady-state per-token request budget for
+	// /api/admin/* endpoints. Default 10.
+	AdminPerTokenRPM int `yaml:"admin_per_token_rpm"`
+	// AdminPerTokenBurst is the burst size for the per-token bucket. Default 5.
+	AdminPerTokenBurst int `yaml:"admin_per_token_burst"`
+}
+
 // Load loads configuration from file
 func Load() (*Config, error) {
 	// MANUSCRIPT_STUDIO_CONFIG_FILE env var takes precedence — used by dev mode to point at
@@ -95,12 +120,14 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Fall back to conventional search paths.
+	// Fall back to conventional search paths. config.example.yaml is
+	// deliberately NOT in this list — it ships with REPLACE_ME placeholder
+	// secrets that would fail Validate() in production anyway, and silently
+	// using a "fallback" config in dev tends to mask missing-config bugs.
 	configPaths := []string{
-		"/config/config.yaml",                               // Docker mount
+		"/config/config.yaml", // Docker mount
 		filepath.Join(os.Getenv("HOME"), ".config/manuscript-studio/config.yaml"), // User config
-		"config.yaml",                                        // Local development
-		"config.example.yaml",                                // Fallback for testing
+		"config.yaml", // Local development
 	}
 
 	if configPath == "" {
@@ -150,7 +177,57 @@ func Load() (*Config, error) {
 		config.Manuscripts[i].Repository.URL = expandPath(config.Manuscripts[i].Repository.URL)
 	}
 
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config in %s: %w", configPath, err)
+	}
+
 	return &config, nil
+}
+
+// Validate enforces invariants that the YAML schema can't express:
+//   - structural checks (manuscript paths inside repos_dir) run always,
+//   - secret-quality checks (no REPLACE_ME placeholders, nothing empty)
+//     run only in production, since dev intentionally uses weak secrets.
+func (c *Config) Validate() error {
+	if err := c.ValidateManuscriptPaths(); err != nil {
+		return err
+	}
+
+	if c.Server.BasePath != "" && !basePathPattern.MatchString(c.Server.BasePath) {
+		return fmt.Errorf("server.base_path %q has invalid characters; only [A-Za-z0-9._~-] segments separated by '/' are allowed", c.Server.BasePath)
+	}
+
+	if c.Server.Env != "production" {
+		return nil
+	}
+
+	type field struct {
+		name  string
+		value string
+	}
+	required := []field{
+		{"database.password", c.Database.Password},
+		{"auth.admin_password", c.Auth.AdminPassword},
+		{"auth.system_token", c.Auth.SystemToken},
+		{"auth.session_secret", c.Auth.SessionSecret},
+		{"auth.webhook_secret", c.Auth.WebhookSecret},
+	}
+	for _, f := range required {
+		if f.value == "" {
+			return fmt.Errorf("%s is empty (required in production)", f.name)
+		}
+		if strings.Contains(f.value, placeholderToken) {
+			return fmt.Errorf("%s still contains the placeholder token %q — replace it before running in production", f.name, placeholderToken)
+		}
+	}
+
+	for i, m := range c.Manuscripts {
+		if strings.Contains(m.Repository.AuthToken, placeholderToken) {
+			return fmt.Errorf("manuscripts[%d].repository.auth_token still contains the placeholder token %q", i, placeholderToken)
+		}
+	}
+
+	return nil
 }
 
 // normalizeBasePath ensures leading slash, no trailing slash, empty if root.
@@ -166,6 +243,12 @@ func normalizeBasePath(p string) string {
 	}
 	return p
 }
+
+// basePathPattern restricts base_path to URL-safe characters. Anything else
+// (quotes, angle brackets, whitespace) could break out of the
+// <base href="..."> attribute and become an injection vector.
+// Empty is fine — it means root hosting.
+var basePathPattern = regexp.MustCompile(`^(?:/[A-Za-z0-9._~-]+)*$`)
 
 // expandPath expands ~ to home directory
 func expandPath(path string) string {
@@ -190,4 +273,51 @@ func (c *Config) GetManuscript(name string) (*ManuscriptConfig, error) {
 		}
 	}
 	return nil, fmt.Errorf("manuscript %s not found", name)
+}
+
+// ReposDir returns the resolved root directory for manuscript checkouts.
+// Precedence: MANUSCRIPT_STUDIO_REPOS_DIR env var > paths.repos_dir config >
+// legacy "/repos" default (the Docker mount path).
+func (c *Config) ReposDir() string {
+	if d := os.Getenv("MANUSCRIPT_STUDIO_REPOS_DIR"); d != "" {
+		return expandPath(d)
+	}
+	if c.Paths.ReposDir != "" {
+		return expandPath(c.Paths.ReposDir)
+	}
+	return "/repos"
+}
+
+// RepoPath returns the absolute on-disk path for a manuscript's checkout
+// (ReposDir + manuscript name). The result is guaranteed to be inside
+// ReposDir — see ValidateManuscriptPaths.
+func (c *Config) RepoPath(manuscriptName string) string {
+	return filepath.Join(c.ReposDir(), manuscriptName)
+}
+
+// ValidateManuscriptPaths ensures every manuscript's RepoPath resolves to
+// something inside ReposDir. Defends against a misconfigured (or malicious)
+// manuscript name like "../../etc" that would otherwise let MkdirAll create
+// directories outside the intended root.
+func (c *Config) ValidateManuscriptPaths() error {
+	root, err := filepath.Abs(c.ReposDir())
+	if err != nil {
+		return fmt.Errorf("cannot resolve repos_dir %q: %w", c.ReposDir(), err)
+	}
+	rootSlash := filepath.Clean(root) + string(os.PathSeparator)
+
+	for i, m := range c.Manuscripts {
+		if m.Name == "" {
+			return fmt.Errorf("manuscripts[%d].name is empty", i)
+		}
+		abs, err := filepath.Abs(c.RepoPath(m.Name))
+		if err != nil {
+			return fmt.Errorf("manuscripts[%d] (%s): cannot resolve repo path: %w", i, m.Name, err)
+		}
+		clean := filepath.Clean(abs) + string(os.PathSeparator)
+		if !strings.HasPrefix(clean, rootSlash) {
+			return fmt.Errorf("manuscripts[%d] (%s): repo path %q escapes repos_dir %q", i, m.Name, abs, root)
+		}
+	}
+	return nil
 }

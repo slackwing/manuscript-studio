@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-19.11"
+SCRIPT_VERSION="2026-04-19.12"
 
 set -euo pipefail
 
@@ -95,14 +95,35 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
             log_error "Failed to download configuration template"
         }
 
+        # Replace REPLACE_ME_OR_SERVER_WONT_START secret placeholders with
+        # freshly-generated random tokens so the user only needs to fill in
+        # database/repo specifics, not handcraft cryptographic secrets.
+        if command -v openssl &>/dev/null; then
+            log_info "Generating random secrets in $CONFIG_FILE..."
+            for field in system_token session_secret webhook_secret; do
+                token=$(openssl rand -hex 32)
+                # In-place replace just the line for this field. macOS sed
+                # needs an empty extension arg; GNU sed accepts -i with no arg.
+                if sed --version &>/dev/null; then
+                    sed -i "s|^\(\s*${field}:\s*\)\"REPLACE_ME_OR_SERVER_WONT_START\"|\1\"${token}\"|" "$CONFIG_FILE"
+                else
+                    sed -i "" "s|^\(\s*${field}:\s*\)\"REPLACE_ME_OR_SERVER_WONT_START\"|\1\"${token}\"|" "$CONFIG_FILE"
+                fi
+            done
+        else
+            log_warn "openssl not found — secrets in $CONFIG_FILE remain as REPLACE_ME placeholders."
+            log_warn "Install openssl, or replace those values yourself with: openssl rand -hex 32"
+        fi
+
         log_warn "Configuration template created at: $CONFIG_FILE"
         echo ""
         echo "Please edit this file with your settings (in order):"
-        echo "  1. Database connection details"
+        echo "  1. Database connection details (replace REPLACE_ME password)"
         echo "  2. File paths (private_dir)"
-        echo "  3. Manuscript repository settings"
-        echo "  4. Auth tokens (generate with: openssl rand -hex 32)"
+        echo "  3. Manuscript repository settings (URL, branch, path, auth_token)"
+        echo "  4. Admin password (replace REPLACE_ME)"
         echo ""
+        echo "Cryptographic secrets (system/session/webhook) have been generated for you."
         echo "Then run this script again to complete installation."
         exit 0
     fi

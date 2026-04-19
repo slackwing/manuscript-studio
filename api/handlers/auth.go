@@ -32,7 +32,18 @@ type LoginResponse struct {
 	CSRFToken      string `json:"csrf_token"`
 }
 
-// HandleLogin authenticates a user and creates a session
+// dummyPasswordHash is a real bcrypt hash of an arbitrary string at the same
+// cost factor as production hashes. It exists so VerifyPassword does the same
+// amount of work whether or not the user exists, defeating timing-based
+// username enumeration.
+const dummyPasswordHash = "$2a$10$natLQrpv.hhOkSBcdpI/nOAIicjCeF4/0bGMQywZsEOiNgiSgDnP."
+
+// HandleLogin authenticates a user and creates a session.
+//
+// Timing-safe: bcrypt always runs against either the user's real hash or a
+// dummy hash, *before* any branching on whether the user exists. All failure
+// modes (no such user, bad password, no manuscript access) return the same
+// status code and body.
 func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -47,7 +58,6 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user from database
 	user, err := h.DB.GetUserByUsername(ctx, req.Username)
 	if err != nil {
 		log.Printf("Database error during login: %v", err)
@@ -55,31 +65,25 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Constant-time login: always verify password even if user doesn't exist
-	// Use a dummy hash with same cost as real bcrypt to prevent timing attacks
-	dummyHash := "$2a$10$dummyhashtopreventtimingattacksxxxxxxxxxxxxxxxxxxxxxxxxx"
-	var passwordValid bool
-
+	hashToCompare := dummyPasswordHash
 	if user != nil {
-		passwordValid = auth.VerifyPassword(req.Password, user.PasswordHash)
-	} else {
-		// Run bcrypt anyway to maintain constant timing
-		auth.VerifyPassword(req.Password, dummyHash)
-		passwordValid = false
+		hashToCompare = user.PasswordHash
+	}
+	// Always run bcrypt — the wall-clock cost is what makes the operation
+	// timing-safe, so we deliberately ignore the result here and re-evaluate
+	// alongside other conditions below.
+	passwordValid := auth.VerifyPassword(req.Password, hashToCompare)
+
+	// Always check manuscript access — same reason. Use the requested name
+	// (which may not match any real manuscript) when the user is missing, so
+	// the DB does a comparable amount of work.
+	hasAccess, err := h.DB.HasManuscriptAccess(ctx, req.Username, req.ManuscriptName)
+	if err != nil {
+		log.Printf("Error checking manuscript access: %v", err)
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
 	}
 
-	// Check manuscript access (also done for non-existent users to maintain timing)
-	var hasAccess bool
-	if user != nil && passwordValid {
-		hasAccess, err = h.DB.HasManuscriptAccess(ctx, req.Username, req.ManuscriptName)
-		if err != nil {
-			log.Printf("Error checking manuscript access: %v", err)
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-			return
-		}
-	}
-
-	// Fail with generic message if any check failed
 	if user == nil || !passwordValid || !hasAccess {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return

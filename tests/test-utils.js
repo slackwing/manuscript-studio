@@ -106,9 +106,10 @@ async function cleanupTestAnnotations() {
       throw new Error(`admin/sync returned ${response.status}: ${await response.text()}`);
     }
 
-    // Sync runs async in a goroutine. Poll for the new migration to appear.
-    for (let i = 0; i < 40; i++) {
-      const out = psql(`SELECT COUNT(*) FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID};`);
+    // Sync runs async in a goroutine. Poll for a *completed* migration —
+    // status='done' means sentences/annotations are queryable.
+    for (let i = 0; i < 80; i++) {
+      const out = psql(`SELECT COUNT(*) FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID} AND status = 'done';`);
       if (/\b[1-9]\d*\b/.test(out)) break;
       await new Promise(r => setTimeout(r, 250));
     }

@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"log"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
@@ -18,15 +19,10 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/migrations"
 )
 
-// reposDir returns the directory containing cloned manuscript repos.
-// In Docker the install script mounts the host's repos dir at /repos (default).
-// For native dev, set MANUSCRIPT_STUDIO_REPOS_DIR to point at the host path directly.
-func reposDir() string {
-	if d := os.Getenv("MANUSCRIPT_STUDIO_REPOS_DIR"); d != "" {
-		return d
-	}
-	return "/repos"
-}
+// migrationTimeout caps how long a single migration's goroutine can run
+// before we abort it and mark the row 'error'.
+const migrationTimeout = 5 * time.Minute
+
 
 // AdminHandlers contains admin/system-level handlers
 type AdminHandlers struct {
@@ -64,9 +60,13 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify signature
+	// Verify signature. Failures are logged with the source IP and whether
+	// a header was present so an operator can tell a misconfigured webhook
+	// from an attacker probing the endpoint.
 	signature := r.Header.Get("X-Hub-Signature-256")
 	if !h.validateGitHubSignature(body, signature, h.Config.Auth.WebhookSecret) {
+		log.Printf("webhook signature rejected: ip=%s sig_present=%t body_len=%d",
+			r.RemoteAddr, signature != "", len(body))
 		http.Error(w, "Invalid signature", http.StatusForbidden)
 		return
 	}
@@ -120,12 +120,10 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger migration processing
-	// This should be done asynchronously in production
-	go h.processMigration(manuscriptConfig, payload.HeadCommit.ID)
-
-	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte(`{"status":"accepted","message":"migration processing started"}`))
+	// Webhook always has a real commit SHA from the payload, so we can
+	// dedupe on (manuscript_id, commit_hash, segmenter) before kicking off
+	// the goroutine.
+	h.startMigration(r.Context(), w, manuscriptConfig, payload.HeadCommit.ID)
 }
 
 // HandleSync manually triggers a sync for a manuscript
@@ -155,34 +153,44 @@ func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 	// If no commit hash specified, get latest
 	commitHash := req.CommitHash
 	if commitHash == "" {
-		// TODO: Get latest commit from git
 		commitHash = "HEAD"
 	}
 
-	// Trigger migration processing
-	go h.processMigration(manuscriptConfig, commitHash)
+	if err := migrations.ValidateCommitRef(commitHash); err != nil {
+		http.Error(w, "Invalid commit_hash: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte(`{"status":"accepted","message":"sync started"}`))
+	h.startMigration(r.Context(), w, manuscriptConfig, commitHash)
 }
 
-// HandleStatus returns the status of ongoing migrations
+// HandleStatus returns the state of any in-flight migrations.
+// Returns rows currently at status='pending' or 'running'. Empty list means
+// nothing is in progress.
 func (h *AdminHandlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	// TODO: Implement migration status tracking
-	// For now, return placeholder
-	status := map[string]interface{}{
-		"migrations_in_progress": 0,
-		"last_migration":         nil,
-		"status":                 "idle",
+	active, err := h.DB.GetActiveMigrations(r.Context())
+	if err != nil {
+		http.Error(w, "failed to query migrations", http.StatusInternalServerError)
+		log.Printf("HandleStatus: %v", err)
+		return
+	}
+
+	overall := "idle"
+	if len(active) > 0 {
+		overall = "in_progress"
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":                 overall,
+		"migrations_in_progress": len(active),
+		"active":                 active,
+	})
 }
 
 // HandleCreateUser creates or updates a user. Requires system token.
@@ -204,6 +212,10 @@ func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request)
 	}
 	if req.Username == "" || req.Password == "" {
 		http.Error(w, "username and password are required", http.StatusBadRequest)
+		return
+	}
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if req.Role == "" {
@@ -278,11 +290,16 @@ func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// checkSystemToken verifies the Authorization header contains the configured system token.
+// checkSystemToken verifies the Authorization header contains the configured
+// system token. Uses subtle.ConstantTimeCompare to avoid leaking the token
+// one byte at a time via response timing.
 func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
+	if h.Config.Auth.SystemToken == "" {
+		return false
+	}
 	authHeader := r.Header.Get("Authorization")
 	expected := "Bearer " + h.Config.Auth.SystemToken
-	return h.Config.Auth.SystemToken != "" && authHeader == expected
+	return subtle.ConstantTimeCompare([]byte(authHeader), []byte(expected)) == 1
 }
 
 // validateGitHubSignature validates the GitHub webhook signature
@@ -300,75 +317,125 @@ func (h *AdminHandlers) validateGitHubSignature(payload []byte, signature string
 	return hmac.Equal([]byte(signature), []byte(expectedSig))
 }
 
-// processMigration handles the actual migration processing
-func (h *AdminHandlers) processMigration(manuscriptConfig *config.ManuscriptConfig, commitHash string) {
-	ctx := context.Background()
-
-	log.Printf("Starting migration for manuscript %s at commit %s", manuscriptConfig.Name, commitHash)
-
-	// Get manuscript from database
-	manuscript, err := h.DB.GetManuscript(ctx, manuscriptConfig.Repository.URL, manuscriptConfig.Repository.Path)
+// startMigration is the synchronous prelude to a background migration.
+// It looks up (or creates) the manuscript row, inserts a pending migration
+// row keyed by (manuscript_id, commit_hash, segmenter), and — if that
+// succeeds — launches a goroutine that does the actual work.
+//
+// Writes the HTTP response in all cases:
+//   202 Accepted with {migration_id, started_at}
+//   409 Conflict if an identical migration is already pending/running/done
+//   500 / 502 for server-side problems before the row was inserted
+//
+// Note about commitHash="HEAD" or branch names: the dedup unique constraint
+// is on the literal string, so two concurrent "HEAD" requests are treated
+// as duplicates (the second gets 409). For dedupe by resolved SHA, callers
+// should pass an explicit commit hash. This is a feature, not a bug — it
+// stops users from accidentally enqueueing the same job twice.
+func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWriter, m *config.ManuscriptConfig, commitHash string) {
+	manuscript, err := h.DB.GetManuscript(ctx, m.Repository.URL, m.Repository.Path)
 	if err != nil {
-		log.Printf("Failed to get manuscript: %v", err)
+		http.Error(w, "failed to get manuscript", http.StatusInternalServerError)
+		log.Printf("startMigration: GetManuscript: %v", err)
 		return
 	}
-
 	if manuscript == nil {
-		// Create manuscript entry
-		manuscript, err = h.DB.CreateManuscript(ctx, manuscriptConfig.Repository.URL, manuscriptConfig.Repository.Path)
+		manuscript, err = h.DB.CreateManuscript(ctx, m.Repository.URL, m.Repository.Path)
 		if err != nil {
-			log.Printf("Failed to create manuscript: %v", err)
+			http.Error(w, "failed to create manuscript", http.StatusInternalServerError)
+			log.Printf("startMigration: CreateManuscript: %v", err)
 			return
 		}
 	}
 
-	// Create git repository handler. Default is /repos (Docker mount).
-	// Native dev sets MANUSCRIPT_STUDIO_REPOS_DIR to the host's repos path.
+	migrationID, err := h.DB.CreatePendingMigration(ctx, manuscript.ManuscriptID, commitHash, h.Processor.SegmenterVersion())
+	if err != nil {
+		if errors.Is(err, database.ErrMigrationInProgress) {
+			http.Error(w, "migration for this commit is already pending or completed", http.StatusConflict)
+			return
+		}
+		http.Error(w, "failed to start migration", http.StatusInternalServerError)
+		log.Printf("startMigration: CreatePendingMigration: %v", err)
+		return
+	}
+
+	startedAt := time.Now().UTC()
+	go h.runMigration(migrationID, manuscript.ManuscriptID, m, commitHash)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "accepted",
+		"migration_id": migrationID,
+		"started_at":   startedAt,
+	})
+}
+
+// runMigration is the goroutine body. The pending row already exists; we
+// must ensure it ends up at status='done' or 'error' regardless of what
+// happens here.
+func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.ManuscriptConfig, commitHash string) {
+	ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
+	defer cancel()
+
+	log.Printf("Starting migration %d for manuscript %s at commit %s", migrationID, m.Name, commitHash)
+
+	// Helper: any error before Processor.Run reaches it must be recorded
+	// on the row ourselves; Processor.Run handles its own.
+	fail := func(stage string, err error) {
+		log.Printf("Migration %d failed at %s: %v", migrationID, stage, err)
+		if mErr := h.DB.MarkMigrationError(context.Background(), migrationID, stage+": "+err.Error()); mErr != nil {
+			log.Printf("Migration %d: also failed to record error: %v", migrationID, mErr)
+		}
+	}
+
 	gitRepo := migrations.NewGitRepository(
-		fmt.Sprintf("%s/%s", reposDir(), manuscriptConfig.Name),
-		manuscriptConfig.Repository.Branch,
-		manuscriptConfig.Repository.URL,
-		manuscriptConfig.Repository.Path,
-		manuscriptConfig.Repository.AuthToken,
+		h.Config.RepoPath(m.Name),
+		m.Repository.Branch,
+		m.Repository.URL,
+		m.Repository.Path,
+		m.Repository.AuthToken,
 	)
 
-	// Clone or pull repository
 	if err := gitRepo.Clone(ctx); err != nil {
-		log.Printf("Failed to clone repository: %v", err)
+		fail("clone", err)
 		return
 	}
-
 	if err := gitRepo.Pull(ctx); err != nil {
-		// Don't fail — the repo may already be up to date, or the container
-		// may lack SSH credentials. We'll still read whatever's already there.
-		log.Printf("Warning: git pull failed (continuing with local HEAD): %v", err)
+		// Same tolerance as before: a failed pull is not fatal — we'll
+		// proceed with whatever's locally checked out.
+		log.Printf("Migration %d: git pull failed (continuing): %v", migrationID, err)
 	}
 
-	// Resolve symbolic refs (HEAD, branch names) to a real commit SHA
-	// so the migration record stores a usable hash.
+	resolved := commitHash
 	if commitHash == "" || commitHash == "HEAD" {
-		resolved, err := gitRepo.GetLatestCommitHash(ctx)
+		r, err := gitRepo.GetLatestCommitHash(ctx)
 		if err != nil {
-			log.Printf("Failed to resolve HEAD to commit hash: %v", err)
+			fail("resolve_head", err)
 			return
 		}
-		commitHash = resolved
-		log.Printf("Resolved HEAD to %s", commitHash)
+		resolved = r
+		log.Printf("Migration %d: resolved HEAD to %s", migrationID, resolved)
 	}
 
-	// Get manuscript content
-	content, err := gitRepo.GetFileContent(ctx, commitHash)
+	branchName, err := gitRepo.GetBranchName(ctx)
 	if err != nil {
-		log.Printf("Failed to get file content: %v", err)
+		// Not fatal — record empty branch name and proceed.
+		log.Printf("Migration %d: could not read branch name: %v", migrationID, err)
+		branchName = ""
+	}
+
+	content, err := gitRepo.GetFileContent(ctx, resolved)
+	if err != nil {
+		fail("read_content", err)
 		return
 	}
 
-	// Process migration
-	result, err := h.Processor.ProcessManuscript(ctx, manuscript.ManuscriptID, commitHash, content)
+	result, err := h.Processor.Run(ctx, migrationID, manuscriptID, resolved, branchName, content)
 	if err != nil {
-		log.Printf("Migration failed: %v", err)
+		// Processor.Run already marked the row as error.
+		log.Printf("Migration %d: processor failed: %v", migrationID, err)
 		return
 	}
-
-	log.Printf("Migration completed: %s", result.Message)
+	log.Printf("Migration %d completed: %s", migrationID, result.Message)
 }

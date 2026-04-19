@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Add status tracking to the migration table.
+
+        Before this change, a row in `migration` only existed after the work
+        completed successfully. Failures and in-progress work were invisible.
+
+        After this change, a row is inserted at status='pending' before work
+        begins, transitioned to 'running', then to 'done' or 'error'. The
+        existing unique constraint on (manuscript_id, commit_hash, segmenter)
+        becomes the concurrency check: a duplicate insert means the work is
+        already pending or running, and the caller should get 409 Conflict.
+
+        Result columns (sentence_count, sentence_id_array, etc.) are loosened
+        to allow NULL — they aren't known until the migration finishes.
+
+        IMPORTANT: every query that reads from `migration` and assumes "row
+        exists ⇒ work is done" must add `WHERE status = 'done'`.
+    -->
+
+    <changeSet id="002-migration-status" author="codereview">
+
+        <addColumn tableName="migration">
+            <column name="status" type="VARCHAR(16)" defaultValue="done">
+                <constraints nullable="false"/>
+            </column>
+            <column name="started_at" type="TIMESTAMPTZ"/>
+            <column name="finished_at" type="TIMESTAMPTZ"/>
+            <column name="error" type="TEXT"/>
+        </addColumn>
+
+        <!-- Result columns aren't known until the work finishes. -->
+        <dropNotNullConstraint tableName="migration" columnName="branch_name" columnDataType="VARCHAR(255)"/>
+        <dropNotNullConstraint tableName="migration" columnName="sentence_count" columnDataType="INTEGER"/>
+        <dropNotNullConstraint tableName="migration" columnName="additions_count" columnDataType="INTEGER"/>
+        <dropNotNullConstraint tableName="migration" columnName="deletions_count" columnDataType="INTEGER"/>
+        <dropNotNullConstraint tableName="migration" columnName="changes_count" columnDataType="INTEGER"/>
+        <dropNotNullConstraint tableName="migration" columnName="sentence_id_array" columnDataType="JSONB"/>
+
+        <createIndex tableName="migration" indexName="idx_migration_status">
+            <column name="status"/>
+        </createIndex>
+
+        <!-- Backfill: existing rows are completed work. processed_at == finished_at. -->
+        <sql>
+            UPDATE migration
+            SET status = 'done',
+                started_at = processed_at,
+                finished_at = processed_at
+            WHERE status = 'done' AND finished_at IS NULL;
+        </sql>
+
+    </changeSet>
+
+</databaseChangeLog>

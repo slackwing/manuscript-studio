@@ -181,8 +181,11 @@ func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *conf
 
 // readGitContent reads the manuscript file contents at a specific commit from the local clone.
 func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (string, error) {
+	if err := migrations.ValidateCommitRef(commitHash); err != nil {
+		return "", err
+	}
 	gitRepo := migrations.NewGitRepository(
-		fmt.Sprintf("%s/%s", reposDir(), m.Name),
+		h.Config.RepoPath(m.Name),
 		m.Repository.Branch,
 		m.Repository.URL,
 		m.Repository.Path,

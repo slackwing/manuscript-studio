@@ -90,3 +90,38 @@ async function authenticatedFetch(url, options = {}) {
 
   return fetch(url, options);
 }
+
+/**
+ * Fetch and parse JSON, with defensive checks for non-OK responses and
+ * non-JSON Content-Type. Throws an Error whose .message includes the
+ * server's response body (truncated) when the server returned HTML or
+ * plain text — this is much friendlier to debug than a JSON.parse error.
+ *
+ * @param {string} url
+ * @param {object} options - same shape as fetch options
+ * @param {boolean} [authenticated=true] - if true, uses authenticatedFetch
+ * @returns {Promise<any>} parsed JSON body
+ */
+async function fetchJSON(url, options = {}, authenticated = true) {
+  const response = authenticated
+    ? await authenticatedFetch(url, options)
+    : await fetch(url, options);
+
+  if (!response.ok) {
+    let body = '';
+    try { body = (await response.text()).slice(0, 500); } catch (_) {}
+    const err = new Error(`HTTP ${response.status}: ${body || response.statusText}`);
+    err.status = response.status;
+    err.body = body;
+    throw err;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    let body = '';
+    try { body = (await response.text()).slice(0, 500); } catch (_) {}
+    throw new Error(`Expected JSON, got ${contentType || 'no content-type'}: ${body}`);
+  }
+
+  return response.json();
+}

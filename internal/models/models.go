@@ -27,21 +27,40 @@ type Manuscript struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// Migration represents a processed git commit with specific segmenter version
-// Each row represents a state transition (bootstrap, new commit, or segmenter update)
+// MigrationStatus values. A migration row's lifecycle is:
+//   pending -> running -> done   (success path)
+//   pending -> running -> error  (failure path, with .Error populated)
+// Existing rows from before the status column was added default to "done".
+const (
+	MigrationStatusPending = "pending"
+	MigrationStatusRunning = "running"
+	MigrationStatusDone    = "done"
+	MigrationStatusError   = "error"
+)
+
+// Migration represents a processed git commit with specific segmenter version.
+// Each row represents an attempted (and possibly completed) state transition.
+//
+// Most result fields (BranchName, SentenceCount, *_Count, SentenceIDArray)
+// are zero-valued until Status == "done". Consumers that read those fields
+// must filter on Status.
 type Migration struct {
-	MigrationID       int       `json:"migration_id"`
-	ManuscriptID      int       `json:"manuscript_id"`
-	CommitHash        string    `json:"commit_hash"`
-	Segmenter         string    `json:"segmenter"` // e.g. "segman-1.0.0"
-	ParentMigrationID *int      `json:"parent_migration_id"`
-	BranchName        string    `json:"branch_name"`
-	ProcessedAt       time.Time `json:"processed_at"`
-	SentenceCount     int       `json:"sentence_count"`
-	AdditionsCount    int       `json:"additions_count"`
-	DeletionsCount    int       `json:"deletions_count"`
-	ChangesCount      int       `json:"changes_count"`
-	SentenceIDArray   []string  `json:"sentence_id_array"`
+	MigrationID       int        `json:"migration_id"`
+	ManuscriptID      int        `json:"manuscript_id"`
+	CommitHash        string     `json:"commit_hash"`
+	Segmenter         string     `json:"segmenter"` // e.g. "segman-1.0.0"
+	ParentMigrationID *int       `json:"parent_migration_id"`
+	BranchName        string     `json:"branch_name"`
+	ProcessedAt       time.Time  `json:"processed_at"`
+	Status            string     `json:"status"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	FinishedAt        *time.Time `json:"finished_at,omitempty"`
+	Error             *string    `json:"error,omitempty"`
+	SentenceCount     int        `json:"sentence_count"`
+	AdditionsCount    int        `json:"additions_count"`
+	DeletionsCount    int        `json:"deletions_count"`
+	ChangesCount      int        `json:"changes_count"`
+	SentenceIDArray   []string   `json:"sentence_id_array"`
 }
 
 // Sentence represents a sentence instance in a specific migration
