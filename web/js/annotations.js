@@ -1,36 +1,31 @@
-// WriteSys Annotations - Multi-Note Support
-// Handles multiple annotations per sentence with per-note color controls
+// Multi-annotation per sentence, with per-note color controls.
 
 const WriteSysAnnotations = {
   apiBaseUrl: 'api',
   currentSentenceId: null,
   currentSentenceText: '',
-  annotations: [], // Array of all annotations for current sentence
+  annotations: [],
 
-  // Available annotation colors
   COLORS: ['yellow', 'green', 'blue', 'purple', 'red', 'orange'],
 
-  // Default color for new annotations
   DEFAULT_COLOR: 'yellow',
 
-  // Track "never mind" state for auto-created notes
+  // Auto-created notes commit only when the user interacts; until then,
+  // an empty textarea blur cancels the annotation ("never mind").
   neverMindState: {
-    annotationId: null,  // ID of the auto-created annotation
-    isCommitted: false   // Whether user has committed (clicked anything)
+    annotationId: null,
+    isCommitted: false
   },
 
-  // Spacing constants - must match CSS variables in book.css
+  // Must match the CSS variables of the same names in book.css.
   SPACING: {
-    PAGE_WIDTH: 576,           // Width of .pagedjs_page
-    ANNOTATION_WIDTH: 272,     // --annotation-width (240 + 32px page gap)
-    HORIZONTAL_GAP: 32,        // --horizontal-gap (page to annotation margin)
+    PAGE_WIDTH: 576,
+    ANNOTATION_WIDTH: 272, // --annotation-width (240 + 32px gap)
+    HORIZONTAL_GAP: 32,    // --horizontal-gap
   },
 
-  /**
-   * Initialize annotations module
-   */
   init() {
-    // Click on grey background (margins) to unselect sentence
+    // Grey-background clicks unselect the current sentence.
     document.addEventListener('click', (e) => {
       const annotationMargin = document.getElementById('annotation-margin');
       const annotationMarginInner = document.querySelector('.annotation-margin-inner');
@@ -55,9 +50,6 @@ const WriteSysAnnotations = {
     console.log('WriteSys Annotations (Multi-Note) initialized');
   },
 
-  /**
-   * Initialize and position the annotation margin container
-   */
   initAnnotationMargin() {
     const margin = document.getElementById('annotation-margin');
     if (!margin) return;
@@ -73,21 +65,27 @@ const WriteSysAnnotations = {
     window.addEventListener('resize', positionMargin);
   },
 
-  /**
-   * Show annotations for a specific sentence
-   * @param {string} sentenceId - The ID of the sentence to annotate
-   * @param {string} sentenceText - The full text of the sentence
-   */
-  async showAnnotationsForSentence(sentenceId, sentenceText) {
-    // Switching sentences commits any pending note
-    if (this.neverMindState.annotationId) {
+  // commitPendingNote marks an auto-created note as committed so the
+  // "never mind" empty-blur handler won't delete it. Pass null to commit
+  // whichever note is currently pending (used when switching sentences).
+  commitPendingNote(annotationId) {
+    if (annotationId == null) {
+      if (this.neverMindState.annotationId) {
+        this.neverMindState.isCommitted = true;
+      }
+      return;
+    }
+    if (this.neverMindState.annotationId === annotationId) {
       this.neverMindState.isCommitted = true;
     }
+  },
+
+  async showAnnotationsForSentence(sentenceId, sentenceText) {
+    this.commitPendingNote(null);
 
     this.currentSentenceId = sentenceId;
     this.currentSentenceText = sentenceText;
 
-    // Show sentence preview (first 3 words)
     const preview = document.getElementById('sentence-preview');
     if (preview) {
       const words = sentenceText.trim().split(/\s+/);
@@ -97,7 +95,6 @@ const WriteSysAnnotations = {
       preview.classList.add('visible');
     }
 
-    // Fetch annotations for this sentence
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations/sentence/${sentenceId}`);
       if (!response.ok) {
@@ -111,7 +108,6 @@ const WriteSysAnnotations = {
         this.annotations = data.annotations || [];
       }
 
-      // Render all sticky notes
       this.renderStickyNotes();
 
     } catch (error) {
@@ -121,50 +117,36 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Render all sticky notes for the current sentence
-   */
   renderStickyNotes() {
     const container = document.getElementById('sticky-notes-container');
     if (!container) return;
 
-    // Clear container
     container.innerHTML = '';
 
-    // Render each existing annotation
     this.annotations.forEach(annotation => {
       const noteElement = this.createStickyNoteElement(annotation);
       container.appendChild(noteElement);
     });
 
-    // Add "add new note" element
-    // First note: full grey UI, subsequent notes: gradient with + sign
+    // First note: full grey UI. Subsequent: gradient with a + sign.
     const isFirstNote = this.annotations.length === 0;
     const addNewNote = this.createAddNewNoteElement(isFirstNote);
     container.appendChild(addNewNote);
 
-    // Show container
     container.classList.add('visible');
   },
 
-  /**
-   * Create a sticky note DOM element
-   * @param {Object} annotation - The annotation object
-   * @returns {HTMLElement} The sticky note element
-   */
   createStickyNoteElement(annotation) {
     const note = document.createElement('div');
     note.className = 'sticky-note';
     note.dataset.annotationId = annotation.annotation_id;
 
-    // Add color class if annotation has color
     if (annotation.color) {
       note.classList.add(`color-${annotation.color}`);
     }
 
-    // Create note structure. The textarea is rendered empty here and the
-    // user-controlled note text is assigned via .value below — never via
-    // innerHTML — to prevent stored-XSS through annotation content.
+    // Note text is always assigned via .value, never via innerHTML — stored-XSS
+    // defense through annotation content. See test-xss-annotation.js.
     note.innerHTML = `
       <div class="note-container">
         <textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>
@@ -196,11 +178,9 @@ const WriteSysAnnotations = {
       </div>
     `;
 
-    // Add color circle
     const colorCircle = this.createColorCircleElement(annotation);
     note.appendChild(colorCircle);
 
-    // Setup event listeners
     this.setupNoteEventListeners(note, annotation);
 
     // Render tags
@@ -225,23 +205,21 @@ const WriteSysAnnotations = {
     const circle = document.createElement('div');
     circle.className = 'sticky-note-color-circle';
 
-    // Rainbow gradient for grey (uncommitted) notes
+    // Rainbow gradient for uncommitted notes.
     if (!annotation.color) {
       circle.classList.add('rainbow');
     } else {
       circle.classList.add(`color-${annotation.color}`);
     }
 
-    // Create palette
     const palette = this.createPaletteElement(annotation);
     circle.appendChild(palette);
 
-    // Show palette on hover
     circle.addEventListener('mouseenter', () => {
       palette.classList.add('visible');
     });
 
-    // Hide palette on mouse leave (with delay to allow clicking)
+    // Delay hide so the cursor can reach the palette.
     let hideTimeout;
     circle.addEventListener('mouseleave', () => {
       hideTimeout = setTimeout(() => {
@@ -262,21 +240,16 @@ const WriteSysAnnotations = {
     return circle;
   },
 
-  /**
-   * Create expandable palette element
-   * @param {Object} annotation - The annotation object
-   * @returns {HTMLElement} The palette element
-   */
   createPaletteElement(annotation) {
     const palette = document.createElement('div');
     palette.className = 'sticky-note-palette';
 
-    // Determine which colors to show
+    // Grey notes show all 6; a colored note shows the other 5 for swapping.
     const colorsToShow = annotation.color
-      ? this.COLORS.filter(c => c !== annotation.color)  // Show 5 other colors
-      : this.COLORS;  // Show all 6 colors for grey notes
+      ? this.COLORS.filter(c => c !== annotation.color)
+      : this.COLORS;
 
-    // Add color circles (wrapped in divs for hover zones)
+    // Extra wrapper per circle gives the hover zone breathing room.
     colorsToShow.forEach(color => {
       const wrapper = document.createElement('div');
 
@@ -284,7 +257,6 @@ const WriteSysAnnotations = {
       colorCircle.className = 'color-circle';
       colorCircle.dataset.color = color;
 
-      // Set background color using CSS variables
       const colorVar = `var(--highlight-${color})`;
       colorCircle.style.backgroundColor = colorVar;
 
@@ -300,31 +272,15 @@ const WriteSysAnnotations = {
     return palette;
   },
 
-  /**
-   * Create "add new note" element
-   * @param {boolean} isFirstNote - Whether this is the first uncreated note
-   * @returns {HTMLElement} The add new note element
-   */
   createAddNewNoteElement(isFirstNote) {
-    if (isFirstNote) {
-      // First note: full grey sticky note UI
-      return this.createFirstUncreatedNote();
-    } else {
-      // Subsequent notes: gradient with + sign
-      return this.createSubsequentUncreatedNote();
-    }
+    return isFirstNote
+      ? this.createFirstUncreatedNote()
+      : this.createSubsequentUncreatedNote();
   },
 
-  /**
-   * Setup textarea handlers for creating a new note
-   * @param {HTMLElement} note - The note element
-   * @param {HTMLTextAreaElement} textarea - The textarea element
-   * @param {HTMLElement} colorCircle - The color circle element
-   * @param {boolean} requiresHover - Whether the note needs hover handling
-   */
   setupUncreatedNoteHandlers(note, textarea, colorCircle, requiresHover) {
     let noteCreated = false;
-    let isCreating = false; // Guard against multiple rapid inputs
+    let isCreating = false; // debounce rapid input events
 
     textarea.addEventListener('focus', () => {
       if (requiresHover) {
@@ -351,7 +307,7 @@ const WriteSysAnnotations = {
         const currentText = e.target.value;
         const annotation = await this.handleAddNewNote(this.DEFAULT_COLOR, currentText);
 
-        // Track this as a "never mind" candidate until user commits
+        // "Never mind" candidate until the user commits by interacting further.
         if (annotation && annotation.annotation_id) {
           this.neverMindState.annotationId = annotation.annotation_id;
           this.neverMindState.isCommitted = false;
@@ -365,15 +321,10 @@ const WriteSysAnnotations = {
     });
   },
 
-  /**
-   * Create first uncreated note (full grey UI)
-   * @returns {HTMLElement} The note element
-   */
   createFirstUncreatedNote() {
     const note = document.createElement('div');
     note.className = 'sticky-note uncreated-note first-uncreated';
 
-    // Create note structure
     note.innerHTML = `
       <div class="note-container">
         <textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>
@@ -387,26 +338,19 @@ const WriteSysAnnotations = {
       </div>
     `;
 
-    // Add color circle (rainbow)
     const colorCircle = this.createColorCircleForUncreated();
     note.appendChild(colorCircle);
 
-    // Setup event handlers
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, false);
 
     return note;
   },
 
-  /**
-   * Create subsequent uncreated note (gradient with + sign)
-   * @returns {HTMLElement} The note element
-   */
   createSubsequentUncreatedNote() {
     const note = document.createElement('div');
     note.className = 'sticky-note uncreated-note subsequent-uncreated';
 
-    // Create note structure (same as first, but will be styled with gradient)
     note.innerHTML = `
       <div class="uncreated-plus">+</div>
       <div class="note-container">
@@ -421,11 +365,10 @@ const WriteSysAnnotations = {
       </div>
     `;
 
-    // Add color circle (rainbow)
     const colorCircle = this.createColorCircleForUncreated();
     note.appendChild(colorCircle);
 
-    // Setup event handlers
+
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, true);
 
@@ -485,15 +428,10 @@ const WriteSysAnnotations = {
     return colorCircle;
   },
 
-  /**
-   * Create palette for add-new-note element
-   * @returns {HTMLElement} The palette element
-   */
   createAddNotePaletteElement() {
     const palette = document.createElement('div');
     palette.className = 'sticky-note-palette';
 
-    // Add all 6 color circles (wrapped in divs for hover zones)
     this.COLORS.forEach(color => {
       const wrapper = document.createElement('div');
 
@@ -516,32 +454,24 @@ const WriteSysAnnotations = {
     return palette;
   },
 
-  /**
-   * Setup event listeners for a sticky note
-   * @param {HTMLElement} note - The sticky note element
-   * @param {Object} annotation - The annotation object
-   */
   setupNoteEventListeners(note, annotation) {
-    // Note input
     const textarea = note.querySelector('.note-input');
     let saveTimeout;
 
     textarea.addEventListener('input', async () => {
       this.autoResizeTextarea(textarea);
 
-      // Check for "never mind" - empty text on uncommitted auto-created note
+      // "Never mind": empty textarea on an auto-created, uncommitted note → delete.
       if (this.neverMindState.annotationId === annotation.annotation_id &&
           !this.neverMindState.isCommitted &&
           textarea.value.trim().length === 0) {
-        // Never mind - delete the annotation and revert to grey
         clearTimeout(saveTimeout);
         await this.deleteAnnotation(annotation.annotation_id);
         this.neverMindState.annotationId = null;
         this.neverMindState.isCommitted = false;
-        return; // Don't save
+        return;
       }
 
-      // Auto-save after 1 second
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         this.saveNoteText(annotation.annotation_id, textarea.value);
@@ -549,47 +479,32 @@ const WriteSysAnnotations = {
     });
 
     textarea.addEventListener('blur', () => {
-      // Losing focus commits the note
-      if (this.neverMindState.annotationId === annotation.annotation_id) {
-        this.neverMindState.isCommitted = true;
-      }
+      this.commitPendingNote(annotation.annotation_id);
 
       clearTimeout(saveTimeout);
       this.saveNoteText(annotation.annotation_id, textarea.value);
     });
 
-    // Priority chips
     note.querySelectorAll('.priority-chip').forEach(chip => {
       chip.addEventListener('click', () => {
-        // Clicking commits the note
-        if (this.neverMindState.annotationId === annotation.annotation_id) {
-          this.neverMindState.isCommitted = true;
-        }
+        this.commitPendingNote(annotation.annotation_id);
         const priority = chip.dataset.priority;
         this.handlePriorityClick(annotation, priority, note);
       });
     });
 
-    // Flag chip
     const flagChip = note.querySelector('.flag-chip');
     if (flagChip) {
       flagChip.addEventListener('click', () => {
-        // Clicking commits the note
-        if (this.neverMindState.annotationId === annotation.annotation_id) {
-          this.neverMindState.isCommitted = true;
-        }
+        this.commitPendingNote(annotation.annotation_id);
         this.handleFlagClick(annotation, note);
       });
     }
 
-    // Tags
     const tagsList = note.querySelector('.tags-list');
     if (tagsList) {
       tagsList.addEventListener('click', (e) => {
-        // Clicking commits the note
-        if (this.neverMindState.annotationId === annotation.annotation_id) {
-          this.neverMindState.isCommitted = true;
-        }
+        this.commitPendingNote(annotation.annotation_id);
 
         if (e.target.classList.contains('tag-chip-remove')) {
           const tagChip = e.target.closest('.tag-chip');
@@ -602,7 +517,7 @@ const WriteSysAnnotations = {
       });
     }
 
-    // Trash icon
+    // Two-click trash with 2s confirmation window.
     const trash = note.querySelector('.note-trash');
     if (trash) {
       let clickCount = 0;
@@ -612,17 +527,14 @@ const WriteSysAnnotations = {
         e.stopPropagation();
 
         if (clickCount === 0) {
-          // First click - show confirmation
           trash.classList.add('confirming');
           clickCount = 1;
 
-          // Reset after 2 seconds
           resetTimeout = setTimeout(() => {
             trash.classList.remove('confirming');
             clickCount = 0;
           }, 2000);
         } else {
-          // Second click - actually delete
           clearTimeout(resetTimeout);
           this.deleteAnnotation(annotation.annotation_id);
         }
@@ -630,43 +542,24 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Auto-resize textarea to fit content
-   * @param {HTMLTextAreaElement} textarea - The textarea element
-   */
   autoResizeTextarea(textarea) {
     textarea.style.height = 'auto';
     textarea.style.height = textarea.scrollHeight + 'px';
   },
 
-  /**
-   * Handle color selection for a specific note
-   * @param {number} annotationId - The annotation ID
-   * @param {string} color - The color name
-   */
   async handleColorSelectionForNote(annotationId, color) {
     const annotation = this.annotations.find(a => a.annotation_id === annotationId);
     if (!annotation) return;
 
-    // Clicking color commits the note
-    if (this.neverMindState.annotationId === annotationId) {
-      this.neverMindState.isCommitted = true;
-    }
+    this.commitPendingNote(annotationId);
 
     try {
-      // Update annotation color via API
       await this.updateAnnotationColor(annotationId, color);
-
-      // Update local annotation
       annotation.color = color;
 
-      // Re-render to update UI
       this.renderStickyNotes();
-
-      // Update sentence highlights
       this.updateSentenceHighlights();
 
-      // Update rainbow bars for all sentences
       if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
         await window.WriteSysRenderer.refreshRainbowBars();
       }
@@ -705,7 +598,6 @@ const WriteSysAnnotations = {
 
       const apiResponse = await response.json();
 
-      // Add to local array
       const newAnnotation = {
         annotation_id: apiResponse.annotation_id,
         sentence_id: this.currentSentenceId,
@@ -717,25 +609,20 @@ const WriteSysAnnotations = {
       };
 
       this.annotations.push(newAnnotation);
-
-      // Re-render
       this.renderStickyNotes();
 
-      // Restore focus to the newly created note's textarea
+      // Restore focus to the newly created note's textarea, cursor at end.
       const newNoteElement = document.querySelector(`.sticky-note[data-annotation-id="${apiResponse.annotation_id}"]`);
       if (newNoteElement) {
         const textarea = newNoteElement.querySelector('.note-input');
         if (textarea) {
           textarea.focus();
-          // Move cursor to end
           textarea.setSelectionRange(textarea.value.length, textarea.value.length);
         }
       }
 
-      // Update sentence highlights
       this.updateSentenceHighlights();
 
-      // Update rainbow bars for all sentences
       if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
         await window.WriteSysRenderer.refreshRainbowBars();
       }
@@ -749,21 +636,17 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Update sentence highlights for all annotations
-   */
   updateSentenceHighlights() {
     if (!this.currentSentenceId) return;
 
     const sentenceFragments = document.querySelectorAll(`.sentence[data-sentence-id="${this.currentSentenceId}"]`);
 
-    // Remove all highlight classes
     sentenceFragments.forEach(fragment => {
       this.COLORS.forEach(c => fragment.classList.remove(`highlight-${c}`));
     });
 
-    // Apply highlights based on annotations
-    // If multiple annotations, apply the first color (could be customized)
+    // With multiple annotations we apply only the first color; subsequent
+    // colors show up via the sidebar rainbow bars.
     if (this.annotations.length > 0 && this.annotations[0].color) {
       const color = this.annotations[0].color;
       sentenceFragments.forEach(fragment => {
@@ -772,10 +655,6 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Delete annotation
-   * @param {number} annotationId - The annotation ID
-   */
   async deleteAnnotation(annotationId) {
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations/${annotationId}`, {
@@ -788,16 +667,10 @@ const WriteSysAnnotations = {
 
       console.log('Annotation deleted:', annotationId);
 
-      // Remove from local array
       this.annotations = this.annotations.filter(a => a.annotation_id !== annotationId);
-
-      // Re-render
       this.renderStickyNotes();
-
-      // Update sentence highlights
       this.updateSentenceHighlights();
 
-      // Update rainbow bars for all sentences
       if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
         await window.WriteSysRenderer.refreshRainbowBars();
       }
@@ -808,11 +681,6 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Update annotation color via API
-   * @param {number} annotationId - The annotation ID
-   * @param {string} color - The new color
-   */
   async updateAnnotationColor(annotationId, color) {
     const annotation = this.annotations.find(a => a.annotation_id === annotationId);
     if (!annotation) return;
@@ -836,11 +704,6 @@ const WriteSysAnnotations = {
     return await response.json();
   },
 
-  /**
-   * Save note text
-   * @param {number} annotationId - The annotation ID
-   * @param {string} noteText - The note text
-   */
   async saveNoteText(annotationId, noteText) {
     const annotation = this.annotations.find(a => a.annotation_id === annotationId);
     if (!annotation) return;
@@ -862,7 +725,6 @@ const WriteSysAnnotations = {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      // Update local annotation
       annotation.note = noteText.trim() || null;
 
     } catch (error) {
@@ -871,14 +733,8 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Handle priority chip click
-   * @param {Object} annotation - The annotation object
-   * @param {string} priority - The priority value (P0, P1, P2, P3)
-   * @param {HTMLElement} note - The note element
-   */
+  // Clicking the active priority toggles it off.
   async handlePriorityClick(annotation, priority, note) {
-    // Toggle behavior
     const newPriority = (annotation.priority === priority) ? 'none' : priority;
 
     try {
@@ -898,10 +754,7 @@ const WriteSysAnnotations = {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      // Update local annotation
       annotation.priority = newPriority;
-
-      // Update UI
       this.updatePriorityFlagUIForNote(note, annotation);
 
     } catch (error) {
@@ -935,10 +788,7 @@ const WriteSysAnnotations = {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      // Update local annotation
       annotation.flagged = newFlagged;
-
-      // Update UI
       this.updatePriorityFlagUIForNote(note, annotation);
 
     } catch (error) {
@@ -947,13 +797,7 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Update priority/flag UI for a note
-   * @param {HTMLElement} note - The note element
-   * @param {Object} annotation - The annotation object
-   */
   updatePriorityFlagUIForNote(note, annotation) {
-    // Update priority chips
     note.querySelectorAll('.priority-chip').forEach(chip => {
       const priority = chip.dataset.priority;
       if (annotation.priority === priority) {
@@ -963,7 +807,6 @@ const WriteSysAnnotations = {
       }
     });
 
-    // Update flag chip
     const flagChip = note.querySelector('.flag-chip');
     if (flagChip) {
       if (annotation.flagged) {
@@ -974,20 +817,14 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Render tags for a note
-   * @param {HTMLElement} note - The note element
-   * @param {Array} tags - The tags array
-   */
+  // Uses createElement + textContent (not innerHTML). Tag names are
+  // server-validated, but we treat them as untrusted here as defense in depth.
   renderTagsForNote(note, tags) {
     const tagsList = note.querySelector('.tags-list');
     if (!tagsList) return;
 
     tagsList.innerHTML = '';
 
-    // Build chips with createElement+textContent. Tag names are server-validated
-    // to a safe charset, but we still treat them as untrusted here as defense
-    // in depth — never interpolate into innerHTML.
     tags.forEach(tag => {
       const chip = document.createElement('div');
       chip.className = 'tag-chip';
@@ -1006,23 +843,16 @@ const WriteSysAnnotations = {
       tagsList.appendChild(chip);
     });
 
-    // Add "new tag" chip — static text, safe to use textContent.
     const newTagChip = document.createElement('div');
     newTagChip.className = 'tag-chip new-tag';
     newTagChip.textContent = '+ tag';
     tagsList.appendChild(newTagChip);
   },
 
-  /**
-   * Add new tag
-   * @param {Object} annotation - The annotation object
-   * @param {HTMLElement} note - The note element
-   */
   async addNewTag(annotation, note) {
     const tagsList = note.querySelector('.tags-list');
     const newTagChip = tagsList.querySelector('.new-tag');
 
-    // Create editable input
     const editableChip = document.createElement('div');
     editableChip.className = 'tag-chip editable-tag';
 
@@ -1046,7 +876,6 @@ const WriteSysAnnotations = {
 
       if (!tagName) return;
 
-      // Validate tag name
       const valid = /^[a-z0-9-]+$/.test(tagName);
       if (!valid) {
         alert('Invalid tag name. Use only lowercase letters, numbers, and dashes.');
@@ -1095,13 +924,6 @@ const WriteSysAnnotations = {
     input.addEventListener('blur', finishTagCreation);
   },
 
-  /**
-   * Remove tag
-   * @param {Object} annotation - The annotation object
-   * @param {number} tagId - The tag ID
-   * @param {string} tagName - The tag name
-   * @param {HTMLElement} note - The note element
-   */
   async removeTag(annotation, tagId, tagName, note) {
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations/${annotation.annotation_id}/tags/${tagId}`, {
@@ -1112,7 +934,6 @@ const WriteSysAnnotations = {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      // Remove from local tags array
       annotation.tags = annotation.tags.filter(t => t.tag_id !== tagId);
       this.renderTagsForNote(note, annotation.tags);
 
@@ -1122,41 +943,32 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Unselect sentence - closes annotation UI
-   */
   unselectSentence() {
-    // Hide sentence preview
     const preview = document.getElementById('sentence-preview');
     if (preview) {
       preview.classList.remove('visible');
     }
 
-    // Hide sticky notes container
     const container = document.getElementById('sticky-notes-container');
     if (container) {
       container.classList.remove('visible');
     }
 
-    // Remove selection from sentences
     document.querySelectorAll('.sentence.selected').forEach(s => s.classList.remove('selected'));
 
-    // Clear renderer's tracking
     if (window.WriteSysRenderer) {
       window.WriteSysRenderer.currentSelectedSentenceId = null;
     }
 
-    // Clear state
     this.currentSentenceId = null;
     this.currentSentenceText = '';
     this.annotations = [];
   },
 };
 
-// Export for other modules BEFORE initialization
+// Must be attached BEFORE init() so other modules can reach it during init.
 window.WriteSysAnnotations = WriteSysAnnotations;
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => WriteSysAnnotations.init());
 } else {

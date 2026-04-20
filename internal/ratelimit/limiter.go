@@ -18,15 +18,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Config tunes the limiter. Zero/negative values disable the corresponding check.
+// Config tunes the limiter. Zero or negative values disable the corresponding check.
 type Config struct {
-	// PerKeyRequestsPerMinute is the steady-state request rate allowed per key.
-	PerKeyRequestsPerMinute int
-	// PerKeyBurst is the burst size for the per-key bucket.
-	PerKeyBurst int
+	PerKeyRequestsPerMinute int // steady-state rate per key
+	PerKeyBurst             int // burst size per key
 }
 
-// DefaultConfig returns sane defaults: 10 req/min per key, burst 5.
+// DefaultConfig: 10 rpm/key, burst 5.
 func DefaultConfig() Config {
 	return Config{
 		PerKeyRequestsPerMinute: 10,
@@ -34,14 +32,12 @@ func DefaultConfig() Config {
 	}
 }
 
-// Limiter holds the per-key buckets.
 type Limiter struct {
 	cfg     Config
 	mu      sync.Mutex
 	buckets map[string]*rate.Limiter
 }
 
-// New creates a Limiter with the given config.
 func New(cfg Config) *Limiter {
 	return &Limiter{
 		cfg:     cfg,
@@ -49,10 +45,8 @@ func New(cfg Config) *Limiter {
 	}
 }
 
-// Allow returns true if the request for `key` should proceed. When false,
-// the limiter has already accounted for the rejection (no extra tokens
-// consumed). Returns the bucket's current limit/burst so the caller can
-// surface a useful Retry-After header.
+// Allow: true if the request for key should proceed. When false, no token
+// was consumed.
 func (l *Limiter) Allow(key string) bool {
 	if l.cfg.PerKeyRequestsPerMinute <= 0 {
 		return true
@@ -60,7 +54,7 @@ func (l *Limiter) Allow(key string) bool {
 	l.mu.Lock()
 	b, ok := l.buckets[key]
 	if !ok {
-		// rate.Every(d) is "one token every d"; turn rpm into a per-token interval.
+		// rate.Every(d) = "one token every d"; convert rpm to interval.
 		interval := time.Minute / time.Duration(l.cfg.PerKeyRequestsPerMinute)
 		burst := l.cfg.PerKeyBurst
 		if burst <= 0 {
@@ -73,9 +67,7 @@ func (l *Limiter) Allow(key string) bool {
 	return b.Allow()
 }
 
-// Middleware returns an http.Handler middleware that calls keyFn to derive
-// the bucket key for each request and rejects with 429 + Retry-After when
-// the bucket is empty.
+// Middleware rejects with 429 + Retry-After when the bucket for keyFn(r) is empty.
 func (l *Limiter) Middleware(keyFn func(*http.Request) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +76,7 @@ func (l *Limiter) Middleware(keyFn func(*http.Request) string) func(http.Handler
 				key = r.RemoteAddr
 			}
 			if !l.Allow(key) {
-				// Retry-After hint: the time it takes to refill one token.
+				// One-token refill time.
 				retryAfterSec := 60 / l.cfg.PerKeyRequestsPerMinute
 				if retryAfterSec < 1 {
 					retryAfterSec = 1
@@ -98,9 +90,7 @@ func (l *Limiter) Middleware(keyFn func(*http.Request) string) func(http.Handler
 	}
 }
 
-// HashAuthHeader returns a stable, non-reversible key for the Authorization
-// header. We hash so the limiter map doesn't accidentally retain plaintext
-// secrets in memory longer than necessary.
+// HashAuthHeader hashes so the limiter map never retains the plaintext token.
 func HashAuthHeader(authHeader string) string {
 	if authHeader == "" {
 		return ""

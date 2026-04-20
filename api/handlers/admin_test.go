@@ -8,10 +8,9 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/config"
 )
 
-// TestCheckSystemToken_RejectsEmpty: an empty configured token must always
-// reject, even if the request also presents an empty Authorization header.
-// This guards against a misconfigured prod server treating "no token at all"
-// as authorization.
+// An empty configured token must never authorize, even when the request also
+// sends an empty header — guards against a misconfigured prod server treating
+// "no token at all" as authorization.
 func TestCheckSystemToken_RejectsEmpty(t *testing.T) {
 	h := &AdminHandlers{Config: &config.Config{}}
 	r := httptest.NewRequest(http.MethodGet, "/api/admin/status", nil)
@@ -28,7 +27,6 @@ func TestCheckSystemToken_RejectsEmpty(t *testing.T) {
 	}
 }
 
-// TestCheckSystemToken_AcceptsExactMatch ensures the happy path works.
 func TestCheckSystemToken_AcceptsExactMatch(t *testing.T) {
 	h := &AdminHandlers{Config: &config.Config{
 		Auth: config.AuthConfig{SystemToken: "the-token"},
@@ -40,7 +38,6 @@ func TestCheckSystemToken_AcceptsExactMatch(t *testing.T) {
 	}
 }
 
-// TestCheckSystemToken_RejectsMismatch covers wrong tokens and missing prefix.
 func TestCheckSystemToken_RejectsMismatch(t *testing.T) {
 	h := &AdminHandlers{Config: &config.Config{
 		Auth: config.AuthConfig{SystemToken: "the-token"},
@@ -57,8 +54,7 @@ func TestCheckSystemToken_RejectsMismatch(t *testing.T) {
 	}
 }
 
-// TestValidateGitHubSignature_RejectsEmptySecret guards against an
-// accidentally-empty webhook secret rendering the validation a no-op.
+// An empty webhook secret must not reduce validation to a no-op.
 func TestValidateGitHubSignature_RejectsEmptySecret(t *testing.T) {
 	h := &AdminHandlers{}
 	if h.validateGitHubSignature([]byte("body"), "sha256=anything", "") {
@@ -66,8 +62,7 @@ func TestValidateGitHubSignature_RejectsEmptySecret(t *testing.T) {
 	}
 }
 
-// TestValidateGitHubSignature_RejectsEmptySignature guards against a
-// missing X-Hub-Signature-256 header counting as valid.
+// A missing X-Hub-Signature-256 header must never count as valid.
 func TestValidateGitHubSignature_RejectsEmptySignature(t *testing.T) {
 	h := &AdminHandlers{}
 	if h.validateGitHubSignature([]byte("body"), "", "secret") {
@@ -75,9 +70,8 @@ func TestValidateGitHubSignature_RejectsEmptySignature(t *testing.T) {
 	}
 }
 
-// TestMatchManuscriptForWebhook covers the slug-or-url matching.
-// The motivating case is: config has an SSH `url`, GitHub sends an HTTPS
-// `clone_url`. Slug-based matching is the only thing that lets that work.
+// Motivating case: config has SSH `url`, GitHub sends HTTPS `clone_url` —
+// slug-based matching is the only thing that makes that work.
 func TestMatchManuscriptForWebhook(t *testing.T) {
 	manuscripts := []config.ManuscriptConfig{
 		{
@@ -90,7 +84,6 @@ func TestMatchManuscriptForWebhook(t *testing.T) {
 		{
 			Name: "https-only",
 			Repository: config.RepositoryConfig{
-				// no slug — fall back to URL equality
 				URL: "https://github.com/bob/https-only.git",
 			},
 		},

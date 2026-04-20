@@ -44,7 +44,6 @@ func Middleware(next http.Handler) http.Handler {
 		)
 		ctx := WithLogger(r.Context(), l)
 
-		// Capture status via a small wrapper so we can log it on completion.
 		wrapped := &statusRecorder{ResponseWriter: w, status: 200}
 		next.ServeHTTP(wrapped, r.WithContext(ctx))
 

@@ -276,20 +276,16 @@ func TestGeneratePositionBetween(t *testing.T) {
 }
 
 func TestOrderingInvariant(t *testing.T) {
-	// Test that generated positions maintain lexicographic ordering
 	positions := []string{}
 
-	// Add first item
 	pos, _ := GetPositionAtIndex(positions, 0)
 	positions = append(positions, pos)
 
-	// Add items at end
 	for i := 0; i < 5; i++ {
 		pos, _ := GetPositionAtIndex(positions, len(positions))
 		positions = append(positions, pos)
 	}
 
-	// Verify ordering
 	for i := 1; i < len(positions); i++ {
 		if positions[i-1] >= positions[i] {
 			t.Errorf("Ordering broken: positions[%d]=%s >= positions[%d]=%s",

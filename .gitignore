@@ -69,3 +69,6 @@ package-lock.json
 # Database dumps
 *.sql
 *.dump
+
+# Claude Code (per-user agent memory, scheduler lock, etc.)
+.claude/

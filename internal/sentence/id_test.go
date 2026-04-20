@@ -5,12 +5,12 @@ import (
 )
 
 func TestGenerateSentenceID(t *testing.T) {
+	// We assert format and determinism rather than exact hash bytes.
 	tests := []struct {
 		name       string
 		text       string
 		ordinal    int
 		commitHash string
-		// We don't test exact hash output, but verify format and determinism
 	}{
 		{
 			name:       "Three word sentence",
@@ -52,16 +52,13 @@ func TestGenerateSentenceID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Generate ID
 			id := GenerateSentenceID(tt.text, tt.ordinal, tt.commitHash)
 
-			// Verify format: should contain at least one dash and end with 8 hex chars
-			if len(id) < 10 { // At minimum: "x-12345678"
+			if len(id) < 10 { // minimum shape is "x-12345678"
 				t.Errorf("ID too short: %q (len=%d)", id, len(id))
 			}
 
-			// Verify it ends with dash + 8 hex characters
-			parts := id[len(id)-9:] // Last 9 chars should be "-xxxxxxxx"
+			parts := id[len(id)-9:]
 			if parts[0] != '-' {
 				t.Errorf("Expected dash before hex suffix in %q", id)
 			}
@@ -71,20 +68,17 @@ func TestGenerateSentenceID(t *testing.T) {
 				t.Errorf("Expected 8 hex chars, got %d in %q", len(hexPart), id)
 			}
 
-			// Verify hex chars are valid
 			for _, c := range hexPart {
 				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 					t.Errorf("Invalid hex character %c in ID %q", c, id)
 				}
 			}
 
-			// Test determinism: same input should produce same output
 			id2 := GenerateSentenceID(tt.text, tt.ordinal, tt.commitHash)
 			if id != id2 {
 				t.Errorf("Non-deterministic ID generation:\nFirst:  %q\nSecond: %q", id, id2)
 			}
 
-			// Test that different inputs produce different IDs
 			id3 := GenerateSentenceID(tt.text, tt.ordinal+1, tt.commitHash)
 			if id == id3 {
 				t.Errorf("Same ID for different ordinals: %q", id)
@@ -98,13 +92,13 @@ func TestGenerateSentenceID(t *testing.T) {
 	}
 }
 
+// Sample pairs from PLAN.md, verifying prefix formation (not the full hash).
 func TestGenerateSentenceID_Examples(t *testing.T) {
-	// Test specific examples from PLAN.md to verify format
 	tests := []struct {
 		text       string
 		ordinal    int
 		commitHash string
-		prefix     string // Expected prefix (before the hash)
+		prefix     string
 	}{
 		{
 			text:       "Kostya looked around the room.",
@@ -142,13 +136,11 @@ func TestGenerateSentenceID_Examples(t *testing.T) {
 		t.Run(tt.text, func(t *testing.T) {
 			id := GenerateSentenceID(tt.text, tt.ordinal, tt.commitHash)
 
-			// Check prefix
 			if !startsWithPrefix(id, tt.prefix) {
 				t.Errorf("Expected ID to start with %q, got %q", tt.prefix, id)
 			}
 
-			// Verify format
-			expectedMinLen := len(tt.prefix) + 1 + 8 // prefix + dash + 8 hex chars
+			expectedMinLen := len(tt.prefix) + 1 + 8
 			if len(id) != expectedMinLen {
 				t.Errorf("Expected ID length %d, got %d: %q",
 					expectedMinLen, len(id), id)
@@ -158,7 +150,6 @@ func TestGenerateSentenceID_Examples(t *testing.T) {
 }
 
 func TestGenerateSentenceID_Collision(t *testing.T) {
-	// Test that we don't get collisions for common scenarios
 	const commitHash = "abc123def456"
 	seen := make(map[string]bool)
 
@@ -179,7 +170,7 @@ func TestGenerateSentenceID_Collision(t *testing.T) {
 		seen[id] = true
 	}
 
-	// Same sentence at different ordinals should produce different IDs
+	// Same sentence at different ordinals must not collide.
 	text := "The sun was setting."
 	for ordinal := 0; ordinal < 10; ordinal++ {
 		id := GenerateSentenceID(text, ordinal, commitHash)

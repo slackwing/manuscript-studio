@@ -9,10 +9,8 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/database"
 )
 
-// admin-upsert reads config, bcrypts the admin password, upserts the admin
-// user into the "user" table, and grants access to every manuscript defined
-// in config. Idempotent: updates password hash if changed, inserts access
-// rows that don't exist, leaves existing ones alone.
+// admin-upsert upserts the admin user (bcrypted) and grants access to every
+// configured manuscript. Idempotent.
 func main() {
 	cfg, err := config.Load()
 	if err != nil {

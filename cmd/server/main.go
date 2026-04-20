@@ -17,16 +17,13 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Install slog as the global logger. JSON in production (greppable,
-	// pipeable into log aggregators), text in dev (readable). The standard
-	// `log` package is routed through slog so existing log.Printf calls
-	// keep working while we migrate them piecemeal.
+	// JSON in production (log aggregators); text in dev (readable). Stdlib
+	// `log` is routed through slog so existing log.Printf calls keep working.
 	var handler slog.Handler
 	if cfg.Server.Env == "production" {
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})
@@ -37,7 +34,6 @@ func main() {
 	log.SetFlags(0)
 	log.SetOutput(slogWriter{})
 
-	// Connect to database
 	ctx := context.Background()
 	db, err := database.Connect(ctx, cfg.Database)
 	if err != nil {
@@ -45,10 +41,8 @@ func main() {
 	}
 	defer db.Close()
 
-	// Recover any migration rows left in pending/running by a previous
-	// process — those goroutines are gone, so the rows are stuck. Mark
-	// them 'error' so the next request can proceed and operators can see
-	// what happened.
+	// Mark pending/running migrations from a crashed prior process as 'error'
+	// so the next request can proceed and operators can see what happened.
 	{
 		dbWrapper := &database.DB{Pool: db}
 		recovered, err := dbWrapper.RecoverInterruptedMigrations(ctx)
@@ -59,10 +53,8 @@ func main() {
 		}
 	}
 
-	// Create API server
 	server := api.NewServer(cfg, db)
 
-	// Create HTTP server
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:      server.Router(),
@@ -71,7 +63,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Start server in goroutine
 	go func() {
 		log.Printf("Starting Manuscript Studio server on %s", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -79,14 +70,12 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Shutting down server...")
 
-	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -97,9 +86,7 @@ func main() {
 	log.Println("Server shutdown complete")
 }
 
-// slogWriter adapts io.Writer (used by stdlib `log`) to slog. Each Write
-// becomes one slog record at INFO. We strip the trailing newline that
-// `log` always appends.
+// slogWriter adapts the io.Writer used by stdlib `log` into slog records at INFO.
 type slogWriter struct{}
 
 func (slogWriter) Write(p []byte) (int, error) {

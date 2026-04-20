@@ -16,7 +16,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// contextKey is a private type for context keys to prevent collisions
+// Private type so context keys from other packages can't collide with ours.
 type contextKey string
 
 const sessionContextKey contextKey = "session"
@@ -24,12 +24,10 @@ const sessionContextKey contextKey = "session"
 // SessionTTL is how long a fresh or just-touched session stays valid.
 const SessionTTL = 24 * time.Hour
 
-// sessionRefreshThreshold: when a session has less than this much time left,
-// Get() extends expires_at by SessionTTL. Sliding window without churning the
-// DB on every single request.
+// When a session has less than this left, Get() bumps expires_at by SessionTTL —
+// sliding window without a DB write on every single request.
 const sessionRefreshThreshold = 6 * time.Hour
 
-// Session represents an active user session.
 type Session struct {
 	Username       string
 	ManuscriptName string
@@ -38,24 +36,21 @@ type Session struct {
 	ExpiresAt      time.Time
 }
 
-// SessionStore manages active sessions, persisted in the `session` DB table.
-//
-// Backed by Postgres so sessions survive process restarts and can be shared
-// across replicas. Replaces the in-memory map this used to be — the same
-// Create/Get/Delete API is preserved so call sites need no changes.
+// SessionStore persists sessions in the `session` table so they survive process
+// restarts and can be shared across replicas.
 type SessionStore struct {
 	pool *pgxpool.Pool
 }
 
-// NewSessionStore creates a session store backed by the provided pool.
-// Starts a background goroutine that periodically purges expired rows.
+// NewSessionStore returns a store backed by pool and starts a background
+// goroutine that periodically purges expired rows.
 func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
 	s := &SessionStore{pool: pool}
 	go s.cleanupExpired()
 	return s
 }
 
-// Create inserts a new session row and returns the cookie token.
+// Create inserts a session row and returns the cookie token.
 func (s *SessionStore) Create(username, manuscriptName string) (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
@@ -83,10 +78,9 @@ func (s *SessionStore) Create(username, manuscriptName string) (string, error) {
 	return token, nil
 }
 
-// Get loads the session for a token. Returns (nil, false) if the token is
-// unknown or expired. Refreshes expires_at on read if the session is in the
-// last sessionRefreshThreshold of its TTL — implements a sliding window
-// without writing on every request.
+// Get loads a session by token. Returns (nil, false) if unknown or expired.
+// Bumps expires_at only when inside sessionRefreshThreshold (sliding window
+// without a write per request).
 func (s *SessionStore) Get(token string) (*Session, bool) {
 	if token == "" {
 		return nil, false
@@ -114,13 +108,10 @@ func (s *SessionStore) Get(token string) (*Session, bool) {
 
 	now := time.Now().UTC()
 	if !now.Before(expiresAt) {
-		// Expired. Best-effort delete; ignore error.
 		_, _ = s.pool.Exec(ctx, `DELETE FROM session WHERE id = $1`, token)
 		return nil, false
 	}
 
-	// Sliding-window refresh: if we're inside the refresh threshold, push
-	// expires_at out by another full TTL. Always update last_activity_at.
 	newExpires := expiresAt
 	if expiresAt.Sub(now) < sessionRefreshThreshold {
 		newExpires = now.Add(SessionTTL)
@@ -138,7 +129,6 @@ func (s *SessionStore) Get(token string) (*Session, bool) {
 	}, true
 }
 
-// Delete removes a session.
 func (s *SessionStore) Delete(token string) {
 	if token == "" {
 		return
@@ -148,9 +138,8 @@ func (s *SessionStore) Delete(token string) {
 	_, _ = s.pool.Exec(ctx, `DELETE FROM session WHERE id = $1`, token)
 }
 
-// cleanupExpired runs periodically to purge expired session rows. The
-// per-request expiry check in Get() is the load-bearing one; this is just
-// for tidiness and to keep the table small.
+// cleanupExpired periodically trims expired rows to keep the table small.
+// Correctness lives in the per-request check in Get(); this is just hygiene.
 func (s *SessionStore) cleanupExpired() {
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
@@ -164,7 +153,6 @@ func (s *SessionStore) cleanupExpired() {
 	}
 }
 
-// generateSessionToken creates a cryptographically secure random token.
 func generateSessionToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -173,7 +161,6 @@ func generateSessionToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// HashPassword hashes a password using bcrypt.
 func HashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -182,15 +169,13 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-// VerifyPassword verifies a password against a hash.
 func VerifyPassword(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
 }
 
-// ValidatePassword enforces our password rules. Intentionally minimal:
-// at least 4 characters, no other constraints. Used at every entry point
-// that sets a password (registration, admin upsert, etc.).
+// ValidatePassword: intentionally minimal (>= 4 chars). Used at every entry
+// point that sets a password.
 func ValidatePassword(password string) error {
 	if len(password) < 4 {
 		return fmt.Errorf("password must be at least 4 characters")
@@ -198,7 +183,7 @@ func ValidatePassword(password string) error {
 	return nil
 }
 
-// Middleware returns a middleware that checks for valid session.
+// Middleware returns a handler that requires a valid session cookie.
 func Middleware(store *SessionStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +203,6 @@ func Middleware(store *SessionStore) func(http.Handler) http.Handler {
 	}
 }
 
-// GetSession retrieves the session from the request context.
 func GetSession(r *http.Request) (*Session, error) {
 	session, ok := r.Context().Value(sessionContextKey).(*Session)
 	if !ok {
@@ -227,7 +211,7 @@ func GetSession(r *http.Request) (*Session, error) {
 	return session, nil
 }
 
-// CSRFMiddleware validates CSRF tokens on state-changing requests.
+// CSRFMiddleware rejects state-changing requests without a matching X-CSRF-Token.
 func CSRFMiddleware(store *SessionStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,7 +241,6 @@ func CSRFMiddleware(store *SessionStore) func(http.Handler) http.Handler {
 	}
 }
 
-// ValidateCSRFToken validates a CSRF token for a given session.
 func ValidateCSRFToken(r *http.Request, store *SessionStore, providedToken string) bool {
 	cookie, err := r.Cookie("session_token")
 	if err != nil {

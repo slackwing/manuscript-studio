@@ -1,20 +1,15 @@
 package migrations
 
-// Integration tests for the full Processor.Run flow against a real Postgres.
+// Integration tests for Processor.Run against real Postgres.
 //
-// These exist because the Playwright e2e suite only ever exercises the
-// bootstrap path — never the migrate path that handles annotation
-// re-pointing. The annotation-migration logic was a `_ = newVersion`
-// no-op in v1 and shipped to prod that way; nothing caught it.
+// Motivation: the Playwright e2e suite only exercises bootstrap — the
+// annotation-repointing migrate path once shipped as `_ = newVersion` and
+// nothing caught it.
 //
-// Connection: by default talks to the dev DB on localhost:5433. Set
-// MANUSCRIPT_STUDIO_TEST_DB_URL to override (e.g. for CI). Tests skip
-// (not fail) when no DB is reachable, so they don't break a unit-test
-// CI run.
-//
-// Each test uses a unique manuscript to avoid stepping on the e2e suite's
-// data. Cleanup wipes that manuscript's rows on entry, not exit, so
-// failure leftovers can be inspected.
+// Connects to localhost:5433 by default; override via MANUSCRIPT_STUDIO_TEST_DB_URL.
+// Tests skip (not fail) when no DB is reachable. Each test gets a unique
+// manuscript; cleanup runs on entry (not exit) so failure leftovers remain
+// inspectable.
 
 import (
 	"context"
@@ -34,11 +29,10 @@ import (
 
 const defaultTestDBURL = "postgres://manuscript_dev:manuscript_dev@localhost:5433/manuscript_studio_dev"
 
-// testCounter ensures each subtest gets a unique manuscript identifier
-// even when running in parallel.
+// Atomic so each parallel subtest gets a unique manuscript id.
 var testCounter int64
 
-// connectTestDB returns a pool, or skips the test if no DB is reachable.
+// connectTestDB returns a pool or skips the test if no DB is reachable.
 func connectTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	url := os.Getenv("MANUSCRIPT_STUDIO_TEST_DB_URL")
@@ -58,9 +52,8 @@ func connectTestDB(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// uniqueManuscript creates a fresh manuscript row and returns its id and
-// the URL+path used so tests don't collide with the e2e suite's
-// `test-manuscripts` data. Cleanup is the caller's job.
+// uniqueManuscript creates a fresh row with a URL that won't collide with
+// the e2e suite's `test-manuscripts` data. Cleanup is the caller's job.
 func uniqueManuscript(t *testing.T, ctx context.Context, db *database.DB) (manuscriptID int, repoURL, filePath string) {
 	t.Helper()
 	n := atomic.AddInt64(&testCounter, 1)
@@ -74,8 +67,8 @@ func uniqueManuscript(t *testing.T, ctx context.Context, db *database.DB) (manus
 	return m.ManuscriptID, repoURL, filePath
 }
 
-// nukeManuscript removes everything tied to a test manuscript. Run at
-// start so we always start clean even if a previous run crashed mid-test.
+// nukeManuscript wipes everything tied to manuscriptID. Run at start so a
+// prior crash doesn't poison the next run.
 func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manuscriptID int) {
 	t.Helper()
 	stmts := []string{
@@ -104,8 +97,7 @@ func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manus
 	}
 }
 
-// ensureUser makes sure a user row exists for the test annotations.
-// The annotation table FKs to user.username.
+// The annotation table FKs to user.username, so every test annotation needs a user.
 func ensureUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, username string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
@@ -118,9 +110,7 @@ func ensureUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, username 
 	}
 }
 
-// runProcessor runs one migration end-to-end through the same path the
-// HTTP handler uses: insert pending row, then Processor.Run.
-// Returns the migration_id.
+// Same path as the HTTP handler: insert pending row, then Processor.Run.
 func runProcessor(t *testing.T, ctx context.Context, p *Processor, db *database.DB, manuscriptID int, commitHash, content string) int {
 	t.Helper()
 	id, err := db.CreatePendingMigration(ctx, manuscriptID, commitHash, p.SegmenterVersion())
@@ -133,9 +123,7 @@ func runProcessor(t *testing.T, ctx context.Context, p *Processor, db *database.
 	return id
 }
 
-// insertAnnotation creates an annotation on a specific sentence with the
-// given note text, returning the annotation_id. Goes through the same DB
-// helper the API uses, so version row is created too.
+// Creates an annotation + its version row via the same DB helper the API uses.
 func insertAnnotation(t *testing.T, ctx context.Context, db *database.DB, sentenceID, username, note string) int {
 	t.Helper()
 	a := &models.Annotation{
@@ -160,7 +148,6 @@ func insertAnnotation(t *testing.T, ctx context.Context, db *database.DB, senten
 	return a.AnnotationID
 }
 
-// getAnnotationSentenceID reads the current sentence_id of an annotation row.
 func getAnnotationSentenceID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, annotationID int) string {
 	t.Helper()
 	var sid string
@@ -170,7 +157,6 @@ func getAnnotationSentenceID(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	return sid
 }
 
-// getLatestVersion reads the latest annotation_version row for an annotation.
 func getLatestVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, annotationID int) (version int, sentenceID string, confidence *float64) {
 	t.Helper()
 	if err := pool.QueryRow(ctx, `
@@ -185,9 +171,8 @@ func getLatestVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ann
 	return
 }
 
-// findSentenceIDByPrefix returns the sentence_id of the first sentence in
-// `migrationID` whose text begins with `prefix`. Useful when tests don't
-// want to recompute the deterministic sentence-id hash by hand.
+// Returns the first sentence_id under migrationID whose text starts with prefix,
+// so tests don't have to recompute the deterministic sentence-id hash by hand.
 func findSentenceIDByPrefix(t *testing.T, ctx context.Context, pool *pgxpool.Pool, migrationID int, prefix string) string {
 	t.Helper()
 	var sid string
@@ -202,7 +187,6 @@ func findSentenceIDByPrefix(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	return sid
 }
 
-// setup wires up everything a test needs and returns helpers/cleanup.
 type fixture struct {
 	pool         *pgxpool.Pool
 	db           *database.DB
@@ -237,23 +221,17 @@ func newFixture(t *testing.T) *fixture {
 	}
 }
 
-// ----- Tests -----
-
-// TestMigration_BootstrapThenNoOp: bootstrap, then a second migration
-// with byte-identical content. All sentence IDs should match exactly,
-// every annotation should still point at its (same) sentence.
+// Bootstrap, then re-run with byte-identical content but a different commit
+// hash. Sentence ids change (hash includes commit); annotations must follow.
 func TestMigration_BootstrapThenNoOp(t *testing.T) {
 	f := newFixture(t)
 	content := "Sentence one is here. Sentence two follows. Sentence three is last."
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "commitA", content)
 
-	// Annotate sentence two.
 	s2 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Sentence two")
 	annID := insertAnnotation(t, f.ctx, f.db, s2, f.username, "this one")
 
-	// Re-run with a different commit hash but identical content. New
-	// sentence IDs (different commit suffix) but identical text.
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "commitB", content)
 	s2New := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Sentence two")
 
@@ -277,8 +255,7 @@ func TestMigration_BootstrapThenNoOp(t *testing.T) {
 	}
 }
 
-// TestMigration_SentenceEdited: small word change → high-similarity match
-// should carry the annotation forward.
+// A one-word edit should match with high similarity and carry the annotation.
 func TestMigration_SentenceEdited(t *testing.T) {
 	f := newFixture(t)
 	v1 := "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. The five boxing wizards jump quickly."
@@ -302,16 +279,14 @@ func TestMigration_SentenceEdited(t *testing.T) {
 	if conf == nil {
 		t.Fatal("expected non-nil confidence on migrated version")
 	}
-	// One word changed out of ~9 → similarity ≈ 0.88.
+	// ~1 of 9 words changed → similarity ≈ 0.88.
 	if *conf < 0.7 {
 		t.Errorf("expected high similarity for one-word edit, got %v", *conf)
 	}
 }
 
-// TestMigration_SentenceDeleted_FallsForward: a sentence is deleted and
-// there's no plausible fuzzy match in additions. The annotation should
-// land on the FOLLOWING surviving sentence (resolveOrphanFallbacks),
-// never orphan.
+// Deleted sentence, no fuzzy match → annotation falls forward to the next
+// surviving sentence, never orphans.
 func TestMigration_SentenceDeleted_FallsForward(t *testing.T) {
 	f := newFixture(t)
 	v1 := "First sentence stays. The doomed sentence vanishes utterly. Last sentence stays."
@@ -333,9 +308,8 @@ func TestMigration_SentenceDeleted_FallsForward(t *testing.T) {
 	}
 }
 
-// TestMigration_LastSentenceDeleted_FallsBackward: when the deleted
-// sentence is the last one (no following sentence to fall forward to),
-// the annotation should fall back to the PREVIOUS surviving sentence.
+// Tail deletion has no forward anchor, so the annotation falls backward to
+// the previous surviving sentence.
 func TestMigration_LastSentenceDeleted_FallsBackward(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Anchor sentence stays. The trailing sentence is doomed."
@@ -354,12 +328,9 @@ func TestMigration_LastSentenceDeleted_FallsBackward(t *testing.T) {
 	}
 }
 
-// TestMigration_SentenceSplit: one annotated sentence is split into two
-// in the next commit. The annotation should land on the half it most
-// closely matches (the matcher picks the highest-similarity new sentence).
+// A split sentence should carry the annotation onto whichever half matches best.
 func TestMigration_SentenceSplit(t *testing.T) {
 	f := newFixture(t)
-	// One long sentence, then split into two.
 	v1 := "Anchor at the start. The protagonist walked into the dim hallway and considered the strange door before her. Anchor at the end."
 	v2 := "Anchor at the start. The protagonist walked into the dim hallway. She considered the strange door before her. Anchor at the end."
 
@@ -375,16 +346,13 @@ func TestMigration_SentenceSplit(t *testing.T) {
 	if got != half1 && got != half2 {
 		t.Fatalf("annotation should land on one half of the split (%s or %s), got %s", half1, half2, got)
 	}
-	// "The protagonist walked into the dim hallway" is more textually
-	// similar to the original (shares the leading clause verbatim) than
-	// "She considered the strange door before her" — so we expect half1.
+	// half1 shares the leading clause verbatim, so it's the expected winner.
 	if got != half1 {
 		t.Logf("note: split annotation landed on second half (%s) rather than first (%s)", half2, half1)
 	}
 }
 
-// TestMigration_SentencesMerged: two annotated sentences are merged into
-// one. Both annotations should end up on the merged sentence.
+// Two merged sentences: both annotations land on the merged result.
 func TestMigration_SentencesMerged(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Anchor at the start. The dog barked loudly. The cat hissed back. Anchor at the end."
@@ -409,14 +377,8 @@ func TestMigration_SentencesMerged(t *testing.T) {
 	}
 }
 
-// TestMigration_PrefixSentenceAdded: insert a new sentence at the start
-// of the manuscript without changing later sentences. Annotations on
-// later sentences should stay put — those sentences exact-match (same
-// text + same ordinal? no, ordinal changes — but text-based id is what
-// matters for the matcher's exact path).
-//
-// This is the key test for "the matcher uses normalized TEXT, not
-// position": a positional shift alone shouldn't break annotations.
+// Load-bearing check that the matcher uses normalized text (not position):
+// prepending a sentence shouldn't break annotations on later ones.
 func TestMigration_PrefixSentenceAdded(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Body sentence one stays. Body sentence two stays. Body sentence three stays."
@@ -435,19 +397,11 @@ func TestMigration_PrefixSentenceAdded(t *testing.T) {
 	}
 }
 
-// TestMigration_AtomicityOnFailure verifies the all-or-nothing guarantee.
-// We can't easily inject a DB failure mid-transaction, but we can
-// verify the simpler invariant: when migrate returns success, EVERY
-// annotation that should have moved did, AND when it returns error,
-// no annotation moved.
-//
-// Setup: bootstrap with N annotated sentences, then trigger a migration
-// where all N sentences are edited (so all N annotations need to move).
-// Assert all moved together.
+// Weaker stand-in for atomicity: bootstrap with N annotations, then edit every
+// sentence. On success, every annotation must have moved.
 func TestMigration_AllAnnotationsMoveTogether(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Alpha sentence here. Bravo sentence here. Charlie sentence here. Delta sentence here. Echo sentence here."
-	// Edit every sentence by one word so every annotation needs to migrate.
 	v2 := "Alpha line here. Bravo line here. Charlie line here. Delta line here. Echo line here."
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "before-bulk", v1)
@@ -470,18 +424,14 @@ func TestMigration_AllAnnotationsMoveTogether(t *testing.T) {
 	}
 }
 
-// TestMigration_FailureLeavesRowAtError: trigger a migration with a
-// commit_hash that's already been used. CreatePendingMigration should
-// 409 (return ErrMigrationInProgress) and the existing row should be
-// untouched.
+// Reusing a commit hash must trip the unique constraint as ErrMigrationInProgress,
+// leaving the existing row untouched.
 func TestMigration_DuplicateCommitConflicts(t *testing.T) {
 	f := newFixture(t)
 	content := "One sentence. Two sentence."
 
 	runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "samehash", content)
 
-	// Second attempt with the same hash — the unique constraint should
-	// fire as ErrMigrationInProgress.
 	_, err := f.db.CreatePendingMigration(f.ctx, f.manuscriptID, "samehash", f.processor.SegmenterVersion())
 	if err == nil {
 		t.Fatal("expected ErrMigrationInProgress on duplicate insert, got nil")

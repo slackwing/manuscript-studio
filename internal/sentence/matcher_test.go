@@ -6,11 +6,11 @@ import (
 
 func TestComputeSimilarity(t *testing.T) {
 	tests := []struct {
-		name       string
-		text1      string
-		text2      string
-		minSim     float64 // Minimum expected similarity
-		maxSim     float64 // Maximum expected similarity
+		name   string
+		text1  string
+		text2  string
+		minSim float64
+		maxSim float64
 	}{
 		{
 			name:   "Identical texts",
@@ -133,7 +133,7 @@ func TestLevenshteinDistance(t *testing.T) {
 			name:     "Multiple operations",
 			words1:   []string{"the", "quick", "brown", "fox"},
 			words2:   []string{"the", "slow", "red", "fox", "jumped"},
-			expected: 3, // substitute quick->slow, substitute brown->red, insert jumped
+			expected: 3, // quick→slow + brown→red + insert "jumped"
 		},
 		{
 			name:     "Empty arrays",
@@ -170,6 +170,7 @@ func TestComputeSentenceDiff(t *testing.T) {
 		expectedUnchanged int
 	}{
 		{
+			// Matching is by normalized text, so different ids with same text count as unchanged.
 			name: "No changes",
 			oldSentences: map[string]string{
 				"id1": "The cat sat.",
@@ -229,13 +230,13 @@ func TestComputeSentenceDiff(t *testing.T) {
 				"id3": "Sentence three.",
 			},
 			newSentences: map[string]string{
-				"id4": "Sentence one.",      // unchanged
-				"id5": "Sentence two EDIT.", // changed (counts as delete + add)
-				"id6": "Sentence four.",     // added
+				"id4": "Sentence one.",
+				"id5": "Sentence two EDIT.",
+				"id6": "Sentence four.",
 			},
-			expectedAdded:    2, // id5 (edited), id6 (new)
-			expectedDeleted:  2, // id2 (edited), id3 (removed)
-			expectedUnchanged: 1, // id1 -> id4
+			expectedAdded:    2,
+			expectedDeleted:  2,
+			expectedUnchanged: 1,
 		},
 	}
 
@@ -333,7 +334,6 @@ func TestComputeMigrationMap(t *testing.T) {
 					return
 				}
 				m := matches[0]
-				// Should either be low-similarity or deletion-nearest
 				if m.Similarity > 0.4 {
 					t.Errorf("Expected low similarity, got %.3f", m.Similarity)
 				}

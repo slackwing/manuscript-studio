@@ -8,17 +8,14 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/config"
 )
 
-// DB wraps a database connection pool
 type DB struct {
 	Pool *pgxpool.Pool
 }
 
-// Close closes the database connection
 func (db *DB) Close() {
 	db.Pool.Close()
 }
 
-// Connect creates a new database connection using config
 func Connect(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 		cfg.User,

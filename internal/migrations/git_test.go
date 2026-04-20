@@ -8,9 +8,8 @@ import (
 	"testing"
 )
 
-// TestGitCommandDoesNotLeakToken ensures the auth token never appears in the
-// git command's argv. Regression test for the prior bug where the token was
-// interpolated into the clone URL.
+// Regression: previously the token was interpolated into the clone URL and
+// leaked into argv. It must only reach git via GIT_ASKPASS + env var.
 func TestGitCommandDoesNotLeakToken(t *testing.T) {
 	g := &GitRepository{
 		Path:      "/tmp/does-not-matter",
@@ -32,7 +31,6 @@ func TestGitCommandDoesNotLeakToken(t *testing.T) {
 		}
 	}
 
-	// Token must be in env (so the askpass helper can read it), but not in argv.
 	tokenInEnv := false
 	for _, e := range cmd.Env {
 		if strings.HasPrefix(e, "MANUSCRIPT_STUDIO_GIT_TOKEN=") &&
@@ -44,7 +42,6 @@ func TestGitCommandDoesNotLeakToken(t *testing.T) {
 		t.Fatalf("expected MANUSCRIPT_STUDIO_GIT_TOKEN in env, env was: %v", cmd.Env)
 	}
 
-	// GIT_ASKPASS must point to a real, executable file.
 	askpass := ""
 	for _, e := range cmd.Env {
 		if strings.HasPrefix(e, "GIT_ASKPASS=") {
@@ -63,7 +60,6 @@ func TestGitCommandDoesNotLeakToken(t *testing.T) {
 	}
 }
 
-// TestScrubTokenRemovesToken verifies the defensive scrubber.
 func TestScrubTokenRemovesToken(t *testing.T) {
 	in := "fatal: could not read from https://ghp_xyz@github.com/foo/bar.git"
 	out := scrubToken(in, "ghp_xyz")
@@ -75,7 +71,7 @@ func TestScrubTokenRemovesToken(t *testing.T) {
 	}
 }
 
-// TestScrubTokenEmptyTokenIsNoop verifies that an empty token doesn't replace empty strings everywhere.
+// Empty token must not match-replace empty strings everywhere.
 func TestScrubTokenEmptyTokenIsNoop(t *testing.T) {
 	in := "some output"
 	out := scrubToken(in, "")
@@ -84,7 +80,6 @@ func TestScrubTokenEmptyTokenIsNoop(t *testing.T) {
 	}
 }
 
-// TestNoTokenWhenAuthEmpty verifies no helper is created when there's no token.
 func TestNoTokenWhenAuthEmpty(t *testing.T) {
 	g := &GitRepository{
 		Path:      "/tmp/x",
@@ -106,8 +101,6 @@ func TestNoTokenWhenAuthEmpty(t *testing.T) {
 	}
 }
 
-// TestAskpassHelperPrintsToken verifies the helper script actually prints the token
-// when invoked by a subprocess with the env var set.
 func TestAskpassHelperPrintsToken(t *testing.T) {
 	helper, cleanup, err := writeAskpassHelper()
 	if err != nil {

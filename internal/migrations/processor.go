@@ -11,16 +11,11 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
-// SegmenterVersion is the segmenter version stamped onto every migration row.
+// SegmenterVersion is stamped onto every migration row.
 const SegmenterVersion = "segman-1.0.0"
 
-// Processor handles manuscript migration processing.
-//
-// Lifecycle:
-//   1. Caller calls db.CreatePendingMigration(...) to reserve a row.
-//   2. Caller invokes Processor.Run(ctx, log, migrationID, ...).
-//   3. Run marks the row 'running', does the work, then writes 'done'
-//      (with results) or 'error' (with message) before returning.
+// Processor lifecycle: caller reserves a row with CreatePendingMigration, then
+// calls Run, which transitions the row running → done/error before returning.
 type Processor struct {
 	db               *pgxpool.Pool
 	segmenterVersion string
@@ -32,7 +27,6 @@ func NewProcessor(db *pgxpool.Pool) *Processor {
 
 func (p *Processor) SegmenterVersion() string { return p.segmenterVersion }
 
-// MigrationResult is the summary returned to the caller on success.
 type MigrationResult struct {
 	MigrationID         int    `json:"migration_id"`
 	Status              string `json:"status"`
@@ -44,11 +38,8 @@ type MigrationResult struct {
 	Message             string `json:"message"`
 }
 
-// Run executes the migration for an already-inserted pending row. The row
-// will end up at status='done' or status='error' regardless of whether
-// this returns a non-nil error.
-//
-// Pass slog.Default() for log if you don't have a request-scoped one.
+// Run executes migration for an already-pending row and always leaves it at
+// 'done' or 'error'. Pass slog.Default() if you have no request-scoped logger.
 func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName, content string) (result *MigrationResult, err error) {
 	db := &database.DB{Pool: p.db}
 	if log == nil {
@@ -64,7 +55,6 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 		return nil, err
 	}
 
-	// On any failure below, record the error message on the row.
 	defer func() {
 		if err != nil {
 			if mErr := db.MarkMigrationError(context.Background(), migrationID, err.Error()); mErr != nil {
@@ -73,7 +63,6 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 		}
 	}()
 
-	// Segment new content. Both bootstrap and migrate need this.
 	newSentences, newSentenceIDs, newSentenceMap := segmentContent(content, commitHash, migrationID)
 
 	parent, err := db.GetLatestMigration(ctx, manuscriptID)
@@ -91,8 +80,8 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 	return p.migrate(ctx, db, log, migrationID, manuscriptID, commitHash, branchName, parent, newSentences, newSentenceIDs, newSentenceMap)
 }
 
-// bootstrap processes the very first commit of a manuscript: every sentence
-// is "added", there are no annotations to carry forward.
+// bootstrap handles the very first commit: every sentence is "added", no
+// annotations to carry forward.
 func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName string, newSentences []models.Sentence, newSentenceIDs []string) (*MigrationResult, error) {
 	log.Info("bootstrap: segmented manuscript", slog.Int("sentences", len(newSentences)))
 
@@ -123,7 +112,7 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 	}, nil
 }
 
-// migrate processes a commit that has a prior migration to migrate annotations from.
+// migrate handles a commit with a prior migration to carry annotations from.
 func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName string, parent *models.Migration, newSentences []models.Sentence, newSentenceIDs []string, newSentenceMap map[string]string) (*MigrationResult, error) {
 	oldSentences, err := db.GetSentencesByMigration(ctx, parent.MigrationID)
 	if err != nil {
@@ -150,10 +139,9 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("store new sentences: %w", err)
 	}
 
-	// Migrate annotations BEFORE marking done. If this fails, the deferred
-	// MarkMigrationError flips the row to 'error' and the orphan sentence
-	// rows we just inserted stay tied to a non-done migration_id (so they
-	// won't be selected as "current" — they're just dead bytes until cleanup).
+	// Must run before MarkMigrationDone: on failure, the deferred MarkMigrationError
+	// flips the row to 'error' so the new sentence rows stay tied to a non-done
+	// migration_id and won't be selected as "current".
 	annotationsMigrated, err := p.migrateAnnotations(ctx, db, log, plan)
 	if err != nil {
 		return nil, fmt.Errorf("annotation migration: %w", err)
@@ -192,8 +180,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 	}, nil
 }
 
-// migrateAnnotations runs the planned moves in one DB transaction.
-// Returns the number of annotations migrated. Either all succeed or none do.
+// migrateAnnotations runs the planned moves in a single all-or-nothing tx.
 func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log *slog.Logger, plan map[string]plannedMove) (int, error) {
 	var items []database.AnnotationMigrationItem
 	sources := 0
@@ -231,29 +218,16 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log
 	return migrated, nil
 }
 
-// plannedMove is what should happen to annotations on a given old sentence.
+// plannedMove: where annotations on a given old sentence should land.
 type plannedMove struct {
 	NewSentenceID string
 	Confidence    float64
 }
 
-// planMigration builds the final old->new sentence map, including
-// fallback assignments for old sentences the matcher couldn't place.
-//
-// Algorithm:
-//   1. Take every match the matcher produced (exact + fuzzy).
-//   2. Walk old sentences in ordinal order. For each unmapped sentence,
-//      buffer it as "pending" until the next mapped sentence — then
-//      assign every pending sentence to that mapped sentence's destination.
-//      ("Forward fallback": annotations on a deleted sentence land on the
-//      next surviving sentence.)
-//   3. Anything still pending after the walk had no following mapped
-//      sentence — assign it to the last mapped sentence we saw.
-//      ("Backward fallback": tail-deletion annotations land on the
-//      previous surviving sentence.)
-//
-// Confidence is the matcher's similarity score for matched sentences,
-// 0.0 for fallback assignments.
+// planMigration resolves the old→new sentence map, filling matcher gaps by
+// forward-fallback (orphans inherit the next mapped sentence's target) then
+// backward-fallback for orphans after the last mapped sentence.
+// Confidence is the matcher's similarity for real matches, 0 for fallbacks.
 func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMatch) map[string]plannedMove {
 	plan := make(map[string]plannedMove, len(oldSentences))
 	for _, m := range matches {
@@ -262,36 +236,30 @@ func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMa
 		}
 	}
 
-	var pending []string
-	var lastMapped string
+	var awaitingForwardFallback []string
+	var lastMappedTarget string
 	for _, s := range oldSentences {
 		if move, ok := plan[s.SentenceID]; ok {
-			for _, p := range pending {
+			for _, p := range awaitingForwardFallback {
 				plan[p] = plannedMove{NewSentenceID: move.NewSentenceID, Confidence: 0}
 			}
-			pending = nil
-			lastMapped = move.NewSentenceID
+			awaitingForwardFallback = nil
+			lastMappedTarget = move.NewSentenceID
 			continue
 		}
-		pending = append(pending, s.SentenceID)
+		awaitingForwardFallback = append(awaitingForwardFallback, s.SentenceID)
 	}
-	// Anything left in pending was after the last mapped sentence.
-	if lastMapped != "" {
-		for _, p := range pending {
-			plan[p] = plannedMove{NewSentenceID: lastMapped, Confidence: 0}
+	if lastMappedTarget != "" {
+		for _, p := range awaitingForwardFallback {
+			plan[p] = plannedMove{NewSentenceID: lastMappedTarget, Confidence: 0}
 		}
 	}
 	return plan
 }
 
-// segmentContent splits a manuscript into sentences and produces the model
-// rows + id list needed to insert them. Used by both bootstrap and migrate
-// so they don't drift out of sync.
-//
-// Returns:
-//   - sentences ready for db.CreateSentences (migration_id stamped)
-//   - the parallel slice of sentence ids in document order
-//   - a map of id->text for diffing
+// segmentContent returns sentences ready for db.CreateSentences (migration_id
+// stamped), the parallel id slice in document order, and an id→text map for
+// diffing. Shared between bootstrap and migrate to prevent drift.
 func segmentContent(content, commitHash string, migrationID int) ([]models.Sentence, []string, map[string]string) {
 	tokenizer := sentence.NewTokenizer()
 	texts := tokenizer.SplitIntoSentences(content)

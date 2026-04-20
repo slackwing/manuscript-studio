@@ -10,13 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// placeholderToken is the literal string that config.example.yaml uses for
-// every secret value. The server refuses to start in production if any
-// secret still contains it. Dev configs (env=development) are exempt
-// because dev intentionally uses weak, hard-coded secrets.
+// Placeholder used in config.example.yaml for every secret. Production
+// startup rejects any secret still containing it; dev is exempt because dev
+// intentionally uses weak, hard-coded secrets.
 const placeholderToken = "REPLACE_ME"
 
-// Config represents the application configuration
 type Config struct {
 	Version     string             `yaml:"version"`
 	Database    DatabaseConfig     `yaml:"database"`
@@ -29,7 +27,6 @@ type Config struct {
 	RateLimits  RateLimitsConfig   `yaml:"rate_limits"`
 }
 
-// DatabaseConfig contains database connection settings
 type DatabaseConfig struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -38,7 +35,6 @@ type DatabaseConfig struct {
 	Password string `yaml:"password"`
 }
 
-// AuthConfig contains authentication settings
 type AuthConfig struct {
 	SystemToken    string `yaml:"system_token"`
 	SessionSecret  string `yaml:"session_secret"`
@@ -47,7 +43,6 @@ type AuthConfig struct {
 	AdminPassword  string `yaml:"admin_password"`
 }
 
-// ServerConfig contains server settings
 type ServerConfig struct {
 	Port     int    `yaml:"port"`
 	Host     string `yaml:"host"`
@@ -55,18 +50,14 @@ type ServerConfig struct {
 	BasePath string `yaml:"base_path"` // URL prefix when mounted under a path (e.g. "/manuscripts"). No trailing slash.
 }
 
-// PathsConfig contains file path settings
 type PathsConfig struct {
 	PrivateDir string `yaml:"private_dir"`
 
-	// ReposDir is the root under which manuscript git checkouts live.
-	// Every manuscript's clone path must resolve inside this directory.
-	// If unset, the server falls back to the legacy /repos default
-	// (matching the Docker mount the install script sets up).
+	// Root for all manuscript git checkouts. Every manuscript's clone path
+	// must resolve inside this. Falls back to legacy /repos when unset.
 	ReposDir string `yaml:"repos_dir"`
 }
 
-// LoggingConfig contains logging settings
 type LoggingConfig struct {
 	Directory   string `yaml:"directory"`
 	Level       string `yaml:"level"`
@@ -75,25 +66,16 @@ type LoggingConfig struct {
 	Rotate      bool   `yaml:"rotate"`
 }
 
-// ManuscriptConfig represents a single manuscript configuration
 type ManuscriptConfig struct {
 	Name          string           `yaml:"name"`
 	Repository    RepositoryConfig `yaml:"repository"`
 	WebhookSecret string           `yaml:"webhook_secret,omitempty"`
 }
 
-// RepositoryConfig contains git repository settings.
-//
-// The clone URL is normally derived from `slug` + `use_ssh`:
-//   - use_ssh: false (default) → https://github.com/<slug>.git
-//   - use_ssh: true            → git@github.com:<slug>.git
-//
-// Set `url` only when you need an escape hatch — e.g. a local filesystem
-// path for dev, or a non-GitHub host. If `url` is set, it wins over the
-// slug-derived form.
-//
-// `slug` is also the canonical "owner/repo" identifier used to match
-// incoming GitHub webhooks (compared against payload.repository.full_name).
+// RepositoryConfig: clone URL is derived from slug+use_ssh unless `url` is
+// set (escape hatch for local paths or non-GitHub hosts). `slug` is also the
+// canonical "owner/repo" used to match incoming GitHub webhooks.
+// See TestMatchManuscriptForWebhook and CloneURL().
 type RepositoryConfig struct {
 	Slug      string `yaml:"slug"`
 	UseSSH    bool   `yaml:"use_ssh"`
@@ -103,10 +85,7 @@ type RepositoryConfig struct {
 	AuthToken string `yaml:"auth_token"`
 }
 
-// CloneURL returns the URL git should actually clone/pull. Precedence:
-//   1. Explicit URL if set (escape hatch for local paths, non-GitHub, etc.)
-//   2. Derived from slug + use_ssh
-//   3. Empty string if neither is set (caller should treat as a config error).
+// CloneURL precedence: explicit URL > slug+use_ssh > empty (config error).
 func (r RepositoryConfig) CloneURL() string {
 	if r.URL != "" {
 		return r.URL
@@ -120,27 +99,23 @@ func (r RepositoryConfig) CloneURL() string {
 	return "https://github.com/" + r.Slug + ".git"
 }
 
-// MigrationConfig contains migration behavior settings
 type MigrationConfig struct {
 	LockDuringMigration   bool `yaml:"lock_during_migration"`
 	BackupBeforeMigration bool `yaml:"backup_before_migration"`
 	QueueAnnotations      bool `yaml:"queue_annotations"`
 }
 
-// RateLimitsConfig tunes the per-process rate limiter. Zero disables the
-// corresponding limit.
+// RateLimitsConfig tunes the per-process rate limiter; zero disables.
 type RateLimitsConfig struct {
-	// AdminPerTokenRPM is the steady-state per-token request budget for
-	// /api/admin/* endpoints. Default 10.
+	// Steady-state per-token budget for /api/admin/*. Default 10.
 	AdminPerTokenRPM int `yaml:"admin_per_token_rpm"`
-	// AdminPerTokenBurst is the burst size for the per-token bucket. Default 5.
+	// Burst size for the per-token bucket. Default 5.
 	AdminPerTokenBurst int `yaml:"admin_per_token_burst"`
 }
 
-// Load loads configuration from file
 func Load() (*Config, error) {
-	// MANUSCRIPT_STUDIO_CONFIG_FILE env var takes precedence — used by dev mode to point at
-	// ~/.config/manuscript-studio-dev/config.yaml without touching the prod path.
+	// MANUSCRIPT_STUDIO_CONFIG_FILE wins — dev mode uses it to point at
+	// ~/.config/manuscript-studio-dev/config.yaml without touching prod paths.
 	var configPath string
 	if envPath := os.Getenv("MANUSCRIPT_STUDIO_CONFIG_FILE"); envPath != "" {
 		if _, err := os.Stat(envPath); err == nil {
@@ -150,14 +125,13 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Fall back to conventional search paths. config.example.yaml is
-	// deliberately NOT in this list — it ships with REPLACE_ME placeholder
-	// secrets that would fail Validate() in production anyway, and silently
-	// using a "fallback" config in dev tends to mask missing-config bugs.
+	// config.example.yaml is deliberately excluded — it ships REPLACE_ME
+	// placeholders (fails prod Validate()) and silently falling back to it
+	// in dev tends to mask missing-config bugs.
 	configPaths := []string{
-		"/config/config.yaml", // Docker mount
-		filepath.Join(os.Getenv("HOME"), ".config/manuscript-studio/config.yaml"), // User config
-		"config.yaml", // Local development
+		"/config/config.yaml",
+		filepath.Join(os.Getenv("HOME"), ".config/manuscript-studio/config.yaml"),
+		"config.yaml",
 	}
 
 	if configPath == "" {
@@ -173,19 +147,16 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("no configuration file found in: %v", configPaths)
 	}
 
-	// Read file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
 	}
 
-	// Parse YAML
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Set defaults
 	if config.Server.Port == 0 {
 		config.Server.Port = 5001
 	}
@@ -200,7 +171,6 @@ func Load() (*Config, error) {
 	}
 	config.Server.BasePath = normalizeBasePath(config.Server.BasePath)
 
-	// Expand paths
 	config.Paths.PrivateDir = expandPath(config.Paths.PrivateDir)
 	config.Logging.Directory = expandPath(config.Logging.Directory)
 	for i := range config.Manuscripts {
@@ -214,10 +184,9 @@ func Load() (*Config, error) {
 	return &config, nil
 }
 
-// Validate enforces invariants that the YAML schema can't express:
-//   - structural checks (manuscript paths inside repos_dir) run always,
-//   - secret-quality checks (no REPLACE_ME placeholders, nothing empty)
-//     run only in production, since dev intentionally uses weak secrets.
+// Validate enforces invariants the YAML schema can't. Structural checks
+// (manuscript paths inside repos_dir) always run; secret-quality checks
+// run only in production, since dev intentionally uses weak secrets.
 func (c *Config) Validate() error {
 	if err := c.ValidateManuscriptPaths(); err != nil {
 		return err
@@ -260,7 +229,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// normalizeBasePath ensures leading slash, no trailing slash, empty if root.
+// Ensures leading slash, no trailing slash, empty string for root.
 func normalizeBasePath(p string) string {
 	if p == "" || p == "/" {
 		return ""
@@ -274,13 +243,10 @@ func normalizeBasePath(p string) string {
 	return p
 }
 
-// basePathPattern restricts base_path to URL-safe characters. Anything else
-// (quotes, angle brackets, whitespace) could break out of the
-// <base href="..."> attribute and become an injection vector.
-// Empty is fine — it means root hosting.
+// basePathPattern restricts base_path to URL-safe chars; anything else could
+// escape the <base href="..."> attribute and become an injection vector.
 var basePathPattern = regexp.MustCompile(`^(?:/[A-Za-z0-9._~-]+)*$`)
 
-// expandPath expands ~ to home directory
 func expandPath(path string) string {
 	if path == "" {
 		return path
@@ -295,7 +261,6 @@ func expandPath(path string) string {
 	return path
 }
 
-// GetManuscript returns the configuration for a specific manuscript by name
 func (c *Config) GetManuscript(name string) (*ManuscriptConfig, error) {
 	for _, m := range c.Manuscripts {
 		if m.Name == name {
@@ -305,9 +270,8 @@ func (c *Config) GetManuscript(name string) (*ManuscriptConfig, error) {
 	return nil, fmt.Errorf("manuscript %s not found", name)
 }
 
-// ReposDir returns the resolved root directory for manuscript checkouts.
-// Precedence: MANUSCRIPT_STUDIO_REPOS_DIR env var > paths.repos_dir config >
-// legacy "/repos" default (the Docker mount path).
+// ReposDir precedence: MANUSCRIPT_STUDIO_REPOS_DIR env > paths.repos_dir >
+// legacy "/repos" default (matches the Docker mount).
 func (c *Config) ReposDir() string {
 	if d := os.Getenv("MANUSCRIPT_STUDIO_REPOS_DIR"); d != "" {
 		return expandPath(d)
@@ -318,17 +282,13 @@ func (c *Config) ReposDir() string {
 	return "/repos"
 }
 
-// RepoPath returns the absolute on-disk path for a manuscript's checkout
-// (ReposDir + manuscript name). The result is guaranteed to be inside
-// ReposDir — see ValidateManuscriptPaths.
+// RepoPath is ReposDir/<name>, guaranteed inside ReposDir (see ValidateManuscriptPaths).
 func (c *Config) RepoPath(manuscriptName string) string {
 	return filepath.Join(c.ReposDir(), manuscriptName)
 }
 
-// ValidateManuscriptPaths ensures every manuscript's RepoPath resolves to
-// something inside ReposDir. Defends against a misconfigured (or malicious)
-// manuscript name like "../../etc" that would otherwise let MkdirAll create
-// directories outside the intended root.
+// ValidateManuscriptPaths defends against a manuscript name like "../../etc"
+// that would let MkdirAll escape ReposDir.
 func (c *Config) ValidateManuscriptPaths() error {
 	root, err := filepath.Abs(c.ReposDir())
 	if err != nil {

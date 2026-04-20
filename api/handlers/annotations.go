@@ -127,7 +127,7 @@ func (h *AnnotationHandlers) HandleCreateAnnotation(w http.ResponseWriter, r *ht
 	}
 
 	version := &models.AnnotationVersion{
-		MigrationConfidence: nil, // First version, no migration confidence.
+		MigrationConfidence: nil,
 	}
 
 	if err := h.DB.CreateAnnotation(ctx, annotation, version); err != nil {
@@ -159,7 +159,6 @@ func (h *AnnotationHandlers) HandleUpdateAnnotation(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// CSRF check
 	csrfToken := r.Header.Get("X-CSRF-Token")
 	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)

@@ -10,7 +10,6 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/database"
 )
 
-// AuthHandlers contains authentication-related handlers
 type AuthHandlers struct {
 	DB            *database.DB
 	SessionStore  *auth.SessionStore
@@ -18,32 +17,25 @@ type AuthHandlers struct {
 	Config        *config.Config
 }
 
-// LoginRequest represents login credentials
 type LoginRequest struct {
 	Username       string `json:"username"`
 	Password       string `json:"password"`
 	ManuscriptName string `json:"manuscript_name"`
 }
 
-// LoginResponse contains session info after successful login
 type LoginResponse struct {
 	Username       string `json:"username"`
 	ManuscriptName string `json:"manuscript_name"`
 	CSRFToken      string `json:"csrf_token"`
 }
 
-// dummyPasswordHash is a real bcrypt hash of an arbitrary string at the same
-// cost factor as production hashes. It exists so VerifyPassword does the same
-// amount of work whether or not the user exists, defeating timing-based
-// username enumeration.
+// Real bcrypt hash at production cost factor. Used so VerifyPassword does
+// equal work whether or not the user exists, defeating timing-based enumeration.
 const dummyPasswordHash = "$2a$10$natLQrpv.hhOkSBcdpI/nOAIicjCeF4/0bGMQywZsEOiNgiSgDnP."
 
-// HandleLogin authenticates a user and creates a session.
-//
-// Timing-safe: bcrypt always runs against either the user's real hash or a
-// dummy hash, *before* any branching on whether the user exists. All failure
-// modes (no such user, bad password, no manuscript access) return the same
-// status code and body.
+// HandleLogin authenticates a user and creates a session. Timing-safe: bcrypt
+// always runs (real hash or dummy) before any branching, and every failure
+// mode returns the same status and body.
 func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -69,14 +61,10 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		hashToCompare = user.PasswordHash
 	}
-	// Always run bcrypt — the wall-clock cost is what makes the operation
-	// timing-safe, so we deliberately ignore the result here and re-evaluate
-	// alongside other conditions below.
+	// Bcrypt and access check both run unconditionally; results are combined
+	// below. The wall-clock cost is what makes the login timing-safe.
 	passwordValid := auth.VerifyPassword(req.Password, hashToCompare)
 
-	// Always check manuscript access — same reason. Use the requested name
-	// (which may not match any real manuscript) when the user is missing, so
-	// the DB does a comparable amount of work.
 	hasAccess, err := h.DB.HasManuscriptAccess(ctx, req.Username, req.ManuscriptName)
 	if err != nil {
 		log.Printf("Error checking manuscript access: %v", err)
@@ -89,24 +77,21 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
 	token, err := h.SessionStore.Create(req.Username, req.ManuscriptName)
 	if err != nil {
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
 
-	// Get session to retrieve CSRF token
 	session, _ := h.SessionStore.Get(token)
 
-	// Set session cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    token,
 		Path:     "/",
-		MaxAge:   86400, // 24 hours
+		MaxAge:   86400, // 24h
 		HttpOnly: true,
-		Secure:   h.IsProduction, // Only send over HTTPS in production
+		Secure:   h.IsProduction,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -120,14 +105,12 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// HandleLogout destroys the current session
 func (h *AuthHandlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session_token")
 	if err == nil {
 		h.SessionStore.Delete(cookie.Value)
 	}
 
-	// Clear cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    "",
@@ -140,7 +123,7 @@ func (h *AuthHandlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleGetUsers returns all users (for login dropdown)
+// HandleGetUsers returns all users (for the login dropdown), omitting password hashes.
 func (h *AuthHandlers) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -150,7 +133,6 @@ func (h *AuthHandlers) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return simplified user info (no password hash)
 	type UserInfo struct {
 		Username string `json:"username"`
 	}
@@ -166,7 +148,6 @@ func (h *AuthHandlers) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleGetSession returns current session info
 func (h *AuthHandlers) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session_token")
 	if err != nil {
@@ -180,7 +161,6 @@ func (h *AuthHandlers) HandleGetSession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get accessible manuscripts for this user
 	ctx := r.Context()
 	manuscripts, err := h.DB.GetManuscriptAccessForUser(ctx, session.Username)
 	if err != nil {
@@ -202,8 +182,7 @@ func (h *AuthHandlers) HandleGetSession(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// HandleGetManuscripts returns the list of configured manuscript names
-// (for the login page dropdown). No auth required.
+// HandleGetManuscripts returns configured manuscript names (login dropdown). Unauthenticated.
 func (h *AuthHandlers) HandleGetManuscripts(w http.ResponseWriter, r *http.Request) {
 	names := make([]string, 0, len(h.Config.Manuscripts))
 	for _, m := range h.Config.Manuscripts {

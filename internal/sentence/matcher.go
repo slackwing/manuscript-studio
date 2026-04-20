@@ -4,37 +4,32 @@ import (
 	"strings"
 )
 
-// SentenceMatch represents a potential match between old and new sentences
 type SentenceMatch struct {
 	OldSentenceID string
 	NewSentenceID string
 	OldText       string
 	NewText       string
 	Similarity    float64
-	MatchType     string // "exact", "high-similarity", "moderate-similarity", "low-similarity", "deletion-nearest", "positional-fallback"
+	MatchType     string // exact | high/moderate/low-similarity | deletion-nearest | positional-fallback
 }
 
-// SentenceDiff represents changes between two commits
 type SentenceDiff struct {
-	Added     []string            // Sentence IDs only in new commit
-	Deleted   []string            // Sentence IDs only in old commit
-	Unchanged map[string]string   // Map of old ID -> new ID for exact matches
-	OldTexts  map[string]string   // Map of sentence ID -> text (for old sentences)
-	NewTexts  map[string]string   // Map of sentence ID -> text (for new sentences)
+	Added     []string          // new-commit-only
+	Deleted   []string          // old-commit-only
+	Unchanged map[string]string // old id → new id (exact)
+	OldTexts  map[string]string
+	NewTexts  map[string]string
 }
 
-// ComputeSimilarity calculates similarity between two texts at word level
-// Uses Levenshtein distance on word arrays for better semantic matching
+// ComputeSimilarity returns 1 − wordLevenshtein(norm1, norm2) / maxLen.
+// Using a word tokenization avoids over-penalizing minor edits within words.
 func ComputeSimilarity(text1, text2 string) float64 {
-	// Normalize both texts
 	norm1 := normalizeText(text1)
 	norm2 := normalizeText(text2)
 
-	// Extract words
 	words1 := strings.Fields(norm1)
 	words2 := strings.Fields(norm2)
 
-	// Handle empty cases
 	if len(words1) == 0 && len(words2) == 0 {
 		return 1.0
 	}
@@ -42,28 +37,23 @@ func ComputeSimilarity(text1, text2 string) float64 {
 		return 0.0
 	}
 
-	// Compute word-level Levenshtein distance
 	distance := levenshteinDistance(words1, words2)
 	maxLen := max(len(words1), len(words2))
 
-	// Convert distance to similarity (0.0 to 1.0)
 	similarity := 1.0 - (float64(distance) / float64(maxLen))
 
 	return similarity
 }
 
-// levenshteinDistance computes the Levenshtein distance between two word arrays
 func levenshteinDistance(words1, words2 []string) int {
 	m := len(words1)
 	n := len(words2)
 
-	// Create distance matrix
 	d := make([][]int, m+1)
 	for i := range d {
 		d[i] = make([]int, n+1)
 	}
 
-	// Initialize base cases
 	for i := 0; i <= m; i++ {
 		d[i][0] = i
 	}
@@ -71,7 +61,6 @@ func levenshteinDistance(words1, words2 []string) int {
 		d[0][j] = j
 	}
 
-	// Fill in the matrix
 	for i := 1; i <= m; i++ {
 		for j := 1; j <= n; j++ {
 			cost := 1
@@ -80,8 +69,8 @@ func levenshteinDistance(words1, words2 []string) int {
 			}
 
 			d[i][j] = min3(
-				d[i-1][j]+1,   // deletion
-				d[i][j-1]+1,   // insertion
+				d[i-1][j]+1,      // deletion
+				d[i][j-1]+1,      // insertion
 				d[i-1][j-1]+cost, // substitution
 			)
 		}
@@ -90,7 +79,6 @@ func levenshteinDistance(words1, words2 []string) int {
 	return d[m][n]
 }
 
-// min3 returns the minimum of three integers
 func min3(a, b, c int) int {
 	if a < b {
 		if a < c {
@@ -104,7 +92,6 @@ func min3(a, b, c int) int {
 	return c
 }
 
-// max returns the maximum of two integers
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -112,7 +99,8 @@ func max(a, b int) int {
 	return b
 }
 
-// ComputeSentenceDiff identifies added, deleted, and unchanged sentences
+// ComputeSentenceDiff: added (new-only), deleted (old-only), and exact
+// matches (pairs with identical normalized text).
 func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *SentenceDiff {
 	diff := &SentenceDiff{
 		Unchanged: make(map[string]string),
@@ -120,8 +108,8 @@ func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *Sentence
 		NewTexts:  newSentences,
 	}
 
-	// Build normalized text lookup for exact matching
-	oldNormalized := make(map[string][]string) // normalized text -> []sentence IDs
+	// Normalized text → []id, for exact matching.
+	oldNormalized := make(map[string][]string)
 	for id, text := range oldSentences {
 		norm := normalizeText(text)
 		oldNormalized[norm] = append(oldNormalized[norm], id)
@@ -133,13 +121,11 @@ func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *Sentence
 		newNormalized[norm] = append(newNormalized[norm], id)
 	}
 
-	// Find exact matches (unchanged sentences)
 	matchedNew := make(map[string]bool)
 	matchedOld := make(map[string]bool)
 
 	for norm, oldIDs := range oldNormalized {
 		if newIDs, exists := newNormalized[norm]; exists {
-			// Match up old and new sentences with same normalized text
 			minLen := min(len(oldIDs), len(newIDs))
 			for i := 0; i < minLen; i++ {
 				diff.Unchanged[oldIDs[i]] = newIDs[i]
@@ -149,14 +135,12 @@ func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *Sentence
 		}
 	}
 
-	// Identify deleted sentences (in old but not matched)
 	for id := range oldSentences {
 		if !matchedOld[id] {
 			diff.Deleted = append(diff.Deleted, id)
 		}
 	}
 
-	// Identify added sentences (in new but not matched)
 	for id := range newSentences {
 		if !matchedNew[id] {
 			diff.Added = append(diff.Added, id)
@@ -166,12 +150,12 @@ func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *Sentence
 	return diff
 }
 
-// ComputeMigrationMap creates a mapping from old sentence IDs to new sentence IDs
-// with confidence scores and match types
+// ComputeMigrationMap produces old→new SentenceMatches with MatchType set by
+// similarity thresholds; low-similarity deletions get MatchType="deletion-nearest"
+// and empty NewSentenceID for the caller's ordinal-based fallback.
 func ComputeMigrationMap(diff *SentenceDiff) []SentenceMatch {
 	var matches []SentenceMatch
 
-	// Exact matches (unchanged sentences)
 	for oldID, newID := range diff.Unchanged {
 		matches = append(matches, SentenceMatch{
 			OldSentenceID: oldID,
@@ -183,7 +167,6 @@ func ComputeMigrationMap(diff *SentenceDiff) []SentenceMatch {
 		})
 	}
 
-	// For deleted sentences, find best fuzzy matches in added sentences
 	for _, oldID := range diff.Deleted {
 		oldText := diff.OldTexts[oldID]
 		bestMatch := ""
@@ -199,7 +182,6 @@ func ComputeMigrationMap(diff *SentenceDiff) []SentenceMatch {
 			}
 		}
 
-		// Determine match type based on similarity threshold
 		matchType := "positional-fallback"
 		if bestSimilarity >= 0.80 {
 			matchType = "high-similarity"
@@ -208,9 +190,8 @@ func ComputeMigrationMap(diff *SentenceDiff) []SentenceMatch {
 		} else if bestSimilarity >= 0.40 {
 			matchType = "low-similarity"
 		} else {
-			// If no good match found, this will be handled as deletion-nearest
 			matchType = "deletion-nearest"
-			bestMatch = "" // Will be resolved later with ordinal-based fallback
+			bestMatch = ""
 		}
 
 		if bestMatch != "" {
@@ -223,13 +204,12 @@ func ComputeMigrationMap(diff *SentenceDiff) []SentenceMatch {
 				MatchType:     matchType,
 			})
 		} else {
-			// No good match - mark for deletion-nearest handling
 			matches = append(matches, SentenceMatch{
 				OldSentenceID: oldID,
-				NewSentenceID: "", // To be resolved
+				NewSentenceID: "",
 				OldText:       oldText,
 				NewText:       "",
-				Similarity:    0.10, // Low confidence for deletion
+				Similarity:    0.10,
 				MatchType:     "deletion-nearest",
 			})
 		}

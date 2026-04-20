@@ -15,25 +15,22 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
-// MigrationHandlers contains migration-related handlers
 type MigrationHandlers struct {
 	DB     *database.DB
 	Config *config.Config
 }
 
-// SentenceInfo is the sentence shape the frontend expects.
-// Faithful to 14.writesys/api/main.go: {id, text, wordCount}.
+// SentenceInfo is the {id, text, wordCount} shape the frontend expects.
 type SentenceInfo struct {
 	ID        string `json:"id"`
 	Text      string `json:"text"`
 	WordCount int    `json:"wordCount"`
 }
 
-// HandleGetMigrations returns all migrations for a manuscript
+// HandleGetMigrations returns all migrations for a manuscript.
 func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get manuscript_id from query params
 	manuscriptIDStr := r.URL.Query().Get("manuscript_id")
 	if manuscriptIDStr == "" {
 		http.Error(w, "manuscript_id is required", http.StatusBadRequest)
@@ -58,11 +55,10 @@ func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.R
 	})
 }
 
-// HandleGetLatestMigration returns the latest migration for a manuscript
+// HandleGetLatestMigration returns the latest migration for a manuscript.
 func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get manuscript_id from query params
 	manuscriptIDStr := r.URL.Query().Get("manuscript_id")
 	if manuscriptIDStr == "" {
 		http.Error(w, "manuscript_id is required", http.StatusBadRequest)
@@ -89,8 +85,8 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(migration)
 }
 
-// HandleGetManuscriptByMigration returns manuscript content for a specific migration.
-// Reads repo/file from the manuscript row + config; no client-supplied params needed.
+// HandleGetManuscriptByMigration returns manuscript content for a migration.
+// Repo/file come from the manuscript row + config; client supplies no params.
 func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -113,28 +109,24 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		return
 	}
 
-	// Get manuscript row to find which repo/file this migration came from
 	manuscript, err := h.DB.GetManuscriptByID(ctx, migration.ManuscriptID)
 	if err != nil || manuscript == nil {
 		http.Error(w, "Manuscript not found", http.StatusInternalServerError)
 		return
 	}
 
-	// Match manuscript repo URL to a configured manuscript (for name → clone path)
 	manuscriptConfig := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
 	if manuscriptConfig == nil {
 		http.Error(w, "Manuscript not configured in server", http.StatusInternalServerError)
 		return
 	}
 
-	// Read file content at the migration's commit from the local clone
 	content, err := h.readGitContent(ctx, manuscriptConfig, migration.CommitHash)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read manuscript content: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Convert DB sentences to the frontend's expected shape: {id, text, wordCount}.
 	sentenceInfos := make([]SentenceInfo, len(sentences))
 	for i, s := range sentences {
 		sentenceInfos[i] = SentenceInfo{
@@ -144,8 +136,8 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		}
 	}
 
-	// Fetch annotations for this commit for the logged-in user so rainbow bars
-	// can render on initial page load (faithful to 14.writesys).
+	// Ship annotations for the logged-in user alongside the content so rainbow
+	// bars render on first paint without a follow-up fetch.
 	session, err := auth.GetSession(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -169,9 +161,8 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	})
 }
 
-// findManuscriptConfig returns the ManuscriptConfig matching the stored manuscript row.
-// Compares against CloneURL() (the resolved URL git uses) — that's what we
-// stored when the manuscript row was created.
+// findManuscriptConfig matches by CloneURL() (the resolved URL git uses), which
+// is what was stored when the manuscript row was created.
 func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {
 	for i, m := range h.Config.Manuscripts {
 		if m.Repository.CloneURL() == repoURL && m.Repository.Path == filePath {
@@ -181,7 +172,6 @@ func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *conf
 	return nil
 }
 
-// readGitContent reads the manuscript file contents at a specific commit from the local clone.
 func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (string, error) {
 	if err := migrations.ValidateCommitRef(commitHash); err != nil {
 		return "", err

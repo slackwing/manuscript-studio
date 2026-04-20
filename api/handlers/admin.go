@@ -21,19 +21,16 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/migrations"
 )
 
-// migrationTimeout caps how long a single migration's goroutine can run
-// before we abort it and mark the row 'error'.
+// migrationTimeout caps a single migration goroutine before it's aborted
+// and the row marked 'error'.
 const migrationTimeout = 5 * time.Minute
 
-
-// AdminHandlers contains admin/system-level handlers
 type AdminHandlers struct {
 	DB        *database.DB
 	Config    *config.Config
 	Processor *migrations.Processor
 }
 
-// GitHubWebhookPayload represents the webhook payload from GitHub
 type GitHubWebhookPayload struct {
 	Ref        string `json:"ref"`        // refs/heads/main
 	Repository struct {
@@ -53,18 +50,16 @@ type GitHubWebhookPayload struct {
 	} `json:"head_commit"`
 }
 
-// HandleWebhook processes GitHub webhook push events
+// HandleWebhook processes GitHub push webhook events.
 func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	// Read body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
 
-	// Verify signature. Failures are logged with the source IP and whether
-	// a header was present so an operator can tell a misconfigured webhook
-	// from an attacker probing the endpoint.
+	// Log IP and whether a signature header was sent so a misconfigured webhook
+	// is distinguishable from an attacker probing the endpoint.
 	signature := r.Header.Get("X-Hub-Signature-256")
 	if !h.validateGitHubSignature(body, signature, h.Config.Auth.WebhookSecret) {
 		log.Printf("webhook signature rejected: ip=%s sig_present=%t body_len=%d",
@@ -73,7 +68,6 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse payload
 	var payload GitHubWebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		http.Error(w, "Invalid payload", http.StatusBadRequest)
@@ -89,7 +83,6 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if any commits modified the manuscript file
 	manuscriptModified := false
 	for _, commit := range payload.Commits {
 		for _, file := range commit.Modified {
@@ -114,20 +107,18 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Webhook always has a real commit SHA from the payload, so we can
-	// dedupe on (manuscript_id, commit_hash, segmenter) before kicking off
-	// the goroutine.
+	// Webhook carries a real SHA, so dedupe on (manuscript_id, commit_hash,
+	// segmenter) is safe here.
 	h.startMigration(r.Context(), w, manuscriptConfig, payload.HeadCommit.ID)
 }
 
-// HandleSync manually triggers a sync for a manuscript
+// HandleSync manually triggers a sync for a manuscript.
 func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	// Parse request
 	var req struct {
 		ManuscriptName string `json:"manuscript_name"`
 		CommitHash     string `json:"commit_hash,omitempty"`
@@ -137,14 +128,12 @@ func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find manuscript config
 	manuscriptConfig, err := h.Config.GetManuscript(req.ManuscriptName)
 	if err != nil {
 		http.Error(w, "Manuscript not found", http.StatusNotFound)
 		return
 	}
 
-	// If no commit hash specified, get latest
 	commitHash := req.CommitHash
 	if commitHash == "" {
 		commitHash = "HEAD"
@@ -158,9 +147,8 @@ func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 	h.startMigration(r.Context(), w, manuscriptConfig, commitHash)
 }
 
-// HandleStatus returns the state of any in-flight migrations.
-// Returns rows currently at status='pending' or 'running'. Empty list means
-// nothing is in progress.
+// HandleStatus returns migrations currently at status='pending' or 'running'.
+// An empty list means nothing is in progress.
 func (h *AdminHandlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -187,8 +175,7 @@ func (h *AdminHandlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleCreateUser creates or updates a user. Requires system token.
-// Request body: {"username": "...", "password": "...", "role": "author"}
+// HandleCreateUser upserts a user. Body: {"username","password","role?"}. Requires system token.
 func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -222,7 +209,6 @@ func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Upsert user: insert or update password_hash on conflict.
 	query := `
 		INSERT INTO "user" (username, password_hash, role)
 		VALUES ($1, $2, $3)
@@ -243,9 +229,8 @@ func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// HandleCreateGrant grants a user access to a manuscript. Requires system token.
-// Request body: {"username": "...", "manuscript_name": "..."}
-// Idempotent: repeated grants are a no-op.
+// HandleCreateGrant grants a user access to a manuscript (idempotent).
+// Body: {"username","manuscript_name"}. Requires system token.
 func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request) {
 	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -284,9 +269,8 @@ func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// checkSystemToken verifies the Authorization header contains the configured
-// system token. Uses subtle.ConstantTimeCompare to avoid leaking the token
-// one byte at a time via response timing.
+// checkSystemToken compares the Authorization header to the configured system
+// token in constant time to avoid byte-level timing leaks.
 func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
 	if h.Config.Auth.SystemToken == "" {
 		return false
@@ -296,14 +280,10 @@ func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(authHeader), []byte(expected)) == 1
 }
 
-// matchManuscriptForWebhook picks the manuscript config a webhook payload
-// applies to. Match order:
-//   1. By `repository.slug` against the payload's full_name (the canonical
-//      "owner/repo" identifier GitHub always sends regardless of clone URL form).
-//   2. Fallback for slug-less configs: literal equality between the
-//      manuscript's `repository.url` (escape-hatch override) and the
-//      payload's clone_url.
-// Returns nil if no manuscript matches.
+// matchManuscriptForWebhook picks the manuscript for a webhook payload:
+// first by repository.slug == full_name (the canonical "owner/repo" GitHub
+// always sends), then as a fallback by literal repository.url == clone_url
+// for slug-less configs. Returns nil if none match.
 func matchManuscriptForWebhook(manuscripts []config.ManuscriptConfig, fullName, cloneURL string) *config.ManuscriptConfig {
 	for i, m := range manuscripts {
 		if m.Repository.Slug != "" && m.Repository.Slug == fullName {
@@ -316,36 +296,24 @@ func matchManuscriptForWebhook(manuscripts []config.ManuscriptConfig, fullName, 
 	return nil
 }
 
-// validateGitHubSignature validates the GitHub webhook signature
 func (h *AdminHandlers) validateGitHubSignature(payload []byte, signature string, secret string) bool {
 	if signature == "" || secret == "" {
 		return false
 	}
-
-	// Calculate expected signature
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
 	expectedSig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-
-	// Compare signatures
 	return hmac.Equal([]byte(signature), []byte(expectedSig))
 }
 
-// startMigration is the synchronous prelude to a background migration.
-// It looks up (or creates) the manuscript row, inserts a pending migration
-// row keyed by (manuscript_id, commit_hash, segmenter), and — if that
-// succeeds — launches a goroutine that does the actual work.
+// startMigration: sync prelude that upserts the manuscript row, inserts a
+// pending migration keyed by (manuscript_id, commit_hash, segmenter), and
+// launches the goroutine. Responds 202 with {migration_id, started_at}, 409
+// if an identical migration is pending/running/done, or 5xx on setup errors.
 //
-// Writes the HTTP response in all cases:
-//   202 Accepted with {migration_id, started_at}
-//   409 Conflict if an identical migration is already pending/running/done
-//   500 / 502 for server-side problems before the row was inserted
-//
-// Note about commitHash="HEAD" or branch names: the dedup unique constraint
-// is on the literal string, so two concurrent "HEAD" requests are treated
-// as duplicates (the second gets 409). For dedupe by resolved SHA, callers
-// should pass an explicit commit hash. This is a feature, not a bug — it
-// stops users from accidentally enqueueing the same job twice.
+// Dedup is by literal commitHash, so two concurrent "HEAD" requests collide
+// (second gets 409). That's intentional — it prevents accidental double-enqueue.
+// For dedupe by resolved SHA, callers must pass an explicit hash.
 func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWriter, m *config.ManuscriptConfig, commitHash string) {
 	cloneURL := m.Repository.CloneURL()
 	if cloneURL == "" {
@@ -391,9 +359,8 @@ func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWrite
 	})
 }
 
-// runMigration is the goroutine body. The pending row already exists; we
-// must ensure it ends up at status='done' or 'error' regardless of what
-// happens here.
+// runMigration is the goroutine body. Must always leave the pending row at
+// 'done' or 'error', whatever happens.
 func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.ManuscriptConfig, commitHash string) {
 	ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
 	defer cancel()
@@ -432,7 +399,7 @@ func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.Ma
 
 	result, err := h.Processor.Run(ctx, mlog, migrationID, manuscriptID, prepared.CommitHash, prepared.BranchName, prepared.Content)
 	if err != nil {
-		// Processor.Run already marked the row as error.
+		// Processor.Run has already marked the row as error.
 		mlog.Warn("processor failed", slog.Any("err", err))
 		return
 	}

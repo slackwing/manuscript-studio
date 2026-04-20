@@ -1,9 +1,7 @@
-// Authentication utilities
-// All URLs are relative so <base href> set by the server handles the path prefix.
+// URLs are relative so the server's <base href> controls the path prefix.
 
 /**
- * Check if user is authenticated
- * Redirects to login page if not authenticated
+ * Returns the session JSON, or redirects to login and returns null if unauthenticated.
  */
 async function checkAuth() {
   try {
@@ -12,7 +10,6 @@ async function checkAuth() {
     });
 
     if (!response.ok) {
-      // Not logged in, redirect to login page
       window.location.href = 'login.html';
       return null;
     }
@@ -26,9 +23,6 @@ async function checkAuth() {
   }
 }
 
-/**
- * Logout the current user
- */
 async function logout() {
   try {
     await fetch('api/logout', {
@@ -42,9 +36,6 @@ async function logout() {
   }
 }
 
-/**
- * Get current session info
- */
 async function getSession() {
   try {
     const response = await fetch('api/session', {
@@ -62,24 +53,16 @@ async function getSession() {
   }
 }
 
-/**
- * Get CSRF token from sessionStorage
- */
 function getCSRFToken() {
   return sessionStorage.getItem('csrf_token');
 }
 
 /**
- * Make an authenticated fetch request with CSRF token
- * @param {string} url - The URL to fetch
- * @param {object} options - Fetch options
- * @returns {Promise<Response>}
+ * fetch() with credentials and, for state-changing methods, an X-CSRF-Token header.
  */
 async function authenticatedFetch(url, options = {}) {
-  // Add credentials
   options.credentials = 'include';
 
-  // Add CSRF token for state-changing requests
   if (options.method && ['POST', 'PUT', 'DELETE'].includes(options.method.toUpperCase())) {
     const csrfToken = getCSRFToken();
     if (csrfToken) {
@@ -92,15 +75,8 @@ async function authenticatedFetch(url, options = {}) {
 }
 
 /**
- * Fetch and parse JSON, with defensive checks for non-OK responses and
- * non-JSON Content-Type. Throws an Error whose .message includes the
- * server's response body (truncated) when the server returned HTML or
- * plain text — this is much friendlier to debug than a JSON.parse error.
- *
- * @param {string} url
- * @param {object} options - same shape as fetch options
- * @param {boolean} [authenticated=true] - if true, uses authenticatedFetch
- * @returns {Promise<any>} parsed JSON body
+ * Fetch JSON; on non-OK or non-JSON responses, throws Error with a truncated
+ * body in .message (much friendlier to debug than a bare JSON.parse error).
  */
 async function fetchJSON(url, options = {}, authenticated = true) {
   const response = authenticated

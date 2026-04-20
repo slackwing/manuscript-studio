@@ -13,13 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// ErrMigrationInProgress is returned by CreatePendingMigration when a row
-// for the same (manuscript_id, commit_hash, segmenter) already exists —
-// either currently running or previously completed. Callers should map this
-// to HTTP 409 Conflict.
+// ErrMigrationInProgress: a row for the same (manuscript_id, commit_hash,
+// segmenter) already exists. Callers map to HTTP 409.
 var ErrMigrationInProgress = errors.New("migration already exists for this commit/segmenter")
 
-// CreateManuscript creates a new manuscript record
 func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (*models.Manuscript, error) {
 	query := `
 		INSERT INTO manuscript (repo_path, file_path)
@@ -43,8 +40,7 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 	return &m, nil
 }
 
-// GetManuscriptByID retrieves a manuscript row by its ID. Returns (nil, nil)
-// when no row exists.
+// GetManuscriptByID returns (nil, nil) when no row exists.
 func (db *DB) GetManuscriptByID(ctx context.Context, manuscriptID int) (*models.Manuscript, error) {
 	var m models.Manuscript
 	err := db.Pool.QueryRow(ctx,
@@ -60,7 +56,6 @@ func (db *DB) GetManuscriptByID(ctx context.Context, manuscriptID int) (*models.
 	return &m, nil
 }
 
-// GetManuscript retrieves a manuscript by repo and file path
 func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*models.Manuscript, error) {
 	query := `
 		SELECT manuscript_id, repo_path, file_path, created_at
@@ -85,17 +80,15 @@ func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*mo
 	return &m, nil
 }
 
-// migrationSelectColumns is the column list reused across migration reads.
-// Result columns (sentence_count etc.) only have meaningful values when
-// status='done'; callers that read those fields must filter by status.
+// Shared column list for migration reads. Result columns (sentence_count etc.)
+// are only meaningful when status='done'; callers that read them must filter.
 const migrationSelectColumns = `migration_id, manuscript_id, commit_hash, segmenter,
 		       parent_migration_id, branch_name, processed_at, status,
 		       started_at, finished_at, error,
 		       sentence_count, additions_count, deletions_count, changes_count,
 		       sentence_id_array`
 
-// scanMigration scans one migration row into a model. Handles the nullable
-// columns introduced by changeset 002.
+// scanMigration handles the nullable columns introduced by changeset 002.
 func scanMigration(row pgx.Row, m *models.Migration) error {
 	var (
 		branchName        *string
@@ -149,8 +142,8 @@ func scanMigration(row pgx.Row, m *models.Migration) error {
 	return nil
 }
 
-// GetLatestMigration gets the most recent successfully-completed migration
-// for a manuscript. Returns (nil, nil) if none exist.
+// GetLatestMigration returns the newest status='done' migration for the
+// manuscript, or (nil, nil) if none exist.
 func (db *DB) GetLatestMigration(ctx context.Context, manuscriptID int) (*models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -170,8 +163,8 @@ func (db *DB) GetLatestMigration(ctx context.Context, manuscriptID int) (*models
 	return &m, nil
 }
 
-// GetMigrations returns all completed migrations for a manuscript, newest first.
-// Pending/running/error rows are excluded — see GetActiveMigrations for those.
+// GetMigrations returns status='done' rows newest-first. See GetActiveMigrations
+// for pending/running/error rows.
 func (db *DB) GetMigrations(ctx context.Context, manuscriptID int) ([]models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -199,8 +192,7 @@ func (db *DB) GetMigrations(ctx context.Context, manuscriptID int) ([]models.Mig
 	return migrations, nil
 }
 
-// GetActiveMigrations returns all rows that are currently pending or running.
-// Used by the /api/admin/status endpoint.
+// GetActiveMigrations returns rows in pending/running; used by /api/admin/status.
 func (db *DB) GetActiveMigrations(ctx context.Context) ([]models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -225,9 +217,8 @@ func (db *DB) GetActiveMigrations(ctx context.Context) ([]models.Migration, erro
 	return migrations, rows.Err()
 }
 
-// CreatePendingMigration inserts a new row at status='pending' and returns
-// the new migration_id. If a row already exists for the same
-// (manuscript_id, commit_hash, segmenter), returns ErrMigrationInProgress.
+// CreatePendingMigration inserts at status='pending' and returns the new id.
+// Returns ErrMigrationInProgress on a duplicate (manuscript_id, commit_hash, segmenter).
 func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, commitHash, segmenter string) (int, error) {
 	query := `
 		INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, started_at)
@@ -237,8 +228,7 @@ func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, comm
 	var id int
 	err := db.Pool.QueryRow(ctx, query, manuscriptID, commitHash, segmenter).Scan(&id)
 	if err != nil {
-		// Postgres unique-violation error code = 23505. Translate to a
-		// typed error so the handler can return 409.
+		// Postgres unique-violation (23505) → typed error → HTTP 409.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return 0, ErrMigrationInProgress
@@ -248,8 +238,7 @@ func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, comm
 	return id, nil
 }
 
-// MarkMigrationRunning transitions a pending row to 'running'. No-op if it's
-// already running (for restart-recovery scenarios).
+// MarkMigrationRunning transitions pending→running; no-op if already running.
 func (db *DB) MarkMigrationRunning(ctx context.Context, migrationID int) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE migration SET status = 'running'
@@ -261,10 +250,9 @@ func (db *DB) MarkMigrationRunning(ctx context.Context, migrationID int) error {
 	return nil
 }
 
-// MarkMigrationDone updates a row with the result of a successful migration.
-// commit_hash is updated too: the pending row may have been inserted with a
-// symbolic ref like "HEAD" or a branch name; by the time we mark it done we
-// know the resolved SHA.
+// MarkMigrationDone writes the success result. commit_hash is overwritten: the
+// pending row may have been inserted with a symbolic ref ("HEAD" or a branch);
+// by now we know the resolved SHA.
 func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error {
 	sentenceIDArrayJSON, err := json.Marshal(m.SentenceIDArray)
 	if err != nil {
@@ -293,8 +281,8 @@ func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error 
 	return nil
 }
 
-// MarkMigrationError records that the migration failed. The error message is
-// truncated to a sane size so a giant stack trace can't blow up the row.
+// MarkMigrationError records failure; the message is truncated so a giant
+// stack trace can't blow up the row.
 func (db *DB) MarkMigrationError(ctx context.Context, migrationID int, errMsg string) error {
 	const maxErrLen = 4000
 	if len(errMsg) > maxErrLen {
@@ -313,10 +301,9 @@ func (db *DB) MarkMigrationError(ctx context.Context, migrationID int, errMsg st
 	return nil
 }
 
-// RecoverInterruptedMigrations is called once at startup. Any migration
-// row left in pending/running state from a previous process must have been
-// interrupted by a crash or restart — flip them to 'error'. Returns the
-// number of rows recovered.
+// RecoverInterruptedMigrations runs once at startup: any pending/running row
+// from a previous process was interrupted, so flip them to 'error'. Returns
+// the number of rows recovered.
 func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE migration
@@ -331,7 +318,7 @@ func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
 	return int(tag.RowsAffected()), nil
 }
 
-// CreateSentences creates multiple sentence records in a transaction
+// CreateSentences inserts all sentences in a single transaction.
 func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -365,8 +352,7 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	return nil
 }
 
-// GetMigrationByID retrieves a completed migration by its ID. Returns
-// (nil, nil) if no row exists or if the row hasn't reached status='done'.
+// GetMigrationByID returns (nil, nil) if the row is missing or still pre-'done'.
 func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -384,7 +370,6 @@ func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Mi
 	return &m, nil
 }
 
-// GetSentencesByMigration retrieves all sentences for a given migration_id
 func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]models.Sentence, error) {
 	query := `
 		SELECT sentence_id, migration_id, commit_hash, text, word_count, ordinal, created_at
@@ -424,7 +409,6 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 	return sentences, nil
 }
 
-// GetAnnotationsByCommit retrieves all active annotations for sentences in a commit for a specific user
 func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username string) ([]models.Annotation, error) {
 	query := `
 		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
@@ -472,7 +456,6 @@ func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username s
 	return annotations, nil
 }
 
-// getAnnotationOriginInfo retrieves origin metadata for an annotation
 func getAnnotationOriginInfo(ctx context.Context, tx pgx.Tx, annotationID int) (originSentenceID, originCommitHash, createdBy string, originMigrationID *int, err error) {
 	query := `
 		SELECT
@@ -487,7 +470,7 @@ func getAnnotationOriginInfo(ctx context.Context, tx pgx.Tx, annotationID int) (
 	return
 }
 
-// getSentenceHistory retrieves and appends to the sentence_id_history for an annotation
+// getSentenceHistory reads version's sentence_id_history and appends newSentenceID.
 func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, version int, newSentenceID string) ([]byte, error) {
 	query := `
 		SELECT sentence_id_history
@@ -506,7 +489,6 @@ func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, versio
 	return newHistoryJSON, nil
 }
 
-// insertAnnotationVersion creates a new annotation version record
 func insertAnnotationVersion(ctx context.Context, tx pgx.Tx, version *models.AnnotationVersion, historyJSON []byte) error {
 	query := `
 		INSERT INTO annotation_version (
@@ -534,7 +516,6 @@ func insertAnnotationVersion(ctx context.Context, tx pgx.Tx, version *models.Ann
 	).Scan(&version.CreatedAt)
 }
 
-// GetAnnotationsBySentence retrieves all active annotations for a specific sentence
 func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username string) ([]models.Annotation, error) {
 	query := `
 		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
@@ -552,7 +533,7 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 	}
 	defer rows.Close()
 
-	// Initialize as empty slice (not nil) so JSON serialization returns [] instead of null
+	// Non-nil so JSON encodes [] instead of null.
 	annotations := []models.Annotation{}
 	for rows.Next() {
 		var a models.Annotation
@@ -573,7 +554,6 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 			return nil, fmt.Errorf("failed to scan annotation: %w", err)
 		}
 
-		// Load tags for this annotation
 		tags, err := db.GetTagsForAnnotation(ctx, a.AnnotationID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get tags for annotation %d: %w", a.AnnotationID, err)
@@ -590,7 +570,7 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 	return annotations, nil
 }
 
-// CreateAnnotation creates a new annotation with its first version
+// CreateAnnotation creates the annotation and its first version row.
 func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotation, version *models.AnnotationVersion) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -598,27 +578,23 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	}
 	defer tx.Rollback(ctx)
 
-	// Calculate position for new annotation
-	// Get the maximum position for this sentence
+	// Position is a simple "a0000" counter for now; see fractional package
+	// for the real fractional-index logic used by ReorderAnnotation.
 	var maxPosition string
 	queryMaxPos := `SELECT COALESCE(MAX(position), 'a') FROM annotation WHERE sentence_id = $1`
 	if err := tx.QueryRow(ctx, queryMaxPos, annotation.SentenceID).Scan(&maxPosition); err != nil {
 		return fmt.Errorf("failed to get max position: %w", err)
 	}
 
-	// Generate next position (simple increment for now)
-	// Format: "a0000", "a0001", "a0002", etc.
 	var nextPosition string
 	if maxPosition == "a" {
 		nextPosition = "a0000"
 	} else {
-		// Extract numeric part and increment
 		var num int
 		fmt.Sscanf(maxPosition, "a%d", &num)
 		nextPosition = fmt.Sprintf("a%04d", num+1)
 	}
 
-	// Create annotation record
 	query1 := `
 		INSERT INTO annotation (sentence_id, user_id, color, note, priority, flagged, position)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -641,10 +617,9 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 		return fmt.Errorf("failed to create annotation: %w", err)
 	}
 
-	// Set the position on the annotation struct (stored as string/fractional index).
 	annotation.Position = nextPosition
 
-	// Get commit_hash and migration_id for this sentence (for origin_commit_hash and origin_migration_id)
+	// The sentence's commit_hash and migration_id become the annotation's origin.
 	var commitHash string
 	var migrationID int
 	query_commit := `SELECT commit_hash, migration_id FROM sentence WHERE sentence_id = $1 LIMIT 1`
@@ -652,7 +627,6 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 		return fmt.Errorf("failed to get commit hash and migration_id for sentence: %w", err)
 	}
 
-	// Create first version using helper
 	historyJSON, _ := json.Marshal([]string{})
 
 	version.AnnotationID = annotation.AnnotationID
@@ -678,7 +652,7 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	return nil
 }
 
-// UpdateAnnotation updates an existing annotation and creates a new version
+// UpdateAnnotation mutates the head row and appends a new version.
 func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation *models.Annotation, version *models.AnnotationVersion) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -686,7 +660,6 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 	}
 	defer tx.Rollback(ctx)
 
-	// Update annotation record
 	query1 := `
 		UPDATE annotation
 		SET sentence_id = $1, color = $2, note = $3, priority = $4, flagged = $5, updated_at = NOW()
@@ -705,26 +678,22 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 		return fmt.Errorf("failed to update annotation: %w", err)
 	}
 
-	// Get current max version
 	var maxVersion int
 	query2 := `SELECT COALESCE(MAX(version), 0) FROM annotation_version WHERE annotation_id = $1`
 	if err := tx.QueryRow(ctx, query2, annotationID).Scan(&maxVersion); err != nil {
 		return fmt.Errorf("failed to get max version: %w", err)
 	}
 
-	// Get origin info
 	originSentenceID, originCommitHash, createdBy, originMigrationID, err := getAnnotationOriginInfo(ctx, tx, annotationID)
 	if err != nil {
 		return fmt.Errorf("failed to get origin info: %w", err)
 	}
 
-	// Get updated sentence history
 	newHistoryJSON, err := getSentenceHistory(ctx, tx, annotationID, maxVersion, annotation.SentenceID)
 	if err != nil {
 		return err
 	}
 
-	// Create new version
 	version.AnnotationID = annotationID
 	version.Version = maxVersion + 1
 	version.SentenceID = annotation.SentenceID
@@ -748,8 +717,7 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 	return nil
 }
 
-// AnnotationMigrationItem describes one annotation that needs to be repointed
-// from an old sentence (its current `sentence_id`) to a new sentence as part
+// AnnotationMigrationItem: one annotation to repoint to a new sentence as part
 // of a manuscript migration.
 type AnnotationMigrationItem struct {
 	AnnotationID  int
@@ -757,17 +725,9 @@ type AnnotationMigrationItem struct {
 	Confidence    float64
 }
 
-// MigrateAnnotations repoints all the given annotations to their new
-// sentence IDs in a single transaction. Either every annotation is
-// updated (and a new version row appended for each), or none are.
-//
-// Each item produces:
-//   - one UPDATE on `annotation` to set sentence_id
-//   - one INSERT on `annotation_version` recording the new version, with
-//     migration_confidence set and origin fields preserved
-//
-// Returns the number of annotations migrated. The intent is "all-or-nothing",
-// so a non-nil error means zero rows were ultimately committed.
+// MigrateAnnotations is all-or-nothing: a non-nil error means zero rows
+// committed. Each item produces one annotation UPDATE and one annotation_version
+// INSERT (with migration_confidence and origin fields preserved).
 func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigrationItem) (int, error) {
 	if len(items) == 0 {
 		return 0, nil
@@ -779,8 +739,7 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	}
 	defer tx.Rollback(ctx)
 
-	// Reuse the same per-annotation flow that single-annotation UpdateAnnotation uses,
-	// just within one transaction.
+	// Same per-annotation flow as UpdateAnnotation, batched into one tx.
 	updateAnnotation := `
 		UPDATE annotation
 		SET sentence_id = $1, updated_at = NOW()
@@ -789,9 +748,8 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	`
 
 	for _, item := range items {
-		// Fetch the latest version BEFORE we mutate anything, so we have
-		// authoritative color/note/priority/flagged + history to copy
-		// forward into the new version row.
+		// Read latest version before mutating so the copied-forward
+		// color/note/priority/flagged + history are authoritative.
 		var (
 			color       string
 			note        *string
@@ -809,15 +767,13 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 			return 0, fmt.Errorf("annotation %d: get latest version: %w", item.AnnotationID, err)
 		}
 
-		// Update the head pointer.
 		tag, err := tx.Exec(ctx, updateAnnotation, item.NewSentenceID, item.AnnotationID)
 		if err != nil {
 			return 0, fmt.Errorf("annotation %d: update sentence_id: %w", item.AnnotationID, err)
 		}
 		if tag.RowsAffected() == 0 {
-			// Row got soft-deleted between read and write, or the id is bogus.
-			// Treat as a hard error so the whole migration rolls back rather
-			// than silently leaving versions out of sync.
+			// Soft-deleted between read and write (or bad id) — hard fail
+			// so the whole migration rolls back rather than desyncing versions.
 			return 0, fmt.Errorf("annotation %d: not found or already deleted", item.AnnotationID)
 		}
 
@@ -857,7 +813,6 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	return len(items), nil
 }
 
-// SoftDeleteAnnotation marks an annotation as deleted
 func (db *DB) SoftDeleteAnnotation(ctx context.Context, annotationID int) error {
 	query := `
 		UPDATE annotation
@@ -878,7 +833,6 @@ func (db *DB) SoftDeleteAnnotation(ctx context.Context, annotationID int) error 
 	return nil
 }
 
-// GetLatestAnnotationVersion retrieves the latest version of an annotation
 func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) (*models.AnnotationVersion, error) {
 	query := `
 		SELECT
@@ -914,7 +868,6 @@ func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) 
 		return nil, fmt.Errorf("failed to get annotation version: %w", err)
 	}
 
-	// Unmarshal history
 	if err := json.Unmarshal(historyJSON, &av.SentenceIDHistory); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal history: %w", err)
 	}
@@ -922,7 +875,6 @@ func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) 
 	return &av, nil
 }
 
-// GetActiveAnnotationsForSentence retrieves all active annotations for a sentence
 func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID string) ([]models.Annotation, error) {
 	query := `
 		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
@@ -963,9 +915,7 @@ func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID st
 	return annotations, nil
 }
 
-// GetOrCreateTag gets an existing tag or creates it if it doesn't exist
 func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID int) (*models.Tag, error) {
-	// First try to get existing tag
 	var tag models.Tag
 	query := `
 		SELECT tag_id, tag_name, migration_id, created_at
@@ -985,7 +935,6 @@ func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID in
 		return nil, fmt.Errorf("failed to query tag: %w", err)
 	}
 
-	// Tag doesn't exist, create it
 	createQuery := `
 		INSERT INTO tag (tag_name, migration_id)
 		VALUES ($1, $2)
@@ -1004,15 +953,13 @@ func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID in
 	return &tag, nil
 }
 
-// AddTagToAnnotation adds a tag to an annotation (creates tag if needed)
+// AddTagToAnnotation creates the tag if missing and links it (idempotent).
 func (db *DB) AddTagToAnnotation(ctx context.Context, annotationID int, tagName string, migrationID int) error {
-	// Get or create the tag
 	tag, err := db.GetOrCreateTag(ctx, tagName, migrationID)
 	if err != nil {
 		return err
 	}
 
-	// Add the tag to the annotation (ignore if already exists)
 	query := `
 		INSERT INTO annotation_tag (annotation_id, tag_id)
 		VALUES ($1, $2)
@@ -1026,7 +973,6 @@ func (db *DB) AddTagToAnnotation(ctx context.Context, annotationID int, tagName 
 	return nil
 }
 
-// RemoveTagFromAnnotation removes a tag from an annotation
 func (db *DB) RemoveTagFromAnnotation(ctx context.Context, annotationID int, tagID int) error {
 	query := `
 		DELETE FROM annotation_tag
@@ -1045,7 +991,6 @@ func (db *DB) RemoveTagFromAnnotation(ctx context.Context, annotationID int, tag
 	return nil
 }
 
-// GetTagsForAnnotation retrieves all tags for a specific annotation
 func (db *DB) GetTagsForAnnotation(ctx context.Context, annotationID int) ([]models.Tag, error) {
 	query := `
 		SELECT t.tag_id, t.tag_name, t.migration_id, t.created_at
@@ -1083,7 +1028,6 @@ func (db *DB) GetTagsForAnnotation(ctx context.Context, annotationID int) ([]mod
 	return tags, nil
 }
 
-// GetAllTagsForMigration retrieves all unique tags used in a migration
 func (db *DB) GetAllTagsForMigration(ctx context.Context, migrationID int) ([]models.Tag, error) {
 	query := `
 		SELECT tag_id, tag_name, migration_id, created_at
@@ -1120,8 +1064,8 @@ func (db *DB) GetAllTagsForMigration(ctx context.Context, migrationID int) ([]mo
 	return tags, nil
 }
 
-// ReorderAnnotation updates the position of an annotation based on the target index
-// within the list of annotations for a given sentence
+// ReorderAnnotation computes a fractional position for the target index
+// within the sentence's annotation list.
 func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceID string, newIndex int) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -1129,7 +1073,6 @@ func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceI
 	}
 	defer tx.Rollback(ctx)
 
-	// Get all positions for this sentence, ordered by position
 	query := `SELECT position FROM annotation WHERE sentence_id = $1 AND deleted_at IS NULL ORDER BY position`
 	rows, err := tx.Query(ctx, query, sentenceID)
 	if err != nil {
@@ -1150,13 +1093,11 @@ func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceI
 		return fmt.Errorf("error iterating positions: %w", err)
 	}
 
-	// Use fractional indexing to calculate new position
 	newPosition, err := fractional.GetPositionAtIndex(positions, newIndex)
 	if err != nil {
 		return fmt.Errorf("failed to calculate new position: %w", err)
 	}
 
-	// Update the annotation's position
 	updateQuery := `UPDATE annotation SET position = $1, updated_at = NOW() WHERE annotation_id = $2`
 	_, err = tx.Exec(ctx, updateQuery, newPosition, annotationID)
 	if err != nil {
@@ -1170,7 +1111,6 @@ func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceI
 	return nil
 }
 
-// GetUserByUsername retrieves a user by username
 func (db *DB) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	query := `
 		SELECT username, password_hash, role, created_at
@@ -1195,7 +1135,6 @@ func (db *DB) GetUserByUsername(ctx context.Context, username string) (*models.U
 	return &u, nil
 }
 
-// GetAllUsers retrieves all users
 func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	query := `
 		SELECT username, password_hash, role, created_at
@@ -1225,7 +1164,6 @@ func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	return users, nil
 }
 
-// GetManuscriptAccessForUser retrieves all manuscripts a user can access
 func (db *DB) GetManuscriptAccessForUser(ctx context.Context, username string) ([]models.ManuscriptAccess, error) {
 	query := `
 		SELECT username, manuscript_name, created_at
@@ -1256,7 +1194,6 @@ func (db *DB) GetManuscriptAccessForUser(ctx context.Context, username string) (
 	return access, nil
 }
 
-// HasManuscriptAccess checks if a user has access to a specific manuscript
 func (db *DB) HasManuscriptAccess(ctx context.Context, username, manuscriptName string) (bool, error) {
 	query := `
 		SELECT EXISTS(
@@ -1274,7 +1211,6 @@ func (db *DB) HasManuscriptAccess(ctx context.Context, username, manuscriptName 
 	return exists, nil
 }
 
-// GetAnnotationByID retrieves an annotation by its ID
 func (db *DB) GetAnnotationByID(ctx context.Context, annotationID int) (*models.Annotation, error) {
 	query := `
 		SELECT annotation_id, sentence_id, user_id, color, note,
