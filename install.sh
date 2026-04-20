@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-19.12"
+SCRIPT_VERSION="2026-04-19.13"
 
 set -euo pipefail
 
@@ -427,5 +427,19 @@ EOF
     echo "To update Manuscript Studio:"
     echo "  Run this script again - it will pull the latest version"
 fi
+echo ""
+echo "========================================="
+echo "   Manuscript Studio Installation"
+echo "   Script version: $SCRIPT_VERSION"
+if [[ "$DEV_MODE" == "1" ]]; then
+    echo "   Mode: DEV (using $CONFIG_DIR)"
+fi
+echo "========================================="
+echo ""
+log_info "Config file:    $CONFIG_FILE"
+log_info "Logs dir:       $CONFIG_DIR/logs"
+log_info "Repos dir:      $MANUSCRIPT_REPOS_DIR"
+log_info "Private dir:    $PRIVATE_DIR"
+log_info "Container:      $CONTAINER_NAME"
 echo ""
 log_info "Installation complete!"
