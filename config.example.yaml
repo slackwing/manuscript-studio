@@ -38,17 +38,15 @@ manuscripts:
   - name: "example-book"  # Internal identifier (URL-safe)
 
     repository:
-      # Canonical "owner/repo" identifier — used to match incoming GitHub
-      # webhooks. GitHub sends this as full_name regardless of how you
-      # cloned. If you only ever sync manually (no webhooks), this is
-      # optional and the matcher falls back to comparing the payload's
-      # clone_url against `url` below.
+      # Canonical "owner/repo" identifier. The clone URL is derived from
+      # this and `use_ssh` below. Also used to match incoming GitHub
+      # webhooks (compared to payload.repository.full_name).
       slug: "yourusername/your-repo"
 
-      # URL git clones/pulls from. Use whatever form your server is set up
-      # to authenticate against — HTTPS+PAT, SSH (git@github.com:...),
-      # or a local path.
-      url: "https://github.com/yourusername/your-repo"
+      # If true, clone via SSH (git@github.com:<slug>.git). Requires an
+      # SSH key on the server. If false (default), clone via HTTPS — set
+      # `auth_token` below for private repos.
+      use_ssh: false
 
       # Branch to track
       branch: "main"
@@ -56,11 +54,15 @@ manuscripts:
       # Path to manuscript file within the repository
       path: "manuscript.md"
 
-      # GitHub Personal Access Token with repo read access
-      # Create at: https://github.com/settings/tokens
-      # Only needed if `url` above is HTTPS to a private repo. SSH-based
-      # `url` should leave this empty and rely on a mounted SSH key instead.
+      # GitHub Personal Access Token with repo read access. Only needed
+      # when use_ssh: false AND the repo is private. Create at:
+      # https://github.com/settings/tokens
       auth_token: "REPLACE_ME_OR_SERVER_WONT_START"
+
+      # Escape hatch — set this only if you need a non-GitHub URL or a
+      # local filesystem path (e.g. for testing). When set, it overrides
+      # the slug+use_ssh derivation.
+      # url: "/var/local/repos/example-book"
 
     # Per-manuscript webhook secret (optional)
     # Overrides global webhook_secret for this manuscript
@@ -70,7 +72,7 @@ manuscripts:
   # - name: "another-book"
   #   repository:
   #     slug: "yourusername/another-repo"
-  #     url: "git@github.com:yourusername/another-repo.git"
+  #     use_ssh: true                   # SSH clone — no auth_token needed
   #     branch: "main"
   #     path: "book.manuscript"
 

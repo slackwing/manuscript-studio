@@ -39,6 +39,29 @@ func TestValidateManuscriptPaths_EmptyName(t *testing.T) {
 	}
 }
 
+func TestCloneURL(t *testing.T) {
+	cases := []struct {
+		name string
+		in   RepositoryConfig
+		want string
+	}{
+		{"slug + default ssh=false → https", RepositoryConfig{Slug: "alice/repo"}, "https://github.com/alice/repo.git"},
+		{"slug + ssh=true → ssh", RepositoryConfig{Slug: "alice/repo", UseSSH: true}, "git@github.com:alice/repo.git"},
+		{"explicit url overrides slug+ssh", RepositoryConfig{Slug: "alice/repo", UseSSH: true, URL: "/tmp/local-repo"}, "/tmp/local-repo"},
+		{"explicit url overrides slug only", RepositoryConfig{Slug: "alice/repo", URL: "https://example.com/git/repo.git"}, "https://example.com/git/repo.git"},
+		{"empty everything → empty", RepositoryConfig{}, ""},
+		{"only url set", RepositoryConfig{URL: "/tmp/x"}, "/tmp/x"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in.CloneURL()
+			if got != tc.want {
+				t.Errorf("CloneURL() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidate_BasePath(t *testing.T) {
 	mk := func(bp string) *Config {
 		return &Config{

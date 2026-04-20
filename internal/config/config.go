@@ -84,19 +84,40 @@ type ManuscriptConfig struct {
 
 // RepositoryConfig contains git repository settings.
 //
-// Slug and URL serve different purposes:
-//   - URL is what we hand to git for clone/pull. Use whatever form your
-//     server is set up to authenticate against (HTTPS+PAT, SSH, local path).
-//   - Slug is the canonical "owner/repo" identifier used to match incoming
-//     GitHub webhooks. GitHub always sends `full_name` as `owner/repo`
-//     regardless of how you cloned. Optional — if unset, the webhook
-//     handler falls back to comparing the payload's clone_url against URL.
+// The clone URL is normally derived from `slug` + `use_ssh`:
+//   - use_ssh: false (default) → https://github.com/<slug>.git
+//   - use_ssh: true            → git@github.com:<slug>.git
+//
+// Set `url` only when you need an escape hatch — e.g. a local filesystem
+// path for dev, or a non-GitHub host. If `url` is set, it wins over the
+// slug-derived form.
+//
+// `slug` is also the canonical "owner/repo" identifier used to match
+// incoming GitHub webhooks (compared against payload.repository.full_name).
 type RepositoryConfig struct {
 	Slug      string `yaml:"slug"`
-	URL       string `yaml:"url"`
+	UseSSH    bool   `yaml:"use_ssh"`
+	URL       string `yaml:"url"` // optional override; if set, takes precedence over slug+use_ssh
 	Branch    string `yaml:"branch"`
 	Path      string `yaml:"path"`
 	AuthToken string `yaml:"auth_token"`
+}
+
+// CloneURL returns the URL git should actually clone/pull. Precedence:
+//   1. Explicit URL if set (escape hatch for local paths, non-GitHub, etc.)
+//   2. Derived from slug + use_ssh
+//   3. Empty string if neither is set (caller should treat as a config error).
+func (r RepositoryConfig) CloneURL() string {
+	if r.URL != "" {
+		return r.URL
+	}
+	if r.Slug == "" {
+		return ""
+	}
+	if r.UseSSH {
+		return "git@github.com:" + r.Slug + ".git"
+	}
+	return "https://github.com/" + r.Slug + ".git"
 }
 
 // MigrationConfig contains migration behavior settings

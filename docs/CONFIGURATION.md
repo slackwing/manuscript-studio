@@ -58,11 +58,14 @@ A failed validation prints the offending field and aborts startup.
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `name` | string | required | URL-safe identifier; also the on-disk directory name under `repos_dir`. |
-| `repository.slug` | string | optional | Canonical `owner/repo` identifier used to match incoming GitHub webhooks against `payload.repository.full_name`. If unset, the matcher falls back to comparing `payload.repository.clone_url` against `repository.url`. Set this whenever your `url` is the SSH form (`git@github.com:...`) — GitHub always sends an HTTPS clone_url, so the URL-fallback won't match. |
-| `repository.url` | string | required | What `git clone`/`git pull` use. HTTPS, SSH, or local path — whatever your server can authenticate against. |
+| `repository.slug` | string | required (in normal use) | Canonical `owner/repo` identifier. The clone URL is derived from this and `use_ssh`. Also matches incoming GitHub webhooks against `payload.repository.full_name`. |
+| `repository.use_ssh` | bool | `false` | When `true`, clone URL = `git@github.com:<slug>.git` (requires SSH key on server). When `false`, clone URL = `https://github.com/<slug>.git` (set `auth_token` for private repos). |
+| `repository.url` | string | optional | Escape hatch. If set, takes precedence over the slug-derived URL. Use for local filesystem paths (dev) or non-GitHub hosts. |
 | `repository.branch` | string | required | Branch to track. |
 | `repository.path` | string | required | Path to manuscript file within the repo. |
-| `repository.auth_token` | string | optional | GitHub PAT for private repos cloned via HTTPS. Supplied to git via `GIT_ASKPASS`, never embedded in URLs. Leave empty when using SSH. |
+| `repository.auth_token` | string | optional | GitHub PAT for private repos when `use_ssh: false`. Supplied to git via `GIT_ASKPASS`, never embedded in URLs. Unused when `use_ssh: true`. |
+
+**At least one of `slug` or `url` must be set**, otherwise the server has no way to clone the repo. The webhook matcher needs `slug` (or a literal URL match against `url`) to route incoming GitHub events.
 
 ### `rate_limits`
 | Field | Type | Default | Notes |

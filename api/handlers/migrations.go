@@ -170,9 +170,11 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 }
 
 // findManuscriptConfig returns the ManuscriptConfig matching the stored manuscript row.
+// Compares against CloneURL() (the resolved URL git uses) — that's what we
+// stored when the manuscript row was created.
 func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {
 	for i, m := range h.Config.Manuscripts {
-		if m.Repository.URL == repoURL && m.Repository.Path == filePath {
+		if m.Repository.CloneURL() == repoURL && m.Repository.Path == filePath {
 			return &h.Config.Manuscripts[i]
 		}
 	}
@@ -187,7 +189,7 @@ func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.Manusc
 	gitRepo := migrations.NewGitRepository(
 		h.Config.RepoPath(m.Name),
 		m.Repository.Branch,
-		m.Repository.URL,
+		m.Repository.CloneURL(),
 		m.Repository.Path,
 		m.Repository.AuthToken,
 	)

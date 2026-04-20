@@ -62,6 +62,9 @@ func NewGitRepository(path, branch, remoteURL, filePath, authToken string) *GitR
 
 // Clone clones the repository if it doesn't exist.
 func (g *GitRepository) Clone(ctx context.Context) error {
+	if g.RemoteURL == "" {
+		return fmt.Errorf("RemoteURL is empty: set repository.url in your manuscript config")
+	}
 	if _, err := os.Stat(g.Path); err == nil {
 		if g.isGitRepo() {
 			return nil
@@ -89,6 +92,9 @@ func (g *GitRepository) Clone(ctx context.Context) error {
 
 // Pull pulls the latest changes from the remote.
 func (g *GitRepository) Pull(ctx context.Context) error {
+	if g.RemoteURL == "" {
+		return fmt.Errorf("RemoteURL is empty: set repository.url in your manuscript config")
+	}
 	if err := g.checkout(ctx); err != nil {
 		return fmt.Errorf("failed to checkout branch: %w", err)
 	}

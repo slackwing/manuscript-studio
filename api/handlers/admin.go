@@ -296,20 +296,18 @@ func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
 
 // matchManuscriptForWebhook picks the manuscript config a webhook payload
 // applies to. Match order:
-//   1. By `repository.slug` against the payload's `full_name` (the canonical
+//   1. By `repository.slug` against the payload's full_name (the canonical
 //      "owner/repo" identifier GitHub always sends regardless of clone URL form).
-//   2. As a fallback for configs that don't set a slug, by literal
-//      `repository.url` equality against the payload's `clone_url`.
+//   2. Fallback for slug-less configs: literal equality between the
+//      manuscript's `repository.url` (escape-hatch override) and the
+//      payload's clone_url.
 // Returns nil if no manuscript matches.
-//
-// Returning a pointer into the slice (via index) avoids the classic
-// range-loop-pointer-aliases-loop-variable bug.
 func matchManuscriptForWebhook(manuscripts []config.ManuscriptConfig, fullName, cloneURL string) *config.ManuscriptConfig {
 	for i, m := range manuscripts {
 		if m.Repository.Slug != "" && m.Repository.Slug == fullName {
 			return &manuscripts[i]
 		}
-		if m.Repository.Slug == "" && m.Repository.URL == cloneURL {
+		if m.Repository.Slug == "" && m.Repository.URL != "" && m.Repository.URL == cloneURL {
 			return &manuscripts[i]
 		}
 	}
@@ -347,14 +345,20 @@ func (h *AdminHandlers) validateGitHubSignature(payload []byte, signature string
 // should pass an explicit commit hash. This is a feature, not a bug — it
 // stops users from accidentally enqueueing the same job twice.
 func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWriter, m *config.ManuscriptConfig, commitHash string) {
-	manuscript, err := h.DB.GetManuscript(ctx, m.Repository.URL, m.Repository.Path)
+	cloneURL := m.Repository.CloneURL()
+	if cloneURL == "" {
+		http.Error(w, "manuscript repository has neither slug nor url configured", http.StatusInternalServerError)
+		log.Printf("startMigration: manuscript %q has empty clone URL", m.Name)
+		return
+	}
+	manuscript, err := h.DB.GetManuscript(ctx, cloneURL, m.Repository.Path)
 	if err != nil {
 		http.Error(w, "failed to get manuscript", http.StatusInternalServerError)
 		log.Printf("startMigration: GetManuscript: %v", err)
 		return
 	}
 	if manuscript == nil {
-		manuscript, err = h.DB.CreateManuscript(ctx, m.Repository.URL, m.Repository.Path)
+		manuscript, err = h.DB.CreateManuscript(ctx, cloneURL, m.Repository.Path)
 		if err != nil {
 			http.Error(w, "failed to create manuscript", http.StatusInternalServerError)
 			log.Printf("startMigration: CreateManuscript: %v", err)
@@ -406,7 +410,7 @@ func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.Ma
 	gitRepo := migrations.NewGitRepository(
 		h.Config.RepoPath(m.Name),
 		m.Repository.Branch,
-		m.Repository.URL,
+		m.Repository.CloneURL(),
 		m.Repository.Path,
 		m.Repository.AuthToken,
 	)
