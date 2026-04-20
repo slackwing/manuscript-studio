@@ -186,12 +186,12 @@ func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.Manusc
 	if err := migrations.ValidateCommitRef(commitHash); err != nil {
 		return "", err
 	}
-	gitRepo := migrations.NewGitRepository(
-		h.Config.RepoPath(m.Name),
-		m.Repository.Branch,
-		m.Repository.CloneURL(),
-		m.Repository.Path,
-		m.Repository.AuthToken,
-	)
+	gitRepo := &migrations.GitRepository{
+		Path:      h.Config.RepoPath(m.Name),
+		Branch:    m.Repository.Branch,
+		RemoteURL: m.Repository.CloneURL(),
+		FilePath:  m.Repository.Path,
+		AuthToken: m.Repository.AuthToken,
+	}
 	return gitRepo.GetFileContent(ctx, commitHash)
 }

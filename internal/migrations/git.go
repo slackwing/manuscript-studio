@@ -10,6 +10,14 @@ import (
 	"strings"
 )
 
+// PreparedCommit is the everything-we-need-from-git bundle returned by
+// (*GitRepository).Prepare.
+type PreparedCommit struct {
+	CommitHash string // resolved SHA (HEAD/branch refs are dereferenced)
+	BranchName string // current branch name; "" if undetectable
+	Content    string // file content at CommitHash
+}
+
 // commitRefPattern accepts:
 //   - a 7-to-40-character hex SHA (full or short)
 //   - the literal "HEAD"
@@ -41,23 +49,15 @@ func ValidateCommitRef(ref string) error {
 // script and an environment variable, never via argv or the remote URL.
 // This prevents the token from appearing in `ps`, in remote `.git/config`,
 // or in error output from git itself.
+//
+// Construct with a struct literal — the field set is small enough that the
+// positional constructor it used to have was just adding noise.
 type GitRepository struct {
-	Path      string
-	Branch    string
-	AuthToken string
-	RemoteURL string
-	FilePath  string
-}
-
-// NewGitRepository creates a new git repository handler.
-func NewGitRepository(path, branch, remoteURL, filePath, authToken string) *GitRepository {
-	return &GitRepository{
-		Path:      path,
-		Branch:    branch,
-		RemoteURL: remoteURL,
-		FilePath:  filePath,
-		AuthToken: authToken,
-	}
+	Path      string // local on-disk path
+	Branch    string // branch to track
+	RemoteURL string // what git clone/pull/fetch use
+	FilePath  string // path of the manuscript file inside the repo
+	AuthToken string // optional; supplied via GIT_ASKPASS, never via URL
 }
 
 // Clone clones the repository if it doesn't exist.
@@ -88,6 +88,51 @@ func (g *GitRepository) Clone(ctx context.Context) error {
 		return fmt.Errorf("git clone failed: %w\nOutput: %s", err, scrubToken(string(output), g.AuthToken))
 	}
 	return nil
+}
+
+// Prepare brings the local clone up to date and returns the resolved commit
+// SHA, current branch name, and file content for the manuscript file at
+// that commit.
+//
+// `ref` may be a SHA, a branch name, or "HEAD" / "" (both treated as "use
+// the latest commit on the configured branch that touched the manuscript
+// file"). A pull failure is treated as a soft warning — we proceed with
+// whatever's on disk — because the same commit may already be present
+// locally (typical for webhook-triggered migrations that race CI's push).
+//
+// `warnf` is called for non-fatal events worth surfacing (typically a
+// pull failure). Pass nil to silence them.
+func (g *GitRepository) Prepare(ctx context.Context, ref string, warnf func(format string, args ...any)) (*PreparedCommit, error) {
+	if warnf == nil {
+		warnf = func(string, ...any) {}
+	}
+	if err := g.Clone(ctx); err != nil {
+		return nil, fmt.Errorf("clone: %w", err)
+	}
+	if err := g.Pull(ctx); err != nil {
+		warnf("git pull failed (continuing with local HEAD): %v", err)
+	}
+
+	commit := ref
+	if commit == "" || commit == "HEAD" {
+		resolved, err := g.GetLatestCommitHash(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("resolve HEAD: %w", err)
+		}
+		commit = resolved
+	}
+
+	branch, err := g.GetBranchName(ctx)
+	if err != nil {
+		warnf("could not read branch name (continuing): %v", err)
+		branch = ""
+	}
+
+	content, err := g.GetFileContent(ctx, commit)
+	if err != nil {
+		return nil, fmt.Errorf("read content: %w", err)
+	}
+	return &PreparedCommit{CommitHash: commit, BranchName: branch, Content: content}, nil
 }
 
 // Pull pulls the latest changes from the remote.
@@ -162,10 +207,10 @@ func (g *GitRepository) GetBranchName(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// checkout switches to the configured branch.
+// checkout switches to the configured branch. If the branch doesn't exist
+// locally, fetches from origin and checks out a tracking branch.
 func (g *GitRepository) checkout(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "git", "-C", g.Path, "checkout", g.Branch)
-	if err := cmd.Run(); err == nil {
+	if err := exec.CommandContext(ctx, "git", "-C", g.Path, "checkout", g.Branch).Run(); err == nil {
 		return nil
 	}
 
@@ -174,13 +219,13 @@ func (g *GitRepository) checkout(ctx context.Context) error {
 		return err
 	}
 	defer cleanup()
-	if err := fetchCmd.Run(); err != nil {
-		return fmt.Errorf("failed to fetch branch %s: %w", g.Branch, err)
+	if out, err := fetchCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch %s failed: %w\nOutput: %s", g.Branch, err, scrubToken(string(out), g.AuthToken))
 	}
 
-	checkoutCmd := exec.CommandContext(ctx, "git", "-C", g.Path, "checkout", "-b", g.Branch, fmt.Sprintf("origin/%s", g.Branch))
-	if err := checkoutCmd.Run(); err != nil {
-		return fmt.Errorf("failed to checkout branch %s: %w", g.Branch, err)
+	out, err := exec.CommandContext(ctx, "git", "-C", g.Path, "checkout", "-b", g.Branch, "origin/"+g.Branch).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git checkout -b %s origin/%s failed: %w\nOutput: %s", g.Branch, g.Branch, err, string(out))
 	}
 	return nil
 }
@@ -203,85 +248,72 @@ func (g *GitRepository) isGitRepo() bool {
 	return err == nil && info.IsDir()
 }
 
-// ValidateCommit checks if a commit exists and contains the manuscript file.
-func (g *GitRepository) ValidateCommit(ctx context.Context, commitHash string) error {
-	cmd := exec.CommandContext(ctx, "git", "-C", g.Path, "rev-parse", commitHash)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("commit %s does not exist", commitHash)
-	}
+// noopCleanup is returned when there's nothing for the caller to clean up;
+// callers can defer it unconditionally.
+func noopCleanup() {}
 
-	cmd = exec.CommandContext(ctx, "git", "-C", g.Path, "ls-tree", commitHash, g.FilePath)
-	output, err := cmd.Output()
-	if err != nil || len(output) == 0 {
-		return fmt.Errorf("file %s does not exist in commit %s", g.FilePath, commitHash)
-	}
-	return nil
-}
-
-// gitCommand builds an exec.Cmd for a git invocation that may need to
-// authenticate. Authentication is supplied via a GIT_ASKPASS helper script
-// and an environment variable, so the token never appears in argv or in
-// the repository's stored remote URL.
+// gitCommand builds an exec.Cmd for a git invocation. When AuthToken is
+// non-empty, it wires up a GIT_ASKPASS helper so the token is supplied
+// to git over its stdin prompt — never via argv or via the stored remote
+// URL — and returns a cleanup func that deletes the helper script.
 //
-// The returned cleanup function deletes the helper script. It is always
-// safe to call (even if the script wasn't created).
+// The returned cleanup is always safe to defer.
 func (g *GitRepository) gitCommand(ctx context.Context, args ...string) (*exec.Cmd, func(), error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
-	env := append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0", // never block on a TTY prompt
-	)
+	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 
 	if g.AuthToken == "" {
 		cmd.Env = env
-		return cmd, func() {}, nil
+		return cmd, noopCleanup, nil
 	}
 
 	helper, cleanup, err := writeAskpassHelper()
 	if err != nil {
-		return nil, func() {}, fmt.Errorf("failed to create askpass helper: %w", err)
+		return nil, noopCleanup, fmt.Errorf("create askpass helper: %w", err)
 	}
-
-	env = append(env,
+	cmd.Env = append(env,
 		"GIT_ASKPASS="+helper,
-		// The helper reads MANUSCRIPT_STUDIO_GIT_TOKEN from its environment.
-		// Using a custom name avoids collision with any user-set GIT_TOKEN.
+		// Helper reads MANUSCRIPT_STUDIO_GIT_TOKEN from its env. Custom
+		// name avoids collision with any user-set GIT_TOKEN.
 		"MANUSCRIPT_STUDIO_GIT_TOKEN="+g.AuthToken,
 	)
-	cmd.Env = env
 	return cmd, cleanup, nil
 }
 
-// writeAskpassHelper writes a small shell script that prints the token to
-// stdout. Git invokes it for both the username and password prompts; for
-// HTTPS to GitHub the username is irrelevant when a PAT is used as the
-// password, so we just print the token in both cases.
-func writeAskpassHelper() (string, func(), error) {
-	f, err := os.CreateTemp("", "manuscript-studio-askpass-*.sh")
-	if err != nil {
-		return "", func() {}, err
-	}
-	path := f.Name()
-	cleanup := func() { _ = os.Remove(path) }
-
-	script := `#!/bin/sh
-# Auto-generated. Prints the manuscript-studio git token for git's askpass prompts.
-# The token is supplied via the MANUSCRIPT_STUDIO_GIT_TOKEN env var by the parent process.
+// askpassScript prints the token git needs for password (and username,
+// since GitHub PATs work either way) prompts. The token comes from the
+// parent process's MANUSCRIPT_STUDIO_GIT_TOKEN env var.
+const askpassScript = `#!/bin/sh
 printf '%s' "${MANUSCRIPT_STUDIO_GIT_TOKEN}"
 `
-	if _, err := f.WriteString(script); err != nil {
+
+// writeAskpassHelper writes the askpass script to a private temp file and
+// returns the path plus a cleanup func that deletes it.
+func writeAskpassHelper() (path string, cleanup func(), err error) {
+	f, err := os.CreateTemp("", "manuscript-studio-askpass-*.sh")
+	if err != nil {
+		return "", noopCleanup, err
+	}
+	path = f.Name()
+	cleanup = func() { _ = os.Remove(path) }
+
+	// Any failure past this point should clean up the half-written file.
+	defer func() {
+		if err != nil {
+			cleanup()
+			path, cleanup = "", noopCleanup
+		}
+	}()
+
+	if _, err = f.WriteString(askpassScript); err != nil {
 		f.Close()
-		cleanup()
-		return "", func() {}, err
+		return
 	}
-	if err := f.Close(); err != nil {
-		cleanup()
-		return "", func() {}, err
+	if err = f.Close(); err != nil {
+		return
 	}
-	if err := os.Chmod(path, 0700); err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
-	return path, cleanup, nil
+	err = os.Chmod(path, 0700)
+	return
 }
 
 // scrubToken removes any accidental occurrence of the auth token from a

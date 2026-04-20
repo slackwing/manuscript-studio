@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-19.13"
+SCRIPT_VERSION="2026-04-19.14"
 
 set -euo pipefail
 
@@ -441,5 +441,9 @@ log_info "Logs dir:       $CONFIG_DIR/logs"
 log_info "Repos dir:      $MANUSCRIPT_REPOS_DIR"
 log_info "Private dir:    $PRIVATE_DIR"
 log_info "Container:      $CONTAINER_NAME"
+echo ""
+echo "Tools:"
+echo "  $SRC_DIR/debug/connect_db.sh        # psql shell against this DB"
+echo "  $SRC_DIR/debug/undo_migration.sh    # roll a manuscript back to an earlier migration"
 echo ""
 log_info "Installation complete!"

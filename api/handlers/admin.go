@@ -8,8 +8,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -396,64 +398,43 @@ func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.Ma
 	ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
 	defer cancel()
 
-	log.Printf("Starting migration %d for manuscript %s at commit %s", migrationID, m.Name, commitHash)
+	mlog := slog.Default().With(
+		slog.Int("migration_id", migrationID),
+		slog.Int("manuscript_id", manuscriptID),
+		slog.String("manuscript", m.Name),
+		slog.String("requested_commit", commitHash),
+	)
+	mlog.Info("migration started")
 
-	// Helper: any error before Processor.Run reaches it must be recorded
-	// on the row ourselves; Processor.Run handles its own.
-	fail := func(stage string, err error) {
-		log.Printf("Migration %d failed at %s: %v", migrationID, stage, err)
-		if mErr := h.DB.MarkMigrationError(context.Background(), migrationID, stage+": "+err.Error()); mErr != nil {
-			log.Printf("Migration %d: also failed to record error: %v", migrationID, mErr)
-		}
+	gitRepo := &migrations.GitRepository{
+		Path:      h.Config.RepoPath(m.Name),
+		Branch:    m.Repository.Branch,
+		RemoteURL: m.Repository.CloneURL(),
+		FilePath:  m.Repository.Path,
+		AuthToken: m.Repository.AuthToken,
 	}
 
-	gitRepo := migrations.NewGitRepository(
-		h.Config.RepoPath(m.Name),
-		m.Repository.Branch,
-		m.Repository.CloneURL(),
-		m.Repository.Path,
-		m.Repository.AuthToken,
+	prepared, err := gitRepo.Prepare(ctx, commitHash, func(format string, args ...any) {
+		mlog.Warn(fmt.Sprintf(format, args...))
+	})
+	if err != nil {
+		mlog.Warn("git prep failed", slog.Any("err", err))
+		if mErr := h.DB.MarkMigrationError(context.Background(), migrationID, err.Error()); mErr != nil {
+			mlog.Warn("also failed to record error on row", slog.Any("err", mErr))
+		}
+		return
+	}
+	mlog.Info("git prep complete",
+		slog.String("commit", prepared.CommitHash),
+		slog.String("branch", prepared.BranchName),
+		slog.Int("bytes", len(prepared.Content)),
 	)
 
-	if err := gitRepo.Clone(ctx); err != nil {
-		fail("clone", err)
-		return
-	}
-	if err := gitRepo.Pull(ctx); err != nil {
-		// Same tolerance as before: a failed pull is not fatal — we'll
-		// proceed with whatever's locally checked out.
-		log.Printf("Migration %d: git pull failed (continuing): %v", migrationID, err)
-	}
-
-	resolved := commitHash
-	if commitHash == "" || commitHash == "HEAD" {
-		r, err := gitRepo.GetLatestCommitHash(ctx)
-		if err != nil {
-			fail("resolve_head", err)
-			return
-		}
-		resolved = r
-		log.Printf("Migration %d: resolved HEAD to %s", migrationID, resolved)
-	}
-
-	branchName, err := gitRepo.GetBranchName(ctx)
-	if err != nil {
-		// Not fatal — record empty branch name and proceed.
-		log.Printf("Migration %d: could not read branch name: %v", migrationID, err)
-		branchName = ""
-	}
-
-	content, err := gitRepo.GetFileContent(ctx, resolved)
-	if err != nil {
-		fail("read_content", err)
-		return
-	}
-
-	result, err := h.Processor.Run(ctx, migrationID, manuscriptID, resolved, branchName, content)
+	result, err := h.Processor.Run(ctx, mlog, migrationID, manuscriptID, prepared.CommitHash, prepared.BranchName, prepared.Content)
 	if err != nil {
 		// Processor.Run already marked the row as error.
-		log.Printf("Migration %d: processor failed: %v", migrationID, err)
+		mlog.Warn("processor failed", slog.Any("err", err))
 		return
 	}
-	log.Printf("Migration %d completed: %s", migrationID, result.Message)
+	mlog.Info("migration done", slog.String("result", result.Message))
 }
