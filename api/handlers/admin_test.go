@@ -74,3 +74,81 @@ func TestValidateGitHubSignature_RejectsEmptySignature(t *testing.T) {
 		t.Fatal("validation must reject when signature header is missing")
 	}
 }
+
+// TestMatchManuscriptForWebhook covers the slug-or-url matching.
+// The motivating case is: config has an SSH `url`, GitHub sends an HTTPS
+// `clone_url`. Slug-based matching is the only thing that lets that work.
+func TestMatchManuscriptForWebhook(t *testing.T) {
+	manuscripts := []config.ManuscriptConfig{
+		{
+			Name: "ssh-repo",
+			Repository: config.RepositoryConfig{
+				Slug: "alice/ssh-repo",
+				URL:  "git@github.com:alice/ssh-repo.git",
+			},
+		},
+		{
+			Name: "https-only",
+			Repository: config.RepositoryConfig{
+				// no slug — fall back to URL equality
+				URL: "https://github.com/bob/https-only.git",
+			},
+		},
+	}
+
+	cases := []struct {
+		name      string
+		fullName  string
+		cloneURL  string
+		wantName  string // empty = expect no match
+	}{
+		{
+			name:     "slug matches full_name regardless of url form",
+			fullName: "alice/ssh-repo",
+			cloneURL: "https://github.com/alice/ssh-repo.git",
+			wantName: "ssh-repo",
+		},
+		{
+			name:     "url fallback works when slug not set",
+			fullName: "bob/https-only",
+			cloneURL: "https://github.com/bob/https-only.git",
+			wantName: "https-only",
+		},
+		{
+			name:     "no slug, url mismatch -> no match",
+			fullName: "bob/https-only",
+			cloneURL: "https://github.com/bob/different.git",
+			wantName: "",
+		},
+		{
+			name:     "slug mismatch and not falling through to url equality on slug-having entries",
+			fullName: "alice/wrong",
+			cloneURL: "git@github.com:alice/ssh-repo.git",
+			wantName: "",
+		},
+		{
+			name:     "unknown repo entirely",
+			fullName: "stranger/repo",
+			cloneURL: "https://github.com/stranger/repo.git",
+			wantName: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := matchManuscriptForWebhook(manuscripts, tc.fullName, tc.cloneURL)
+			if tc.wantName == "" {
+				if got != nil {
+					t.Fatalf("expected no match, got %q", got.Name)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected match %q, got nil", tc.wantName)
+			}
+			if got.Name != tc.wantName {
+				t.Fatalf("expected match %q, got %q", tc.wantName, got.Name)
+			}
+		})
+	}
+}

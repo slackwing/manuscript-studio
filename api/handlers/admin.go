@@ -78,18 +78,10 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this is a push to the tracked branch
-	// Find which manuscript this webhook is for
-	var manuscriptConfig *config.ManuscriptConfig
-	for _, m := range h.Config.Manuscripts {
-		if m.Repository.URL == payload.Repository.CloneURL {
-			manuscriptConfig = &m
-			break
-		}
-	}
-
+	manuscriptConfig := matchManuscriptForWebhook(h.Config.Manuscripts, payload.Repository.FullName, payload.Repository.CloneURL)
 	if manuscriptConfig == nil {
-		log.Printf("Webhook received for unknown repository: %s", payload.Repository.CloneURL)
+		log.Printf("Webhook received for unknown repository: full_name=%s clone_url=%s",
+			payload.Repository.FullName, payload.Repository.CloneURL)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ignored","reason":"repository not configured"}`))
 		return
@@ -300,6 +292,28 @@ func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
 	authHeader := r.Header.Get("Authorization")
 	expected := "Bearer " + h.Config.Auth.SystemToken
 	return subtle.ConstantTimeCompare([]byte(authHeader), []byte(expected)) == 1
+}
+
+// matchManuscriptForWebhook picks the manuscript config a webhook payload
+// applies to. Match order:
+//   1. By `repository.slug` against the payload's `full_name` (the canonical
+//      "owner/repo" identifier GitHub always sends regardless of clone URL form).
+//   2. As a fallback for configs that don't set a slug, by literal
+//      `repository.url` equality against the payload's `clone_url`.
+// Returns nil if no manuscript matches.
+//
+// Returning a pointer into the slice (via index) avoids the classic
+// range-loop-pointer-aliases-loop-variable bug.
+func matchManuscriptForWebhook(manuscripts []config.ManuscriptConfig, fullName, cloneURL string) *config.ManuscriptConfig {
+	for i, m := range manuscripts {
+		if m.Repository.Slug != "" && m.Repository.Slug == fullName {
+			return &manuscripts[i]
+		}
+		if m.Repository.Slug == "" && m.Repository.URL == cloneURL {
+			return &manuscripts[i]
+		}
+	}
+	return nil
 }
 
 // validateGitHubSignature validates the GitHub webhook signature

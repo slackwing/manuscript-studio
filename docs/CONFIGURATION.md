@@ -58,10 +58,11 @@ A failed validation prints the offending field and aborts startup.
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `name` | string | required | URL-safe identifier; also the on-disk directory name under `repos_dir`. |
-| `repository.url` | string | required | HTTPS git URL or local path (dev). |
+| `repository.slug` | string | optional | Canonical `owner/repo` identifier used to match incoming GitHub webhooks against `payload.repository.full_name`. If unset, the matcher falls back to comparing `payload.repository.clone_url` against `repository.url`. Set this whenever your `url` is the SSH form (`git@github.com:...`) — GitHub always sends an HTTPS clone_url, so the URL-fallback won't match. |
+| `repository.url` | string | required | What `git clone`/`git pull` use. HTTPS, SSH, or local path — whatever your server can authenticate against. |
 | `repository.branch` | string | required | Branch to track. |
 | `repository.path` | string | required | Path to manuscript file within the repo. |
-| `repository.auth_token` | string | optional | GitHub PAT for private repos. Supplied to git via `GIT_ASKPASS`, never embedded in URLs. |
+| `repository.auth_token` | string | optional | GitHub PAT for private repos cloned via HTTPS. Supplied to git via `GIT_ASKPASS`, never embedded in URLs. Leave empty when using SSH. |
 
 ### `rate_limits`
 | Field | Type | Default | Notes |

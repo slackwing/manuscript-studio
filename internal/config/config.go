@@ -82,8 +82,17 @@ type ManuscriptConfig struct {
 	WebhookSecret string           `yaml:"webhook_secret,omitempty"`
 }
 
-// RepositoryConfig contains git repository settings
+// RepositoryConfig contains git repository settings.
+//
+// Slug and URL serve different purposes:
+//   - URL is what we hand to git for clone/pull. Use whatever form your
+//     server is set up to authenticate against (HTTPS+PAT, SSH, local path).
+//   - Slug is the canonical "owner/repo" identifier used to match incoming
+//     GitHub webhooks. GitHub always sends `full_name` as `owner/repo`
+//     regardless of how you cloned. Optional — if unset, the webhook
+//     handler falls back to comparing the payload's clone_url against URL.
 type RepositoryConfig struct {
+	Slug      string `yaml:"slug"`
 	URL       string `yaml:"url"`
 	Branch    string `yaml:"branch"`
 	Path      string `yaml:"path"`

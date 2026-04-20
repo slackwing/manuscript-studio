@@ -38,7 +38,16 @@ manuscripts:
   - name: "example-book"  # Internal identifier (URL-safe)
 
     repository:
-      # GitHub repository URL (HTTPS)
+      # Canonical "owner/repo" identifier — used to match incoming GitHub
+      # webhooks. GitHub sends this as full_name regardless of how you
+      # cloned. If you only ever sync manually (no webhooks), this is
+      # optional and the matcher falls back to comparing the payload's
+      # clone_url against `url` below.
+      slug: "yourusername/your-repo"
+
+      # URL git clones/pulls from. Use whatever form your server is set up
+      # to authenticate against — HTTPS+PAT, SSH (git@github.com:...),
+      # or a local path.
       url: "https://github.com/yourusername/your-repo"
 
       # Branch to track
@@ -49,6 +58,8 @@ manuscripts:
 
       # GitHub Personal Access Token with repo read access
       # Create at: https://github.com/settings/tokens
+      # Only needed if `url` above is HTTPS to a private repo. SSH-based
+      # `url` should leave this empty and rely on a mounted SSH key instead.
       auth_token: "REPLACE_ME_OR_SERVER_WONT_START"
 
     # Per-manuscript webhook secret (optional)
@@ -58,10 +69,10 @@ manuscripts:
   # Example of second manuscript (uncomment to use)
   # - name: "another-book"
   #   repository:
-  #     url: "https://github.com/yourusername/another-repo"
+  #     slug: "yourusername/another-repo"
+  #     url: "git@github.com:yourusername/another-repo.git"
   #     branch: "main"
   #     path: "book.manuscript"
-  #     auth_token: "REPLACE_ME_OR_SERVER_WONT_START"
 
 # ============================================================
 # Authentication Settings
