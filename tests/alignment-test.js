@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { loginAsTestUser } = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch({ headless: true });

@@ -1,13 +1,15 @@
 #!/bin/bash
 # Run all Manuscript Studio tests.
 #
-# Ported from 14.writesys/test-all.sh. Runs the gatekeeper tests in order:
+# Runs the gatekeeper tests in order:
 #   1. Go unit tests
-#   2. UI integration (catches overflow / layout / Paged.js regressions)
-# Feature tests in tests/test-*.js are intentionally NOT run here — they are
-# ad-hoc and mixed quality. Run individual ones with `node tests/<name>.js`.
+#   2. Every tests/*.js script (browser-driven via Playwright, plus pure unit
+#      tests like rainbow-slice). test-utils.js is skipped — it's a helper, not
+#      a test.
+#
+# Assumes a dev server on http://localhost:5001 (start with `make dev`).
 
-set -e
+set -u
 
 echo "========================================"
 echo "Manuscript Studio Complete Test Suite"
@@ -26,16 +28,38 @@ go test ./... || { echo "❌ Unit tests failed"; exit 1; }
 echo "✓ Unit tests passed"
 echo ""
 
-echo "2. Running UI integration tests..."
-echo "-----------------------------------"
-node tests/ui-integration.js || { echo "❌ UI integration tests failed"; exit 1; }
-echo ""
+echo "2. Running JS test scripts..."
+echo "-----------------------------"
 
+passed=()
+failed=()
+
+for f in tests/*.js; do
+  name=$(basename "$f" .js)
+  [ "$name" = "test-utils" ] && continue
+
+  echo ""
+  echo "▶ $name"
+  if timeout 120 node "$f"; then
+    passed+=("$name")
+    echo "✓ $name"
+  else
+    failed+=("$name")
+    echo "✗ $name"
+  fi
+done
+
+echo ""
 echo "========================================"
+echo "Summary: ${#passed[@]} passed, ${#failed[@]} failed"
+echo "========================================"
+
+if [ ${#failed[@]} -gt 0 ]; then
+  echo ""
+  echo "Failed tests:"
+  for n in "${failed[@]}"; do echo "  - $n"; done
+  exit 1
+fi
+
+echo ""
 echo "✅ ALL TESTS PASSED!"
-echo "========================================"
-echo ""
-echo "Test artifacts:"
-echo "  - tests/screenshots/ui-integration.png"
-echo "  - tests/screenshots/smoke.png"
-echo ""

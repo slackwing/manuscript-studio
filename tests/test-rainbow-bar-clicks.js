@@ -1,4 +1,4 @@
-const { TEST_URL, cleanupTestAnnotations } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
 const { chromium } = require('playwright');
 
 /**

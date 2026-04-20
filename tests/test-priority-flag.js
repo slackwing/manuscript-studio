@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
 
 (async () => {
   console.log('=== Priority/Flag Chips Test ===\n');
@@ -8,321 +8,171 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations } = require('./test
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  page.on('dialog', async d => { try { await d.dismiss(); } catch (e) {} });
+
+  let failed = 0;
 
   try {
-    // Load the page
-  // Login first
-  await loginAsTestUser(page);
-
+    await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
     await page.waitForTimeout(2000);
 
-    // ===== Test 1: P/flag section hidden initially =====
-    console.log('Test 1: P/flag section hidden initially...');
+    // Test 1: P/flag chips are per-note and exist only on real notes
+    console.log('Test 1: Priority/flag chips absent on uncreated-note, present on real note...');
     const firstSentence = await page.locator('.sentence').first();
+    const sentenceId = await firstSentence.getAttribute('data-sentence-id');
     await firstSentence.click();
-    await page.waitForTimeout(300);
+    await page.waitForSelector('.sticky-note.uncreated-note', { timeout: 5000 });
+    await page.waitForTimeout(500);
 
-    const pfContainerInitial = await page.locator('#priority-flag-container');
-    const isHiddenInitial = await pfContainerInitial.evaluate(el => el.style.display === 'none' || !el.offsetParent);
-
-    if (isHiddenInitial) {
-      console.log('✓ P/flag section is hidden when no annotation exists');
+    const uncreatedHasChips = await page.locator('.sticky-note.uncreated-note .priority-chip').count();
+    if (uncreatedHasChips === 0) {
+      console.log('✓ Uncreated (grey) sticky note has no priority chips');
     } else {
-      console.log('✗ P/flag section should be hidden when no annotation exists');
-      process.exit(1);
+      console.log(`✗ Uncreated note should not have priority chips (found ${uncreatedHasChips})`);
+      failed++;
     }
 
-    // ===== Test 2: Visibility after color selection =====
-    console.log('\nTest 2: Visibility after color selection...');
+    // Create a yellow annotation. Use force hover + retry because the palette
+    // has a 200ms mouseleave delay that can flake with single-shot hover.
+    async function createYellow() {
+      for (let i = 0; i < 3; i++) {
+        try {
+          await page.locator('.sticky-note.uncreated-note .sticky-note-color-circle').first().hover({ force: true });
+          await page.waitForTimeout(400);
+          await page.waitForSelector('.sticky-note.uncreated-note .sticky-note-palette.visible', { timeout: 2000 });
+          await page.locator('.sticky-note.uncreated-note .color-circle[data-color="yellow"]').first().click({ force: true });
+          await page.waitForSelector('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]', { timeout: 5000 });
+          await page.waitForTimeout(600);
+          return;
+        } catch (e) {
+          if (i === 2) throw e;
+          await page.waitForTimeout(500);
+        }
+      }
+    }
+    await createYellow();
 
-    // Select yellow color
-    const yellowCircle = await page.locator('.color-circle[data-color="yellow"]');
-    await yellowCircle.click();
-    await page.waitForTimeout(500);
-
-    const isVisibleAfterColor = await pfContainerInitial.evaluate(el => el.style.display === 'block' && el.offsetParent);
-
-    if (isVisibleAfterColor) {
-      console.log('✓ P/flag section is visible after color selection');
+    const realHasChips = await page.locator('.sticky-note:not(.uncreated-note) .priority-chip').count();
+    const realHasFlag = await page.locator('.sticky-note:not(.uncreated-note) .flag-chip').count();
+    if (realHasChips >= 4 && realHasFlag >= 1) {
+      console.log(`✓ Real sticky-note has priority (${realHasChips}) and flag (${realHasFlag}) controls`);
     } else {
-      console.log('✗ P/flag section should be visible after color selection');
-      process.exit(1);
+      console.log(`✗ Real note should have 4 priority chips + 1 flag (got p=${realHasChips}, f=${realHasFlag})`);
+      failed++;
     }
 
-    // Clean up - delete annotation using trash icon
-    const trashIcon = await page.locator('#trash-icon');
-
-    // Click trash once (runs away)
-    await trashIcon.click();
-    await page.waitForTimeout(300);
-
-    // Click trash again (actually deletes)
-    await trashIcon.click();
-    await page.waitForTimeout(500);
-
-    // ===== Test 3: Visibility after note typing (with blue default) =====
-    console.log('\nTest 3: Visibility after note typing (with blue default)...');
-
-    // Click a different sentence
-    const secondSentence = await page.locator('.sentence').nth(1);
-    const sentenceId2 = await secondSentence.getAttribute('data-sentence-id');
-    await secondSentence.click();
-    await page.waitForTimeout(300);
-
-    // Type a note (should auto-default to blue)
-    const noteInput = await page.locator('#note-input');
-    await noteInput.type('T');
-    await page.waitForTimeout(1500); // Wait for auto-save
-
-    // Check if blue is applied
-    const hasBlue = await secondSentence.evaluate(el => el.classList.contains('highlight-blue'));
-    if (!hasBlue) {
-      console.log('✗ Should auto-default to blue when typing note');
-      process.exit(1);
-    }
-
-    // Check if P/flag section is visible
-    const isVisibleAfterNote = await pfContainerInitial.evaluate(el => el.style.display === 'block' && el.offsetParent);
-
-    if (isVisibleAfterNote) {
-      console.log('✓ P/flag section is visible after note typing with auto-blue default');
+    // Test 2: priority-flag-container is visible on real note
+    console.log('\nTest 2: priority-flag-container display...');
+    const pfDisplay = await page.locator('.sticky-note:not(.uncreated-note) .priority-flag-container').first().evaluate(el => window.getComputedStyle(el).display);
+    if (pfDisplay !== 'none') {
+      console.log(`✓ priority-flag-container visible (display=${pfDisplay})`);
     } else {
-      console.log('✗ P/flag section should be visible after note typing');
-      process.exit(1);
+      console.log(`✗ priority-flag-container should be visible, got display=${pfDisplay}`);
+      failed++;
     }
 
-    // Clear the note to trigger undo (should work since no P/flag set)
-    await noteInput.fill('');
-    await page.waitForTimeout(1500);
-
-    const hasBlueAfterClear = await secondSentence.evaluate(el => el.classList.contains('highlight-blue'));
-    if (hasBlueAfterClear) {
-      console.log('✗ Auto-blue should be undone when note is cleared (no P/flag)');
-      process.exit(1);
-    }
-    console.log('✓ Auto-blue correctly undone when note cleared (no P/flag set)');
-
-    // ===== Test 4: Test commitment logic when setting P/flag on auto-blue =====
-    console.log('\nTest 4: Commitment logic when setting P/flag on auto-blue...');
-
-    // Click third sentence
-    const thirdSentence = await page.locator('.sentence').nth(2);
-    const sentenceId3 = await thirdSentence.getAttribute('data-sentence-id');
-    await thirdSentence.click();
-    await page.waitForTimeout(300);
-
-    // Type a note to create auto-blue annotation
-    await noteInput.type('x');
-    await page.waitForTimeout(1500);
-
-    // Verify blue is applied and P/flag section is visible
-    const hasBlueBeforeP0 = await thirdSentence.evaluate(el => el.classList.contains('highlight-blue'));
-    if (!hasBlueBeforeP0) {
-      console.log('✗ Should have auto-blue before clicking P0');
-      process.exit(1);
-    }
-
-    // Now click P0 (should mark as committed)
-    const p0Chip = await page.locator('.priority-chip[data-priority="P0"]');
-    await p0Chip.click();
+    // Test 3: Click P0 — chip becomes active
+    console.log('\nTest 3: Click P0...');
+    const p0 = page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').first();
+    await p0.click();
     await page.waitForTimeout(500);
-
-    // Check if P0 is active
-    const isP0Active = await p0Chip.evaluate(el => el.classList.contains('active'));
-    if (!isP0Active) {
-      console.log('✗ P0 chip should be active');
-      process.exit(1);
+    const p0Active = await p0.evaluate(el => el.classList.contains('active'));
+    if (p0Active) {
+      console.log('✓ P0 chip active after click');
+    } else {
+      console.log('✗ P0 chip not active');
+      failed++;
     }
-    console.log('✓ P0 chip active after clicking');
 
-    // ===== Test 5: Test commitment logic - P/flag prevents undo =====
-    console.log('\nTest 5: Commitment logic - P/flag prevents undo...');
-
-    // Now try clearing note - should NOT undo because P0 is set (committed)
-    await noteInput.fill('test note');
-    await page.waitForTimeout(1500);
-    await noteInput.fill('');
-    await page.waitForTimeout(1500);
-
-    const hasBlueAfterClearCommitted = await thirdSentence.evaluate(el => el.classList.contains('highlight-blue'));
-    if (!hasBlueAfterClearCommitted) {
-      console.log('✗ Auto-blue should NOT be undone when P/flag is set (committed)');
-      process.exit(1);
-    }
-    console.log('✓ Commitment logic works - P/flag prevents undo');
-
-    // ===== Test 6: Test priority chip radio behavior (P0-P3 mutually exclusive) =====
-    console.log('\nTest 6: Priority chip radio behavior...');
-
-    // P0 is already active, click P1
-    const p1Chip = await page.locator('.priority-chip[data-priority="P1"]');
-    await p1Chip.click();
+    // Test 4: Click P1 — radio (P0 deactivates, P1 activates)
+    console.log('\nTest 4: Priority radio behavior...');
+    const p1 = page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P1"]').first();
+    await p1.click();
     await page.waitForTimeout(500);
-
-    const isP0StillActive = await p0Chip.evaluate(el => el.classList.contains('active'));
-    const isP1Active = await p1Chip.evaluate(el => el.classList.contains('active'));
-
-    if (isP0StillActive) {
-      console.log('✗ P0 should be deactivated when P1 is clicked (radio behavior)');
-      process.exit(1);
+    const p0StillActive = await p0.evaluate(el => el.classList.contains('active'));
+    const p1Active = await p1.evaluate(el => el.classList.contains('active'));
+    if (!p0StillActive && p1Active) {
+      console.log('✓ P0 deactivated, P1 activated');
+    } else {
+      console.log(`✗ Expected P0 inactive & P1 active (P0 active=${p0StillActive}, P1 active=${p1Active})`);
+      failed++;
     }
-    if (!isP1Active) {
-      console.log('✗ P1 should be active');
-      process.exit(1);
-    }
-    console.log('✓ Priority chips have radio behavior (mutually exclusive)');
 
-    // Test toggle behavior - clicking same priority again should deselect
-    await p1Chip.click();
+    // Test 5: Toggle P1 off
+    console.log('\nTest 5: Priority toggle off...');
+    await p1.click();
     await page.waitForTimeout(500);
-
-    const isP1StillActive = await p1Chip.evaluate(el => el.classList.contains('active'));
-    if (isP1StillActive) {
-      console.log('✗ Clicking P1 again should deselect it (toggle)');
-      process.exit(1);
+    const p1StillActive = await p1.evaluate(el => el.classList.contains('active'));
+    if (!p1StillActive) {
+      console.log('✓ Clicking P1 again deactivates it');
+    } else {
+      console.log('✗ Clicking P1 again should toggle off');
+      failed++;
     }
-    console.log('✓ Priority toggle behavior works');
 
-    // ===== Test 7: Test flag chip toggle behavior (independent) =====
-    console.log('\nTest 7: Flag chip toggle behavior...');
-
-    const flagChip = await page.locator('.flag-chip');
-
-    // Click flag
-    await flagChip.click();
+    // Test 6: Flag chip toggle
+    console.log('\nTest 6: Flag chip toggle...');
+    const flag = page.locator('.sticky-note:not(.uncreated-note) .flag-chip').first();
+    await flag.click();
     await page.waitForTimeout(500);
-
-    const isFlagActive = await flagChip.evaluate(el => el.classList.contains('active'));
-    if (!isFlagActive) {
-      console.log('✗ Flag should be active after clicking');
-      process.exit(1);
+    const flagActive = await flag.evaluate(el => el.classList.contains('active'));
+    if (flagActive) {
+      console.log('✓ Flag active after click');
+    } else {
+      console.log('✗ Flag should be active after click');
+      failed++;
     }
 
-    // Set P2 and verify flag is still active (independent)
-    const p2Chip = await page.locator('.priority-chip[data-priority="P2"]');
-    await p2Chip.click();
+    // Test 7: Flag independent from priority
+    console.log('\nTest 7: Flag independent from priority...');
+    const p2 = page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P2"]').first();
+    await p2.click();
     await page.waitForTimeout(500);
-
-    const isFlagStillActive = await flagChip.evaluate(el => el.classList.contains('active'));
-    const isP2Active = await p2Chip.evaluate(el => el.classList.contains('active'));
-
-    if (!isFlagStillActive) {
-      console.log('✗ Flag should remain active when priority is changed');
-      process.exit(1);
+    const flagStillActive = await flag.evaluate(el => el.classList.contains('active'));
+    const p2Active = await p2.evaluate(el => el.classList.contains('active'));
+    if (flagStillActive && p2Active) {
+      console.log('✓ Flag remains active when priority is changed');
+    } else {
+      console.log(`✗ Expected flag active & P2 active (flag=${flagStillActive}, p2=${p2Active})`);
+      failed++;
     }
-    if (!isP2Active) {
-      console.log('✗ P2 should be active');
-      process.exit(1);
-    }
-    console.log('✓ Flag is independent of priority');
 
-    // Toggle flag off
-    await flagChip.click();
-    await page.waitForTimeout(500);
-
-    const isFlagActiveAfterToggle = await flagChip.evaluate(el => el.classList.contains('active'));
-    if (isFlagActiveAfterToggle) {
-      console.log('✗ Flag should be inactive after toggle');
-      process.exit(1);
-    }
-    console.log('✓ Flag toggle behavior works');
-
-    // ===== Test 8: Test persistence after reload =====
+    // Test 8: Persistence after reload
     console.log('\nTest 8: Persistence after reload...');
-
-    // Get annotation data before reload
-    const apiUrl = 'http://localhost:5001';
-    const annotationsResp = await fetch(`${apiUrl}/api/annotations/sentence/${sentenceId3}`);
-    const annotationsData = await annotationsResp.json();
-    const annotationId = annotationsData.annotations[0].annotation_id;
-
-    console.log(`  Annotation ID: ${annotationId}, Priority: P2, Flagged: false`);
-
-    // Reload page
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
     await page.waitForTimeout(2000);
 
-    // Click the same sentence
-    const reloadedSentence = await page.locator(`.sentence[data-sentence-id="${sentenceId3}"]`).first();
-    await reloadedSentence.click();
+    await page.locator(`.sentence[data-sentence-id="${sentenceId}"]`).first().click();
+    await page.waitForSelector('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P2"]', { timeout: 5000 });
     await page.waitForTimeout(500);
 
-    // Check if P2 is still active
-    const isP2ActiveAfterReload = await p2Chip.evaluate(el => el.classList.contains('active'));
-    const isFlagInactiveAfterReload = await flagChip.evaluate(el => !el.classList.contains('active'));
-    const hasBlueAfterReload = await reloadedSentence.evaluate(el => el.classList.contains('highlight-blue'));
-
-    if (!isP2ActiveAfterReload) {
-      console.log('✗ P2 should be active after reload');
-      process.exit(1);
-    }
-    if (!isFlagInactiveAfterReload) {
-      console.log('✗ Flag should be inactive after reload');
-      process.exit(1);
-    }
-    if (!hasBlueAfterReload) {
-      console.log('✗ Blue highlight should persist after reload');
-      process.exit(1);
-    }
-    console.log('✓ P/flag state persists after reload');
-
-    // ===== Test 9: Visibility after tag addition (with blue default) =====
-    console.log('\nTest 9: Visibility after tag addition (with blue default)...');
-
-    // Clean up and start fresh
-    await cleanupTestAnnotations();
-    await page.reload();
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
-
-    // Click fourth sentence
-    const fourthSentence = await page.locator('.sentence').nth(3);
-    await fourthSentence.click();
-    await page.waitForTimeout(300);
-
-    // Add a tag (should create blue annotation)
-    const newTagChip = await page.locator('.new-tag');
-
-    // Click to create editable chip
-    await newTagChip.click();
-    await page.waitForTimeout(300);
-
-    // Type tag name and press Enter
-    const tagInput = await page.locator('.tag-input');
-    await tagInput.type('test-tag');
-    await tagInput.press('Enter');
-    await page.waitForTimeout(1500); // Wait for annotation creation and tag addition
-
-    // Check if blue is applied
-    const hasBlueTag = await fourthSentence.evaluate(el => el.classList.contains('highlight-blue'));
-    if (!hasBlueTag) {
-      console.log('✗ Should auto-default to blue when adding tag');
-      process.exit(1);
-    }
-
-    // Check if P/flag section is visible
-    const isVisibleAfterTag = await pfContainerInitial.evaluate(el => el.style.display === 'block' && el.offsetParent);
-
-    if (isVisibleAfterTag) {
-      console.log('✓ P/flag section is visible after tag addition with auto-blue default');
+    const p2AfterReload = await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P2"]').first().evaluate(el => el.classList.contains('active'));
+    const flagAfterReload = await page.locator('.sticky-note:not(.uncreated-note) .flag-chip').first().evaluate(el => el.classList.contains('active'));
+    if (p2AfterReload && flagAfterReload) {
+      console.log('✓ P2 + flag state persists after reload');
     } else {
-      console.log('✗ P/flag section should be visible after tag addition');
-      process.exit(1);
+      console.log(`✗ State should persist (P2=${p2AfterReload}, flag=${flagAfterReload})`);
+      failed++;
     }
-
-    console.log('\n✅ All Priority/Flag Tests Passed!');
 
     await cleanupTestAnnotations();
 
+    if (failed > 0) {
+      console.log(`\n❌ ${failed} assertion(s) failed`);
+      process.exit(1);
+    } else {
+      console.log('\n✅ All Priority/Flag Tests Passed!');
+    }
   } catch (error) {
     console.error('\n❌ Test failed:', error.message);
     console.error(error.stack);
+    await cleanupTestAnnotations();
     process.exit(1);
   } finally {
     await browser.close();

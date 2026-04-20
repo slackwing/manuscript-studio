@@ -1,127 +1,124 @@
+/**
+ * verify-rainbow-bars-update.js
+ *
+ * Verifies that the rainbow bars on a sentence update live when an
+ * annotation is deleted. The sentence needs to have multiple annotations
+ * for bars to be visible (a single-color sentence shows solid highlight,
+ * not bars). We create two annotations with different colors and then
+ * delete one.
+ *
+ * Previously this test hardcoded a sentence ID ("but-as-happens-fbad3020")
+ * that no longer exists. Now the first .sentence is discovered at
+ * runtime and the needed annotations are created via the palette.
+ */
+
 const { chromium } = require('playwright');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
 
 (async () => {
-  const browser = await chromium.launch({ headless: false });
+  await cleanupTestAnnotations();
+
+  const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
+
+  let failed = 0;
 
   try {
     console.log('=== Testing Rainbow Bars Update ===\n');
 
-  // Login first
-  await loginAsTestUser(page);
-
-    await page.goto('http://localhost:5001');
+    await loginAsTestUser(page);
+    await page.goto(TEST_URL);
     await page.waitForLoadState('networkidle');
     await page.waitForSelector('.sentence', { timeout: 30000 });
+    await page.waitForTimeout(2000);
 
-    // Find a sentence with multiple annotations
-    console.log('1. Looking for sentence with multiple annotations...');
-    const sentence = await page.locator('.sentence[data-sentence-id="but-as-happens-fbad3020"]').first();
+    // Discover a sentence dynamically.
+    const sentenceId = await page.evaluate(() => {
+      return document.querySelector('.sentence').dataset.sentenceId;
+    });
+    console.log(`1. Using dynamically-discovered sentence: ${sentenceId}`);
 
-    if (await sentence.count() === 0) {
-      console.log('ERROR: Could not find test sentence');
-      process.exit(1);
-    }
-
+    const sentence = page.locator(`.sentence[data-sentence-id="${sentenceId}"]`).first();
     await sentence.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
 
-    // Click sentence to open sticky notes
+    // Click sentence to open sticky notes panel.
     console.log('2. Clicking sentence to open sticky notes...');
     await sentence.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
 
-    // Count rainbow bars BEFORE
-    const barsBefore = await page.locator('.rainbow-bar').count();
-    console.log(`3. Rainbow bars BEFORE: ${barsBefore}`);
-
-    // Find a sticky note that has a color (not rainbow)
-    const coloredNotes = await page.locator('.sticky-note').all();
-    console.log(`4. Found ${coloredNotes.length} sticky notes`);
-
-    if (coloredNotes.length === 0) {
-      console.log('ERROR: No sticky notes found');
-      process.exit(1);
+    // Create two annotations in different colors so rainbow bars appear.
+    async function addNote(color) {
+      const uncreated = page.locator('.sticky-note.uncreated-note').first();
+      await uncreated.hover();
+      await page.waitForTimeout(250);
+      await uncreated.locator('.sticky-note-color-circle').first().hover();
+      await page.waitForTimeout(300);
+      await uncreated.locator(`.color-circle[data-color="${color}"]`).first().click();
+      await page.waitForTimeout(1200);
     }
 
-    // Look for a note we can delete to test update
-    console.log('5. Looking for a note to delete...');
-    const firstNote = coloredNotes[0];
+    console.log('3. Creating yellow annotation...');
+    await addNote('yellow');
+    console.log('4. Creating blue annotation...');
+    await addNote('blue');
 
-    // Hover to show trash
-    await firstNote.hover();
+    // Re-select sentence (in case focus shifted).
+    await sentence.click();
     await page.waitForTimeout(500);
 
-    // Click trash to delete
-    const trash = await firstNote.locator('.note-trash').first();
-    if (await trash.count() > 0) {
-      console.log('6. Deleting first annotation...');
-      await trash.click();
-      await page.waitForTimeout(2000); // Wait for API call and refresh
+    const barsBefore = await page.locator('.rainbow-bar').count();
+    console.log(`5. Rainbow bars BEFORE deletion: ${barsBefore}`);
+    if (barsBefore < 1) {
+      console.log('   FAIL: Expected at least one rainbow bar after creating two notes.');
+      failed++;
+    }
 
-      // Count rainbow bars AFTER
+    // Find a real (persisted) note and click its trash icon twice to delete.
+    const firstNote = page.locator('.sticky-note:not(.uncreated-note)').first();
+    await firstNote.hover();
+    await page.waitForTimeout(300);
+
+    const trash = firstNote.locator('.note-trash');
+    const trashCount = await trash.count();
+    if (trashCount === 0) {
+      console.log('   FAIL: No trash icon found on real sticky note.');
+      failed++;
+    } else {
+      console.log('6. Clicking trash (1st click: confirm)...');
+      await trash.click();
+      await page.waitForTimeout(400);
+      console.log('7. Clicking trash (2nd click: delete)...');
+      await trash.click();
+      await page.waitForTimeout(2000);
+
       const barsAfter = await page.locator('.rainbow-bar').count();
-      console.log(`7. Rainbow bars AFTER deletion: ${barsAfter}`);
+      console.log(`8. Rainbow bars AFTER deletion: ${barsAfter}`);
 
       if (barsAfter !== barsBefore) {
-        console.log(`   ✓ PASS: Rainbow bars changed! (${barsBefore} -> ${barsAfter})`);
+        console.log(`   PASS: Rainbow bars changed (${barsBefore} -> ${barsAfter}).`);
       } else {
-        console.log(`   ✗ FAIL: Rainbow bars did not change (still ${barsBefore})`);
+        console.log(`   FAIL: Rainbow bars did not change (still ${barsBefore}).`);
+        failed++;
       }
 
-      // Take screenshot
       await page.screenshot({
         path: 'tests/screenshots/rainbow-bars-after-delete.png',
         fullPage: true
       });
-      console.log('8. Screenshot: tests/screenshots/rainbow-bars-after-delete.png');
-    } else {
-      console.log('   SKIP: No trash button found, trying to add a note instead...');
-
-      // Try adding a new note
-      console.log('6. Adding a new annotation...');
-
-      // Click the + button
-      const addButton = await page.locator('.add-note-btn').first();
-      if (await addButton.count() > 0) {
-        await addButton.click();
-        await page.waitForTimeout(500);
-
-        // Select a color
-        const yellowOption = await page.locator('.color-option.color-yellow').first();
-        if (await yellowOption.count() > 0) {
-          await yellowOption.click();
-          await page.waitForTimeout(2000); // Wait for API call and refresh
-
-          // Count rainbow bars AFTER
-          const barsAfter = await page.locator('.rainbow-bar').count();
-          console.log(`7. Rainbow bars AFTER adding: ${barsAfter}`);
-
-          if (barsAfter !== barsBefore) {
-            console.log(`   ✓ PASS: Rainbow bars changed! (${barsBefore} -> ${barsAfter})`);
-          } else {
-            console.log(`   ✗ FAIL: Rainbow bars did not change (still ${barsBefore})`);
-          }
-
-          // Take screenshot
-          await page.screenshot({
-            path: 'tests/screenshots/rainbow-bars-after-add.png',
-            fullPage: true
-          });
-          console.log('8. Screenshot: tests/screenshots/rainbow-bars-after-add.png');
-        }
-      }
     }
 
     console.log('\n=== Test Complete ===');
-    console.log('Keeping browser open for 30 seconds...');
-    await page.waitForTimeout(30000);
-
   } catch (error) {
     console.error('Error:', error);
-    await page.screenshot({ path: 'tests/screenshots/rainbow-bars-error.png', fullPage: true });
+    try {
+      await page.screenshot({ path: 'tests/screenshots/rainbow-bars-error.png', fullPage: true });
+    } catch (_) {}
+    failed++;
   } finally {
     await browser.close();
+    await cleanupTestAnnotations();
+    process.exit(failed > 0 ? 1 : 0);
   }
 })();

@@ -50,7 +50,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
     // Test 2: Verify "add new note" element exists
     console.log('\nTest 2: Verify "add new note" element exists');
     const addNewNoteExists = await page.evaluate(() => {
-      return document.querySelector('.add-new-note') !== null;
+      return document.querySelector('.sticky-note.uncreated-note') !== null;
     });
 
     if (addNewNoteExists) {
@@ -78,11 +78,11 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Test 4: Hover over "add new note" to verify color circle appears
     console.log('\nTest 4: Hover over "add new note" to verify color circle appears');
-    await page.hover('.add-new-note');
+    await page.hover('.sticky-note.uncreated-note');
     await new Promise(r => setTimeout(r, 300));
 
     const colorCircleVisible = await page.evaluate(() => {
-      const circle = document.querySelector('.add-new-note .sticky-note-color-circle');
+      const circle = document.querySelector('.sticky-note.uncreated-note .sticky-note-color-circle');
       if (!circle) return false;
       const styles = window.getComputedStyle(circle);
       return styles.opacity !== '0';
@@ -105,11 +105,11 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Test 5: Click color circle to open palette
     console.log('\nTest 5: Click color circle to open palette');
-    await page.hover('.add-new-note .sticky-note-color-circle');
+    await page.hover('.sticky-note.uncreated-note .sticky-note-color-circle');
     await new Promise(r => setTimeout(r, 300));
 
     const paletteVisible = await page.evaluate(() => {
-      const palette = document.querySelector('.add-new-note .sticky-note-palette');
+      const palette = document.querySelector('.sticky-note.uncreated-note .sticky-note-palette');
       return palette && palette.classList.contains('visible');
     });
 
@@ -130,7 +130,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Test 6: Click a color from palette to create first note
     console.log('\nTest 6: Click yellow color to create first note');
-    const yellowCircle = await page.$('.add-new-note .sticky-note-palette .color-circle[data-color="yellow"]');
+    const yellowCircle = await page.$('.sticky-note.uncreated-note .sticky-note-palette .color-circle[data-color="yellow"]');
     if (!yellowCircle) {
       throw new Error('Yellow color circle not found in palette');
     }
@@ -159,27 +159,27 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Test 7: Create a second note
     console.log('\nTest 7: Create a second note (blue)');
-    const addNewNote2 = await page.$('.add-new-note');
+    const addNewNote2 = await page.$('.sticky-note.uncreated-note');
     if (!addNewNote2) {
       throw new Error('"Add new note" element not found after creating first note');
     }
 
     // Hover and click color circle
-    await page.hover('.add-new-note');
+    await page.hover('.sticky-note.uncreated-note');
     await new Promise(r => setTimeout(r, 300));
-    await page.hover('.add-new-note .sticky-note-color-circle');
+    await page.hover('.sticky-note.uncreated-note .sticky-note-color-circle');
     await new Promise(r => setTimeout(r, 300));
 
-    const blueCircle = await page.$('.add-new-note .sticky-note-palette .color-circle[data-color="blue"]');
+    const blueCircle = await page.$('.sticky-note.uncreated-note .sticky-note-palette .color-circle[data-color="blue"]');
     if (!blueCircle) {
       throw new Error('Blue color circle not found in palette');
     }
     await blueCircle.click();
     await new Promise(r => setTimeout(r, 1000));
 
-    // Verify two sticky notes exist
+    // Verify two sticky notes exist (excluding the uncreated-note widget)
     const stickyNoteCount = await page.evaluate(() => {
-      return document.querySelectorAll('.sticky-note').length;
+      return document.querySelectorAll('.sticky-note:not(.uncreated-note)').length;
     });
 
     if (stickyNoteCount === 2) {
@@ -242,11 +242,11 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Test 10: Test trash confirmation
     console.log('\nTest 10: Test trash confirmation (first click)');
-    await page.hover('.sticky-note:first-of-type .sticky-note-color-circle');
+    await page.hover('.sticky-note:not(.uncreated-note)');
     await new Promise(r => setTimeout(r, 300));
 
-    // Click trash icon
-    const trashIcon = await page.$('.sticky-note:first-of-type .palette-trash');
+    // Click trash icon (lives directly inside the sticky-note, not the palette)
+    const trashIcon = await page.$('.sticky-note:not(.uncreated-note) .note-trash');
     if (!trashIcon) {
       throw new Error('Trash icon not found in palette');
     }
@@ -255,7 +255,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Verify trash is in confirming state
     const trashConfirming = await page.evaluate(() => {
-      const trash = document.querySelector('.sticky-note:first-of-type .palette-trash');
+      const trash = document.querySelector('.sticky-note:not(.uncreated-note) .note-trash');
       return trash && trash.classList.contains('confirming');
     });
 
@@ -279,9 +279,9 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
     await trashIcon.click();
     await new Promise(r => setTimeout(r, 1000));
 
-    // Verify only one sticky note remains
+    // Verify only one sticky note remains (excluding uncreated-note widget)
     const remainingNotes = await page.evaluate(() => {
-      return document.querySelectorAll('.sticky-note').length;
+      return document.querySelectorAll('.sticky-note:not(.uncreated-note)').length;
     });
 
     if (remainingNotes === 1) {

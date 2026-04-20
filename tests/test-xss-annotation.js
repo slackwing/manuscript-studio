@@ -65,7 +65,7 @@ function psql(sql) {
     // Inject an annotation directly into the DB with an XSS payload note.
     const payload = '<img src=x onerror="window.__xss_fired=true">';
     psql(`
-      INSERT INTO annotation (sentence_id, username, color, note, priority, flagged, position)
+      INSERT INTO annotation (sentence_id, user_id, color, note, priority, flagged, position)
       VALUES ('${sentenceId}', 'test', 'yellow', '${payload}', 'none', false, 0);
     `);
 

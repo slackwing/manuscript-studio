@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { loginAsTestUser } = require('./test-utils');
 
 /**
  * SPACING INVARIANTS TEST
@@ -27,14 +28,20 @@ async function testSpacing(windowWidth, windowHeight, testName) {
   await page.goto('http://localhost:5001?manuscript_id=1', { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
 
-  // Click on a sentence to show annotations
+  // Wait for pages to render, then stabilize layout
+  await page.waitForSelector('.pagedjs_page', { timeout: 15000 });
+  await page.waitForSelector('#annotation-margin', { state: 'attached', timeout: 15000 });
+  await page.waitForTimeout(1000);
+
+  // Click on a sentence to show annotations (and the sticky-notes container)
   const sentence = await page.locator('.sentence').first();
   await sentence.click();
-  await page.waitForTimeout(500);
+  await page.waitForSelector('#sticky-notes-container', { state: 'attached', timeout: 10000 });
+  await page.waitForTimeout(1000);
 
   const measurements = await page.evaluate(() => {
     const pages = document.querySelectorAll('.pagedjs_page');
-    const stickyNote = document.getElementById('sticky-note-container');
+    const stickyNote = document.getElementById('sticky-notes-container');
     const annotationMargin = document.getElementById('annotation-margin');
 
     // Vertical gap between pages

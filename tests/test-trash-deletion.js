@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
 
 (async () => {
   console.log('=== Trash Can Deletion Test ===\n');
@@ -8,175 +8,169 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations } = require('./test
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  page.on('dialog', async d => { try { await d.dismiss(); } catch (e) {} });
+
+  let failed = 0;
 
   try {
-    // Load the page
-  // Login first
-  await loginAsTestUser(page);
-
+    await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
     await page.waitForTimeout(2000);
 
-    // ===== Test 1: Trash icon appears when annotation exists =====
-    console.log('Test 1: Trash icon appears when annotation exists...');
-
+    // ===== Test 1: Trash appears inside a real sticky note =====
+    console.log('Test 1: Trash appears inside a real sticky note...');
     const firstSentence = await page.locator('.sentence').first();
+    const sentenceId = await firstSentence.getAttribute('data-sentence-id');
     await firstSentence.click();
-    await page.waitForTimeout(300);
-
-    // Trash should not be visible initially (no annotation)
-    const trashIcon = await page.locator('#trash-icon');
-    const palette = await page.locator('#color-palette');
-    const paletteVisible = await palette.evaluate(el => el.classList.contains('visible'));
-
-    if (!paletteVisible) {
-      console.log('✗ Color palette should be visible');
-      process.exit(1);
-    }
-
-    // Create annotation
-    const yellowCircle = await page.locator('.color-circle[data-color="yellow"]');
-    await yellowCircle.click();
+    await page.waitForSelector('.sticky-note.uncreated-note', { timeout: 5000 });
     await page.waitForTimeout(500);
 
-    // Trash should be visible now
-    const trashVisible = await trashIcon.isVisible();
-
-    if (!trashVisible) {
-      console.log('✗ Trash icon should be visible when annotation exists');
-      process.exit(1);
+    // No trash on uncreated note
+    const trashOnUncreated = await page.locator('.sticky-note.uncreated-note .note-trash').count();
+    if (trashOnUncreated === 0) {
+      console.log('✓ Uncreated note has no trash icon');
+    } else {
+      console.log(`✗ Uncreated note should have no trash, found ${trashOnUncreated}`);
+      failed++;
     }
-    console.log('✓ Trash icon appears with annotation');
 
-    // ===== Test 2: First click makes trash "run away" and shows X =====
-    console.log('\nTest 2: First click makes trash run away and shows cancel X...');
+    // Create yellow annotation (retry hover/click: palette has 200ms mouseleave delay)
+    async function createYellow() {
+      for (let i = 0; i < 3; i++) {
+        try {
+          await page.locator('.sticky-note.uncreated-note .sticky-note-color-circle').first().hover({ force: true });
+          await page.waitForTimeout(400);
+          await page.waitForSelector('.sticky-note.uncreated-note .sticky-note-palette.visible', { timeout: 2000 });
+          await page.locator('.sticky-note.uncreated-note .color-circle[data-color="yellow"]').first().click({ force: true });
+          await page.waitForSelector('.sticky-note:not(.uncreated-note) .note-trash', { timeout: 5000 });
+          await page.waitForTimeout(600);
+          return;
+        } catch (e) {
+          if (i === 2) throw e;
+          await page.waitForTimeout(500);
+        }
+      }
+    }
+    await createYellow();
 
-    // Click trash first time
-    await trashIcon.click();
+    const trashOnReal = await page.locator('.sticky-note:not(.uncreated-note) .note-trash').count();
+    if (trashOnReal >= 1) {
+      console.log('✓ Trash icon appears on real sticky note');
+    } else {
+      console.log(`✗ Real sticky note should have trash icon, found ${trashOnReal}`);
+      failed++;
+    }
+
+    // ===== Test 2: First click enters confirming state =====
+    console.log('\nTest 2: First click shows confirmation state...');
+    const trash = page.locator('.sticky-note:not(.uncreated-note) .note-trash').first();
+    await trash.click();
     await page.waitForTimeout(300);
 
-    // Check if trash has "ran-away" class
-    const hasRanAway = await trashIcon.evaluate(el => el.classList.contains('ran-away'));
-
-    if (!hasRanAway) {
-      console.log('✗ Trash should have ran-away class after first click');
-      process.exit(1);
+    const isConfirming = await trash.evaluate(el => el.classList.contains('confirming'));
+    if (isConfirming) {
+      console.log('✓ Trash has confirming class after first click');
+    } else {
+      console.log('✗ Trash should have confirming class after first click');
+      failed++;
     }
 
-    // Check if cancel X is visible
-    const cancelX = await page.locator('#cancel-delete');
-    const cancelVisible = await cancelX.evaluate(el => el.classList.contains('visible'));
-
-    if (!cancelVisible) {
-      console.log('✗ Cancel X should be visible after trash runs away');
-      process.exit(1);
+    // ===== Test 3: Confirming state auto-resets after ~2s =====
+    console.log('\nTest 3: Confirming state auto-resets (no deletion) after timeout...');
+    await page.waitForTimeout(2200);
+    const stillConfirming = await trash.evaluate(el => el.classList.contains('confirming'));
+    const hasYellow = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
+    if (!stillConfirming && hasYellow > 0) {
+      console.log('✓ Confirming cleared after timeout; annotation preserved');
+    } else {
+      console.log(`✗ Expected confirming cleared & annotation preserved (confirming=${stillConfirming}, yellow=${hasYellow})`);
+      failed++;
     }
 
-    console.log('✓ Trash runs away and cancel X appears');
+    // ===== Test 4: Two rapid clicks actually delete =====
+    console.log('\nTest 4: Two clicks delete the annotation...');
+    await trash.click();
+    await page.waitForTimeout(200);
+    await trash.click();
+    await page.waitForTimeout(800);
 
-    // ===== Test 3: Clicking X cancels and returns trash to normal =====
-    console.log('\nTest 3: Clicking X cancels deletion...');
-
-    await cancelX.click();
-    await page.waitForTimeout(300);
-
-    // Trash should be back to normal
-    const stillRanAway = await trashIcon.evaluate(el => el.classList.contains('ran-away'));
-
-    if (stillRanAway) {
-      console.log('✗ Trash should return to normal after cancel');
-      process.exit(1);
+    const hasYellowAfter = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
+    const realNoteCount = await page.locator('.sticky-note:not(.uncreated-note)').count();
+    if (hasYellowAfter === 0 && realNoteCount === 0) {
+      console.log('✓ Annotation deleted after second trash click');
+    } else {
+      console.log(`✗ Annotation should be gone (yellow=${hasYellowAfter}, realNotes=${realNoteCount})`);
+      failed++;
     }
 
-    // X should be hidden
-    const cancelStillVisible = await cancelX.evaluate(el => el.classList.contains('visible'));
-
-    if (cancelStillVisible) {
-      console.log('✗ Cancel X should be hidden after click');
-      process.exit(1);
-    }
-
-    // Annotation should still exist
-    const hasYellow = await firstSentence.evaluate(el => el.classList.contains('highlight-yellow'));
-
-    if (!hasYellow) {
-      console.log('✗ Annotation should still exist after cancel');
-      process.exit(1);
-    }
-
-    console.log('✓ Cancel X returns trash to normal and preserves annotation');
-
-    // ===== Test 4: Second click on "ran away" trash actually deletes =====
-    console.log('\nTest 4: Second click on ran-away trash deletes annotation...');
-
-    // Make trash run away again
-    await trashIcon.click();
-    await page.waitForTimeout(300);
-
-    // Click the ran-away trash to actually delete
-    await trashIcon.click();
-    await page.waitForTimeout(500);
-
-    // Annotation should be gone
-    const hasYellowAfterDelete = await firstSentence.evaluate(el => el.classList.contains('highlight-yellow'));
-
-    if (hasYellowAfterDelete) {
-      console.log('✗ Annotation should be deleted after second trash click');
-      process.exit(1);
-    }
-
-    // Trash should be back to normal (no ran-away class)
-    const trashStillRanAway = await trashIcon.evaluate(el => el.classList.contains('ran-away'));
-
-    if (trashStillRanAway) {
-      console.log('✗ Trash should return to normal after deletion');
-      process.exit(1);
-    }
-
-    console.log('✓ Second click on ran-away trash deletes annotation');
-
-    // ===== Test 5: Clicking same color again does nothing (no toggle) =====
-    console.log('\nTest 5: Clicking same color again does nothing...');
-
+    // ===== Test 5: Clicking same color again doesn't toggle/delete =====
+    console.log('\nTest 5: Clicking same color on a real note does not toggle/delete...');
     const secondSentence = await page.locator('.sentence').nth(1);
+    const secondSentenceId = await secondSentence.getAttribute('data-sentence-id');
     await secondSentence.click();
-    await page.waitForTimeout(300);
-
-    const blueCircle = await page.locator('.color-circle[data-color="blue"]');
-    await blueCircle.click();
+    await page.waitForSelector('.sticky-note.uncreated-note', { timeout: 5000 });
     await page.waitForTimeout(500);
 
-    // Verify blue is applied
-    const hasBlue = await secondSentence.evaluate(el => el.classList.contains('highlight-blue'));
-
-    if (!hasBlue) {
-      console.log('✗ Blue highlight should be applied');
-      process.exit(1);
+    // Create blue (retry as palette visibility can be flaky)
+    let madeBlue = false;
+    for (let i = 0; i < 3; i++) {
+      try {
+        await page.locator('.sticky-note.uncreated-note .sticky-note-color-circle').first().hover({ force: true });
+        await page.waitForTimeout(400);
+        await page.waitForSelector('.sticky-note.uncreated-note .sticky-note-palette.visible', { timeout: 2000 });
+        await page.locator('.sticky-note.uncreated-note .color-circle[data-color="blue"]').first().click({ force: true });
+        await page.waitForSelector('.sticky-note:not(.uncreated-note).color-blue', { timeout: 5000 });
+        await page.waitForTimeout(600);
+        madeBlue = true;
+        break;
+      } catch (e) {
+        if (i === 2) throw e;
+        await page.waitForTimeout(500);
+      }
     }
 
-    // Click blue again
-    await blueCircle.click();
-    await page.waitForTimeout(300);
-
-    // Should still have blue (no toggle)
-    const stillHasBlue = await secondSentence.evaluate(el => el.classList.contains('highlight-blue'));
-
-    if (!stillHasBlue) {
-      console.log('✗ Should still have blue after clicking same color (no toggle)');
-      process.exit(1);
+    const hasBlue = await page.locator(`.sentence[data-sentence-id="${secondSentenceId}"].highlight-blue`).count();
+    if (hasBlue === 0) {
+      console.log('✗ Blue highlight should apply');
+      failed++;
     }
 
-    console.log('✓ Clicking same color does not toggle/delete');
+    // The palette on a real note excludes the current color, so we can't
+    // click blue again from inside — but the palette excluding the current
+    // color is the very mechanism that prevents toggle. Verify that.
+    await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-color-circle').first().hover({ force: true });
+    await page.waitForTimeout(400);
+    const palette = await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-palette .color-circle[data-color="blue"]').count();
+    if (palette === 0) {
+      console.log('✓ Current color (blue) excluded from palette — no toggle possible');
+    } else {
+      console.log(`✗ Current color should be excluded from palette, found ${palette}`);
+      failed++;
+    }
 
-    console.log('\n✅ All Trash Deletion Tests Passed!');
+    const stillBlue = await page.locator(`.sentence[data-sentence-id="${secondSentenceId}"].highlight-blue`).count();
+    if (stillBlue > 0) {
+      console.log('✓ Blue highlight still present');
+    } else {
+      console.log('✗ Blue highlight should still be present');
+      failed++;
+    }
 
     await cleanupTestAnnotations();
 
+    if (failed > 0) {
+      console.log(`\n❌ ${failed} assertion(s) failed`);
+      process.exit(1);
+    } else {
+      console.log('\n✅ All Trash Deletion Tests Passed!');
+    }
   } catch (error) {
     console.error('\n❌ Test failed:', error.message);
     console.error(error.stack);
+    await cleanupTestAnnotations();
     process.exit(1);
   } finally {
     await browser.close();

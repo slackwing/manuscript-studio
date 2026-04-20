@@ -4,7 +4,7 @@
 
 const { chromium } = require('playwright');
 const { exit } = require('process');
-const { TEST_URL, cleanupTestAnnotations } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
 
 async function runTests() {
   await cleanupTestAnnotations();
