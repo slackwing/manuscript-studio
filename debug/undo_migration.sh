@@ -37,12 +37,13 @@ DB_USER=$(get_config "user")
 DB_PASSWORD=$(get_config "password")
 
 # Run a SQL query, return tab-separated rows. Strips the command tag
-# ("INSERT 0 1" etc.) that psql prints for write statements, in case the
-# caller embeds RETURNING in a query.
+# ("INSERT 0 1" etc.) psql prints for write statements, in case the caller
+# uses RETURNING. The trailing `|| true` keeps an empty-result query from
+# tripping `set -e` (grep exits 1 when nothing matches).
 psql_q() {
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
         -At -F $'\t' -v ON_ERROR_STOP=1 -c "$1" \
-        | grep -Ev '^(INSERT|UPDATE|DELETE|SELECT|COPY) [0-9]'
+        | { grep -Ev '^(INSERT|UPDATE|DELETE|SELECT|COPY) [0-9]' || true; }
 }
 
 echo "=========================================="
@@ -57,6 +58,7 @@ manuscripts=$(psql_q "
     SELECT m.manuscript_id, m.repo_path, m.file_path, COUNT(mig.migration_id)
     FROM manuscript m
     LEFT JOIN migration mig ON mig.manuscript_id = m.manuscript_id
+    WHERE m.repo_path <> ''
     GROUP BY m.manuscript_id, m.repo_path, m.file_path
     HAVING COUNT(mig.migration_id) > 0
     ORDER BY m.manuscript_id
@@ -64,6 +66,10 @@ manuscripts=$(psql_q "
 
 if [[ -z "$manuscripts" ]]; then
     echo "No manuscripts with migrations found. Nothing to do."
+    echo ""
+    echo "(Manuscript rows with empty repo_path are filtered out — those are"
+    echo " orphans from past bugs. Use psql to clean them up if needed:"
+    echo "   DELETE FROM manuscript WHERE repo_path = '';)"
     exit 0
 fi
 
@@ -75,7 +81,11 @@ while IFS=$'\t' read -r mid repo file count; do
     m_ids[$i]=$mid
     m_repos[$i]=$repo
     m_files[$i]=$file
-    printf "  %d) [id=%s] %s :: %s  (%s migration%s)\n" "$i" "$mid" "$repo" "$file" "$count" "$([ "$count" = "1" ] || echo s)"
+    # Defense against corrupt rows: any empty field gets a visible marker
+    # so the menu display can't silently shift fields around.
+    printf "  %d) [id=%s] %s :: %s  (%s migration%s)\n" \
+        "$i" "$mid" "${repo:-<EMPTY>}" "${file:-<EMPTY>}" "${count:-?}" \
+        "$([ "$count" = "1" ] || echo s)"
 done <<< "$manuscripts"
 
 echo ""
@@ -94,11 +104,12 @@ echo ""
 
 migrations=$(psql_q "
     SELECT migration_id, status, commit_hash,
-           COALESCE(branch_name, ''),
-           COALESCE(sentence_count::text, ''),
+           COALESCE(branch_name, '-'),
+           COALESCE(sentence_count::text, '-'),
            COALESCE(annotations_per_migration.cnt::text, '0'),
-           started_at, finished_at,
-           COALESCE(LEFT(error, 80), '')
+           COALESCE(started_at::text, '-'),
+           COALESCE(finished_at::text, '-'),
+           COALESCE(LEFT(error, 80), '-')
     FROM migration
     LEFT JOIN (
         SELECT s.migration_id, COUNT(av.*) AS cnt
@@ -124,11 +135,12 @@ declare -a mig_ids
 while IFS=$'\t' read -r mid status commit branch sentcount anncount started finished err; do
     mig_ids+=("$mid")
     short_commit=${commit:0:10}
+    # Treat the SQL placeholder "-" as "no value" for display.
+    [[ "$finished" == "-" ]] && finished="(unfinished)"
     short_finished=${finished:0:19}
-    [[ -z "$short_finished" ]] && short_finished="(unfinished)"
     printf "  %-6s  %-8s  %-12s  %-12s  %-9s  %-12s  %s\n" \
         "$mid" "$status" "$short_commit" "${branch:0:12}" "$sentcount" "$anncount" "$short_finished"
-    if [[ -n "$err" ]]; then
+    if [[ "$err" != "-" ]]; then
         printf "          error: %s\n" "$err"
     fi
 done <<< "$migrations"

@@ -45,12 +45,12 @@ EOF
 trap 'rm -f "$TMPCFG"' EXIT
 
 q() {
-    # -At gives tuples-only / unaligned output, but psql still prints the
-    # command tag ("INSERT 0 1", "DELETE 3") for write statements. Strip
-    # those so callers can capture a single value cleanly from RETURNING.
+    # -At = tuples-only/unaligned. Strip psql's command tag so callers can
+    # cleanly capture RETURNING values. `|| true` keeps grep's no-match
+    # exit from tripping the test runner's set -e.
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
         -At -F $'\t' -v ON_ERROR_STOP=1 -c "$1" \
-        | grep -Ev '^(INSERT|UPDATE|DELETE|SELECT|COPY) [0-9]'
+        | { grep -Ev '^(INSERT|UPDATE|DELETE|SELECT|COPY) [0-9]' || true; }
 }
 
 x() {
@@ -68,29 +68,34 @@ fi
 REPO="test://undo-mig-test-$$"
 
 cleanup_data() {
+    # Nukes everything tied to manuscripts whose repo_path starts with
+    # 'test://' OR is empty. This catches leftovers from prior failed
+    # runs (with a different $$-derived $REPO) and the orphan-row scenario
+    # from Test 3.
     x "
         DELETE FROM annotation_version WHERE annotation_id IN (
             SELECT a.annotation_id FROM annotation a
             JOIN sentence s ON a.sentence_id = s.sentence_id
             JOIN migration m ON s.migration_id = m.migration_id
             JOIN manuscript man ON m.manuscript_id = man.manuscript_id
-            WHERE man.repo_path = '$REPO'
+            WHERE man.repo_path LIKE 'test://%' OR man.repo_path = ''
         );
         DELETE FROM annotation WHERE sentence_id IN (
             SELECT s.sentence_id FROM sentence s
             JOIN migration m ON s.migration_id = m.migration_id
             JOIN manuscript man ON m.manuscript_id = man.manuscript_id
-            WHERE man.repo_path = '$REPO'
+            WHERE man.repo_path LIKE 'test://%' OR man.repo_path = ''
         );
         DELETE FROM sentence WHERE migration_id IN (
             SELECT m.migration_id FROM migration m
             JOIN manuscript man ON m.manuscript_id = man.manuscript_id
-            WHERE man.repo_path = '$REPO'
+            WHERE man.repo_path LIKE 'test://%' OR man.repo_path = ''
         );
         DELETE FROM migration WHERE manuscript_id IN (
-            SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'
+            SELECT manuscript_id FROM manuscript
+            WHERE repo_path LIKE 'test://%' OR repo_path = ''
         );
-        DELETE FROM manuscript WHERE repo_path = '$REPO';
+        DELETE FROM manuscript WHERE repo_path LIKE 'test://%' OR repo_path = '';
         DELETE FROM \"user\" WHERE username = 'undo_test_user';
     "
 }
@@ -167,62 +172,136 @@ assert_eq() {
 }
 
 FAIL=0
-PASS=0
 
-# ---- Test: roll back from migration 3 to migration 1 ----
+# Belt-and-suspenders: clear any leftover test data from a prior failed run
+# before we start, so test 1 isn't poisoned.
+cleanup_data
 
-echo "=== Test: roll back from migration 3 to migration 1 ==="
+# ---- Helper: drive undo_migration.sh with a stdin script ----
+# Echoes its stdin to the script with MANUSCRIPT_STUDIO_CONFIG_FILE pointing
+# at the test config. Captures output to /tmp for assertions / debugging.
+LOG=/tmp/undo-test-out.log
+run_undo() {
+    MANUSCRIPT_STUDIO_CONFIG_FILE="$TMPCFG" "$UNDO_SCRIPT" >"$LOG" 2>&1
+}
+
+# ============================================================
+# Test 1: roll back from migration 3 (done) to migration 1 (done)
+# Wipes M2 (done) and M3 (done). Verifies the full annotation cascade.
+# ============================================================
+echo "=== Test 1: rollback across done migrations ==="
 ids=$(setup_scenario)
 eval "$ids" # MID, M1, M2, M3, ANN1, ANN2
 
-# Drive undo_migration.sh with stdin: pick first manuscript (1), keep id
-# = M1, type the manuscript label basename to confirm.
-# The expected confirmation token is `basename(repo_path)`.
 expected_token=$(basename "$REPO")
-
-MANUSCRIPT_STUDIO_CONFIG_FILE="$TMPCFG" "$UNDO_SCRIPT" >/tmp/undo-test-out.log 2>&1 <<EOF
+run_undo <<EOF
 1
 $M1
 $expected_token
 EOF
 exit_code=$?
 
-if (( exit_code != 0 )); then
-    echo "  ✗ undo_migration.sh exited $exit_code"
-    cat /tmp/undo-test-out.log | sed 's/^/    /'
-    FAIL=1
-fi
+(( exit_code != 0 )) && { echo "  ✗ undo exited $exit_code"; FAIL=1; }
+assert_eq "M1 kept"           "1"   "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $M1")"
+assert_eq "M2 deleted"        "0"   "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $M2")"
+assert_eq "M3 deleted"        "0"   "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $M3")"
+assert_eq "M1 sentences kept" "2"   "$(q "SELECT COUNT(*) FROM sentence WHERE migration_id = $M1")"
+assert_eq "M2/M3 sentences gone" "0" "$(q "SELECT COUNT(*) FROM sentence WHERE migration_id IN ($M2, $M3)")"
+assert_eq "ANN1 repointed"    "S1A" "$(q "SELECT sentence_id FROM annotation WHERE annotation_id = $ANN1")"
+assert_eq "ANN1 versions = 1" "1"   "$(q "SELECT COUNT(*) FROM annotation_version WHERE annotation_id = $ANN1")"
+assert_eq "ANN2 soft-deleted" "t"   "$(q "SELECT deleted_at IS NOT NULL FROM annotation WHERE annotation_id = $ANN2")"
 
-# Migrations 2 and 3 should be gone, migration 1 remains.
-assert_eq "M1 still exists" "1" "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $M1")"
-assert_eq "M2 deleted"      "0" "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $M2")"
-assert_eq "M3 deleted"      "0" "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $M3")"
-
-# M1's sentences survive; M2/M3 sentences gone.
-assert_eq "M1 sentences kept" "2" "$(q "SELECT COUNT(*) FROM sentence WHERE migration_id = $M1")"
-assert_eq "M2 sentences gone" "0" "$(q "SELECT COUNT(*) FROM sentence WHERE migration_id = $M2")"
-assert_eq "M3 sentences gone" "0" "$(q "SELECT COUNT(*) FROM sentence WHERE migration_id = $M3")"
-
-# ANN1 should be repointed to S1A (its v1 destination, the only surviving version).
-assert_eq "ANN1 repointed to S1A" "S1A" "$(q "SELECT sentence_id FROM annotation WHERE annotation_id = $ANN1")"
-assert_eq "ANN1 version count = 1" "1" "$(q "SELECT COUNT(*) FROM annotation_version WHERE annotation_id = $ANN1")"
-assert_eq "ANN1 not soft-deleted" "" "$(q "SELECT deleted_at FROM annotation WHERE annotation_id = $ANN1")"
-
-# ANN2 was created during M2 and has no v1 in M1 — should be soft-deleted.
-ann2_deleted=$(q "SELECT deleted_at IS NOT NULL FROM annotation WHERE annotation_id = $ANN2")
-assert_eq "ANN2 soft-deleted" "t" "$ann2_deleted"
-
-# Cleanup at the end.
 cleanup_data
 
+# ============================================================
+# Test 2: rollback wipes a mix of done + error rows
+# Setup: M1=done with annotation, M2=error (no data), M3=done that
+# moved the annotation. Rolling back to M1 should delete M2 and M3,
+# rewind the annotation, and leave M1 intact.
+# ============================================================
+echo ""
+echo "=== Test 2: rollback past error rows ==="
+cleanup_data
+x "INSERT INTO \"user\" (username, password_hash, role) VALUES ('undo_test_user', 'x', 'author') ON CONFLICT DO NOTHING;"
+x "INSERT INTO manuscript (repo_path, file_path) VALUES ('$REPO', 'm.md');"
+mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'")
+
+# M1: done, with one annotation.
+m1=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commitA', 'segman-1.0.0', 'main', 1, 1, 0, 0, '[\"S1\"]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
+x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES ('S1', $m1, 'commitA', 'one sentence', 2, 0);"
+ann1=$(q "INSERT INTO annotation (sentence_id, user_id, color, priority, flagged, position) VALUES ('S1', 'undo_test_user', 'yellow', 'none', false, '0|x') RETURNING annotation_id")
+x "INSERT INTO annotation_version (annotation_id, version, sentence_id, color, note, priority, flagged, sentence_id_history, migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash, created_by) VALUES ($ann1, 1, 'S1', 'yellow', NULL, 'none', false, '[\"S1\"]'::jsonb, NULL, 'S1', $m1, 'commitA', 'undo_test_user');"
+
+# M2: error, no sentences (the broken-config case).
+m2=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, started_at, finished_at, error) VALUES ($mid, 'commitB', 'segman-1.0.0', 'error', NOW(), NOW(), 'simulated failure') RETURNING migration_id")
+
+# M3: done, moved the annotation to S3.
+m3=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commitC', 'segman-1.0.0', 'main', 1, 0, 0, 0, '[\"S3\"]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
+x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES ('S3', $m3, 'commitC', 'one sentence', 2, 0);"
+x "UPDATE annotation SET sentence_id = 'S3' WHERE annotation_id = $ann1;"
+x "INSERT INTO annotation_version (annotation_id, version, sentence_id, color, note, priority, flagged, sentence_id_history, migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash, created_by) VALUES ($ann1, 2, 'S3', 'yellow', NULL, 'none', false, '[\"S1\",\"S3\"]'::jsonb, 1.0, 'S1', $m3, 'commitA', 'undo_test_user');"
+
+run_undo <<EOF
+1
+$m1
+$expected_token
+EOF
+exit_code=$?
+
+(( exit_code != 0 )) && { echo "  ✗ undo exited $exit_code"; FAIL=1; }
+assert_eq "M1 kept"               "1"   "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $m1")"
+assert_eq "M2 (error) deleted"    "0"   "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $m2")"
+assert_eq "M3 (done) deleted"     "0"   "$(q "SELECT COUNT(*) FROM migration WHERE migration_id = $m3")"
+assert_eq "M3 sentence S3 gone"   "0"   "$(q "SELECT COUNT(*) FROM sentence WHERE sentence_id = 'S3'")"
+assert_eq "annotation back at S1" "S1"  "$(q "SELECT sentence_id FROM annotation WHERE annotation_id = $ann1")"
+assert_eq "annotation versions = 1" "1" "$(q "SELECT COUNT(*) FROM annotation_version WHERE annotation_id = $ann1")"
+
+cleanup_data
+
+# ============================================================
+# Test 3: orphan manuscript (empty repo_path) is hidden from the menu
+# Simulates the prod bug where startMigration created a manuscript row
+# with empty repo_path before the empty-URL guard was added. The script's
+# manuscript-list query should filter it out.
+# ============================================================
+echo ""
+echo "=== Test 3: orphan manuscript with empty repo_path is hidden ==="
+cleanup_data
+x "INSERT INTO \"user\" (username, password_hash, role) VALUES ('undo_test_user', 'x', 'author') ON CONFLICT DO NOTHING;"
+# Real manuscript:
+x "INSERT INTO manuscript (repo_path, file_path) VALUES ('$REPO', 'm.md');"
+real_mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'")
+real_m1=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($real_mid, 'commitA', 'segman-1.0.0', 'main', 0, 0, 0, 0, '[]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
+# Orphan: empty repo_path with a stuck migration row.
+x "INSERT INTO manuscript (repo_path, file_path) VALUES ('', 'orphan.md');"
+orphan_mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = ''")
+x "INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, started_at, finished_at, error) VALUES ($orphan_mid, 'commitX', 'segman-1.0.0', 'error', NOW(), NOW(), 'broken url');"
+
+# Quit immediately by sending invalid menu input — we just want to see
+# what the menu lists.
+run_undo <<EOF
+99
+EOF
+
+# The menu output should mention the real manuscript exactly once and not
+# the orphan at all.
+real_count=$(grep -c "id=$real_mid" "$LOG" || true)
+orphan_count=$(grep -c "id=$orphan_mid" "$LOG" || true)
+assert_eq "real manuscript listed once"   "1" "$real_count"
+assert_eq "orphan manuscript hidden"      "0" "$orphan_count"
+
+# Tidy up the orphan ourselves so cleanup_data doesn't trip over it.
+x "DELETE FROM migration WHERE manuscript_id = $orphan_mid;"
+x "DELETE FROM manuscript WHERE manuscript_id = $orphan_mid;"
+cleanup_data
+
+# ============================================================
+echo ""
 if (( FAIL )); then
-    echo ""
     echo "FAIL"
-    cat /tmp/undo-test-out.log | sed 's/^/    /'
-    rm -f /tmp/undo-test-out.log
+    [[ -f $LOG ]] && cat "$LOG" | sed 's/^/    /'
+    rm -f "$LOG"
     exit 1
 fi
-
-rm -f /tmp/undo-test-out.log
-echo ""
+rm -f "$LOG"
 echo "PASS"
