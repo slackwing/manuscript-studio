@@ -77,6 +77,7 @@ type Annotation struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DeletedAt    *time.Time `json:"deleted_at"`
+	CompletedAt  *time.Time `json:"completed_at"`
 	Tags         []Tag      `json:"tags"` // Populated via JOIN; always serialize, even empty.
 }
 

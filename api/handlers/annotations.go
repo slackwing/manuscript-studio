@@ -292,6 +292,45 @@ func (h *AnnotationHandlers) HandleDeleteAnnotation(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *AnnotationHandlers) HandleCompleteAnnotation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	annotationIDStr := chi.URLParam(r, "annotation_id")
+	annotationID, err := strconv.Atoi(annotationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid annotation_id", http.StatusBadRequest)
+		return
+	}
+
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	csrfToken := r.Header.Get("X-CSRF-Token")
+	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+
+	existing, err := h.DB.GetAnnotationByID(ctx, annotationID)
+	if err != nil || existing == nil {
+		http.Error(w, "Annotation not found", http.StatusNotFound)
+		return
+	}
+	if existing.UserID != session.Username {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := h.DB.CompleteAnnotation(ctx, annotationID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to complete: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // HandleGetTagsForAnnotation returns the tags on an annotation.
 func (h *AnnotationHandlers) HandleGetTagsForAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

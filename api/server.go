@@ -148,6 +148,7 @@ func (s *Server) setupRouter() {
 			r.Put("/annotations/{annotation_id}", s.annotationHandlers.HandleUpdateAnnotation)
 			r.Put("/annotations/{annotation_id}/reorder", s.annotationHandlers.HandleReorderAnnotation)
 			r.Delete("/annotations/{annotation_id}", s.annotationHandlers.HandleDeleteAnnotation)
+			r.Post("/annotations/{annotation_id}/complete", s.annotationHandlers.HandleCompleteAnnotation)
 
 			r.Get("/annotations/{annotation_id}/tags", s.annotationHandlers.HandleGetTagsForAnnotation)
 			r.Post("/annotations/{annotation_id}/tags", s.annotationHandlers.HandleAddTagToAnnotation)

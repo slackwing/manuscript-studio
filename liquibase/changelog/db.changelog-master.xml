@@ -10,5 +10,6 @@
     <include file="changelog/001-initial-schema.xml"/>
     <include file="changelog/002-migration-status.xml"/>
     <include file="changelog/003-sessions.xml"/>
+    <include file="changelog/004-annotation-completed.xml"/>
 
 </databaseChangeLog>

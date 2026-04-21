@@ -163,17 +163,23 @@ const WriteSysAnnotations = {
           <div class="priority-chip" data-priority="P2">P2</div>
           <div class="priority-chip" data-priority="P3">P3</div>
           <div class="flag-chip" data-flag="true" title="Flag">
-            <svg width="20" height="20" viewBox="0 0 20 20" class="flag-icon">
+            <svg width="14" height="14" viewBox="0 0 20 20" class="flag-icon">
               <path class="flag-staff" d="M4 1v18"/>
               <path class="flag-shape" d="M4 3h10l-2.5 5 2.5 5H4"/>
             </svg>
           </div>
-        </div>
-        <div class="note-trash" title="Delete note">
-          <svg width="16" height="16" viewBox="0 0 20 20">
-            <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6"
-                  stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
+          <div class="note-trash" title="Delete note">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6"
+                    stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="complete-check" title="Mark complete">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M4 10l4 4 8-8"
+                    stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
         </div>
       </div>
     `;
@@ -544,6 +550,30 @@ const WriteSysAnnotations = {
         }
       });
     }
+
+    // Two-click complete with 2s confirmation window.
+    const check = note.querySelector('.complete-check');
+    if (check) {
+      let clickCount = 0;
+      let resetTimeout;
+
+      check.addEventListener('click', (e) => {
+        e.stopPropagation();
+
+        if (clickCount === 0) {
+          check.classList.add('confirming');
+          clickCount = 1;
+
+          resetTimeout = setTimeout(() => {
+            check.classList.remove('confirming');
+            clickCount = 0;
+          }, 2000);
+        } else {
+          clearTimeout(resetTimeout);
+          this.completeAnnotation(annotation.annotation_id);
+        }
+      });
+    }
   },
 
   autoResizeTextarea(textarea) {
@@ -682,6 +712,32 @@ const WriteSysAnnotations = {
     } catch (error) {
       console.error('Failed to delete annotation:', error);
       alert('Failed to delete annotation');
+    }
+  },
+
+  async completeAnnotation(annotationId) {
+    try {
+      const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations/${annotationId}/complete`, {
+        method: 'POST'
+      });
+
+      if (!response.ok && response.status !== 204) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      console.log('Annotation completed:', annotationId);
+
+      this.annotations = this.annotations.filter(a => a.annotation_id !== annotationId);
+      this.renderStickyNotes();
+      this.updateSentenceHighlights();
+
+      if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
+        await window.WriteSysRenderer.refreshRainbowBars();
+      }
+
+    } catch (error) {
+      console.error('Failed to complete annotation:', error);
+      alert('Failed to complete annotation');
     }
   },
 

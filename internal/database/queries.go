@@ -412,12 +412,13 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username string) ([]models.Annotation, error) {
 	query := `
 		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
 		FROM annotation a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
 		  AND a.user_id = $2
 		  AND a.deleted_at IS NULL
+		  AND a.completed_at IS NULL
 		ORDER BY s.ordinal, a.position
 	`
 
@@ -442,6 +443,7 @@ func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username s
 			&a.CreatedAt,
 			&a.UpdatedAt,
 			&a.DeletedAt,
+			&a.CompletedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan annotation: %w", err)
@@ -519,11 +521,12 @@ func insertAnnotationVersion(ctx context.Context, tx pgx.Tx, version *models.Ann
 func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username string) ([]models.Annotation, error) {
 	query := `
 		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
 		FROM annotation a
 		WHERE a.sentence_id = $1
 		  AND a.user_id = $2
 		  AND a.deleted_at IS NULL
+		  AND a.completed_at IS NULL
 		ORDER BY a.position
 	`
 
@@ -549,6 +552,7 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 			&a.CreatedAt,
 			&a.UpdatedAt,
 			&a.DeletedAt,
+			&a.CompletedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan annotation: %w", err)
@@ -745,6 +749,7 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 		SET sentence_id = $1, updated_at = NOW()
 		WHERE annotation_id = $2
 		  AND deleted_at IS NULL
+		  AND completed_at IS NULL
 	`
 
 	for _, item := range items {
@@ -833,6 +838,27 @@ func (db *DB) SoftDeleteAnnotation(ctx context.Context, annotationID int) error 
 	return nil
 }
 
+func (db *DB) CompleteAnnotation(ctx context.Context, annotationID int) error {
+	query := `
+		UPDATE annotation
+		SET completed_at = NOW()
+		WHERE annotation_id = $1
+		  AND deleted_at IS NULL
+		  AND completed_at IS NULL
+	`
+	result, err := db.Pool.Exec(ctx, query, annotationID)
+	if err != nil {
+		return fmt.Errorf("failed to complete annotation: %w", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("annotation not found or already completed")
+	}
+
+	return nil
+}
+
 func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) (*models.AnnotationVersion, error) {
 	query := `
 		SELECT
@@ -878,10 +904,11 @@ func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) 
 func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID string) ([]models.Annotation, error) {
 	query := `
 		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
 		FROM annotation a
 		WHERE a.sentence_id = $1
 		  AND a.deleted_at IS NULL
+		  AND a.completed_at IS NULL
 	`
 
 	rows, err := db.Pool.Query(ctx, query, sentenceID)
@@ -905,6 +932,7 @@ func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID st
 			&a.CreatedAt,
 			&a.UpdatedAt,
 			&a.DeletedAt,
+			&a.CompletedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan annotation: %w", err)
@@ -1073,7 +1101,7 @@ func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceI
 	}
 	defer tx.Rollback(ctx)
 
-	query := `SELECT position FROM annotation WHERE sentence_id = $1 AND deleted_at IS NULL ORDER BY position`
+	query := `SELECT position FROM annotation WHERE sentence_id = $1 AND deleted_at IS NULL AND completed_at IS NULL ORDER BY position`
 	rows, err := tx.Query(ctx, query, sentenceID)
 	if err != nil {
 		return fmt.Errorf("failed to query positions: %w", err)
@@ -1214,10 +1242,11 @@ func (db *DB) HasManuscriptAccess(ctx context.Context, username, manuscriptName 
 func (db *DB) GetAnnotationByID(ctx context.Context, annotationID int) (*models.Annotation, error) {
 	query := `
 		SELECT annotation_id, sentence_id, user_id, color, note,
-		       priority, flagged, position, created_at, updated_at, deleted_at
+		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at
 		FROM annotation
 		WHERE annotation_id = $1
 		  AND deleted_at IS NULL
+		  AND completed_at IS NULL
 	`
 
 	var a models.Annotation
@@ -1233,6 +1262,7 @@ func (db *DB) GetAnnotationByID(ctx context.Context, annotationID int) (*models.
 		&a.CreatedAt,
 		&a.UpdatedAt,
 		&a.DeletedAt,
+		&a.CompletedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil

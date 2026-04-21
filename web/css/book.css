@@ -724,7 +724,6 @@ p.indented {
 /* Priority/Flag section - always on separate line */
 .priority-flag-container {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-top: 6px;
   opacity: 1;
@@ -736,17 +735,20 @@ p.indented {
 
 .priority-flag-chips {
   display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
+  justify-content: space-between;
   align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .priority-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 6px;
-  border-radius: 16px;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 14px;
   background: transparent;
   border: 1px dashed #ccc;
   font-family: "Helvetica", sans-serif;
@@ -774,9 +776,10 @@ p.indented {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 6px;
+  width: 28px;
   height: 28px;
-  border-radius: 16px;
+  box-sizing: border-box;
+  border-radius: 14px;
   background: transparent;
   border: 1px dashed #ccc;
   font-family: "Helvetica", sans-serif;
@@ -786,7 +789,6 @@ p.indented {
   cursor: pointer;
   transition: all 0.2s;
   user-select: none;
-  box-sizing: border-box;
 }
 
 .flag-chip .flag-icon {
@@ -839,11 +841,12 @@ p.indented {
   justify-content: center;
   width: 28px;
   height: 28px;
+  box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s;
   background: transparent;
   border: 1px dashed #ccc;
-  border-radius: 50%;
+  border-radius: 14px;
   color: #999;
 }
 
@@ -861,8 +864,43 @@ p.indented {
 }
 
 .note-trash svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+}
+
+/* Mark-complete checkmark (mirrors .note-trash but green). */
+.complete-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  border: 1px dashed #ccc;
+  border-radius: 14px;
+  color: #999;
+}
+
+.complete-check:hover {
+  background: #e8f5e9;
+  border-color: #28a745;
+  color: #28a745;
+}
+
+.complete-check.confirming {
+  background: #28a745;
+  border-color: #28a745;
+  color: white;
+  animation: pulse 0.3s ease-in-out;
+}
+
+.complete-check svg {
+  width: 14px;
+  height: 14px;
   stroke: currentColor;
 }
 

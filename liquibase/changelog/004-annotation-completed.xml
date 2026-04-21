@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="004-annotation-completed" author="codereview">
+
+        <addColumn tableName="annotation">
+            <column name="completed_at" type="TIMESTAMPTZ">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <sql>
+            CREATE INDEX idx_annotation_completed_at ON annotation(completed_at) WHERE completed_at IS NULL;
+        </sql>
+
+    </changeSet>
+
+</databaseChangeLog>
