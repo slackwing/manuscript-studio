@@ -47,7 +47,68 @@ const WriteSysAnnotations = {
     // Initialize annotation margin positioning
     this.initAnnotationMargin();
 
+    // Click sentence-preview → scroll to the currently-selected sentence.
+    const preview = document.getElementById('sentence-preview');
+    if (preview) {
+      preview.style.cursor = 'pointer';
+      preview.addEventListener('click', () => this.scrollToCurrentSentence());
+    }
+
     console.log('WriteSys Annotations (Multi-Note) initialized');
+  },
+
+  scrollToCurrentSentence() {
+    if (!this.currentSentenceId) return;
+    const fragment = document.querySelector(`.sentence[data-sentence-id="${this.currentSentenceId}"]`);
+    if (fragment) {
+      fragment.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  },
+
+  // Picks the next sentence (DOM order, wrapping) that still has at least one
+  // active annotation, selects it, and scrolls it into view.
+  jumpToNextAnnotatedSentence() {
+    const renderer = window.WriteSysRenderer;
+    if (!renderer || !renderer.currentAnnotations) return;
+
+    const annotatedIds = new Set(
+      renderer.currentAnnotations.map(a => a.sentence_id).filter(Boolean)
+    );
+    if (annotatedIds.size === 0) return;
+
+    const allSentences = Array.from(document.querySelectorAll('.sentence[data-sentence-id]'));
+    const seenIds = [];
+    const orderedIds = [];
+    for (const el of allSentences) {
+      const id = el.dataset.sentenceId;
+      if (id && !seenIds.includes(id)) {
+        seenIds.push(id);
+        if (annotatedIds.has(id)) orderedIds.push(id);
+      }
+    }
+    if (orderedIds.length === 0) return;
+
+    let nextId;
+    if (this.currentSentenceId) {
+      const currentIdx = orderedIds.indexOf(this.currentSentenceId);
+      nextId = orderedIds[(currentIdx + 1) % orderedIds.length];
+      if (currentIdx === -1) nextId = orderedIds[0];
+    } else {
+      nextId = orderedIds[0];
+    }
+
+    const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${nextId}"]`);
+    if (fragments.length === 0) return;
+
+    document.querySelectorAll('.sentence.selected').forEach(s => s.classList.remove('selected'));
+    fragments.forEach(f => f.classList.add('selected'));
+    if (renderer) renderer.currentSelectedSentenceId = nextId;
+
+    const fullText = (renderer && renderer.sentenceMap && renderer.sentenceMap[nextId])
+      || fragments[0].textContent;
+    this.showAnnotationsForSentence(nextId, fullText);
+
+    fragments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
 
   initAnnotationMargin() {
@@ -133,7 +194,30 @@ const WriteSysAnnotations = {
     const addNewNote = this.createAddNewNoteElement(isFirstNote);
     container.appendChild(addNewNote);
 
+    if (!isFirstNote) {
+      container.appendChild(this.createNextAnnotatedSentenceButton());
+    }
+
     container.classList.add('visible');
+  },
+
+  createNextAnnotatedSentenceButton() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'next-annotated-sentence-btn';
+    btn.title = 'Jump to next annotated sentence';
+    btn.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M5 8l5 5 5-5"
+              stroke="currentColor" fill="none" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.jumpToNextAnnotatedSentence();
+    });
+    return btn;
   },
 
   createStickyNoteElement(annotation) {
@@ -732,6 +816,11 @@ const WriteSysAnnotations = {
 
       if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
         await window.WriteSysRenderer.refreshRainbowBars();
+      }
+
+      // If the sentence has no annotations left, hop to the next annotated one.
+      if (this.annotations.length === 0) {
+        this.jumpToNextAnnotatedSentence();
       }
 
     } catch (error) {

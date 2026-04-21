@@ -13,6 +13,12 @@
   --highlight-purple: #E0BBE4;
   --highlight-red: #FFCCCB;
   --highlight-orange: #FFD8A8;
+  --highlight-yellow-dark: #C9A800;
+  --highlight-green-dark: #4FA044;
+  --highlight-blue-dark: #2A7BB0;
+  --highlight-purple-dark: #8A4D9C;
+  --highlight-red-dark: #B33B3A;
+  --highlight-orange-dark: #C8761A;
 
   /* Sticky note backgrounds (lighter versions) */
   --sticky-yellow: #fef3c7;
@@ -297,12 +303,21 @@ p.indented {
 /* But NOT for highlighted sentences */
 .sentence.selected:not([class*="highlight-"]) {
   background-color: #d0d0d0 !important; /* Medium grey for selection */
+  box-shadow: 0 0 0 1.5px #555;
 }
 
 /* Keep selected highlighted even when hovering over it */
 .sentence.selected:not([class*="highlight-"]):hover {
   background-color: #d0d0d0 !important;
 }
+
+/* Selected + highlighted: darker outline matching the highlight color. */
+.sentence.selected.highlight-yellow { box-shadow: 0 0 0 1.5px var(--highlight-yellow-dark); }
+.sentence.selected.highlight-green  { box-shadow: 0 0 0 1.5px var(--highlight-green-dark); }
+.sentence.selected.highlight-blue   { box-shadow: 0 0 0 1.5px var(--highlight-blue-dark); }
+.sentence.selected.highlight-purple { box-shadow: 0 0 0 1.5px var(--highlight-purple-dark); }
+.sentence.selected.highlight-red    { box-shadow: 0 0 0 1.5px var(--highlight-red-dark); }
+.sentence.selected.highlight-orange { box-shadow: 0 0 0 1.5px var(--highlight-orange-dark); }
 
 /* Kindle-like highlight colors */
 .sentence.highlight-yellow {
@@ -1258,6 +1273,37 @@ p.indented {
   animation: flashHighlight 0.6s ease-in-out;
   /* Scale from center to prevent shifting */
   transform-origin: center center;
+}
+
+/* Down-arrow button below the gradient uncreated note: jump to the next
+   sentence with annotations. */
+.next-annotated-sentence-btn {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 50%;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.next-annotated-sentence-btn:hover {
+  background: #f0f0f0;
+  border-color: #888;
+  color: #222;
+}
+
+.next-annotated-sentence-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
 }
 
 /* Print styles */
