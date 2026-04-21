@@ -469,6 +469,10 @@ const WriteSysAnnotations = {
         await this.deleteAnnotation(annotation.annotation_id);
         this.neverMindState.annotationId = null;
         this.neverMindState.isCommitted = false;
+        const freshTextarea = document.querySelector(
+          '.sticky-note.uncreated-note.first-uncreated .note-input'
+        );
+        if (freshTextarea) freshTextarea.focus();
         return;
       }
 
