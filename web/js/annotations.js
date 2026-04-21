@@ -65,8 +65,11 @@ const WriteSysAnnotations = {
     }
   },
 
-  // Picks the next sentence (DOM order, wrapping) that still has at least one
-  // active annotation, selects it, and scrolls it into view.
+  // Picks the next sentence (DOM order, wrapping) that has at least one active
+  // annotation, selects it, and scrolls it into view. "Next" means the first
+  // annotated sentence that appears AFTER the current one in document order —
+  // even when the current sentence itself is no longer annotated (e.g. the
+  // user just completed its last annotation).
   jumpToNextAnnotatedSentence() {
     const renderer = window.WriteSysRenderer;
     if (!renderer || !renderer.currentAnnotations) return;
@@ -77,24 +80,28 @@ const WriteSysAnnotations = {
     if (annotatedIds.size === 0) return;
 
     const allSentences = Array.from(document.querySelectorAll('.sentence[data-sentence-id]'));
-    const seenIds = [];
     const orderedIds = [];
+    const seen = new Set();
     for (const el of allSentences) {
       const id = el.dataset.sentenceId;
-      if (id && !seenIds.includes(id)) {
-        seenIds.push(id);
-        if (annotatedIds.has(id)) orderedIds.push(id);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        orderedIds.push(id);
       }
     }
     if (orderedIds.length === 0) return;
 
-    let nextId;
+    const annotatedOrdered = orderedIds.filter(id => annotatedIds.has(id));
+    if (annotatedOrdered.length === 0) return;
+
+    let nextId = null;
     if (this.currentSentenceId) {
-      const currentIdx = orderedIds.indexOf(this.currentSentenceId);
-      nextId = orderedIds[(currentIdx + 1) % orderedIds.length];
-      if (currentIdx === -1) nextId = orderedIds[0];
+      const currentDocIdx = orderedIds.indexOf(this.currentSentenceId);
+      // First annotated sentence whose doc position is strictly AFTER current.
+      nextId = annotatedOrdered.find(id => orderedIds.indexOf(id) > currentDocIdx);
+      if (!nextId) nextId = annotatedOrdered[0]; // wrap.
     } else {
-      nextId = orderedIds[0];
+      nextId = annotatedOrdered[0];
     }
 
     const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${nextId}"]`);

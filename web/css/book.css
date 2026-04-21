@@ -303,7 +303,6 @@ p.indented {
 /* But NOT for highlighted sentences */
 .sentence.selected:not([class*="highlight-"]) {
   background-color: #d0d0d0 !important; /* Medium grey for selection */
-  box-shadow: 0 0 0 1.5px #555;
 }
 
 /* Keep selected highlighted even when hovering over it */
@@ -311,13 +310,14 @@ p.indented {
   background-color: #d0d0d0 !important;
 }
 
-/* Selected + highlighted: darker outline matching the highlight color. */
-.sentence.selected.highlight-yellow { box-shadow: 0 0 0 1.5px var(--highlight-yellow-dark); }
-.sentence.selected.highlight-green  { box-shadow: 0 0 0 1.5px var(--highlight-green-dark); }
-.sentence.selected.highlight-blue   { box-shadow: 0 0 0 1.5px var(--highlight-blue-dark); }
-.sentence.selected.highlight-purple { box-shadow: 0 0 0 1.5px var(--highlight-purple-dark); }
-.sentence.selected.highlight-red    { box-shadow: 0 0 0 1.5px var(--highlight-red-dark); }
-.sentence.selected.highlight-orange { box-shadow: 0 0 0 1.5px var(--highlight-orange-dark); }
+/* Selected + highlighted: swap the background to the darker variant of the
+   highlight color so the selected sentence is visually distinct. */
+.sentence.selected.highlight-yellow { background-color: var(--highlight-yellow-dark) !important; }
+.sentence.selected.highlight-green  { background-color: var(--highlight-green-dark) !important; }
+.sentence.selected.highlight-blue   { background-color: var(--highlight-blue-dark) !important; }
+.sentence.selected.highlight-purple { background-color: var(--highlight-purple-dark) !important; }
+.sentence.selected.highlight-red    { background-color: var(--highlight-red-dark) !important; }
+.sentence.selected.highlight-orange { background-color: var(--highlight-orange-dark) !important; }
 
 /* Kindle-like highlight colors */
 .sentence.highlight-yellow {
