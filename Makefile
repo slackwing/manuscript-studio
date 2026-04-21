@@ -174,6 +174,17 @@ test: node-deps
 	$(MAKE) test-go
 	./test-all.sh
 
+# Fast subset of the JS tests (~2.5 min) — useful for the dev loop. Skips the
+# DB reset/seed/bootstrap dance: assumes the dev server already has state.
+.PHONY: test-fast
+test-fast: node-deps
+	./test-all.sh fast
+
+# Slow subset (the rest), ~7 min.
+.PHONY: test-slow
+test-slow: node-deps
+	./test-all.sh slow
+
 .PHONY: test-install
 test-install: dev-install node-deps
 	$(MAKE) seed
