@@ -59,6 +59,7 @@ function getCSRFToken() {
 
 /**
  * fetch() with credentials and, for state-changing methods, an X-CSRF-Token header.
+ * Redirects to login on 401 so an expired session doesn't silently break the UI.
  */
 async function authenticatedFetch(url, options = {}) {
   options.credentials = 'include';
@@ -71,7 +72,11 @@ async function authenticatedFetch(url, options = {}) {
     }
   }
 
-  return fetch(url, options);
+  const response = await fetch(url, options);
+  if (response.status === 401) {
+    window.location.href = 'login.html';
+  }
+  return response;
 }
 
 /**

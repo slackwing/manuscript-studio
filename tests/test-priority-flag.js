@@ -58,10 +58,10 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
 
     const realHasChips = await page.locator('.sticky-note:not(.uncreated-note) .priority-chip').count();
     const realHasFlag = await page.locator('.sticky-note:not(.uncreated-note) .flag-chip').count();
-    if (realHasChips >= 4 && realHasFlag >= 1) {
+    if (realHasChips >= 3 && realHasFlag >= 1) {
       console.log(`✓ Real sticky-note has priority (${realHasChips}) and flag (${realHasFlag}) controls`);
     } else {
-      console.log(`✗ Real note should have 4 priority chips + 1 flag (got p=${realHasChips}, f=${realHasFlag})`);
+      console.log(`✗ Real note should have 3 priority chips + 1 flag (got p=${realHasChips}, f=${realHasFlag})`);
       failed++;
     }
 

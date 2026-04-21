@@ -161,7 +161,6 @@ const WriteSysAnnotations = {
           <div class="priority-chip" data-priority="P0">P0</div>
           <div class="priority-chip" data-priority="P1">P1</div>
           <div class="priority-chip" data-priority="P2">P2</div>
-          <div class="priority-chip" data-priority="P3">P3</div>
           <div class="flag-chip" data-flag="true" title="Flag">
             <svg width="14" height="14" viewBox="0 0 20 20" class="flag-icon">
               <path class="flag-staff" d="M4 1v18"/>
