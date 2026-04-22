@@ -8,6 +8,7 @@ import (
 
 	"github.com/slackwing/manuscript-studio/internal/fractional"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -430,7 +431,32 @@ func (db *DB) SetPreviousSentenceID(ctx context.Context, sentenceID string, prev
 	return nil
 }
 
+// UpdateSentenceText: used by the raw-text backfill CLI to rewrite sentence
+// text in place from the old stripped form to the new raw-with-markers form.
+// Sentence_id is unchanged; only the text column is touched.
+func (db *DB) UpdateSentenceText(ctx context.Context, sentenceID, text string) error {
+	if err := sentence.ValidateSentenceText(text); err != nil {
+		return fmt.Errorf("update sentence %s: %w", sentenceID, err)
+	}
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE sentence SET text = $1 WHERE sentence_id = $2`,
+		text, sentenceID,
+	)
+	if err != nil {
+		return fmt.Errorf("update sentence text for %s: %w", sentenceID, err)
+	}
+	return nil
+}
+
 func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) error {
+	// Validate up-front so a bad row anywhere in the batch aborts before any
+	// writes — easier to debug than partial inserts that survive rollback.
+	for _, s := range sentences {
+		if err := sentence.ValidateSentenceText(s.Text); err != nil {
+			return fmt.Errorf("sentence %s: %w", s.SentenceID, err)
+		}
+	}
+
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)

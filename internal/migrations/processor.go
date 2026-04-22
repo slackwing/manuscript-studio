@@ -324,9 +324,14 @@ func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMa
 // segmentContent returns sentences ready for db.CreateSentences, the id slice
 // in document order, and an id→text map for diffing. Shared between bootstrap
 // and migrate to prevent drift.
+//
+// Uses TokenizeWithMarkers so sentence.text carries any leading "\n\t" or
+// "\n\n" structural marker (per UNIFIED_DATA_SHAPE_PLAN.md). Sentence IDs
+// are stable across this change because GenerateSentenceID's normalizeText
+// strips the marker before hashing.
 func segmentContent(content, commitHash string, migrationID int) ([]models.Sentence, []string, map[string]string) {
 	tokenizer := sentence.NewTokenizer()
-	texts := tokenizer.SplitIntoSentences(content)
+	texts := tokenizer.TokenizeWithMarkers(content)
 
 	sentences := make([]models.Sentence, len(texts))
 	ids := make([]string, len(texts))

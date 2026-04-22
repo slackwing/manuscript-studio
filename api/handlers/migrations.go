@@ -108,24 +108,6 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		return
 	}
 
-	manuscript, err := h.DB.GetManuscriptByID(ctx, migration.ManuscriptID)
-	if err != nil || manuscript == nil {
-		http.Error(w, "Manuscript not found", http.StatusInternalServerError)
-		return
-	}
-
-	manuscriptConfig := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
-	if manuscriptConfig == nil {
-		http.Error(w, "Manuscript not configured in server", http.StatusInternalServerError)
-		return
-	}
-
-	content, err := h.readGitContent(ctx, manuscriptConfig, migration.CommitHash)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manuscript content: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	sentenceInfos := make([]SentenceInfo, len(sentences))
 	for i, s := range sentences {
 		sentenceInfos[i] = SentenceInfo{
@@ -152,7 +134,6 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"commit_hash": migration.CommitHash,
-		"markdown":    content,
 		"sentences":   sentenceInfos,
 		"annotations": annotations,
 	})

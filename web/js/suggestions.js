@@ -74,8 +74,11 @@ const WriteSysSuggestions = {
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
 
+    // Show glyphs in the textarea so the user sees and edits paragraph
+    // markers visually instead of literal whitespace.
+    const tm = window.WriteSysTextMarkers;
     const textarea = modal.querySelector('.suggestion-modal-textarea');
-    textarea.value = current;
+    textarea.value = tm ? tm.toGlyphs(current) : current;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
@@ -85,7 +88,8 @@ const WriteSysSuggestions = {
     };
 
     const save = async () => {
-      const newText = textarea.value;
+      // Convert UI form (glyphs OR escape literals OR raw chars) → storage form.
+      const newText = tm ? tm.fromGlyphs(textarea.value) : textarea.value;
       close();
       if (newText === current) return;
 

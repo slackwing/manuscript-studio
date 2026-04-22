@@ -186,6 +186,7 @@ const WriteSysHistory = {
       label.textContent = `${n} ago`;
       const textSpan = document.createElement('span');
       textSpan.className = 'history-popup-text';
+      const tm = window.WriteSysTextMarkers;
       if (text === undefined) {
         textSpan.textContent = '(empty)';
         textSpan.classList.add('history-popup-empty');
@@ -195,7 +196,7 @@ const WriteSysHistory = {
         textSpan.textContent = '(same)';
         textSpan.classList.add('history-popup-empty');
       } else {
-        textSpan.textContent = text;
+        textSpan.textContent = tm ? tm.toGlyphs(text) : text;
       }
       row.appendChild(label);
       row.appendChild(textSpan);
@@ -209,7 +210,8 @@ const WriteSysHistory = {
       label.textContent = 'now';
       const text = document.createElement('span');
       text.className = 'history-popup-text';
-      text.textContent = currentText;
+      const tm = window.WriteSysTextMarkers;
+      text.textContent = tm ? tm.toGlyphs(currentText) : currentText;
       row.appendChild(label);
       row.appendChild(text);
       popup.appendChild(row);

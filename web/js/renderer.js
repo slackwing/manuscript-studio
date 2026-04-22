@@ -1,6 +1,5 @@
 const WriteSysRenderer = {
   apiBaseUrl: 'api',
-  currentManuscript: null,
   currentSentences: [],
   currentAnnotations: [],
   currentMigrationID: null,
@@ -59,7 +58,6 @@ const WriteSysRenderer = {
           ? window.WriteSysSuggestions.loadForMigration(migrationID).catch(() => {})
           : Promise.resolve(),
       ]);
-      this.currentManuscript = data.markdown;
       this.currentSentences = data.sentences;
       this.currentAnnotations = data.annotations;
 
@@ -84,15 +82,12 @@ const WriteSysRenderer = {
   async renderManuscript() {
     const container = document.getElementById('manuscript-content');
 
-    const html = this.parseManuscript(this.currentManuscript);
-
-    // Wrap BEFORE pagination so Paged.js duplicates the spans cleanly across
-    // page breaks. Smartquotes runs LAST so straight apostrophes in
-    // suggestions don't diff against curly ones in the DOM.
+    // Sentences carry structural markers (\n\t / \n\n) and inline markdown.
+    // Build paragraphs by walking the list; each sentence becomes its own
+    // <span class="sentence" data-sentence-id="...">. Smartquotes runs LAST
+    // so straight apostrophes in suggestions don't diff against curly ones.
     const tempContainer = document.createElement('div');
-    tempContainer.innerHTML = html;
-
-    await this.wrapSentences(tempContainer);
+    tempContainer.innerHTML = this.renderSentencesToHTML(this.currentSentences);
 
     this.applyAnnotations(tempContainer);
 
@@ -153,61 +148,68 @@ const WriteSysRenderer = {
     }
   },
 
-  // .manuscript format: # heading; leading \t → indented paragraph; bare
-  // lines join into one paragraph; blank line separates; *x* → <em>.
-  parseManuscript(text) {
-    const lines = text.split('\n');
-    const html = [];
-    let paragraphLines = [];
+  // Build paginated HTML directly from the sentence list. Each sentence
+  // becomes a <span class="sentence" data-sentence-id="...">, grouped into
+  // <p> / <p class="indented"> / <h*> elements based on the sentence's
+  // leading marker (\n\t = new indented paragraph, \n\n = new section,
+  // # = heading).
+  //
+  // Replaces parseManuscript + wrapSentences. The DB is now the structural
+  // source of truth — no need to re-parse the raw .manuscript file.
+  renderSentencesToHTML(sentences) {
+    if (!sentences || sentences.length === 0) return '';
 
-    const flushParagraph = () => {
-      if (paragraphLines.length > 0) {
-        const content = paragraphLines.join(' ');
-        const hasIndent = paragraphLines[0].startsWith('\t');
-        const cleaned = content.replace(/^\t/, '');
-        const withFormatting = this.applyInlineFormatting(cleaned);
+    const out = [];
+    let openP = null; // current <p> or <p class="indented"> contents
 
-        if (hasIndent) {
-          html.push(`<p class="indented">${withFormatting}</p>`);
-        } else {
-          html.push(`<p>${withFormatting}</p>`);
-        }
-        paragraphLines = [];
+    const flush = () => {
+      if (openP !== null) {
+        out.push(openP.cls
+          ? `<p class="${openP.cls}">${openP.spans.join(' ')}</p>`
+          : `<p>${openP.spans.join(' ')}</p>`);
+        openP = null;
       }
     };
 
-    // Manuscript content is treated as untrusted; every chunk goes through
-    // applyInlineFormatting (which HTML-escapes) before reaching the DOM.
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (const s of sentences) {
+      const text = s.text;
+      const id = s.id;
 
-      if (line.trim() === '') {
-        flushParagraph();
+      // Header sentence (# / ## / ### + space + content). Renders as <h*>.
+      const headerMatch = text.match(/^(#+)\s+(.*)$/);
+      if (headerMatch) {
+        flush();
+        const level = headerMatch[1].length;
+        const headingText = headerMatch[2];
+        out.push(`<h${level}><span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(headingText)}</span></h${level}>`);
         continue;
       }
 
-      if (line.startsWith('#')) {
-        flushParagraph();
-        const level = line.match(/^#+/)[0].length;
-        const text = line.replace(/^#+\s*/, '');
-        html.push(`<h${level}>${this.applyInlineFormatting(text)}</h${level}>`);
-        continue;
+      // Strip the leading marker — it was structural, doesn't appear in
+      // the visible text. The marker only chooses which <p> we live in.
+      let body = text;
+      let cls = '';
+      if (body.startsWith('\n\n')) {
+        flush();
+        body = body.slice(2);
+        cls = '';
+      } else if (body.startsWith('\n\t')) {
+        flush();
+        body = body.slice(2);
+        cls = 'indented';
       }
 
-      if (line.startsWith('\t')) {
-        flushParagraph();
-        const cleaned = line.substring(1);
-        const withFormatting = this.applyInlineFormatting(cleaned);
-        html.push(`<p class="indented">${withFormatting}</p>`);
-        continue;
-      }
+      const span = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(body)}</span>`;
 
-      paragraphLines.push(line);
+      if (openP === null) {
+        openP = { cls, spans: [span] };
+      } else {
+        openP.spans.push(span);
+      }
     }
 
-    flushParagraph();
-
-    return html.join('\n');
+    flush();
+    return out.join('\n');
   },
 
   // Escape first, then substitute *x* → <em> — otherwise the escape pass
@@ -226,157 +228,6 @@ const WriteSysRenderer = {
     return escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   },
 
-  getUnwrappedText(container) {
-    const walker = document.createTreeWalker(
-      container,
-      NodeFilter.SHOW_TEXT,
-      {
-        // Skip text already inside a .sentence span (avoid double-wrap).
-        acceptNode: function(node) {
-          let parent = node.parentElement;
-          while (parent && parent !== container) {
-            if (parent.classList && parent.classList.contains('sentence')) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            parent = parent.parentElement;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
-
-    let text = '';
-    let node = walker.nextNode();
-    while (node) {
-      text += node.textContent;
-      node = walker.nextNode();
-    }
-    return text;
-  },
-
-  // Segment the raw markdown with the JS segmenter, then zipper-match against
-  // server-produced sentences by deterministic id to locate wrap positions.
-  async wrapSentences(container) {
-    console.log(`Server provided ${this.currentSentences.length} sentences`);
-
-    // Must mirror Go cleanSentenceBoundaries() so ids match the server's.
-    const rawSegments = segment(this.currentManuscript);
-    const segments = rawSegments.map(s => this.cleanSentenceBoundaries(s)).filter(s => s !== '');
-    console.log(`JS segmenter found ${segments.length} segments in markdown (after cleaning)`);
-
-    const serverSentenceMap = new Map();
-    this.currentSentences.forEach(s => {
-      serverSentenceMap.set(s.id, s);
-    });
-
-    let wrapped = 0;
-    let disparities = [];
-    const wrapQueue = [];
-
-    // Phase 1: positions against the initial (unmodified) text so duplicate
-    // sentences can be disambiguated by searchOffset.
-    const initialFullText = this.getUnwrappedText(container);
-    let searchOffset = 0;
-
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const segmentClean = this.stripMarkdown(segment);
-
-      const expectedId = await this.generateSentenceID(segmentClean, i, this.currentCommitHash);
-
-      const serverSentence = serverSentenceMap.get(expectedId);
-
-      if (!serverSentence) {
-        console.warn(`Disparity at segment ${i}: Expected ID "${expectedId}" not found in server sentences`);
-        console.warn(`  Segment text: "${segmentClean.substring(0, 80)}..."`);
-        disparities.push({
-          index: i,
-          reason: 'id-not-found',
-          expectedId,
-          segmentText: segmentClean
-        });
-        continue;
-      }
-
-      let segmentTextToWrap = segmentClean;
-      let segmentIndex = initialFullText.indexOf(segmentClean, searchOffset);
-
-      // Fallback if smartquotes transformed the DOM's copy.
-      if (segmentIndex === -1) {
-        const tempDiv = document.createElement('div');
-        tempDiv.textContent = segmentClean;
-        if (typeof smartquotes !== 'undefined') {
-          smartquotes.element(tempDiv);
-        }
-        segmentTextToWrap = tempDiv.textContent;
-        segmentIndex = initialFullText.indexOf(segmentTextToWrap, searchOffset);
-      }
-
-      if (segmentIndex === -1) {
-        console.warn(`Disparity at segment ${i}: Text not found in DOM`);
-        console.warn(`  Expected ID: "${expectedId}"`);
-        console.warn(`  Segment text: "${segmentClean.substring(0, 80)}..."`);
-        disparities.push({
-          index: i,
-          reason: 'text-not-in-dom',
-          expectedId,
-          segmentText: segmentClean
-        });
-        continue;
-      }
-
-      wrapQueue.push({
-        startOffset: segmentIndex,
-        endOffset: segmentIndex + segmentTextToWrap.length,
-        sentenceId: expectedId
-      });
-
-      searchOffset = segmentIndex + segmentTextToWrap.length;
-    }
-
-    // Phase 2: re-find each queued sentence in the current (partially-wrapped)
-    // text, since wrapping shifts node boundaries.
-    console.log(`Executing ${wrapQueue.length} wraps...`);
-    for (let i = 0; i < wrapQueue.length; i++) {
-      const wrap = wrapQueue[i];
-
-      const currentUnwrapped = this.getUnwrappedText(container);
-
-      const sentenceLength = wrap.endOffset - wrap.startOffset;
-      const sentenceText = initialFullText.substring(wrap.startOffset, wrap.endOffset);
-
-      const currentIndex = currentUnwrapped.indexOf(sentenceText);
-
-      if (currentIndex === -1) {
-        console.warn(`Could not find sentence in current unwrapped text: ${wrap.sentenceId}`);
-        console.warn(`  Looking for: "${sentenceText.substring(0, 60)}..."`);
-        continue;
-      }
-
-      this.wrapTextRange(container, currentIndex, currentIndex + sentenceLength, wrap.sentenceId);
-      wrapped++;
-    }
-
-    console.log(`Sentence wrapping complete: ${wrapped}/${segments.length} wrapped`);
-
-    if (disparities.length > 0) {
-      console.warn(`DISPARITIES: ${disparities.length} sentence(s) could not be matched`);
-      console.log('Disparity summary:', disparities.map(d => `${d.index}: ${d.reason} (${d.expectedId})`).join(', '));
-    }
-
-    const wrappedIds = new Set();
-    container.querySelectorAll('.sentence').forEach(span => {
-      wrappedIds.add(span.dataset.sentenceId);
-    });
-
-    const unmatchedServerSentences = this.currentSentences.filter(s => !wrappedIds.has(s.id));
-    if (unmatchedServerSentences.length > 0) {
-      console.warn(`WARNING: ${unmatchedServerSentences.length} server sentence(s) were not wrapped:`);
-      unmatchedServerSentences.forEach(s => {
-        console.warn(`  - ${s.id}: "${s.text.substring(0, 80)}..."`);
-      });
-    }
-  },
 
   applyAnnotations(container) {
     if (!this.currentAnnotations || this.currentAnnotations.length === 0) {
@@ -421,181 +272,6 @@ const WriteSysRenderer = {
   },
 
   // Must mirror Go normalizeText: lowercase, [^a-z0-9\s] stripped, ws collapsed.
-  normalizeText(text) {
-    text = text.toLowerCase();
-    text = text.replace(/[^a-z0-9\s]/g, '');
-    text = text.replace(/\s+/g, ' ').trim();
-    return text;
-  },
-
-  extractWordsForId(text) {
-    const normalized = this.normalizeText(text);
-    return normalized.split(/\s+/).filter(w => w.length > 0);
-  },
-
-  // Must mirror Go GenerateSentenceID byte-for-byte:
-  // "{first-three-words}-{8hex}" where hex = SHA-256(normText+ordinal+commit)[:4].
-  async generateSentenceID(text, ordinal, commitHash) {
-    const words = this.extractWordsForId(text);
-
-    let prefix;
-    const numWords = Math.min(3, words.length);
-    if (numWords === 0) {
-      prefix = 'heading';
-    } else {
-      prefix = words.slice(0, numWords).join('-');
-    }
-
-    const normalizedText = this.normalizeText(text);
-    const data = `${normalizedText}-${ordinal}-${commitHash}`;
-
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-    const hashArray = new Uint8Array(hashBuffer);
-
-    const suffix = Array.from(hashArray.slice(0, 4))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    return `${prefix}-${suffix}`;
-  },
-
-  // Must mirror Go cleanSentenceBoundaries(): strip leading punctuation
-  // except quotes.
-  cleanSentenceBoundaries(text) {
-    let trimmed = text.trim();
-
-    while (trimmed.length > 0) {
-      const firstChar = trimmed[0];
-
-      if (firstChar === '"' || firstChar === "'" ||
-          firstChar === '\u201c' || firstChar === '\u201d' ||
-          firstChar === '\u2018' || firstChar === '\u2019' ||
-          firstChar === '\u201e') {
-        break;
-      }
-
-      if (firstChar === '.' || firstChar === ',' || firstChar === ';' ||
-          firstChar === ':' || firstChar === '!' || firstChar === '?' ||
-          firstChar === '—' || firstChar === '-') {
-        trimmed = trimmed.substring(1).trimStart();
-      } else {
-        break;
-      }
-    }
-
-    return trimmed;
-  },
-
-  // Double-newline separators between blocks match the segmenter's
-  // paragraph-break rule.
-  getTextWithBlockSpacing(element) {
-    const blockElements = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'SECTION', 'ARTICLE'];
-    const parts = [];
-
-    const walk = (node) => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.textContent;
-        if (text.trim()) {
-          parts.push(text);
-        }
-      } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const tagName = node.tagName;
-
-        for (let child of node.childNodes) {
-          walk(child);
-        }
-
-        if (blockElements.includes(tagName) && parts.length > 0) {
-          const last = parts[parts.length - 1];
-          if (last && !last.endsWith('\n\n')) {
-            if (last.endsWith('\n')) {
-              parts.push('\n');
-            } else {
-              parts.push('\n\n');
-            }
-          }
-        }
-      }
-    };
-
-    walk(element);
-    return parts.join('');
-  },
-
-  stripMarkdown(text) {
-    return text
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1');
-  },
-
-
-  wrapTextRange(container, startOffset, endOffset, sentenceId) {
-    const walker = document.createTreeWalker(
-      container,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: function(node) {
-          let parent = node.parentElement;
-          while (parent && parent !== container) {
-            if (parent.classList && parent.classList.contains('sentence')) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            parent = parent.parentElement;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
-
-    let currentOffset = 0;
-    let currentNode = walker.nextNode();
-    const nodesToWrap = [];
-
-    while (currentNode) {
-      const nodeLength = currentNode.textContent.length;
-      const nodeStart = currentOffset;
-      const nodeEnd = currentOffset + nodeLength;
-
-      if (nodeEnd > startOffset && nodeStart < endOffset) {
-        const wrapStart = Math.max(0, startOffset - nodeStart);
-        const wrapEnd = Math.min(nodeLength, endOffset - nodeStart);
-
-        nodesToWrap.push({
-          node: currentNode,
-          start: wrapStart,
-          end: wrapEnd,
-          sentenceId: sentenceId
-        });
-      }
-
-      currentOffset = nodeEnd;
-      if (currentOffset >= endOffset) break;
-
-      currentNode = walker.nextNode();
-    }
-
-    // Reverse so each wrap doesn't shift offsets later wraps need.
-    nodesToWrap.reverse().forEach(({ node, start, end, sentenceId }) => {
-      const before = node.textContent.substring(0, start);
-      const content = node.textContent.substring(start, end);
-      const after = node.textContent.substring(end);
-
-      const span = document.createElement('span');
-      span.className = 'sentence';
-      span.dataset.sentenceId = sentenceId;
-      span.textContent = content;
-
-      const parent = node.parentNode;
-      if (before) parent.insertBefore(document.createTextNode(before), node);
-      parent.insertBefore(span, node);
-      if (after) parent.insertBefore(document.createTextNode(after), node);
-      parent.removeChild(node);
-    });
-  },
-
   // Pages may split a sentence across fragments; events update all of them.
   setupSentenceHover() {
     document.querySelectorAll('.sentence').forEach(span => {

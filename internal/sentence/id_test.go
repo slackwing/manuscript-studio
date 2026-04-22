@@ -189,3 +189,27 @@ func startsWithPrefix(id, prefix string) bool {
 	}
 	return id[:len(prefix)] == prefix
 }
+
+// Storage-shape change (UNIFIED_DATA_SHAPE_PLAN.md) preserves IDs because
+// normalizeText strips both markdown and structural-whitespace markers
+// before hashing.
+func TestGenerateSentenceID_StableAcrossStorageShapes(t *testing.T) {
+	cases := []struct {
+		stripped, raw string
+	}{
+		{"The fox jumped.", "*The* fox jumped."},
+		{"The fox jumped.", "\n\tThe fox jumped."},
+		{"The fox jumped.", "\n\nThe fox jumped."},
+		{"The fox jumped.", "\n\t*The* fox jumped."},
+		{"And how are you", "**And** how are you"},
+	}
+	commit := "abc123"
+	for _, c := range cases {
+		idStripped := GenerateSentenceID(c.stripped, 7, commit)
+		idRaw := GenerateSentenceID(c.raw, 7, commit)
+		if idStripped != idRaw {
+			t.Errorf("ID mismatch:\n  stripped %q → %s\n  raw      %q → %s",
+				c.stripped, idStripped, c.raw, idRaw)
+		}
+	}
+}
