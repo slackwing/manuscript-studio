@@ -95,6 +95,15 @@ type AnnotationTag struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type SuggestedChange struct {
+	SuggestionID int       `json:"suggestion_id"`
+	SentenceID   string    `json:"sentence_id"`
+	UserID       string    `json:"user_id"`
+	Text         string    `json:"text"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type AnnotationVersion struct {
 	AnnotationID        int       `json:"annotation_id"`
 	Version             int       `json:"version"`

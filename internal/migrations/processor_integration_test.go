@@ -83,6 +83,9 @@ func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manus
 		`DELETE FROM annotation WHERE sentence_id IN (
 			SELECT sentence_id FROM sentence WHERE migration_id IN (
 				SELECT migration_id FROM migration WHERE manuscript_id = $1))`,
+		`DELETE FROM suggested_change WHERE sentence_id IN (
+			SELECT sentence_id FROM sentence WHERE migration_id IN (
+				SELECT migration_id FROM migration WHERE manuscript_id = $1))`,
 		`DELETE FROM tag WHERE migration_id IN (
 			SELECT migration_id FROM migration WHERE manuscript_id = $1)`,
 		`DELETE FROM sentence WHERE migration_id IN (
@@ -547,6 +550,71 @@ func TestMigration_ChainAcrossThreeCommits(t *testing.T) {
 	}
 	if v2Found == nil || v2Found.PreviousSentenceID == nil || *v2Found.PreviousSentenceID != stableV1 {
 		t.Fatalf("v2 should link to v1: got %v, want %s", v2Found.PreviousSentenceID, stableV1)
+	}
+}
+
+// Suggested edits attached to an unchanged (exact-match) sentence get copied
+// forward to its new sentence_id at migration time. Suggestions on edited
+// (fuzzy-pair) sentences stay frozen on the old row.
+func TestMigration_SuggestionsCopyOnExactMatch(t *testing.T) {
+	f := newFixture(t)
+
+	v1 := "Stable sentence one. Stable sentence two. Stable sentence three."
+	v2 := "Stable sentence one. Stable sentence TWO modified. Stable sentence three."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", v1)
+
+	// Add a suggestion on each old sentence.
+	stableOneOld := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence one")
+	stableTwoOld := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence two")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, stableOneOld, f.username, "Suggested rewrite for sentence one."); err != nil {
+		t.Fatalf("upsert suggestion on stable one: %v", err)
+	}
+	if _, err := f.db.UpsertSuggestion(f.ctx, stableTwoOld, f.username, "Suggested rewrite for sentence two."); err != nil {
+		t.Fatalf("upsert suggestion on stable two: %v", err)
+	}
+
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", v2)
+
+	// "Stable sentence one." is exact-match → suggestion should appear on the
+	// new sentence id.
+	stableOneNew := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Stable sentence one")
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
+
+	got := map[string]string{}
+	for _, r := range rows {
+		got[r.SentenceID] = r.Text
+	}
+
+	if got[stableOneNew] != "Suggested rewrite for sentence one." {
+		t.Errorf("expected suggestion to follow exact-match pairing onto %s, got map %v", stableOneNew, got)
+	}
+
+	// "Stable sentence two." → "Stable sentence TWO modified." is fuzzy.
+	// The new sentence should have NO suggestion.
+	stableTwoNew := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Stable sentence TWO modified")
+	if _, present := got[stableTwoNew]; present {
+		t.Errorf("fuzzy-paired sentence %s should not inherit a suggestion, got: %v", stableTwoNew, got[stableTwoNew])
+	}
+
+	// The old (mID1) suggestion on stable-two should still exist (not deleted).
+	oldRows, err := f.db.GetSuggestionsForMigration(f.ctx, mID1, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m1: %v", err)
+	}
+	foundOld := false
+	for _, r := range oldRows {
+		if r.SentenceID == stableTwoOld {
+			foundOld = true
+			break
+		}
+	}
+	if !foundOld {
+		t.Errorf("old suggestion on fuzzy-paired sentence should remain on the old sentence row")
 	}
 }
 

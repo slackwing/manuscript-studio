@@ -53,9 +53,15 @@ const WriteSysRenderer = {
     try {
       this.showStatus('Loading manuscript...');
 
-      // Server resolves repo/file from config.
+      // Fetch manuscript and (in parallel) the user's suggested edits, so a
+      // suggestions outage never blocks the page render.
       const url = `${this.apiBaseUrl}/migrations/${migrationID}/manuscript`;
-      const data = await fetchJSON(url, {}, false);
+      const [data] = await Promise.all([
+        fetchJSON(url, {}, false),
+        window.WriteSysSuggestions
+          ? window.WriteSysSuggestions.loadForMigration(migrationID).catch(() => {})
+          : Promise.resolve(),
+      ]);
       this.currentManuscript = data.markdown;
       this.currentSentences = data.sentences;
       this.currentAnnotations = data.annotations;
@@ -96,12 +102,25 @@ const WriteSysRenderer = {
 
     this.applyAnnotations(tempContainer);
 
+    // Replace span contents with suggested-edit diffs (per original
+    // sentence_id) so Paged.js paginates the diff'd HTML directly. Spans
+    // keep their original ids — annotations / history / selection remain
+    // intact even when a suggestion adds new sentences.
+    if (window.WriteSysSuggestions && window.WriteSysSuggestions.applyToSpans) {
+      window.WriteSysSuggestions.applyToSpans(tempContainer);
+    }
+
     const wrappedHtml = tempContainer.innerHTML;
 
     if (typeof Paged !== 'undefined') {
 
       const paged = new Paged.Previewer();
       const appContainer = document.getElementById('app-container');
+
+      // Clear any prior Paged.js render so re-renders don't stack DOM. (Paged
+      // appends; without a clear, suggestion re-renders end up with double
+      // the .sentence elements and the new ones live on top of the old.)
+      appContainer.querySelectorAll('.pagedjs_pages').forEach(el => el.remove());
 
       // base-aware absolute URL so Paged.js fetches /<prefix>/css/book.css
       // when hosted under a prefix, and /css/book.css at the root.
@@ -621,6 +640,13 @@ const WriteSysRenderer = {
 
       span.addEventListener('click', () => {
         const sentenceId = span.dataset.sentenceId;
+
+        // Re-click on the already-selected sentence opens the suggested-edit
+        // modal. Lets the user revise without an extra UI affordance.
+        if (sentenceId === this.currentSelectedSentenceId && window.WriteSysSuggestions) {
+          window.WriteSysSuggestions.openModal(sentenceId);
+          return;
+        }
 
         if (this.currentSelectedSentenceId) {
           document.querySelectorAll(`.sentence[data-sentence-id="${this.currentSelectedSentenceId}"]`).forEach(fragment => {

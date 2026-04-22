@@ -158,6 +158,13 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("annotation migration: %w", err)
 	}
 
+	// Copy suggested-edits forward only when the pairing is text-identical.
+	// Fuzzy / fallback pairings (anything below 1.0) leave the suggestion on
+	// the old sentence row — the user's intent may no longer apply.
+	if err := migrateSuggestions(ctx, db, plan); err != nil {
+		return nil, fmt.Errorf("suggestion migration: %w", err)
+	}
+
 	parentID := parent.MigrationID
 	if err := db.MarkMigrationDone(ctx, &models.Migration{
 		MigrationID:       migrationID,
@@ -233,6 +240,21 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log
 type plannedMove struct {
 	NewSentenceID string
 	Confidence    float64
+}
+
+// migrateSuggestions copies suggested_change rows forward across an
+// exact-match pairing. Fuzzy / fallback pairings are skipped on purpose —
+// the new sentence's text differs, so a stale suggestion would be wrong.
+func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) error {
+	for oldID, move := range plan {
+		if move.NewSentenceID == "" || move.Confidence < 1.0 {
+			continue
+		}
+		if err := db.CopySuggestionsForward(ctx, oldID, move.NewSentenceID); err != nil {
+			return fmt.Errorf("copy suggestions %s → %s: %w", oldID, move.NewSentenceID, err)
+		}
+	}
+	return nil
 }
 
 // RecomputePreviousByNew runs the live migration's pairing logic against two

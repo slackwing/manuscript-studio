@@ -1373,6 +1373,111 @@ p.indented {
   font-weight: 500;
 }
 
+/* Sentence with a pending suggested edit: subtle dashed underline so it's
+   visible at a glance without competing with highlight colors. */
+.sentence.has-suggestion {
+  text-decoration: underline dashed #555;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+/* Inline diff inside a suggested-edit span (rendered by suggestions.js). */
+.sentence del {
+  color: #b33b3a;
+  text-decoration: line-through;
+}
+
+.sentence strong {
+  color: #1f6f1f;
+  font-weight: 600;
+}
+
+/* Suggested-edit modal. Monospace textarea since the user is editing source. */
+#suggestion-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 200;
+}
+
+#suggestion-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(640px, 90vw);
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  padding: 20px 24px;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: "Helvetica", sans-serif;
+}
+
+.suggestion-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #222;
+}
+
+.suggestion-modal-hint {
+  font-size: 12px;
+  color: #777;
+}
+
+.suggestion-modal-textarea {
+  width: 100%;
+  font-family: "Monaco", "Menlo", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+}
+
+.suggestion-modal-textarea:focus {
+  outline: none;
+  border-color: #2a7bb0;
+}
+
+.suggestion-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.suggestion-modal-cancel,
+.suggestion-modal-save {
+  padding: 6px 14px;
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #333;
+}
+
+.suggestion-modal-save {
+  background: #2a7bb0;
+  border-color: #2a7bb0;
+  color: #fff;
+}
+
+.suggestion-modal-cancel:hover {
+  background: #f5f5f5;
+}
+
+.suggestion-modal-save:hover {
+  background: #225f8c;
+}
+
 /* Print styles */
 @media print {
   #controls,

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="006-suggested-change" author="codereview">
+
+        <createTable tableName="suggested_change">
+            <column name="suggestion_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="sentence_id" type="VARCHAR(100)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_suggested_change_sentence"
+                             references="sentence(sentence_id)"/>
+            </column>
+            <column name="user_id" type="VARCHAR(255)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_suggested_change_user"
+                             references="&quot;user&quot;(username)"/>
+            </column>
+            <column name="text" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint
+            tableName="suggested_change"
+            columnNames="sentence_id, user_id"
+            constraintName="uq_suggested_change_sentence_user"/>
+
+        <sql>
+            CREATE INDEX idx_suggested_change_sentence ON suggested_change(sentence_id);
+            CREATE INDEX idx_suggested_change_user ON suggested_change(user_id);
+        </sql>
+
+    </changeSet>
+
+</databaseChangeLog>

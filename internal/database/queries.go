@@ -354,6 +354,84 @@ func (db *DB) GetSentenceTextsByIDs(ctx context.Context, sentenceIDs []string) (
 	return out, rows.Err()
 }
 
+// UpsertSuggestion writes (or replaces) the current user's suggestion for a
+// sentence. Empty text or text identical to the original sentence text is
+// the caller's responsibility to convert into a delete — this function
+// only stores what it's given.
+func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text string) (*models.SuggestedChange, error) {
+	query := `
+		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
+		ON CONFLICT (sentence_id, user_id) DO UPDATE
+			SET text = EXCLUDED.text, updated_at = NOW()
+		RETURNING suggestion_id, sentence_id, user_id, text, created_at, updated_at
+	`
+	var s models.SuggestedChange
+	err := db.Pool.QueryRow(ctx, query, sentenceID, userID, text).Scan(
+		&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("upsert suggestion: %w", err)
+	}
+	return &s, nil
+}
+
+// DeleteSuggestion removes the current user's suggestion for a sentence, if
+// any exists. Returns true if a row was deleted.
+func (db *DB) DeleteSuggestion(ctx context.Context, sentenceID, userID string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx,
+		`DELETE FROM suggested_change WHERE sentence_id = $1 AND user_id = $2`,
+		sentenceID, userID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("delete suggestion: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// GetSuggestionsForMigration returns one user's suggestions for every
+// sentence in a given migration. Single round-trip via JOIN.
+func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, userID string) ([]models.SuggestedChange, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT sc.suggestion_id, sc.sentence_id, sc.user_id, sc.text, sc.created_at, sc.updated_at
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		WHERE s.migration_id = $1 AND sc.user_id = $2
+	`, migrationID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get suggestions for migration: %w", err)
+	}
+	defer rows.Close()
+	var out []models.SuggestedChange
+	for rows.Next() {
+		var s models.SuggestedChange
+		if err := rows.Scan(&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan suggestion: %w", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// CopySuggestionsForward duplicates all rows for a given source sentence onto
+// a destination sentence (used by the migration processor when an exact-match
+// pairing carries suggestions forward to the new commit). Per-user uniqueness
+// is preserved — if a user already has a suggestion on the destination, the
+// existing one wins.
+func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSentenceID string) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
+		SELECT $2, user_id, text, NOW(), NOW()
+		FROM suggested_change
+		WHERE sentence_id = $1
+		ON CONFLICT (sentence_id, user_id) DO NOTHING
+	`, fromSentenceID, toSentenceID)
+	if err != nil {
+		return fmt.Errorf("copy suggestions: %w", err)
+	}
+	return nil
+}
+
 // SetPreviousSentenceID overwrites a sentence's previous_sentence_id. Used by
 // the backfill CLI; the migration processor sets this at insert time instead.
 func (db *DB) SetPreviousSentenceID(ctx context.Context, sentenceID string, previousSentenceID *string) error {

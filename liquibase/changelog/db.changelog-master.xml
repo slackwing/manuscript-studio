@@ -12,5 +12,6 @@
     <include file="changelog/003-sessions.xml"/>
     <include file="changelog/004-annotation-completed.xml"/>
     <include file="changelog/005-sentence-previous-id.xml"/>
+    <include file="changelog/006-suggested-change.xml"/>
 
 </databaseChangeLog>

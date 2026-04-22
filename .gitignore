@@ -21,6 +21,8 @@ go.work
 
 # Dependency directories
 vendor/
+!web/js/vendor/
+!web/js/vendor/**
 
 # IDE files
 .idea/

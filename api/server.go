@@ -29,6 +29,7 @@ type Server struct {
 	authHandlers        *handlers.AuthHandlers
 	migrationHandlers   *handlers.MigrationHandlers
 	annotationHandlers  *handlers.AnnotationHandlers
+	suggestionHandlers  *handlers.SuggestionHandlers
 	adminHandlers       *handlers.AdminHandlers
 }
 
@@ -52,6 +53,10 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config: cfg,
 		},
 		annotationHandlers: &handlers.AnnotationHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+		},
+		suggestionHandlers: &handlers.SuggestionHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 		},
@@ -142,6 +147,9 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/latest", s.migrationHandlers.HandleGetLatestMigration)
 			r.Get("/migrations/{migration_id}/manuscript", s.migrationHandlers.HandleGetManuscriptByMigration)
 			r.Get("/migrations/{migration_id}/history", s.migrationHandlers.HandleGetSentenceHistory)
+			r.Get("/migrations/{migration_id}/suggestions", s.suggestionHandlers.HandleGetSuggestionsForMigration)
+			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
+			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 
 			r.Get("/annotations/{commit_hash}", s.annotationHandlers.HandleGetAnnotationsByCommit)
 			r.Get("/annotations/sentence/{sentence_id}", s.annotationHandlers.HandleGetAnnotationsBySentence)
