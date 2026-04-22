@@ -293,6 +293,17 @@ ARCHITECTURE.md §6.5–§6.7.
 Schema migrations 002–006 (status, sessions, completed, prev-sentence,
 suggested_change) are all live. 001 is frozen — see §3.
 
+### Deploying
+
+When the user asks you to deploy, run `./remote-deploy.sh` from the repo
+root. It SSHes to a pre-configured host alias whose key is locked down
+on the VM via `command="..."` to run only the install one-liner — you
+cannot get a shell or any other access through it. If the user hasn't
+set up the SSH host alias yet, point them at the header of
+`remote-deploy.sh` for the one-time setup steps. If the script's missing
+or the SSH alias isn't configured, ask the user to deploy manually
+rather than guessing at credentials.
+
 ---
 
 ## 8. Tone / meta

@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-22.1"
+SCRIPT_VERSION="2026-04-22.2"
 
 set -euo pipefail
 
@@ -470,17 +470,7 @@ log_info "Private dir:    $PRIVATE_DIR"
 log_info "Container:      $CONTAINER_NAME"
 echo ""
 echo "Tools:"
-echo "  $SRC_DIR/debug/connect_db.sh             # psql shell against this DB"
-echo "  $SRC_DIR/debug/undo_migration.sh         # roll a manuscript back to an earlier migration"
-echo "  $HOME/deploy_latest_manuscript_studio.sh # re-run install (also for SSH-restricted Claude deploys)"
-echo ""
-echo "One-time backfill (only needed if you have manuscripts that were"
-echo "migrated before the sentence-history feature shipped):"
-echo "  docker run --rm --network host \\"
-echo "    -v $CONFIG_FILE:/config/config.yaml:ro \\"
-echo "    manuscript-studio:latest \\"
-echo "    backfill-prev-sentence --manuscript=YOUR_MANUSCRIPT_NAME"
-echo ""
-echo "  # add --dry-run first to preview without writing."
+echo "  $SRC_DIR/debug/connect_db.sh        # psql shell against this DB"
+echo "  $SRC_DIR/debug/undo_migration.sh    # roll a manuscript back to an earlier migration"
 echo ""
 log_info "Installation complete!"
