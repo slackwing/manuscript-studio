@@ -56,13 +56,14 @@ type Migration struct {
 }
 
 type Sentence struct {
-	SentenceID  string    `json:"sentence_id"`
-	MigrationID int       `json:"migration_id"`
-	CommitHash  string    `json:"commit_hash"` // Denormalized for readability.
-	Text        string    `json:"text"`
-	WordCount   int       `json:"word_count"`
-	Ordinal     int       `json:"ordinal"`
-	CreatedAt   time.Time `json:"created_at"`
+	SentenceID         string    `json:"sentence_id"`
+	MigrationID        int       `json:"migration_id"`
+	CommitHash         string    `json:"commit_hash"` // Denormalized for readability.
+	Text               string    `json:"text"`
+	WordCount          int       `json:"word_count"`
+	Ordinal            int       `json:"ordinal"`
+	CreatedAt          time.Time `json:"created_at"`
+	PreviousSentenceID *string   `json:"previous_sentence_id"` // Pairing from migration plan; null on bootstrap or insertions.
 }
 
 type Annotation struct {

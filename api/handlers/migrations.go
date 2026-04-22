@@ -161,6 +161,102 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	})
 }
 
+// SentenceHistoryEntry is one ancestor version of a sentence.
+type SentenceHistoryEntry struct {
+	Text       string `json:"text"`
+	CommitsAgo int    `json:"commits_ago"`
+}
+
+// SentenceHistory pairs a current sentence with up to N ancestor versions
+// (oldest last in History; History[0] = 1 commit ago).
+type SentenceHistory struct {
+	SentenceID string                 `json:"sentence_id"`
+	History    []SentenceHistoryEntry `json:"history"`
+}
+
+// HandleGetSentenceHistory returns up to historyCommitsBack ancestor text
+// versions for every sentence in the given migration. Walks
+// previous_sentence_id; missing links cap the chain early.
+func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	migrationIDStr := chi.URLParam(r, "migration_id")
+	migrationID, err := strconv.Atoi(migrationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+
+	const historyCommitsBack = 3
+
+	// Current commit's sentences are the chain heads.
+	currentSentences, err := h.DB.GetSentencesByMigration(ctx, migrationID)
+	if err != nil {
+		http.Error(w, "Failed to load sentences", http.StatusInternalServerError)
+		return
+	}
+
+	// Walk one hop at a time, batched. cursor[currentSentenceID] = the next
+	// ancestor's sentence_id to fetch (or nil when the chain ends).
+	cursor := make(map[string]*string, len(currentSentences))
+	histories := make(map[string][]SentenceHistoryEntry, len(currentSentences))
+	for _, s := range currentSentences {
+		cursor[s.SentenceID] = s.PreviousSentenceID
+		histories[s.SentenceID] = nil
+	}
+
+	for hop := 1; hop <= historyCommitsBack; hop++ {
+		// Collect all unique IDs we need to fetch this hop.
+		needed := make(map[string]bool)
+		for _, prev := range cursor {
+			if prev != nil {
+				needed[*prev] = true
+			}
+		}
+		if len(needed) == 0 {
+			break
+		}
+		ids := make([]string, 0, len(needed))
+		for id := range needed {
+			ids = append(ids, id)
+		}
+		fetched, err := h.DB.GetSentenceTextsByIDs(ctx, ids)
+		if err != nil {
+			http.Error(w, "Failed to walk sentence history", http.StatusInternalServerError)
+			return
+		}
+
+		for currentID, prev := range cursor {
+			if prev == nil {
+				continue
+			}
+			row, ok := fetched[*prev]
+			if !ok {
+				cursor[currentID] = nil
+				continue
+			}
+			histories[currentID] = append(histories[currentID], SentenceHistoryEntry{
+				Text:       row.Text,
+				CommitsAgo: hop,
+			})
+			cursor[currentID] = row.PreviousID
+		}
+	}
+
+	out := make([]SentenceHistory, len(currentSentences))
+	for i, s := range currentSentences {
+		out[i] = SentenceHistory{
+			SentenceID: s.SentenceID,
+			History:    histories[s.SentenceID],
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"sentences": out,
+	})
+}
+
 // findManuscriptConfig matches by CloneURL() (the resolved URL git uses), which
 // is what was stored when the manuscript row was created.
 func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {

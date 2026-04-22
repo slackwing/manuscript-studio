@@ -39,6 +39,7 @@ FAST_TESTS=(
 )
 
 SLOW_TESTS=(
+  test-history-bars
   verify-fixes
   test-delete-and-recreate
   test-note-and-tags

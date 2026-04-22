@@ -141,6 +141,7 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations", s.migrationHandlers.HandleGetMigrations)
 			r.Get("/migrations/latest", s.migrationHandlers.HandleGetLatestMigration)
 			r.Get("/migrations/{migration_id}/manuscript", s.migrationHandlers.HandleGetManuscriptByMigration)
+			r.Get("/migrations/{migration_id}/history", s.migrationHandlers.HandleGetSentenceHistory)
 
 			r.Get("/annotations/{commit_hash}", s.annotationHandlers.HandleGetAnnotationsByCommit)
 			r.Get("/annotations/sentence/{sentence_id}", s.annotationHandlers.HandleGetAnnotationsBySentence)

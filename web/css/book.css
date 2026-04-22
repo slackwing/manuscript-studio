@@ -1309,6 +1309,70 @@ p.indented {
   stroke: currentColor;
 }
 
+/* History bars on the LEFT margin: 3 lanes encoding "what changed across
+   each commit boundary". Mirror of right-side rainbow bars in geometry. */
+.history-bar-container {
+  position: absolute;
+}
+
+.history-bar {
+  border-radius: 1px;
+  transition: opacity 0.15s ease;
+}
+
+.history-bar-container:hover .history-bar {
+  opacity: 1;
+}
+
+.history-popup {
+  position: absolute;
+  z-index: 100;
+  background: #fafafa;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  max-width: 480px;
+  font-family: Georgia, serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.history-popup-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.history-popup-row:last-child {
+  border-bottom: none;
+}
+
+.history-popup-label {
+  flex: 0 0 56px;
+  color: #888;
+  font-family: "Helvetica", sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  padding-top: 2px;
+}
+
+.history-popup-text {
+  flex: 1 1 auto;
+  color: #333;
+}
+
+.history-popup-current .history-popup-label {
+  color: #2a7bb0;
+  font-weight: bold;
+}
+
+.history-popup-current .history-popup-text {
+  color: #111;
+  font-weight: 500;
+}
+
 /* Print styles */
 @media print {
   #controls,

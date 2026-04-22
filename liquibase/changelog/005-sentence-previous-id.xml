@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="005-sentence-previous-id" author="codereview">
+
+        <addColumn tableName="sentence">
+            <column name="previous_sentence_id" type="VARCHAR(100)">
+                <constraints nullable="true"
+                             foreignKeyName="fk_sentence_previous"
+                             references="sentence(sentence_id)"/>
+            </column>
+        </addColumn>
+
+        <sql>
+            CREATE INDEX idx_sentence_previous_sentence_id ON sentence(previous_sentence_id) WHERE previous_sentence_id IS NOT NULL;
+        </sql>
+
+    </changeSet>
+
+</databaseChangeLog>

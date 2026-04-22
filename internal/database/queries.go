@@ -318,6 +318,55 @@ func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
 	return int(tag.RowsAffected()), nil
 }
 
+// GetSentenceTextsByIDs fetches text + previous_sentence_id for a batch of
+// sentence IDs in one round-trip. Used to walk the previous-sentence chain
+// efficiently. Returns a map keyed by sentence_id.
+func (db *DB) GetSentenceTextsByIDs(ctx context.Context, sentenceIDs []string) (map[string]struct {
+	Text             string
+	PreviousID       *string
+}, error) {
+	out := make(map[string]struct {
+		Text       string
+		PreviousID *string
+	}, len(sentenceIDs))
+	if len(sentenceIDs) == 0 {
+		return out, nil
+	}
+	rows, err := db.Pool.Query(ctx,
+		`SELECT sentence_id, text, previous_sentence_id FROM sentence WHERE sentence_id = ANY($1)`,
+		sentenceIDs,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("batch fetch sentences: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, text string
+		var prev *string
+		if err := rows.Scan(&id, &text, &prev); err != nil {
+			return nil, fmt.Errorf("scan sentence: %w", err)
+		}
+		out[id] = struct {
+			Text       string
+			PreviousID *string
+		}{Text: text, PreviousID: prev}
+	}
+	return out, rows.Err()
+}
+
+// SetPreviousSentenceID overwrites a sentence's previous_sentence_id. Used by
+// the backfill CLI; the migration processor sets this at insert time instead.
+func (db *DB) SetPreviousSentenceID(ctx context.Context, sentenceID string, previousSentenceID *string) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE sentence SET previous_sentence_id = $1 WHERE sentence_id = $2`,
+		previousSentenceID, sentenceID,
+	)
+	if err != nil {
+		return fmt.Errorf("set previous_sentence_id for %s: %w", sentenceID, err)
+	}
+	return nil
+}
+
 // CreateSentences inserts all sentences in a single transaction.
 func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) error {
 	tx, err := db.Pool.Begin(ctx)
@@ -327,8 +376,8 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	defer tx.Rollback(ctx)
 
 	query := `
-		INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal, previous_sentence_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 
 	for _, s := range sentences {
@@ -339,6 +388,7 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 			s.Text,
 			s.WordCount,
 			s.Ordinal,
+			s.PreviousSentenceID,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert sentence %s: %w", s.SentenceID, err)
@@ -372,7 +422,7 @@ func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Mi
 
 func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]models.Sentence, error) {
 	query := `
-		SELECT sentence_id, migration_id, commit_hash, text, word_count, ordinal, created_at
+		SELECT sentence_id, migration_id, commit_hash, text, word_count, ordinal, created_at, previous_sentence_id
 		FROM sentence
 		WHERE migration_id = $1
 		ORDER BY ordinal
@@ -395,6 +445,7 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 			&s.WordCount,
 			&s.Ordinal,
 			&s.CreatedAt,
+			&s.PreviousSentenceID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan sentence: %w", err)

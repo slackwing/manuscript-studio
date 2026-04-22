@@ -30,6 +30,9 @@
           // Re-bind handlers on the new sentence spans produced by pagination.
           window.WriteSysRenderer.setupSentenceHover();
           window.WriteSysRenderer.addRainbowBars();
+          if (window.WriteSysHistory && window.WriteSysRenderer.currentMigrationID) {
+            window.WriteSysHistory.loadHistory(window.WriteSysRenderer.currentMigrationID);
+          }
         }
 
         console.log(`Paged.js rendered ${pages.length} pages`);

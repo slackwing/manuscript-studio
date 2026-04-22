@@ -135,6 +135,17 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		slog.Int("mapped", len(plan)),
 	)
 
+	// Decorate new sentences with their previous_sentence_id so the history
+	// endpoint can walk the chain. Pick the highest-confidence pairing per new
+	// sentence — fallbacks (confidence 0) lose to real matches.
+	prev := bestPreviousByNew(plan)
+	for i := range newSentences {
+		if pid, ok := prev[newSentences[i].SentenceID]; ok {
+			pidCopy := pid
+			newSentences[i].PreviousSentenceID = &pidCopy
+		}
+	}
+
 	if err := db.CreateSentences(ctx, newSentences); err != nil {
 		return nil, fmt.Errorf("store new sentences: %w", err)
 	}
@@ -222,6 +233,48 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log
 type plannedMove struct {
 	NewSentenceID string
 	Confidence    float64
+}
+
+// RecomputePreviousByNew runs the live migration's pairing logic against two
+// sentence sets and returns newID → bestOldID. Used by the backfill CLI so
+// historical migrations get the same answer as fresh ones.
+func RecomputePreviousByNew(oldSentences, newSentences []models.Sentence) map[string]string {
+	oldMap := make(map[string]string, len(oldSentences))
+	for _, s := range oldSentences {
+		oldMap[s.SentenceID] = s.Text
+	}
+	newMap := make(map[string]string, len(newSentences))
+	for _, s := range newSentences {
+		newMap[s.SentenceID] = s.Text
+	}
+	diff := sentence.ComputeSentenceDiff(oldMap, newMap)
+	plan := planMigration(oldSentences, sentence.ComputeMigrationMap(diff))
+	return bestPreviousByNew(plan)
+}
+
+// bestPreviousByNew inverts the plan into newID → oldID, choosing the
+// highest-confidence old sentence when several point at the same new one.
+// Used to set previous_sentence_id at sentence-write time.
+func bestPreviousByNew(plan map[string]plannedMove) map[string]string {
+	type pick struct {
+		oldID      string
+		confidence float64
+	}
+	best := make(map[string]pick, len(plan))
+	for oldID, move := range plan {
+		if move.NewSentenceID == "" {
+			continue
+		}
+		cur, exists := best[move.NewSentenceID]
+		if !exists || move.Confidence > cur.confidence {
+			best[move.NewSentenceID] = pick{oldID: oldID, confidence: move.Confidence}
+		}
+	}
+	out := make(map[string]string, len(best))
+	for newID, p := range best {
+		out[newID] = p.oldID
+	}
+	return out
 }
 
 // planMigration resolves the old→new sentence map, filling matcher gaps by
