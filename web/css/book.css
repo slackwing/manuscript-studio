@@ -541,27 +541,27 @@ p.indented {
   color: var(--chip-orange-text);
 }
 
-/* Note textbox */
+/* Note textbox: shrinks/grows with the textarea inside it. The textarea
+   sets its own height via autoResizeTextarea(), and we stay out of the way
+   so the sticky-note container can grow with the content. */
 .note-container {
   display: flex;
   flex-direction: column;
-  flex: 1; /* Take up available space */
   min-height: 120px;
 }
 
 .note-input {
   width: 100%;
   font-family: "Caveat", "Helvetica", sans-serif;
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1.2;
   padding: 0;
   border: none;
   background: transparent;
   color: #333;
   resize: none;
-  overflow: hidden; /* Hide scrollbar - will auto-resize via JS */
+  overflow: hidden; /* Hide scrollbar - height is set explicitly by autoResizeTextarea */
   min-height: 80px;
-  flex: 1;
   box-sizing: border-box;
 }
 
@@ -1371,6 +1371,11 @@ p.indented {
 .history-popup-current .history-popup-text {
   color: #111;
   font-weight: 500;
+}
+
+.history-popup-empty {
+  color: #aaa;
+  font-style: italic;
 }
 
 /* Sentence with a pending suggested edit: subtle dashed underline so it's

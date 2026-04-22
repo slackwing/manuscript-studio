@@ -69,7 +69,6 @@ const WriteSysSuggestions = {
     modal.id = 'suggestion-modal';
     modal.innerHTML = `
       <div class="suggestion-modal-title">Suggest edit</div>
-      <div class="suggestion-modal-hint">Edit the sentence source. Enter saves; Esc cancels.</div>
       <textarea class="suggestion-modal-textarea" rows="6" spellcheck="false"></textarea>
       <div class="suggestion-modal-actions">
         <button type="button" class="suggestion-modal-cancel">Cancel</button>

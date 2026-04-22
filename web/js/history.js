@@ -181,7 +181,11 @@ const WriteSysHistory = {
   showPopup(container, sentenceId) {
     this.hidePopup();
     const entry = this.bySentenceId[sentenceId];
-    if (!entry || !entry.history || entry.history.length === 0) return;
+    const lanes = this.lanesFor(sentenceId);
+    // Show the popup whenever the bars indicate change (any lane colored).
+    // For sentences with a partial history chain, missing commits are padded
+    // with "(empty)" so the user can see when the sentence first appeared.
+    if (lanes.every(c => !c)) return;
 
     const currentText = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
       ? window.WriteSysRenderer.sentenceMap[sentenceId] || ''
@@ -191,21 +195,31 @@ const WriteSysHistory = {
     popup.className = 'history-popup';
     popup.id = 'history-popup';
 
-    // Stack oldest → newest, with current on the bottom.
-    const versions = [...entry.history].sort((a, b) => b.commits_ago - a.commits_ago);
-    versions.forEach(v => {
+    // history[i] (if present) = i+1 commits ago. Walk oldest → newest, padding
+    // any missing slot with (empty) so all LANE_COUNT rows always render.
+    const byCommitsAgo = new Map();
+    if (entry && entry.history) {
+      entry.history.forEach(v => byCommitsAgo.set(v.commits_ago, v.text));
+    }
+    for (let n = this.LANE_COUNT; n >= 1; n--) {
+      const text = byCommitsAgo.get(n);
       const row = document.createElement('div');
       row.className = 'history-popup-row';
       const label = document.createElement('span');
       label.className = 'history-popup-label';
-      label.textContent = `${v.commits_ago} ago`;
-      const text = document.createElement('span');
-      text.className = 'history-popup-text';
-      text.textContent = v.text;
+      label.textContent = `${n} ago`;
+      const textSpan = document.createElement('span');
+      textSpan.className = 'history-popup-text';
+      if (text === undefined) {
+        textSpan.textContent = '(empty)';
+        textSpan.classList.add('history-popup-empty');
+      } else {
+        textSpan.textContent = text;
+      }
       row.appendChild(label);
-      row.appendChild(text);
+      row.appendChild(textSpan);
       popup.appendChild(row);
-    });
+    }
     if (currentText) {
       const row = document.createElement('div');
       row.className = 'history-popup-row history-popup-current';
