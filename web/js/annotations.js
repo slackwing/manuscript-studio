@@ -400,10 +400,12 @@ const WriteSysAnnotations = {
       if (!noteCreated && !isCreating && e.target.value.trim().length > 0) {
         isCreating = true;
         noteCreated = true;
-        const currentText = e.target.value;
-        const annotation = await this.handleAddNewNote(this.DEFAULT_COLOR, currentText);
+        const initialText = e.target.value;
+        // Hand the stale textarea to handleAddNewNote so it can read any
+        // characters the user typed while the POST was in flight, then
+        // transplant them into the new real-note textarea.
+        const annotation = await this.handleAddNewNote(this.DEFAULT_COLOR, initialText, textarea);
 
-        // "Never mind" candidate until the user commits by interacting further.
         if (annotation && annotation.annotation_id) {
           this.neverMindState.annotationId = annotation.annotation_id;
           this.neverMindState.isCommitted = false;
@@ -699,7 +701,7 @@ const WriteSysAnnotations = {
    * @param {string} color - The initial color
    * @param {string} initialNote - Optional initial note text
    */
-  async handleAddNewNote(color, initialNote = null) {
+  async handleAddNewNote(color, initialNote = null, sourceTextarea = null) {
     if (!this.currentSentenceId) return;
 
     try {
@@ -722,11 +724,19 @@ const WriteSysAnnotations = {
 
       const apiResponse = await response.json();
 
+      // Characters the user typed while the POST was in flight land in the
+      // stale uncreated textarea. Grab the latest value now so the real note
+      // can inherit it.
+      let liveText = initialNote;
+      if (sourceTextarea && typeof sourceTextarea.value === 'string') {
+        liveText = sourceTextarea.value;
+      }
+
       const newAnnotation = {
         annotation_id: apiResponse.annotation_id,
         sentence_id: this.currentSentenceId,
         color: color,
-        note: initialNote,
+        note: liveText,
         priority: 'none',
         flagged: false,
         tags: []
@@ -735,13 +745,20 @@ const WriteSysAnnotations = {
       this.annotations.push(newAnnotation);
       this.renderStickyNotes();
 
-      // Restore focus to the newly created note's textarea, cursor at end.
-      const newNoteElement = document.querySelector(`.sticky-note[data-annotation-id="${apiResponse.annotation_id}"]`);
-      if (newNoteElement) {
-        const textarea = newNoteElement.querySelector('.note-input');
-        if (textarea) {
-          textarea.focus();
-          textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      // Port the in-flight text into the newly rendered real-note textarea,
+      // refocus it with cursor at end, and persist anything beyond what we
+      // already POSTed.
+      const newTextarea = document.querySelector(
+        `.sticky-note[data-annotation-id="${apiResponse.annotation_id}"] .note-input`
+      );
+      if (newTextarea) {
+        newTextarea.value = liveText || '';
+        this.autoResizeTextarea(newTextarea);
+        newTextarea.focus();
+        const end = newTextarea.value.length;
+        newTextarea.setSelectionRange(end, end);
+        if (sourceTextarea && (liveText || '') !== (initialNote || '')) {
+          this.saveNoteText(apiResponse.annotation_id, liveText);
         }
       }
 

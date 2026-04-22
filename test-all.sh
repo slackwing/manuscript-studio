@@ -30,6 +30,7 @@ FAST_TESTS=(
   circle-alignment-test
   final-test
   test-complete-annotation
+  test-typing-race-on-create
   smoke
   multi-note-ui-test
   test-priority-flag
