@@ -86,7 +86,12 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     // ===== Rainbow bars update =====
     console.log('\n=== Testing Rainbow Bars Update ===\n');
 
-    // Re-select the same sentence to see its rainbow bars.
+    // Re-select the same sentence to see its rainbow bars. Deselect first
+    // (click the grey app background) so the upcoming click counts as a
+    // fresh selection rather than a re-click — re-clicking a selected
+    // sentence opens the suggested-edit modal.
+    await page.locator('#app-container').click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(200);
     await sentence.click();
     await page.waitForTimeout(500);
 

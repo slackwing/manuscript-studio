@@ -64,7 +64,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     console.log('4. Creating blue annotation...');
     await addNote('blue');
 
-    // Re-select sentence (in case focus shifted).
+    // Re-select sentence (in case focus shifted). Deselect first by clicking
+    // the grey app background — re-clicking the same selected sentence would
+    // open the suggested-edit modal.
+    await page.locator('#app-container').click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(200);
     await sentence.click();
     await page.waitForTimeout(500);
 

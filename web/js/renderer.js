@@ -18,6 +18,9 @@ const WriteSysRenderer = {
     this.manuscriptId = parseInt(urlParams.get('manuscript_id') || '1', 10);
     console.log(`Using manuscript_id: ${this.manuscriptId}`);
 
+    // Bind once at init, not per-render — re-renders happen on every save.
+    window.addEventListener('resize', () => this.applyResponsiveScaling());
+
     await this.loadLatestMigration();
   },
 
@@ -94,20 +97,20 @@ const WriteSysRenderer = {
     const tempContainer = document.createElement('div');
     tempContainer.innerHTML = html;
 
-    if (typeof smartquotes !== 'undefined') {
-      smartquotes.element(tempContainer);
-    }
-
+    // wrapSentences and applyToSpans both compare DOM text against straight-
+    // quote sources (currentManuscript and the suggestions API respectively).
+    // Smart-quote conversion runs LAST so straight apostrophes in suggestions
+    // don't show up as spurious diffs against curly apostrophes in the DOM.
     await this.wrapSentences(tempContainer);
 
     this.applyAnnotations(tempContainer);
 
-    // Replace span contents with suggested-edit diffs (per original
-    // sentence_id) so Paged.js paginates the diff'd HTML directly. Spans
-    // keep their original ids — annotations / history / selection remain
-    // intact even when a suggestion adds new sentences.
     if (window.WriteSysSuggestions && window.WriteSysSuggestions.applyToSpans) {
       window.WriteSysSuggestions.applyToSpans(tempContainer);
+    }
+
+    if (typeof smartquotes !== 'undefined') {
+      smartquotes.element(tempContainer);
     }
 
     const wrappedHtml = tempContainer.innerHTML;
@@ -135,8 +138,6 @@ const WriteSysRenderer = {
 
       // setupSentenceHover() runs in pagedjs-config.js after Paged.js finishes.
       this.applyResponsiveScaling();
-
-      window.addEventListener("resize", () => this.applyResponsiveScaling());
     } else {
       // Fallback if Paged.js not available
       container.innerHTML = wrappedHtml;

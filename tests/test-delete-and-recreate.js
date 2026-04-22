@@ -116,7 +116,11 @@ async function deleteFirstRealNote(page) {
     errors.length = 0;
     alerts.length = 0;
 
-    // Step 4: Reselect sentence (deletion collapses the panel).
+    // Step 4: Reselect sentence (deletion collapses the panel). Deselect
+    // first by clicking the grey app background — re-clicking a still-
+    // selected sentence would open the suggested-edit modal instead.
+    await page.locator('#app-container').click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(200);
     await sentence.click();
     await page.waitForTimeout(600);
 

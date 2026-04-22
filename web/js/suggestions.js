@@ -2,15 +2,16 @@
  * Suggested-edits feature.
  *
  * One in-memory map keyed by the original (unchanged) sentence_id so the
- * sentence_id never drifts even when the suggestion adds/removes sentence
- * boundaries. Diff vs. original is rendered inline (word-level via
+ * sentence_id never drifts even when a suggestion adds/removes sentence
+ * boundaries. The diff vs. original is rendered inline (word-level via
  * diff-match-patch) into the existing <span class="sentence"> by
- * applySuggestionsToSpans(), called once per render between wrapSentences()
- * and Paged.js pagination.
+ * applyToSpans(), called from renderManuscript() AFTER wrapSentences() and
+ * BEFORE smartquotes — so the diff compares straight quotes against straight
+ * quotes (a curly-vs-straight apostrophe would otherwise show as a diff).
  *
  * Persisted via /api/sentences/{id}/suggestion. Loaded in parallel with the
- * manuscript by loadForMigration() — endpoint failure is non-fatal (bars
- * just won't show until next reload).
+ * manuscript by loadForMigration() — endpoint failure is non-fatal (the page
+ * renders without diff markup until next reload).
  */
 
 const WriteSysSuggestions = {
@@ -139,9 +140,10 @@ const WriteSysSuggestions = {
 };
 
 // Render a word-level diff as <del>removed</del><strong>added</strong>.
-// Falls back to plain new text if diff-match-patch isn't loaded.
+// Falls back to a single <strong> wrap of the new text when diff-match-patch
+// isn't loaded — still visible as a suggestion, just without per-word marks.
 function renderDiffHTML(oldText, newText, dmp) {
-  if (!dmp) return escapeHTML(newText);
+  if (!dmp) return `<strong>${escapeHTML(newText)}</strong>`;
   // Word-level diff: tokenise on whitespace boundaries by mapping tokens to
   // unique chars (the standard diff-match-patch trick), diff at the char
   // level, then map back. cleanupSemantic produces human-readable spans.
@@ -180,11 +182,9 @@ function renderDiffHTML(oldText, newText, dmp) {
     lineArray[0] = '';
     function munge(text) {
       let chars = '';
-      let lineStart = 0;
-      let lineEnd = -1;
       let lineArrayLength = lineArray.length;
-      // Treat whitespace runs as separators but preserve them as their own
-      // tokens, so a missing/extra space shows up in the diff.
+      // Whitespace runs and non-whitespace runs are both tokens — that way a
+      // missing or extra space shows up in the diff, not just changed words.
       const re = /\s+|\S+/g;
       let m;
       while ((m = re.exec(text)) !== null) {
@@ -192,10 +192,9 @@ function renderDiffHTML(oldText, newText, dmp) {
         if (lineHash.hasOwnProperty(token)) {
           chars += String.fromCharCode(lineHash[token]);
         } else {
-          if (lineArrayLength === 65535) {
-            // Hash-collision risk for super-long inputs; fall back to char diff.
-            return null;
-          }
+          // 65535 unique tokens fits in one UTF-16 code unit; punt to char
+          // diff for inputs that exceed it.
+          if (lineArrayLength === 65535) return null;
           chars += String.fromCharCode(lineArrayLength);
           lineHash[token] = lineArrayLength;
           lineArray[lineArrayLength++] = token;
