@@ -4,7 +4,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-19.14"
+SCRIPT_VERSION="2026-04-22.1"
 
 set -euo pipefail
 
@@ -41,6 +41,24 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
+
+# Tee everything that follows into install.log so each deploy is auditable
+# (you can `tail $CONFIG_DIR/logs/install.log` to see when the last redeploy
+# ran and whether it succeeded). Created here so even early failures get
+# captured. Uses a process substitution so terminal output is unchanged.
+mkdir -p "$CONFIG_DIR/logs"
+INSTALL_LOG="$CONFIG_DIR/logs/install.log"
+{
+    echo ""
+    echo "================================================================"
+    echo "Install run starting: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    echo "Script version: $SCRIPT_VERSION"
+    echo "Args: $*"
+    echo "User: $(whoami)@$(hostname)"
+    echo "================================================================"
+} >> "$INSTALL_LOG"
+exec > >(tee -a "$INSTALL_LOG") 2>&1
+trap 'echo "Install run finished: $(date -u +%Y-%m-%dT%H:%M:%SZ) exit=$?" >> "$INSTALL_LOG"' EXIT
 
 # prompt_yn: prompt user yes/no, default Yes. Returns 0 for yes, 1 for no.
 # Works under `bash <(curl ...)` because stdin stays attached to the terminal.
@@ -274,6 +292,15 @@ docker build -t manuscript-studio:latest . || {
     log_error "Failed to build application image"
 }
 
+# Drop the redeploy script in $HOME so future deploys (manual or via the
+# constrained-SSH path documented inside the script) can run it without
+# pulling install.sh by hand. Idempotent — overwrites a stale copy.
+if [[ -f "$SRC_DIR/deploy_latest_manuscript_studio.sh" ]]; then
+    cp "$SRC_DIR/deploy_latest_manuscript_studio.sh" "$HOME/deploy_latest_manuscript_studio.sh"
+    chmod +x "$HOME/deploy_latest_manuscript_studio.sh"
+    log_info "Installed redeploy helper at $HOME/deploy_latest_manuscript_studio.sh"
+fi
+
 # Step 8: Run database migrations
 log_step "Running database migrations..."
 
@@ -437,14 +464,15 @@ fi
 echo "========================================="
 echo ""
 log_info "Config file:    $CONFIG_FILE"
-log_info "Logs dir:       $CONFIG_DIR/logs"
+log_info "Logs dir:       $CONFIG_DIR/logs (install.log records every run)"
 log_info "Repos dir:      $MANUSCRIPT_REPOS_DIR"
 log_info "Private dir:    $PRIVATE_DIR"
 log_info "Container:      $CONTAINER_NAME"
 echo ""
 echo "Tools:"
-echo "  $SRC_DIR/debug/connect_db.sh        # psql shell against this DB"
-echo "  $SRC_DIR/debug/undo_migration.sh    # roll a manuscript back to an earlier migration"
+echo "  $SRC_DIR/debug/connect_db.sh             # psql shell against this DB"
+echo "  $SRC_DIR/debug/undo_migration.sh         # roll a manuscript back to an earlier migration"
+echo "  $HOME/deploy_latest_manuscript_studio.sh # re-run install (also for SSH-restricted Claude deploys)"
 echo ""
 echo "One-time backfill (only needed if you have manuscripts that were"
 echo "migrated before the sentence-history feature shipped):"
