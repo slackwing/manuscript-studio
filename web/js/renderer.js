@@ -1,5 +1,3 @@
-// JS-segmenter-based renderer.
-
 const WriteSysRenderer = {
   apiBaseUrl: 'api',
   currentManuscript: null,
@@ -8,7 +6,7 @@ const WriteSysRenderer = {
   currentMigrationID: null,
   currentCommitHash: null,
   currentSegmenter: null,
-  sentenceMap: {}, // sentence id → full text (used when a sentence is split across pages)
+  sentenceMap: {}, // sentence id → full text (sentences may be split across pages)
   currentSelectedSentenceId: null,
 
   async init() {
@@ -18,7 +16,7 @@ const WriteSysRenderer = {
     this.manuscriptId = parseInt(urlParams.get('manuscript_id') || '1', 10);
     console.log(`Using manuscript_id: ${this.manuscriptId}`);
 
-    // Bind once at init, not per-render — re-renders happen on every save.
+    // Bind once at init, not per-render — saves trigger re-renders.
     window.addEventListener('resize', () => this.applyResponsiveScaling());
 
     await this.loadLatestMigration();
@@ -28,8 +26,6 @@ const WriteSysRenderer = {
     try {
       this.showStatus('Loading latest migration...');
 
-      // fetchJSON validates both status and Content-Type so a stray HTML
-      // error page can't blow up JSON.parse.
       const migration = await fetchJSON(`${this.apiBaseUrl}/migrations/latest?manuscript_id=${this.manuscriptId}`, {}, false);
       this.currentMigrationID = migration.migration_id;
       this.currentCommitHash = migration.commit_hash;
@@ -42,7 +38,6 @@ const WriteSysRenderer = {
 
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
-      // Load manuscript for this migration
       await this.loadManuscriptByMigration(migration.migration_id);
 
     } catch (error) {
@@ -56,8 +51,7 @@ const WriteSysRenderer = {
     try {
       this.showStatus('Loading manuscript...');
 
-      // Fetch manuscript and (in parallel) the user's suggested edits, so a
-      // suggestions outage never blocks the page render.
+      // Parallel-fetch suggestions so an outage there never blocks the render.
       const url = `${this.apiBaseUrl}/migrations/${migrationID}/manuscript`;
       const [data] = await Promise.all([
         fetchJSON(url, {}, false),
@@ -92,15 +86,12 @@ const WriteSysRenderer = {
 
     const html = this.parseManuscript(this.currentManuscript);
 
-    // Wrap sentences BEFORE pagination so Paged.js can duplicate the spans
-    // cleanly across page breaks.
+    // Wrap BEFORE pagination so Paged.js duplicates the spans cleanly across
+    // page breaks. Smartquotes runs LAST so straight apostrophes in
+    // suggestions don't diff against curly ones in the DOM.
     const tempContainer = document.createElement('div');
     tempContainer.innerHTML = html;
 
-    // wrapSentences and applyToSpans both compare DOM text against straight-
-    // quote sources (currentManuscript and the suggestions API respectively).
-    // Smart-quote conversion runs LAST so straight apostrophes in suggestions
-    // don't show up as spurious diffs against curly apostrophes in the DOM.
     await this.wrapSentences(tempContainer);
 
     this.applyAnnotations(tempContainer);
@@ -120,17 +111,13 @@ const WriteSysRenderer = {
       const paged = new Paged.Previewer();
       const appContainer = document.getElementById('app-container');
 
-      // Clear any prior Paged.js render so re-renders don't stack DOM. (Paged
-      // appends; without a clear, suggestion re-renders end up with double
-      // the .sentence elements and the new ones live on top of the old.)
+      // Paged.js appends; clear prior renders so spans don't double up.
       appContainer.querySelectorAll('.pagedjs_pages').forEach(el => el.remove());
 
-      // base-aware absolute URL so Paged.js fetches /<prefix>/css/book.css
-      // when hosted under a prefix, and /css/book.css at the root.
+      // base-aware absolute URL so Paged.js resolves under a prefix or root.
       const bookCssUrl = new URL('css/book.css', document.baseURI).href;
       await paged.preview(wrappedHtml, [bookCssUrl], appContainer);
 
-      // Paged.js rendered its own DOM; hide the original.
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {
         originalContent.style.display = 'none';
@@ -139,23 +126,19 @@ const WriteSysRenderer = {
       // setupSentenceHover() runs in pagedjs-config.js after Paged.js finishes.
       this.applyResponsiveScaling();
     } else {
-      // Fallback if Paged.js not available
       container.innerHTML = wrappedHtml;
       this.setupSentenceHover();
     }
   },
 
-  /**
-   * Apply or remove mobile scaling based on viewport width
-   */
   applyResponsiveScaling() {
     const pagesContainer = document.querySelector(".pagedjs_pages");
     if (!pagesContainer) return;
 
     if (window.innerWidth <= 768) {
-      const pageWidth = 600; // 6in = ~600px at 96dpi
+      const pageWidth = 600; // 6in @ 96dpi
       const viewportWidth = window.innerWidth;
-      const scale = (viewportWidth * 0.7) / pageWidth; // 70% to leave room for borders
+      const scale = (viewportWidth * 0.7) / pageWidth; // 70% leaves border room
       pagesContainer.style.transform = `scale(${scale})`;
       pagesContainer.style.transformOrigin = "top center";
       pagesContainer.style.padding = "1em";
@@ -170,9 +153,8 @@ const WriteSysRenderer = {
     }
   },
 
-  // .manuscript format:
-  //   # … → heading; \t at start → its own indented paragraph; bare lines join
-  //   into one paragraph; blank line separates; *x* → <em>.
+  // .manuscript format: # heading; leading \t → indented paragraph; bare
+  // lines join into one paragraph; blank line separates; *x* → <em>.
   parseManuscript(text) {
     const lines = text.split('\n');
     const html = [];
@@ -194,9 +176,8 @@ const WriteSysRenderer = {
       }
     };
 
-    // Anyone with commit access can put arbitrary content here, so every
-    // chunk is HTML-escaped via applyInlineFormatting before reaching the DOM.
-
+    // Manuscript content is treated as untrusted; every chunk goes through
+    // applyInlineFormatting (which HTML-escapes) before reaching the DOM.
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
@@ -229,8 +210,8 @@ const WriteSysRenderer = {
     return html.join('\n');
   },
 
-  // Escape first, then substitute HTML we want: if we substituted *first*, a
-  // subsequent escape would re-escape our own <em> tags.
+  // Escape first, then substitute *x* → <em> — otherwise the escape pass
+  // would re-escape our own <em> tags.
   escapeHtml(text) {
     return String(text)
       .replace(/&/g, '&amp;')
@@ -245,12 +226,12 @@ const WriteSysRenderer = {
     return escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   },
 
-  // Skip already-wrapped .sentence spans so we don't double-wrap.
   getUnwrappedText(container) {
     const walker = document.createTreeWalker(
       container,
       NodeFilter.SHOW_TEXT,
       {
+        // Skip text already inside a .sentence span (avoid double-wrap).
         acceptNode: function(node) {
           let parent = node.parentElement;
           while (parent && parent !== container) {
@@ -278,7 +259,7 @@ const WriteSysRenderer = {
   async wrapSentences(container) {
     console.log(`Server provided ${this.currentSentences.length} sentences`);
 
-    // Must mirror the Go cleanSentenceBoundaries() so ids match the server's.
+    // Must mirror Go cleanSentenceBoundaries() so ids match the server's.
     const rawSegments = segment(this.currentManuscript);
     const segments = rawSegments.map(s => this.cleanSentenceBoundaries(s)).filter(s => s !== '');
     console.log(`JS segmenter found ${segments.length} segments in markdown (after cleaning)`);
@@ -292,8 +273,8 @@ const WriteSysRenderer = {
     let disparities = [];
     const wrapQueue = [];
 
-    // Phase 1: calculate positions against the initial (unmodified) text so
-    // duplicate sentences can be disambiguated by searchOffset.
+    // Phase 1: positions against the initial (unmodified) text so duplicate
+    // sentences can be disambiguated by searchOffset.
     const initialFullText = this.getUnwrappedText(container);
     let searchOffset = 0;
 
@@ -320,7 +301,7 @@ const WriteSysRenderer = {
       let segmentTextToWrap = segmentClean;
       let segmentIndex = initialFullText.indexOf(segmentClean, searchOffset);
 
-      // Fallback: smartquotes may have transformed the DOM's copy.
+      // Fallback if smartquotes transformed the DOM's copy.
       if (segmentIndex === -1) {
         const tempDiv = document.createElement('div');
         tempDiv.textContent = segmentClean;
@@ -353,9 +334,8 @@ const WriteSysRenderer = {
       searchOffset = segmentIndex + segmentTextToWrap.length;
     }
 
-    // Phase 2: re-find each queued sentence in the current (partially wrapped)
-    // text, since wrapping shifts node boundaries. Because we wrap in order,
-    // each lookup is near the front of the unwrapped remainder.
+    // Phase 2: re-find each queued sentence in the current (partially-wrapped)
+    // text, since wrapping shifts node boundaries.
     console.log(`Executing ${wrapQueue.length} wraps...`);
     for (let i = 0; i < wrapQueue.length; i++) {
       const wrap = wrapQueue[i];
@@ -373,7 +353,6 @@ const WriteSysRenderer = {
         continue;
       }
 
-      // Wrap at the current position
       this.wrapTextRange(container, currentIndex, currentIndex + sentenceLength, wrap.sentenceId);
       wrapped++;
     }
@@ -385,7 +364,6 @@ const WriteSysRenderer = {
       console.log('Disparity summary:', disparities.map(d => `${d.index}: ${d.reason} (${d.expectedId})`).join(', '));
     }
 
-    // Check for server sentences that weren't matched
     const wrappedIds = new Set();
     container.querySelectorAll('.sentence').forEach(span => {
       wrappedIds.add(span.dataset.sentenceId);
@@ -418,8 +396,8 @@ const WriteSysRenderer = {
       annotationsBySentence[sentenceId].push(annotation);
     });
 
-    // Apply only the first annotation's color per sentence (API returns them
-    // sorted by position). Extra colors surface via sidebar rainbow bars.
+    // Apply only the first color per sentence (API sorts by position);
+    // extras surface via sidebar rainbow bars.
     Object.keys(annotationsBySentence).forEach(sentenceId => {
       const annotations = annotationsBySentence[sentenceId];
       if (annotations.length === 0) return;
@@ -442,7 +420,7 @@ const WriteSysRenderer = {
     });
   },
 
-  // Must mirror Go normalizeText: lowercase, [^a-z0-9\s] removed, whitespace collapsed.
+  // Must mirror Go normalizeText: lowercase, [^a-z0-9\s] stripped, ws collapsed.
   normalizeText(text) {
     text = text.toLowerCase();
     text = text.replace(/[^a-z0-9\s]/g, '');
@@ -455,8 +433,8 @@ const WriteSysRenderer = {
     return normalized.split(/\s+/).filter(w => w.length > 0);
   },
 
-  // Must mirror Go GenerateSentenceID byte-for-byte.
-  // "{first-three-words}-{8 hex}" where hex = SHA-256(normText + ordinal + commit)[:4].
+  // Must mirror Go GenerateSentenceID byte-for-byte:
+  // "{first-three-words}-{8hex}" where hex = SHA-256(normText+ordinal+commit)[:4].
   async generateSentenceID(text, ordinal, commitHash) {
     const words = this.extractWordsForId(text);
 
@@ -483,11 +461,11 @@ const WriteSysRenderer = {
     return `${prefix}-${suffix}`;
   },
 
-  // Must mirror Go cleanSentenceBoundaries().
+  // Must mirror Go cleanSentenceBoundaries(): strip leading punctuation
+  // except quotes.
   cleanSentenceBoundaries(text) {
     let trimmed = text.trim();
 
-    // Remove leading punctuation (except quotes)
     while (trimmed.length > 0) {
       const firstChar = trimmed[0];
 
@@ -510,8 +488,8 @@ const WriteSysRenderer = {
     return trimmed;
   },
 
-  // Double-newline separators keep block-level text from concatenating and
-  // match what the segmenter's paragraph-break rule expects.
+  // Double-newline separators between blocks match the segmenter's
+  // paragraph-break rule.
   getTextWithBlockSpacing(element) {
     const blockElements = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'SECTION', 'ARTICLE'];
     const parts = [];
@@ -554,9 +532,6 @@ const WriteSysRenderer = {
   },
 
 
-  /**
-   * Wrap a range of text in the DOM with a sentence span
-   */
   wrapTextRange(container, startOffset, endOffset, sentenceId) {
     const walker = document.createTreeWalker(
       container,
@@ -565,7 +540,6 @@ const WriteSysRenderer = {
         acceptNode: function(node) {
           let parent = node.parentElement;
           while (parent && parent !== container) {
-            // Skip text nodes already inside a .sentence span
             if (parent.classList && parent.classList.contains('sentence')) {
               return NodeFilter.FILTER_REJECT;
             }
@@ -603,7 +577,7 @@ const WriteSysRenderer = {
       currentNode = walker.nextNode();
     }
 
-    // Reverse order so each wrap doesn't shift offsets the later wraps need.
+    // Reverse so each wrap doesn't shift offsets later wraps need.
     nodesToWrap.reverse().forEach(({ node, start, end, sentenceId }) => {
       const before = node.textContent.substring(0, start);
       const content = node.textContent.substring(start, end);
@@ -622,7 +596,7 @@ const WriteSysRenderer = {
     });
   },
 
-  // Pages may split a sentence across fragments; events highlight all of them.
+  // Pages may split a sentence across fragments; events update all of them.
   setupSentenceHover() {
     document.querySelectorAll('.sentence').forEach(span => {
       span.addEventListener('mouseenter', () => {
@@ -642,8 +616,7 @@ const WriteSysRenderer = {
       span.addEventListener('click', () => {
         const sentenceId = span.dataset.sentenceId;
 
-        // Re-click on the already-selected sentence opens the suggested-edit
-        // modal. Lets the user revise without an extra UI affordance.
+        // Re-click on the selected sentence opens the suggested-edit modal.
         if (sentenceId === this.currentSelectedSentenceId && window.WriteSysSuggestions) {
           window.WriteSysSuggestions.openModal(sentenceId);
           return;
@@ -662,11 +635,11 @@ const WriteSysRenderer = {
         this.currentSelectedSentenceId = sentenceId;
 
         if (window.WriteSysAnnotations) {
-          // sentenceMap has the full text; the clicked span may only be a fragment.
+          // sentenceMap has the full text; the clicked span may be a fragment.
           const fullText = this.sentenceMap[sentenceId] || span.textContent;
           window.WriteSysAnnotations.showAnnotationsForSentence(sentenceId, fullText);
 
-          // Scroll to and pulse the first note (which owns the sentence's color).
+          // Pulse the first note (which owns the sentence's color).
           setTimeout(() => {
             const firstNote = document.querySelector('.sticky-note');
             if (firstNote) {
@@ -682,8 +655,8 @@ const WriteSysRenderer = {
     });
   },
 
-  // Paged.js strips whitespace text nodes; re-insert single spaces between
-  // adjacent sentence spans so the rendered text reads correctly.
+  // Re-insert single spaces between adjacent sentence spans (Paged.js
+  // strips the whitespace text nodes).
   insertSpacesBetweenSentences(container) {
     const paragraphs = container.querySelectorAll('p');
 
@@ -767,7 +740,7 @@ const WriteSysRenderer = {
     return bar;
   },
 
-  // Sidebar bars for sentences with multiple annotations; colors picked by rainbowSlice().
+  // Sidebar bars for sentences with multiple annotations.
   addRainbowBars() {
     document.querySelectorAll('.rainbow-bar-container').forEach(el => el.remove());
 
@@ -848,7 +821,7 @@ const WriteSysRenderer = {
       const fullText = this.sentenceMap[sentenceId] || '';
       window.WriteSysAnnotations.showAnnotationsForSentence(sentenceId, fullText);
 
-      // Delay so notes finish rendering before we scroll/flash.
+      // Wait for notes to render before we scroll/flash.
       setTimeout(() => {
         this.scrollToAndHighlightAnnotation(annotationId);
       }, 300);
@@ -856,8 +829,6 @@ const WriteSysRenderer = {
   },
 
   scrollToAndHighlightAnnotation(annotationId) {
-    console.log(`[scrollToAndHighlightAnnotation] Looking for annotation ${annotationId}`);
-
     const noteElement = document.querySelector(`.sticky-note[data-annotation-id="${annotationId}"]`);
     if (!noteElement) {
       console.warn(`Note element not found for annotation ${annotationId}`);
@@ -867,17 +838,14 @@ const WriteSysRenderer = {
       return;
     }
 
-    console.log(`[scrollToAndHighlightAnnotation] Found note element, scrolling and highlighting`);
-
     noteElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     noteElement.classList.add('flash-highlight');
 
     setTimeout(() => {
       noteElement.classList.remove('flash-highlight');
-    }, 600); // matches CSS animation duration
+    }, 600); // matches CSS animation
   },
 
-  // Called after add/update/delete since those change the bar set.
   async refreshRainbowBars() {
     if (!this.currentMigrationID) {
       return;

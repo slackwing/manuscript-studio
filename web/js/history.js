@@ -1,38 +1,27 @@
 /**
  * Sentence-history left-margin bars.
  *
- * Three lanes parallel to the manuscript text on the LEFT margin. Each lane
- * encodes "what changed across one specific commit boundary":
- *   - lane 1 (closest to text, opacity 1.0): current vs. 1 commit ago
- *   - lane 2 (opacity 0.5):                  1 commit ago vs. 2 commits ago
- *   - lane 3 (farthest, opacity 0.2):        2 commits ago vs. 3 commits ago
+ * Three lanes parallel to the text. Lane 1 = closest to text = newest comparison
+ * (current vs. 1-ago); lane 3 = oldest (2-ago vs. 3-ago).
  *
- * Bar color reflects alphanumeric character delta vs. the older version:
- *   - newly inserted (no prior version):  green
- *   - ≥25% more chars: green
- *   - ≥25% fewer chars: red
- *   - in between: yellow
- *   - identical text: no bar in that lane
+ * Color encodes alphanumeric char-count delta vs. older:
+ *   newly inserted or ≥25% more → green; ≥25% fewer → red; otherwise yellow;
+ *   identical text → no bar in that lane.
  *
- * Hover any bar on a sentence → popup left of the bars showing all available
- * versions stacked oldest-on-top, plain text.
+ * Hover any bar to open a popup of all versions, oldest-on-top.
  */
 
 const WriteSysHistory = {
-  // Relative URL so the page's <base href> resolves it correctly when the app
-  // is mounted under a prefix (e.g. /manuscripts on a shared subdomain).
   apiBaseUrl: 'api',
 
-  // Filled by loadHistory() — sentence_id → { history: [{text, commits_ago}, ...] }
   bySentenceId: {},
 
   LANE_COUNT: 3,
   LANE_WIDTH_EM: 0.5,
   LANE_GAP_EM: 0.05,
-  // Per-lane solid colors. We pre-flatten "color × opacity" into a literal RGB
-  // value so adjacent sentence bars in the same lane can overlap without
-  // alpha compositing producing darker stripes where they meet.
-  // Tier 0 = lane 1 (most recent change), tier 2 = lane 3 (oldest).
+  // Pre-flattened "color × opacity" RGB so adjacent same-lane bars don't
+  // produce darker stripes where they overlap via alpha compositing.
+  // Tier 0 = lane 1 (newest), tier 2 = lane 3 (oldest).
   COLORS: {
     green: ['#5CB85C', '#AEDCAE', '#DEEFDE'],
     blue:  ['#5BC0DE', '#AEE0EF', '#DEEFF6'],
@@ -53,7 +42,6 @@ const WriteSysHistory = {
     }
   },
 
-  // Count alphanumeric characters (matches feature spec).
   alnumCount(text) {
     if (!text) return 0;
     let count = 0;
@@ -65,8 +53,7 @@ const WriteSysHistory = {
     return count;
   },
 
-  // Returns one of 'green' | 'blue' | 'red' | null. null = no change → no bar.
-  // newer/older are sentence text strings; older may be null (newly inserted).
+  // Returns 'green' | 'blue' | 'red' | null (no bar). older may be null for inserts.
   diffColor(newer, older) {
     const newC = this.alnumCount(newer);
     if (older === null || older === undefined) {
@@ -81,19 +68,16 @@ const WriteSysHistory = {
     return 'blue';
   },
 
-  // For a given sentence, returns up to LANE_COUNT lane colors (or nulls).
+  // Returns up to LANE_COUNT lane colors (or nulls) for a sentence.
   lanesFor(sentenceId) {
     const entry = this.bySentenceId[sentenceId];
     if (!entry) return [null, null, null];
     const history = entry.history || [];
-    // Need text per "commits_ago"; build {0: currentText, 1: ..., 2: ..., 3: ...}.
-    // Current text isn't in the response — we look it up from the DOM.
-    // Lane N compares versions N-1 vs N (where N=0 is current).
+    // texts[N] = N commits ago (texts[0] = current, fetched from the DOM
+    // since the response only carries the prior versions).
     const texts = [null, null, null, null];
     const sentEl = document.querySelector(`.sentence[data-sentence-id="${sentenceId}"]`);
     if (sentEl) {
-      // The renderer holds the canonical text in WriteSysRenderer.sentenceMap.
-      // Fall back to the visible text if needed.
       texts[0] = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
         ? window.WriteSysRenderer.sentenceMap[sentenceId] || sentEl.textContent
         : sentEl.textContent;
@@ -104,9 +88,9 @@ const WriteSysHistory = {
       }
     });
     return [
-      this.diffColor(texts[0], texts[1]), // lane 1
-      this.diffColor(texts[1], texts[2]), // lane 2
-      this.diffColor(texts[2], texts[3]), // lane 3
+      this.diffColor(texts[0], texts[1]),
+      this.diffColor(texts[1], texts[2]),
+      this.diffColor(texts[2], texts[3]),
     ];
   },
 
@@ -127,11 +111,8 @@ const WriteSysHistory = {
         const sentenceRect = sentence.getBoundingClientRect();
         const pageRect = pageArea.getBoundingClientRect();
 
-        // sentenceRect.height is just the text run's box (e.g. 17px for one
-        // line at line-height 25), so back-to-back single-line bars leave a
-        // visible gap. Pad each bar by half the line-leading on top and
-        // bottom so the bar fills its full line slot — adjacent bars then
-        // tile without gaps.
+        // sentenceRect.height is the text-run box, not the full line slot;
+        // pad by half the line-leading so adjacent bars tile without gaps.
         const lineHeight = parseFloat(getComputedStyle(sentence).lineHeight) || sentenceRect.height;
         const fontHeight = parseFloat(getComputedStyle(sentence).fontSize) || sentenceRect.height;
         const padPerSide = Math.max(0, (lineHeight - fontHeight) / 2);
@@ -150,7 +131,7 @@ const WriteSysHistory = {
         container.style.height = `${height}px`;
         container.style.zIndex = '10';
 
-        // Lane 1 = innermost (right edge, closest to text). Lane 3 = leftmost.
+        // idx 0 → rightmost lane (closest to text); idx 2 → leftmost.
         lanes.forEach((color, idx) => {
           if (!color) return;
           const lane = document.createElement('div');
@@ -159,7 +140,6 @@ const WriteSysHistory = {
           lane.style.top = '0';
           lane.style.height = '100%';
           lane.style.width = `${this.LANE_WIDTH_EM}em`;
-          // idx 0 → rightmost (innermost), idx 2 → leftmost.
           const offsetEm = idx * (this.LANE_WIDTH_EM + this.LANE_GAP_EM);
           lane.style.right = `${offsetEm}em`;
           lane.style.backgroundColor = this.COLORS[color][idx];
@@ -169,7 +149,6 @@ const WriteSysHistory = {
           container.appendChild(lane);
         });
 
-        // Hover anywhere in container shows the popup.
         container.addEventListener('mouseenter', () => this.showPopup(container, sentenceId));
         container.addEventListener('mouseleave', () => this.hidePopup());
 
@@ -182,9 +161,6 @@ const WriteSysHistory = {
     this.hidePopup();
     const entry = this.bySentenceId[sentenceId];
     const lanes = this.lanesFor(sentenceId);
-    // Show the popup whenever the bars indicate change (any lane colored).
-    // For sentences with a partial history chain, missing commits are padded
-    // with "(empty)" so the user can see when the sentence first appeared.
     if (lanes.every(c => !c)) return;
 
     const currentText = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
@@ -195,8 +171,8 @@ const WriteSysHistory = {
     popup.className = 'history-popup';
     popup.id = 'history-popup';
 
-    // history[i] (if present) = i+1 commits ago. Walk oldest → newest, padding
-    // any missing slot with (empty) so all LANE_COUNT rows always render.
+    // Walk oldest → newest, padding missing slots with "(empty)" so the user
+    // can see when the sentence first appeared.
     const byCommitsAgo = new Map();
     if (entry && entry.history) {
       entry.history.forEach(v => byCommitsAgo.set(v.commits_ago, v.text));
@@ -214,9 +190,8 @@ const WriteSysHistory = {
         textSpan.textContent = '(empty)';
         textSpan.classList.add('history-popup-empty');
       } else if (text === currentText) {
-        // Same text as the current version — collapse to (same) so the user
-        // doesn't have to compare two identical paragraphs to spot what
-        // actually changed.
+        // Collapse identical-to-current to "(same)" so the user doesn't
+        // have to compare two identical paragraphs to spot what changed.
         textSpan.textContent = '(same)';
         textSpan.classList.add('history-popup-empty');
       } else {

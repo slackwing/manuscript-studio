@@ -12,8 +12,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
-// SuggestionHandlers serves the suggested-edits endpoints. Suggestions are
-// per-user, per-sentence, scoped to a single migration via the sentence_id FK.
+// Suggestions are per-user, per-sentence, scoped to a migration via sentence_id FK.
 type SuggestionHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
@@ -23,8 +22,6 @@ type upsertSuggestionRequest struct {
 	Text string `json:"text"`
 }
 
-// HandleGetSuggestionsForMigration returns the logged-in user's suggestions
-// for a single migration (one row per (user, sentence)).
 func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -56,9 +53,9 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 	})
 }
 
-// HandlePutSuggestion upserts a suggestion. Empty body or text identical to
-// the original sentence text causes a delete instead — keeps "revert by
-// re-saving the original" UX clean and lets the client be dumb about it.
+// HandlePutSuggestion upserts a suggestion. Text identical to the original
+// sentence is collapsed into a delete so "revert by re-saving the original"
+// works without client logic.
 func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -86,8 +83,6 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Look up the original sentence text so we can collapse "no-op suggestion"
-	// (== original) into a delete.
 	orig, err := h.DB.GetSentenceTextsByIDs(ctx, []string{sentenceID})
 	if err != nil {
 		http.Error(w, "Failed to load sentence", http.StatusInternalServerError)
@@ -100,7 +95,6 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 	}
 
 	if req.Text == row.Text {
-		// Identical to original → delete any existing suggestion.
 		if _, err := h.DB.DeleteSuggestion(ctx, sentenceID, session.Username); err != nil {
 			http.Error(w, "Failed to delete suggestion", http.StatusInternalServerError)
 			return
@@ -119,8 +113,7 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(saved)
 }
 
-// HandleDeleteSuggestion removes the user's suggestion for a sentence.
-// Idempotent: missing rows return 204 just the same.
+// HandleDeleteSuggestion is idempotent: missing rows return 204 just the same.
 func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

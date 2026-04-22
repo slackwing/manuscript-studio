@@ -12,14 +12,11 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
-// AnnotationHandlers contains annotation-related handlers.
-// Ported faithfully from 14.writesys/api/main.go.
 type AnnotationHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
 }
 
-// CreateAnnotationRequest mirrors 14.writesys.CreateAnnotationRequest.
 type CreateAnnotationRequest struct {
 	SentenceID string  `json:"sentence_id"`
 	Color      string  `json:"color"`
@@ -28,7 +25,6 @@ type CreateAnnotationRequest struct {
 	Flagged    bool    `json:"flagged"`
 }
 
-// UpdateAnnotationRequest mirrors 14.writesys.UpdateAnnotationRequest.
 type UpdateAnnotationRequest struct {
 	Color    *string `json:"color,omitempty"`
 	Note     *string `json:"note,omitempty"`
@@ -36,13 +32,11 @@ type UpdateAnnotationRequest struct {
 	Flagged  *bool   `json:"flagged,omitempty"`
 }
 
-// ReorderAnnotationRequest asks to move an annotation to a specific index.
 type ReorderAnnotationRequest struct {
 	SentenceID string `json:"sentence_id"`
 	NewIndex   int    `json:"new_index"`
 }
 
-// HandleGetAnnotationsByCommit returns annotations for a specific commit.
 func (h *AnnotationHandlers) HandleGetAnnotationsByCommit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	commitHash := chi.URLParam(r, "commit_hash")
@@ -69,7 +63,6 @@ func (h *AnnotationHandlers) HandleGetAnnotationsByCommit(w http.ResponseWriter,
 	})
 }
 
-// HandleGetAnnotationsBySentence returns annotations for a specific sentence.
 func (h *AnnotationHandlers) HandleGetAnnotationsBySentence(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sentenceID := chi.URLParam(r, "sentence_id")
@@ -92,7 +85,6 @@ func (h *AnnotationHandlers) HandleGetAnnotationsBySentence(w http.ResponseWrite
 	})
 }
 
-// HandleCreateAnnotation creates a new annotation.
 func (h *AnnotationHandlers) HandleCreateAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -143,7 +135,7 @@ func (h *AnnotationHandlers) HandleCreateAnnotation(w http.ResponseWriter, r *ht
 	})
 }
 
-// HandleUpdateAnnotation updates an existing annotation (creates a new version).
+// HandleUpdateAnnotation mutates the head row and appends a new version.
 func (h *AnnotationHandlers) HandleUpdateAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	annotationIDStr := chi.URLParam(r, "annotation_id")
@@ -211,7 +203,6 @@ func (h *AnnotationHandlers) HandleUpdateAnnotation(w http.ResponseWriter, r *ht
 	json.NewEncoder(w).Encode(existing)
 }
 
-// HandleReorderAnnotation moves an annotation to a specific index within its sentence.
 func (h *AnnotationHandlers) HandleReorderAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	annotationIDStr := chi.URLParam(r, "annotation_id")
@@ -252,7 +243,6 @@ func (h *AnnotationHandlers) HandleReorderAnnotation(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(map[string]string{"message": "Annotation reordered successfully"})
 }
 
-// HandleDeleteAnnotation soft-deletes an annotation.
 func (h *AnnotationHandlers) HandleDeleteAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	annotationIDStr := chi.URLParam(r, "annotation_id")
@@ -331,7 +321,6 @@ func (h *AnnotationHandlers) HandleCompleteAnnotation(w http.ResponseWriter, r *
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleGetTagsForAnnotation returns the tags on an annotation.
 func (h *AnnotationHandlers) HandleGetTagsForAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	annotationIDStr := chi.URLParam(r, "annotation_id")
@@ -351,13 +340,12 @@ func (h *AnnotationHandlers) HandleGetTagsForAnnotation(w http.ResponseWriter, r
 	json.NewEncoder(w).Encode(map[string]interface{}{"tags": tags})
 }
 
-// AddTagRequest is the body for POST /annotations/{id}/tags.
 type AddTagRequest struct {
 	TagName     string `json:"tag_name"`
 	MigrationID int    `json:"migration_id"`
 }
 
-// HandleAddTagToAnnotation adds a tag to an annotation (creating the tag if needed).
+// HandleAddTagToAnnotation creates the tag if needed and links it.
 func (h *AnnotationHandlers) HandleAddTagToAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	annotationIDStr := chi.URLParam(r, "annotation_id")
@@ -385,7 +373,6 @@ func (h *AnnotationHandlers) HandleAddTagToAnnotation(w http.ResponseWriter, r *
 	w.WriteHeader(http.StatusCreated)
 }
 
-// HandleRemoveTagFromAnnotation removes a tag from an annotation.
 func (h *AnnotationHandlers) HandleRemoveTagFromAnnotation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	annotationIDStr := chi.URLParam(r, "annotation_id")

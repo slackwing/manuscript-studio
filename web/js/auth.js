@@ -1,8 +1,6 @@
 // URLs are relative so the server's <base href> controls the path prefix.
 
-/**
- * Returns the session JSON, or redirects to login and returns null if unauthenticated.
- */
+// Returns the session JSON, or redirects to login and returns null if unauthenticated.
 async function checkAuth() {
   try {
     const response = await fetch('api/session', {
@@ -57,10 +55,8 @@ function getCSRFToken() {
   return sessionStorage.getItem('csrf_token');
 }
 
-/**
- * fetch() with credentials and, for state-changing methods, an X-CSRF-Token header.
- * Redirects to login on 401 so an expired session doesn't silently break the UI.
- */
+// fetch() with credentials and an X-CSRF-Token header on state-changing
+// methods. Redirects to login on 401 so an expired session isn't silent.
 async function authenticatedFetch(url, options = {}) {
   options.credentials = 'include';
 
@@ -79,10 +75,8 @@ async function authenticatedFetch(url, options = {}) {
   return response;
 }
 
-/**
- * Fetch JSON; on non-OK or non-JSON responses, throws Error with a truncated
- * body in .message (much friendlier to debug than a bare JSON.parse error).
- */
+// Fetch JSON; on non-OK or non-JSON responses throws Error with a truncated
+// body in .message — friendlier to debug than a bare JSON.parse error.
 async function fetchJSON(url, options = {}, authenticated = true) {
   const response = authenticated
     ? await authenticatedFetch(url, options)

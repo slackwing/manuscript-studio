@@ -1,5 +1,3 @@
-// Multi-annotation per sentence, with per-note color controls.
-
 const WriteSysAnnotations = {
   apiBaseUrl: 'api',
   currentSentenceId: null,
@@ -10,28 +8,28 @@ const WriteSysAnnotations = {
 
   DEFAULT_COLOR: 'yellow',
 
-  // Auto-created notes commit only when the user interacts; until then,
-  // an empty textarea blur cancels the annotation ("never mind").
+  // Auto-created notes commit only on interaction; until then, blurring
+  // an empty textarea cancels the annotation ("never mind").
   neverMindState: {
     annotationId: null,
     isCommitted: false
   },
 
-  // Must match the CSS variables of the same names in book.css.
+  // Must match the matching CSS variables in book.css.
   SPACING: {
     PAGE_WIDTH: 576,
-    ANNOTATION_WIDTH: 272, // --annotation-width (240 + 32px gap)
-    HORIZONTAL_GAP: 32,    // --horizontal-gap
+    ANNOTATION_WIDTH: 272,
+    HORIZONTAL_GAP: 32,
   },
 
   init() {
-    // Grey-background clicks unselect the current sentence.
     document.addEventListener('click', (e) => {
       const annotationMargin = document.getElementById('annotation-margin');
       const annotationMarginInner = document.querySelector('.annotation-margin-inner');
       const appContainer = document.getElementById('app-container');
       const pagedPages = document.querySelector('.pagedjs_pages');
 
+      // Grey-background clicks unselect the current sentence.
       const isGreyBackground =
         e.target === annotationMargin ||
         e.target === annotationMarginInner ||
@@ -44,7 +42,6 @@ const WriteSysAnnotations = {
       }
     });
 
-    // Initialize annotation margin positioning
     this.initAnnotationMargin();
 
     // Click sentence-preview → scroll to the currently-selected sentence.
@@ -65,11 +62,9 @@ const WriteSysAnnotations = {
     }
   },
 
-  // Picks the next sentence (DOM order, wrapping) that has at least one active
-  // annotation, selects it, and scrolls it into view. "Next" means the first
-  // annotated sentence that appears AFTER the current one in document order —
-  // even when the current sentence itself is no longer annotated (e.g. the
-  // user just completed its last annotation).
+  // First annotated sentence in DOM order strictly after the current one
+  // (wrapping). Works even when the current sentence itself isn't annotated
+  // anymore (e.g. just-completed last annotation).
   jumpToNextAnnotatedSentence() {
     const renderer = window.WriteSysRenderer;
     if (!renderer || !renderer.currentAnnotations) return;
@@ -97,9 +92,8 @@ const WriteSysAnnotations = {
     let nextId = null;
     if (this.currentSentenceId) {
       const currentDocIdx = orderedIds.indexOf(this.currentSentenceId);
-      // First annotated sentence whose doc position is strictly AFTER current.
       nextId = annotatedOrdered.find(id => orderedIds.indexOf(id) > currentDocIdx);
-      if (!nextId) nextId = annotatedOrdered[0]; // wrap.
+      if (!nextId) nextId = annotatedOrdered[0];
     } else {
       nextId = annotatedOrdered[0];
     }
@@ -111,6 +105,7 @@ const WriteSysAnnotations = {
     fragments.forEach(f => f.classList.add('selected'));
     if (renderer) renderer.currentSelectedSentenceId = nextId;
 
+    // sentenceMap has the full text; fragments[0] may only be a fragment.
     const fullText = (renderer && renderer.sentenceMap && renderer.sentenceMap[nextId])
       || fragments[0].textContent;
     this.showAnnotationsForSentence(nextId, fullText);
@@ -133,9 +128,8 @@ const WriteSysAnnotations = {
     window.addEventListener('resize', positionMargin);
   },
 
-  // commitPendingNote marks an auto-created note as committed so the
-  // "never mind" empty-blur handler won't delete it. Pass null to commit
-  // whichever note is currently pending (used when switching sentences).
+  // Mark an auto-created note as committed so "never mind" won't delete it
+  // on empty-blur. Pass null to commit whichever note is currently pending.
   commitPendingNote(annotationId) {
     if (annotationId == null) {
       if (this.neverMindState.annotationId) {
@@ -187,10 +181,7 @@ const WriteSysAnnotations = {
     }
   },
 
-  // After a sentence is selected, drop the cursor into the first sticky-note's
-  // textarea so the user can start typing immediately. For a sentence with no
-  // annotations this is the grey uncreated-note; otherwise it's the first
-  // existing real note.
+  // Drop cursor into the first note's textarea so the user can type immediately.
   focusFirstNoteTextarea() {
     const container = document.getElementById('sticky-notes-container');
     if (!container) return;
@@ -213,7 +204,7 @@ const WriteSysAnnotations = {
       container.appendChild(noteElement);
     });
 
-    // First note: full grey UI. Subsequent: gradient with a + sign.
+    // First note shows full grey UI; subsequent show gradient with a + sign.
     const isFirstNote = this.annotations.length === 0;
     const addNewNote = this.createAddNewNoteElement(isFirstNote);
     container.appendChild(addNewNote);
@@ -224,10 +215,8 @@ const WriteSysAnnotations = {
 
     container.classList.add('visible');
 
-    // autoResizeTextarea() needs scrollHeight, which is 0 on detached
-    // elements — call it again now that all notes are in the DOM so
-    // pre-existing long notes open at full height instead of waiting for
-    // the user to type.
+    // scrollHeight is 0 on detached elements — re-run after DOM-attach so
+    // pre-existing long notes open at full height instead of waiting for input.
     container.querySelectorAll('.note-input').forEach(t => this.autoResizeTextarea(t));
   },
 
@@ -259,8 +248,8 @@ const WriteSysAnnotations = {
       note.classList.add(`color-${annotation.color}`);
     }
 
-    // Note text is always assigned via .value, never via innerHTML — stored-XSS
-    // defense through annotation content. See test-xss-annotation.js.
+    // Note text always goes via .value, never innerHTML — stored-XSS defense.
+    // See test-xss-annotation.js.
     note.innerHTML = `
       <div class="note-container">
         <textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>
@@ -301,11 +290,7 @@ const WriteSysAnnotations = {
     note.appendChild(colorCircle);
 
     this.setupNoteEventListeners(note, annotation);
-
-    // Render tags
     this.renderTagsForNote(note, annotation.tags || []);
-
-    // Update priority/flag UI
     this.updatePriorityFlagUIForNote(note, annotation);
 
     const textarea = note.querySelector('.note-input');
@@ -315,11 +300,6 @@ const WriteSysAnnotations = {
     return note;
   },
 
-  /**
-   * Create color circle element for a sticky note
-   * @param {Object} annotation - The annotation object
-   * @returns {HTMLElement} The color circle element
-   */
   createColorCircleElement(annotation) {
     const circle = document.createElement('div');
     circle.className = 'sticky-note-color-circle';
@@ -368,7 +348,7 @@ const WriteSysAnnotations = {
       ? this.COLORS.filter(c => c !== annotation.color)
       : this.COLORS;
 
-    // Extra wrapper per circle gives the hover zone breathing room.
+    // Wrapper gives each hover zone breathing room.
     colorsToShow.forEach(color => {
       const wrapper = document.createElement('div');
 
@@ -399,7 +379,7 @@ const WriteSysAnnotations = {
 
   setupUncreatedNoteHandlers(note, textarea, colorCircle, requiresHover) {
     let noteCreated = false;
-    let isCreating = false; // debounce rapid input events
+    let isCreating = false;
 
     textarea.addEventListener('focus', () => {
       if (requiresHover) {
@@ -424,9 +404,8 @@ const WriteSysAnnotations = {
         isCreating = true;
         noteCreated = true;
         const initialText = e.target.value;
-        // Hand the stale textarea to handleAddNewNote so it can read any
-        // characters the user typed while the POST was in flight, then
-        // transplant them into the new real-note textarea.
+        // Pass the stale textarea so handleAddNewNote can recover characters
+        // typed during the POST round-trip into the new real-note textarea.
         const annotation = await this.handleAddNewNote(this.DEFAULT_COLOR, initialText, textarea);
 
         if (annotation && annotation.annotation_id) {
@@ -489,11 +468,9 @@ const WriteSysAnnotations = {
     const colorCircle = this.createColorCircleForUncreated();
     note.appendChild(colorCircle);
 
-
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, true);
 
-    // On hover, show full UI
     note.addEventListener('mouseenter', () => {
       note.classList.add('hovered');
       colorCircle.style.opacity = '1';
@@ -501,7 +478,6 @@ const WriteSysAnnotations = {
     });
 
     note.addEventListener('mouseleave', () => {
-      // Only remove hover if not focused
       if (document.activeElement !== textarea) {
         note.classList.remove('hovered');
         colorCircle.style.opacity = '0';
@@ -512,23 +488,18 @@ const WriteSysAnnotations = {
     return note;
   },
 
-  /**
-   * Create color circle for uncreated notes
-   * @returns {HTMLElement} The color circle element
-   */
   createColorCircleForUncreated() {
     const colorCircle = document.createElement('div');
     colorCircle.className = 'sticky-note-color-circle rainbow';
 
-    // Create palette with all 6 colors
     const palette = this.createAddNotePaletteElement();
     colorCircle.appendChild(palette);
 
-    // Show palette on hover
     colorCircle.addEventListener('mouseenter', () => {
       palette.classList.add('visible');
     });
 
+    // Delay hide so the cursor can reach the palette.
     let hideTimeout;
     colorCircle.addEventListener('mouseleave', () => {
       hideTimeout = setTimeout(() => {
@@ -582,7 +553,7 @@ const WriteSysAnnotations = {
     textarea.addEventListener('input', async () => {
       this.autoResizeTextarea(textarea);
 
-      // "Never mind": empty textarea on an auto-created, uncommitted note → delete.
+      // "Never mind": empty an auto-created, uncommitted note → delete.
       if (this.neverMindState.annotationId === annotation.annotation_id &&
           !this.neverMindState.isCommitted &&
           textarea.value.trim().length === 0) {
@@ -719,16 +690,10 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Handle adding a new note
-   * @param {string} color - The initial color
-   * @param {string} initialNote - Optional initial note text
-   */
   async handleAddNewNote(color, initialNote = null, sourceTextarea = null) {
     if (!this.currentSentenceId) return;
 
     try {
-      // Create new annotation
       const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -747,9 +712,8 @@ const WriteSysAnnotations = {
 
       const apiResponse = await response.json();
 
-      // Characters the user typed while the POST was in flight land in the
-      // stale uncreated textarea. Grab the latest value now so the real note
-      // can inherit it.
+      // Recover any characters typed during the POST round-trip — they
+      // landed in the about-to-be-destroyed uncreated textarea.
       let liveText = initialNote;
       if (sourceTextarea && typeof sourceTextarea.value === 'string') {
         liveText = sourceTextarea.value;
@@ -768,9 +732,8 @@ const WriteSysAnnotations = {
       this.annotations.push(newAnnotation);
       this.renderStickyNotes();
 
-      // Port the in-flight text into the newly rendered real-note textarea,
-      // refocus it with cursor at end, and persist anything beyond what we
-      // already POSTed.
+      // Move in-flight text into the new real-note textarea and persist any
+      // characters typed past what we already POSTed.
       const newTextarea = document.querySelector(
         `.sticky-note[data-annotation-id="${apiResponse.annotation_id}"] .note-input`
       );
@@ -809,8 +772,7 @@ const WriteSysAnnotations = {
       this.COLORS.forEach(c => fragment.classList.remove(`highlight-${c}`));
     });
 
-    // With multiple annotations we apply only the first color; subsequent
-    // colors show up via the sidebar rainbow bars.
+    // Apply only the first color; extras surface via sidebar rainbow bars.
     if (this.annotations.length > 0 && this.annotations[0].color) {
       const color = this.annotations[0].color;
       sentenceFragments.forEach(fragment => {
@@ -859,18 +821,15 @@ const WriteSysAnnotations = {
 
       this.annotations = this.annotations.filter(a => a.annotation_id !== annotationId);
 
-      // Jump first so the next sentence shows up immediately. The rainbow-bar
-      // refresh below is a network roundtrip — let it happen in the background
-      // rather than block the UI.
+      // Jump first; refresh runs unawaited so the network roundtrip doesn't block UI.
       const shouldJump = this.annotations.length === 0;
 
       this.renderStickyNotes();
       this.updateSentenceHighlights();
 
       if (shouldJump && window.WriteSysRenderer && window.WriteSysRenderer.currentAnnotations) {
-        // Optimistically remove the completed annotation from the renderer's
-        // copy so the jump-target search reflects current state without
-        // waiting on the server.
+        // Optimistically drop the completed annotation so jump-target search
+        // sees current state without waiting on the server.
         window.WriteSysRenderer.currentAnnotations =
           window.WriteSysRenderer.currentAnnotations.filter(a => a.annotation_id !== annotationId);
         this.jumpToNextAnnotatedSentence();
@@ -968,11 +927,6 @@ const WriteSysAnnotations = {
     }
   },
 
-  /**
-   * Handle flag chip click
-   * @param {Object} annotation - The annotation object
-   * @param {HTMLElement} note - The note element
-   */
   async handleFlagClick(annotation, note) {
     const newFlagged = !annotation.flagged;
 
@@ -1022,8 +976,8 @@ const WriteSysAnnotations = {
     }
   },
 
-  // Uses createElement + textContent (not innerHTML). Tag names are
-  // server-validated, but we treat them as untrusted here as defense in depth.
+  // Uses createElement + textContent — defense in depth even though tag
+  // names are server-validated.
   renderTagsForNote(note, tags) {
     const tagsList = note.querySelector('.tags-list');
     if (!tagsList) return;
@@ -1171,7 +1125,7 @@ const WriteSysAnnotations = {
   },
 };
 
-// Must be attached BEFORE init() so other modules can reach it during init.
+// Attached BEFORE init() so other modules can reach it during init.
 window.WriteSysAnnotations = WriteSysAnnotations;
 
 if (document.readyState === 'loading') {

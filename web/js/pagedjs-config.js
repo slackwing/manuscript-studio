@@ -1,4 +1,4 @@
-// Must load BEFORE Paged.js processes content so handlers apply on first run.
+// Must load BEFORE Paged.js so handlers apply on first run.
 
 (function() {
   function setupPagedJS() {
@@ -21,13 +21,12 @@
           window.WriteSysRenderer.applyResponsiveScaling();
         }
 
-        // Paged.js strips whitespace text nodes during pagination, so we
-        // re-insert the spaces between sentence spans ourselves.
+        // Re-insert spaces between sentence spans (Paged.js strips whitespace
+        // text nodes during pagination) and re-bind handlers on the new spans.
         const pagedContent = document.querySelector('.pagedjs_pages');
         if (pagedContent && window.WriteSysRenderer) {
           window.WriteSysRenderer.insertSpacesBetweenSentences(pagedContent);
 
-          // Re-bind handlers on the new sentence spans produced by pagination.
           window.WriteSysRenderer.setupSentenceHover();
           window.WriteSysRenderer.addRainbowBars();
           if (window.WriteSysHistory && window.WriteSysRenderer.currentMigrationID) {

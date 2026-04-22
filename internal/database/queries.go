@@ -13,8 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// ErrMigrationInProgress: a row for the same (manuscript_id, commit_hash,
-// segmenter) already exists. Callers map to HTTP 409.
+// ErrMigrationInProgress: a duplicate (manuscript_id, commit_hash, segmenter). Callers map to HTTP 409.
 var ErrMigrationInProgress = errors.New("migration already exists for this commit/segmenter")
 
 func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (*models.Manuscript, error) {
@@ -80,15 +79,14 @@ func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*mo
 	return &m, nil
 }
 
-// Shared column list for migration reads. Result columns (sentence_count etc.)
-// are only meaningful when status='done'; callers that read them must filter.
+// Result columns (sentence_count etc.) are only meaningful when status='done';
+// callers that read them must filter.
 const migrationSelectColumns = `migration_id, manuscript_id, commit_hash, segmenter,
 		       parent_migration_id, branch_name, processed_at, status,
 		       started_at, finished_at, error,
 		       sentence_count, additions_count, deletions_count, changes_count,
 		       sentence_id_array`
 
-// scanMigration handles the nullable columns introduced by changeset 002.
 func scanMigration(row pgx.Row, m *models.Migration) error {
 	var (
 		branchName        *string
@@ -142,8 +140,7 @@ func scanMigration(row pgx.Row, m *models.Migration) error {
 	return nil
 }
 
-// GetLatestMigration returns the newest status='done' migration for the
-// manuscript, or (nil, nil) if none exist.
+// GetLatestMigration returns (nil, nil) if no done migration exists.
 func (db *DB) GetLatestMigration(ctx context.Context, manuscriptID int) (*models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -163,8 +160,7 @@ func (db *DB) GetLatestMigration(ctx context.Context, manuscriptID int) (*models
 	return &m, nil
 }
 
-// GetMigrations returns status='done' rows newest-first. See GetActiveMigrations
-// for pending/running/error rows.
+// GetMigrations returns done rows newest-first. See GetActiveMigrations for pending/running.
 func (db *DB) GetMigrations(ctx context.Context, manuscriptID int) ([]models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -192,7 +188,7 @@ func (db *DB) GetMigrations(ctx context.Context, manuscriptID int) ([]models.Mig
 	return migrations, nil
 }
 
-// GetActiveMigrations returns rows in pending/running; used by /api/admin/status.
+// GetActiveMigrations returns pending/running rows; used by /api/admin/status.
 func (db *DB) GetActiveMigrations(ctx context.Context) ([]models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -217,8 +213,7 @@ func (db *DB) GetActiveMigrations(ctx context.Context) ([]models.Migration, erro
 	return migrations, rows.Err()
 }
 
-// CreatePendingMigration inserts at status='pending' and returns the new id.
-// Returns ErrMigrationInProgress on a duplicate (manuscript_id, commit_hash, segmenter).
+// CreatePendingMigration returns ErrMigrationInProgress on a duplicate row.
 func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, commitHash, segmenter string) (int, error) {
 	query := `
 		INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, started_at)
@@ -228,7 +223,7 @@ func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, comm
 	var id int
 	err := db.Pool.QueryRow(ctx, query, manuscriptID, commitHash, segmenter).Scan(&id)
 	if err != nil {
-		// Postgres unique-violation (23505) → typed error → HTTP 409.
+		// Postgres unique-violation → typed error → HTTP 409.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return 0, ErrMigrationInProgress
@@ -238,7 +233,6 @@ func (db *DB) CreatePendingMigration(ctx context.Context, manuscriptID int, comm
 	return id, nil
 }
 
-// MarkMigrationRunning transitions pending→running; no-op if already running.
 func (db *DB) MarkMigrationRunning(ctx context.Context, migrationID int) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE migration SET status = 'running'
@@ -250,9 +244,8 @@ func (db *DB) MarkMigrationRunning(ctx context.Context, migrationID int) error {
 	return nil
 }
 
-// MarkMigrationDone writes the success result. commit_hash is overwritten: the
-// pending row may have been inserted with a symbolic ref ("HEAD" or a branch);
-// by now we know the resolved SHA.
+// MarkMigrationDone overwrites commit_hash because the pending row may have
+// been inserted with a symbolic ref ("HEAD" or branch); by now we know the SHA.
 func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error {
 	sentenceIDArrayJSON, err := json.Marshal(m.SentenceIDArray)
 	if err != nil {
@@ -281,8 +274,7 @@ func (db *DB) MarkMigrationDone(ctx context.Context, m *models.Migration) error 
 	return nil
 }
 
-// MarkMigrationError records failure; the message is truncated so a giant
-// stack trace can't blow up the row.
+// MarkMigrationError truncates errMsg so a giant stack trace can't blow up the row.
 func (db *DB) MarkMigrationError(ctx context.Context, migrationID int, errMsg string) error {
 	const maxErrLen = 4000
 	if len(errMsg) > maxErrLen {
@@ -301,9 +293,8 @@ func (db *DB) MarkMigrationError(ctx context.Context, migrationID int, errMsg st
 	return nil
 }
 
-// RecoverInterruptedMigrations runs once at startup: any pending/running row
-// from a previous process was interrupted, so flip them to 'error'. Returns
-// the number of rows recovered.
+// RecoverInterruptedMigrations runs once at startup: leftover pending/running
+// rows from a previous process were interrupted, so flip them to 'error'.
 func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE migration
@@ -318,9 +309,8 @@ func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
 	return int(tag.RowsAffected()), nil
 }
 
-// GetSentenceTextsByIDs fetches text + previous_sentence_id for a batch of
-// sentence IDs in one round-trip. Used to walk the previous-sentence chain
-// efficiently. Returns a map keyed by sentence_id.
+// GetSentenceTextsByIDs batches text + previous_sentence_id lookups for the
+// history-chain walk. Returns a map keyed by sentence_id.
 func (db *DB) GetSentenceTextsByIDs(ctx context.Context, sentenceIDs []string) (map[string]struct {
 	Text             string
 	PreviousID       *string
@@ -354,10 +344,8 @@ func (db *DB) GetSentenceTextsByIDs(ctx context.Context, sentenceIDs []string) (
 	return out, rows.Err()
 }
 
-// UpsertSuggestion writes (or replaces) the current user's suggestion for a
-// sentence. Empty text or text identical to the original sentence text is
-// the caller's responsibility to convert into a delete — this function
-// only stores what it's given.
+// UpsertSuggestion stores text as-given; collapsing empty / original-equals-text
+// into deletes is the caller's responsibility.
 func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text string) (*models.SuggestedChange, error) {
 	query := `
 		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
@@ -376,8 +364,7 @@ func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text str
 	return &s, nil
 }
 
-// DeleteSuggestion removes the current user's suggestion for a sentence, if
-// any exists. Returns true if a row was deleted.
+// DeleteSuggestion returns true if a row was deleted.
 func (db *DB) DeleteSuggestion(ctx context.Context, sentenceID, userID string) (bool, error) {
 	tag, err := db.Pool.Exec(ctx,
 		`DELETE FROM suggested_change WHERE sentence_id = $1 AND user_id = $2`,
@@ -389,8 +376,8 @@ func (db *DB) DeleteSuggestion(ctx context.Context, sentenceID, userID string) (
 	return tag.RowsAffected() > 0, nil
 }
 
-// GetSuggestionsForMigration returns one user's suggestions for every
-// sentence in a given migration. Single round-trip via JOIN.
+// GetSuggestionsForMigration: one user's suggestions for every sentence in
+// the migration, single round-trip via JOIN.
 func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, userID string) ([]models.SuggestedChange, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT sc.suggestion_id, sc.sentence_id, sc.user_id, sc.text, sc.created_at, sc.updated_at
@@ -413,11 +400,9 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 	return out, rows.Err()
 }
 
-// CopySuggestionsForward duplicates all rows for a given source sentence onto
-// a destination sentence (used by the migration processor when an exact-match
-// pairing carries suggestions forward to the new commit). Per-user uniqueness
-// is preserved — if a user already has a suggestion on the destination, the
-// existing one wins.
+// CopySuggestionsForward duplicates rows from one sentence to another (used
+// by the migration processor on exact-match pairings). On per-user collision
+// the existing destination row wins.
 func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSentenceID string) error {
 	_, err := db.Pool.Exec(ctx, `
 		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
@@ -432,8 +417,8 @@ func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSent
 	return nil
 }
 
-// SetPreviousSentenceID overwrites a sentence's previous_sentence_id. Used by
-// the backfill CLI; the migration processor sets this at insert time instead.
+// SetPreviousSentenceID: used by the backfill CLI. The migration processor
+// sets this at insert time instead.
 func (db *DB) SetPreviousSentenceID(ctx context.Context, sentenceID string, previousSentenceID *string) error {
 	_, err := db.Pool.Exec(ctx,
 		`UPDATE sentence SET previous_sentence_id = $1 WHERE sentence_id = $2`,
@@ -445,7 +430,6 @@ func (db *DB) SetPreviousSentenceID(ctx context.Context, sentenceID string, prev
 	return nil
 }
 
-// CreateSentences inserts all sentences in a single transaction.
 func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -480,7 +464,7 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	return nil
 }
 
-// GetMigrationByID returns (nil, nil) if the row is missing or still pre-'done'.
+// GetMigrationByID returns (nil, nil) if the row is missing or pre-'done'.
 func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Migration, error) {
 	query := `
 		SELECT ` + migrationSelectColumns + `
@@ -601,7 +585,7 @@ func getAnnotationOriginInfo(ctx context.Context, tx pgx.Tx, annotationID int) (
 	return
 }
 
-// getSentenceHistory reads version's sentence_id_history and appends newSentenceID.
+// Read sentence_id_history from the given version and append newSentenceID.
 func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, version int, newSentenceID string) ([]byte, error) {
 	query := `
 		SELECT sentence_id_history
@@ -665,8 +649,8 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 	}
 	defer rows.Close()
 
-	// Non-nil so JSON encodes [] instead of null.
-	annotations := []models.Annotation{}
+	annotations := []models.Annotation{} // non-nil so JSON encodes [] not null
+
 	for rows.Next() {
 		var a models.Annotation
 		err := rows.Scan(
@@ -703,7 +687,7 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 	return annotations, nil
 }
 
-// CreateAnnotation creates the annotation and its first version row.
+// CreateAnnotation writes the annotation and its first version row.
 func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotation, version *models.AnnotationVersion) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -711,8 +695,7 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	}
 	defer tx.Rollback(ctx)
 
-	// Position is a simple "a0000" counter for now; see fractional package
-	// for the real fractional-index logic used by ReorderAnnotation.
+	// Append-only "a0000" counter for create; ReorderAnnotation uses fractional indexing.
 	var maxPosition string
 	queryMaxPos := `SELECT COALESCE(MAX(position), 'a') FROM annotation WHERE sentence_id = $1`
 	if err := tx.QueryRow(ctx, queryMaxPos, annotation.SentenceID).Scan(&maxPosition); err != nil {
@@ -752,7 +735,7 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 
 	annotation.Position = nextPosition
 
-	// The sentence's commit_hash and migration_id become the annotation's origin.
+	// Sentence's commit_hash and migration_id become the annotation's origin.
 	var commitHash string
 	var migrationID int
 	query_commit := `SELECT commit_hash, migration_id FROM sentence WHERE sentence_id = $1 LIMIT 1`
@@ -850,17 +833,15 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 	return nil
 }
 
-// AnnotationMigrationItem: one annotation to repoint to a new sentence as part
-// of a manuscript migration.
+// AnnotationMigrationItem: one annotation to repoint to a new sentence.
 type AnnotationMigrationItem struct {
 	AnnotationID  int
 	NewSentenceID string
 	Confidence    float64
 }
 
-// MigrateAnnotations is all-or-nothing: a non-nil error means zero rows
-// committed. Each item produces one annotation UPDATE and one annotation_version
-// INSERT (with migration_confidence and origin fields preserved).
+// MigrateAnnotations is all-or-nothing: error means zero rows committed.
+// Each item produces one annotation UPDATE and one annotation_version INSERT.
 func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigrationItem) (int, error) {
 	if len(items) == 0 {
 		return 0, nil
@@ -872,7 +853,7 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	}
 	defer tx.Rollback(ctx)
 
-	// Same per-annotation flow as UpdateAnnotation, batched into one tx.
+	// Same per-annotation flow as UpdateAnnotation, batched in one tx.
 	updateAnnotation := `
 		UPDATE annotation
 		SET sentence_id = $1, updated_at = NOW()
@@ -882,8 +863,7 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	`
 
 	for _, item := range items {
-		// Read latest version before mutating so the copied-forward
-		// color/note/priority/flagged + history are authoritative.
+		// Read latest version first so copied-forward fields + history are authoritative.
 		var (
 			color       string
 			note        *string
@@ -906,8 +886,7 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 			return 0, fmt.Errorf("annotation %d: update sentence_id: %w", item.AnnotationID, err)
 		}
 		if tag.RowsAffected() == 0 {
-			// Soft-deleted between read and write (or bad id) — hard fail
-			// so the whole migration rolls back rather than desyncing versions.
+			// Hard fail so the whole migration rolls back rather than desyncing versions.
 			return 0, fmt.Errorf("annotation %d: not found or already deleted", item.AnnotationID)
 		}
 
@@ -1110,7 +1089,7 @@ func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID in
 	return &tag, nil
 }
 
-// AddTagToAnnotation creates the tag if missing and links it (idempotent).
+// AddTagToAnnotation is idempotent; creates the tag if missing.
 func (db *DB) AddTagToAnnotation(ctx context.Context, annotationID int, tagName string, migrationID int) error {
 	tag, err := db.GetOrCreateTag(ctx, tagName, migrationID)
 	if err != nil {
@@ -1221,8 +1200,7 @@ func (db *DB) GetAllTagsForMigration(ctx context.Context, migrationID int) ([]mo
 	return tags, nil
 }
 
-// ReorderAnnotation computes a fractional position for the target index
-// within the sentence's annotation list.
+// ReorderAnnotation assigns a fractional-index position for the target slot.
 func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceID string, newIndex int) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {

@@ -32,7 +32,6 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.locator('.sentence').first().click();
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated', { timeout: 5000 });
 
-    // Create a real annotation via the palette.
     const colorCircle = page.locator('.sticky-note.uncreated-note.first-uncreated .sticky-note-color-circle');
     await colorCircle.hover();
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated .sticky-note-palette.visible', { timeout: 5000 });
@@ -43,7 +42,6 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     const realNotesBefore = await page.locator('.sticky-note:not(.uncreated-note)').count();
     assert(realNotesBefore === 1, `One real annotation created (got ${realNotesBefore})`);
 
-    // Rainbow bars should reflect the annotation.
     const rainbowBarsBefore = await page.locator('.rainbow-bar').count();
 
     const check = page.locator('.sticky-note:not(.uncreated-note) .complete-check');
@@ -64,7 +62,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     assert(rainbowBarsAfter !== rainbowBarsBefore || rainbowBarsBefore === 0,
       `Rainbow bars updated (before=${rainbowBarsBefore}, after=${rainbowBarsAfter})`);
 
-    // Completed annotations should also stay gone after reload.
+    // Completion must persist after reload.
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });

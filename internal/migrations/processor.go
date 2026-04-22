@@ -11,11 +11,11 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
-// SegmenterVersion is stamped onto every migration row.
+// Stamped onto every migration row.
 const SegmenterVersion = "segman-1.0.0"
 
-// Processor lifecycle: caller reserves a row with CreatePendingMigration, then
-// calls Run, which transitions the row running → done/error before returning.
+// Lifecycle: caller reserves a row with CreatePendingMigration, then calls
+// Run, which transitions running → done/error before returning.
 type Processor struct {
 	db               *pgxpool.Pool
 	segmenterVersion string
@@ -38,8 +38,7 @@ type MigrationResult struct {
 	Message             string `json:"message"`
 }
 
-// Run executes migration for an already-pending row and always leaves it at
-// 'done' or 'error'. Pass slog.Default() if you have no request-scoped logger.
+// Run always leaves the row at 'done' or 'error'.
 func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName, content string) (result *MigrationResult, err error) {
 	db := &database.DB{Pool: p.db}
 	if log == nil {
@@ -80,8 +79,7 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 	return p.migrate(ctx, db, log, migrationID, manuscriptID, commitHash, branchName, parent, newSentences, newSentenceIDs, newSentenceMap)
 }
 
-// bootstrap handles the very first commit: every sentence is "added", no
-// annotations to carry forward.
+// bootstrap handles the first commit: every sentence is "added".
 func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName string, newSentences []models.Sentence, newSentenceIDs []string) (*MigrationResult, error) {
 	log.Info("bootstrap: segmented manuscript", slog.Int("sentences", len(newSentences)))
 
@@ -135,9 +133,8 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		slog.Int("mapped", len(plan)),
 	)
 
-	// Decorate new sentences with their previous_sentence_id so the history
-	// endpoint can walk the chain. Pick the highest-confidence pairing per new
-	// sentence — fallbacks (confidence 0) lose to real matches.
+	// previous_sentence_id lets the history endpoint walk the chain. Pick the
+	// highest-confidence pairing per new sentence — fallbacks (0) lose to real matches.
 	prev := bestPreviousByNew(plan)
 	for i := range newSentences {
 		if pid, ok := prev[newSentences[i].SentenceID]; ok {
@@ -150,17 +147,13 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("store new sentences: %w", err)
 	}
 
-	// Must run before MarkMigrationDone: on failure, the deferred MarkMigrationError
-	// flips the row to 'error' so the new sentence rows stay tied to a non-done
-	// migration_id and won't be selected as "current".
+	// Must run before MarkMigrationDone: on failure, deferred MarkMigrationError
+	// keeps new sentence rows tied to a non-done migration so they won't be "current".
 	annotationsMigrated, err := p.migrateAnnotations(ctx, db, log, plan)
 	if err != nil {
 		return nil, fmt.Errorf("annotation migration: %w", err)
 	}
 
-	// Copy suggested-edits forward only when the pairing is text-identical.
-	// Fuzzy / fallback pairings (anything below 1.0) leave the suggestion on
-	// the old sentence row — the user's intent may no longer apply.
 	if err := migrateSuggestions(ctx, db, plan); err != nil {
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
@@ -198,7 +191,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 	}, nil
 }
 
-// migrateAnnotations runs the planned moves in a single all-or-nothing tx.
+// migrateAnnotations runs the planned moves in one all-or-nothing tx.
 func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log *slog.Logger, plan map[string]plannedMove) (int, error) {
 	var items []database.AnnotationMigrationItem
 	sources := 0
@@ -242,9 +235,9 @@ type plannedMove struct {
 	Confidence    float64
 }
 
-// migrateSuggestions copies suggested_change rows forward across an
-// exact-match pairing. Fuzzy / fallback pairings are skipped on purpose —
-// the new sentence's text differs, so a stale suggestion would be wrong.
+// migrateSuggestions copies suggested_change rows forward only on exact-match
+// pairings. Fuzzy/fallback pairings have changed text, so a stale suggestion
+// would be wrong — leave it on the old sentence.
 func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) error {
 	for oldID, move := range plan {
 		if move.NewSentenceID == "" || move.Confidence < 1.0 {
@@ -257,9 +250,8 @@ func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]pl
 	return nil
 }
 
-// RecomputePreviousByNew runs the live migration's pairing logic against two
-// sentence sets and returns newID → bestOldID. Used by the backfill CLI so
-// historical migrations get the same answer as fresh ones.
+// RecomputePreviousByNew returns newID → bestOldID via the live pairing logic.
+// Used by the backfill CLI so historical migrations match fresh ones.
 func RecomputePreviousByNew(oldSentences, newSentences []models.Sentence) map[string]string {
 	oldMap := make(map[string]string, len(oldSentences))
 	for _, s := range oldSentences {
@@ -274,9 +266,7 @@ func RecomputePreviousByNew(oldSentences, newSentences []models.Sentence) map[st
 	return bestPreviousByNew(plan)
 }
 
-// bestPreviousByNew inverts the plan into newID → oldID, choosing the
-// highest-confidence old sentence when several point at the same new one.
-// Used to set previous_sentence_id at sentence-write time.
+// bestPreviousByNew inverts plan to newID → oldID, breaking ties by confidence.
 func bestPreviousByNew(plan map[string]plannedMove) map[string]string {
 	type pick struct {
 		oldID      string
@@ -299,10 +289,9 @@ func bestPreviousByNew(plan map[string]plannedMove) map[string]string {
 	return out
 }
 
-// planMigration resolves the old→new sentence map, filling matcher gaps by
-// forward-fallback (orphans inherit the next mapped sentence's target) then
-// backward-fallback for orphans after the last mapped sentence.
-// Confidence is the matcher's similarity for real matches, 0 for fallbacks.
+// planMigration fills matcher gaps by forward-fallback, then backward-fallback
+// for orphans after the last mapped sentence. Confidence = matcher similarity
+// for real matches, 0 for fallbacks.
 func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMatch) map[string]plannedMove {
 	plan := make(map[string]plannedMove, len(oldSentences))
 	for _, m := range matches {
@@ -332,9 +321,9 @@ func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMa
 	return plan
 }
 
-// segmentContent returns sentences ready for db.CreateSentences (migration_id
-// stamped), the parallel id slice in document order, and an id→text map for
-// diffing. Shared between bootstrap and migrate to prevent drift.
+// segmentContent returns sentences ready for db.CreateSentences, the id slice
+// in document order, and an id→text map for diffing. Shared between bootstrap
+// and migrate to prevent drift.
 func segmentContent(content, commitHash string, migrationID int) ([]models.Sentence, []string, map[string]string) {
 	tokenizer := sentence.NewTokenizer()
 	texts := tokenizer.SplitIntoSentences(content)

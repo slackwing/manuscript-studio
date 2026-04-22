@@ -28,8 +28,8 @@ function psql(sql) {
 (async () => {
   console.log('=== Suggested-edits end-to-end ===\n');
 
-  // Wipe any leftover suggestions FIRST — cleanupTestAnnotations deletes
-  // sentence rows and a lingering FK reference would block it.
+  // Wipe leftover suggestions FIRST — cleanupTestAnnotations deletes
+  // sentence rows and a lingering FK would block it.
   psql(`DELETE FROM suggested_change WHERE user_id = 'test'`);
   await cleanupTestAnnotations();
 
@@ -50,9 +50,8 @@ function psql(sql) {
     await page.waitForSelector('.sentence', { timeout: 10000 });
     await page.waitForTimeout(1500);
 
-    // Capture a prose sentence (skip headings — their textContent includes
-    // the leading "# " markdown which the segmenter strips, so DOM text and
-    // sentenceMap text differ).
+    // Skip headings: their textContent includes the leading "# " that the
+    // segmenter strips, so DOM text and sentenceMap text would differ.
     const first = await page.evaluate(() => {
       const els = Array.from(document.querySelectorAll('.sentence[data-sentence-id]'));
       const longEnough = els.find(el => {
@@ -68,10 +67,8 @@ function psql(sql) {
     });
     assert(!!first && !!first.id, `Found a prose sentence (${first && first.id.slice(0, 12)}...)`);
 
-    // Click → selects.
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForTimeout(300);
-
     // Re-click → opens modal.
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
@@ -81,14 +78,13 @@ function psql(sql) {
     assert(textareaValue === first.text,
       `Textarea pre-fills with original sentence text (got "${textareaValue.slice(0,30)}..." want "${first.text.slice(0,30)}...")`);
 
-    // Edit + Save via Enter.
     const newText = first.text.replace(/\.$/, '') + ' (with edit added).';
     await page.locator('.suggestion-modal-textarea').fill(newText);
     await page.locator('.suggestion-modal-textarea').press('Enter');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     assert(true, 'Enter saves and closes the modal');
 
-    // Wait for the re-render to settle (Paged.js takes a moment).
+    // Wait for Paged.js re-render to settle.
     await page.waitForFunction(
       (sid) => {
         const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
@@ -114,11 +110,9 @@ function psql(sql) {
     assert(sentenceState.strongCount > 0,
       `Diff includes inserted text in <strong> (got ${sentenceState.strongCount})`);
 
-    // Persistence: server should hold the row.
     const dbRow = psql(`SELECT text FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='test'`);
     assert(dbRow === newText, `Server stored the suggestion (got "${dbRow.slice(0,30)}...")`);
 
-    // Reload → suggestion should still apply.
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });
@@ -129,7 +123,7 @@ function psql(sql) {
     }, first.id);
     assert(stillSuggested, 'Suggestion persists across reload');
 
-    // Save the original text again → suggestion should be deleted server-side.
+    // Re-saving the original text deletes the suggestion server-side.
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForTimeout(300);
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
@@ -142,11 +136,10 @@ function psql(sql) {
     const dbRowAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='test'`);
     assert(dbRowAfterRevert === '0', `Reverting to original deletes the suggestion (count: ${dbRowAfterRevert})`);
 
-    // Apostrophe regression: smartquotes converts straight ' to curly ' in
-    // the rendered DOM. If the diff compares DOM text vs. straight-quote
-    // suggestion text, every apostrophe shows up as a spurious <del>'</del>
-    // <strong>'</strong>. Pick a sentence with an apostrophe and prove a
-    // single-word edit only diffs that one word.
+    // Apostrophe regression: smartquotes turns ' into ' in the DOM. If the
+    // diff compares DOM text vs. straight-quote suggestion text, every
+    // apostrophe becomes a spurious <del>/<strong>. Single-word edit on a
+    // sentence with an apostrophe should only diff that one word.
     const apos = await page.evaluate(() => {
       const map = window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap;
       if (!map) return null;
@@ -158,7 +151,6 @@ function psql(sql) {
       return null;
     });
     if (apos) {
-      // Suggest changing one word — append " EXTRA" before the period.
       const aposNew = apos.text.replace(/\.?$/, '') + ' EXTRA.';
       await page.locator(`.sentence[data-sentence-id="${apos.id}"]`).first().click();
       await page.waitForTimeout(300);
@@ -188,8 +180,8 @@ function psql(sql) {
         `Apostrophes don't produce spurious <del> (got ${counts.delCount}: "${counts.delText}")`);
       assert(counts.strongCount <= 2,
         `Single-word edit produces <=2 <strong> (got ${counts.strongCount}: "${counts.strongText}")`);
-      // Clean up via direct API so we don't have to wrangle multi-click
-      // selection state across re-renders for the apostrophe sentence.
+      // Clean up via direct API to avoid wrangling multi-click selection
+      // state across re-renders for the apostrophe sentence.
       await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), apos.id);
       await page.waitForSelector('#suggestion-modal');
       await page.locator('.suggestion-modal-textarea').fill(apos.text);
@@ -198,10 +190,8 @@ function psql(sql) {
       await page.waitForTimeout(2000);
     }
 
-    // Esc cancels: use the in-page modal API directly so we don't have to
-    // wrangle multi-click state across re-renders + autofocus interactions.
-    // The keydown handler is the unit under test; how the modal is opened
-    // is irrelevant.
+    // Use the in-page API directly — the keydown handler is what's under
+    // test; how the modal opens is irrelevant.
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal');
     await page.locator('.suggestion-modal-textarea').fill('this should be discarded');

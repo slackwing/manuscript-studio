@@ -1,19 +1,7 @@
 /**
- * test-delete-and-recreate.js
- *
- * Regression test: deleting an annotation on a sentence must not block
- * creating a new annotation on the same sentence. This guards against
- * the unique constraint not respecting soft-deletes (deleted_at).
- *
- * Flow:
- *   1. Select the first sentence (dynamically discovered).
- *   2. Create a yellow annotation via the uncreated-note palette.
- *   3. Delete that annotation via the `.note-trash` icon (two clicks:
- *      first is the confirmation state, second actually deletes).
- *   4. Re-select the same sentence.
- *   5. Create a new green annotation via the uncreated-note palette.
- *   6. Verify the sentence now has the `highlight-green` class and no
- *      unexpected alert dialogs fired.
+ * Regression: deleting an annotation must not block creating a new one on
+ * the same sentence. Guards against the unique constraint ignoring
+ * soft-deletes (deleted_at).
  */
 
 const { chromium } = require('playwright');
@@ -34,7 +22,7 @@ async function deleteFirstRealNote(page) {
   await note.hover();
   await page.waitForTimeout(200);
   const trash = note.locator('.note-trash');
-  // Two clicks: first shows confirming state, second actually deletes.
+  // First click shows confirming state, second actually deletes.
   await trash.click();
   await page.waitForTimeout(400);
   await trash.click();
@@ -67,7 +55,6 @@ async function deleteFirstRealNote(page) {
 
     console.log('=== Test: Delete annotation and create new one ===\n');
 
-    // Step 1: Discover and click first sentence.
     const sentenceId = await page.evaluate(() => {
       return document.querySelector('.sentence').dataset.sentenceId;
     });
@@ -78,7 +65,6 @@ async function deleteFirstRealNote(page) {
     await sentence.click();
     await page.waitForTimeout(600);
 
-    // Step 2: Create yellow annotation.
     await addNoteByColor(page, 'yellow');
 
     const hasYellow = await page.evaluate((sid) => {
@@ -95,7 +81,6 @@ async function deleteFirstRealNote(page) {
       process.exit(1);
     }
 
-    // Step 3: Delete via trash.
     console.log('3. Deleting annotation via trash icon (2 clicks)...');
     await deleteFirstRealNote(page);
 
@@ -112,19 +97,16 @@ async function deleteFirstRealNote(page) {
       process.exit(1);
     }
 
-    // Reset tracking.
     errors.length = 0;
     alerts.length = 0;
 
-    // Step 4: Reselect sentence (deletion collapses the panel). Deselect
-    // first by clicking the grey app background — re-clicking a still-
-    // selected sentence would open the suggested-edit modal instead.
+    // Deselect first by clicking the grey app background — re-clicking a
+    // still-selected sentence would open the suggested-edit modal instead.
     await page.locator('#app-container').click({ position: { x: 5, y: 5 } });
     await page.waitForTimeout(200);
     await sentence.click();
     await page.waitForTimeout(600);
 
-    // Step 5: Create a new green annotation on the same sentence.
     console.log('4. Creating NEW green annotation on the same sentence...');
     await addNoteByColor(page, 'green');
 

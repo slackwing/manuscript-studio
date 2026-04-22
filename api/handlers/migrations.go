@@ -20,14 +20,12 @@ type MigrationHandlers struct {
 	Config *config.Config
 }
 
-// SentenceInfo is the {id, text, wordCount} shape the frontend expects.
 type SentenceInfo struct {
 	ID        string `json:"id"`
 	Text      string `json:"text"`
 	WordCount int    `json:"wordCount"`
 }
 
-// HandleGetMigrations returns all migrations for a manuscript.
 func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -55,7 +53,6 @@ func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.R
 	})
 }
 
-// HandleGetLatestMigration returns the latest migration for a manuscript.
 func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -87,6 +84,8 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 
 // HandleGetManuscriptByMigration returns manuscript content for a migration.
 // Repo/file come from the manuscript row + config; client supplies no params.
+// Annotations for the logged-in user ship inline so rainbow bars render on
+// first paint without a follow-up fetch.
 func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -136,8 +135,6 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		}
 	}
 
-	// Ship annotations for the logged-in user alongside the content so rainbow
-	// bars render on first paint without a follow-up fetch.
 	session, err := auth.GetSession(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -161,14 +158,12 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	})
 }
 
-// SentenceHistoryEntry is one ancestor version of a sentence.
 type SentenceHistoryEntry struct {
 	Text       string `json:"text"`
 	CommitsAgo int    `json:"commits_ago"`
 }
 
-// SentenceHistory pairs a current sentence with up to N ancestor versions
-// (oldest last in History; History[0] = 1 commit ago).
+// History[0] = 1 commit ago, oldest last.
 type SentenceHistory struct {
 	SentenceID string                 `json:"sentence_id"`
 	History    []SentenceHistoryEntry `json:"history"`
@@ -189,7 +184,6 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 
 	const historyCommitsBack = 3
 
-	// Current commit's sentences are the chain heads.
 	currentSentences, err := h.DB.GetSentencesByMigration(ctx, migrationID)
 	if err != nil {
 		http.Error(w, "Failed to load sentences", http.StatusInternalServerError)
@@ -206,7 +200,6 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 	}
 
 	for hop := 1; hop <= historyCommitsBack; hop++ {
-		// Collect all unique IDs we need to fetch this hop.
 		needed := make(map[string]bool)
 		for _, prev := range cursor {
 			if prev != nil {

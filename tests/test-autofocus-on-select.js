@@ -39,15 +39,14 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     });
     assert(focused, 'Grey uncreated-note textarea is focused after sentence click');
 
-    // Type without an explicit textarea click — keystrokes should land.
+    // Type without an explicit click — keystrokes should land.
     await page.keyboard.type('hi', { delay: 0 });
     await page.waitForSelector('.sticky-note:not(.uncreated-note) .note-input', { timeout: 5000 });
     await page.waitForTimeout(500);
     const realText = await page.locator('.sticky-note:not(.uncreated-note) .note-input').first().inputValue();
     assert(realText === 'hi', `Typing immediately lands in note (got "${realText}")`);
 
-    // Second sentence: this one already has no annotations either, but we've
-    // proven the autofocus works for new selections.
+    // Switching to a fresh sentence should re-focus its textarea too.
     await page.locator('.sentence').nth(1).click();
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated .note-input', { timeout: 5000 });
     focused = await page.evaluate(() => {

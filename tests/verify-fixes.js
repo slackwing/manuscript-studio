@@ -1,15 +1,7 @@
 /**
- * verify-fixes.js
- *
- * Smoke test for two behaviours:
- *   1. The color circle on a real (persisted) sticky note should have a
- *      "move" cursor (drag affordance).
- *   2. Adding a new colored annotation to a sentence should update the
- *      rainbow bars on that sentence's sticky-notes panel.
- *
- * Previously this test hardcoded a sentence ID ("but-as-happens-fbad3020")
- * that no longer exists in the seed manuscript. It now discovers the first
- * .sentence dynamically and creates the annotations it needs.
+ * Smoke test:
+ *   1. Real-note color circle has a "move" cursor (drag affordance).
+ *   2. Adding a colored annotation updates the sidebar rainbow bars.
  */
 
 const { chromium } = require('playwright');
@@ -34,7 +26,6 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    // Discover a sentence dynamically.
     const sentenceId = await page.evaluate(() => {
       return document.querySelector('.sentence').dataset.sentenceId;
     });
@@ -44,19 +35,16 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await sentence.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
 
-    // Click sentence to open the sticky notes panel.
     console.log('3. Clicking sentence to show sticky notes...');
     await sentence.click();
     await page.waitForTimeout(800);
 
-    // Create a first annotation (yellow) so we have a real persisted note.
     console.log('4. Creating initial yellow annotation via the palette...');
     await page.locator('.sticky-note.uncreated-note .sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note.uncreated-note .color-circle[data-color="yellow"]').first().click();
     await page.waitForTimeout(1500);
 
-    // Now check the real (non-uncreated) note's color circle cursor.
     const realNote = page.locator('.sticky-note:not(.uncreated-note)').first();
     const realNoteExists = await realNote.count();
     if (realNoteExists === 0) {
@@ -83,13 +71,10 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
 
     await page.screenshot({ path: 'tests/screenshots/verify-cursor.png', fullPage: true });
 
-    // ===== Rainbow bars update =====
     console.log('\n=== Testing Rainbow Bars Update ===\n');
 
-    // Re-select the same sentence to see its rainbow bars. Deselect first
-    // (click the grey app background) so the upcoming click counts as a
-    // fresh selection rather than a re-click — re-clicking a selected
-    // sentence opens the suggested-edit modal.
+    // Deselect first via grey app background so the next click is a fresh
+    // selection — re-clicking a selected sentence opens the suggested-edit modal.
     await page.locator('#app-container').click({ position: { x: 5, y: 5 } });
     await page.waitForTimeout(200);
     await sentence.click();
@@ -98,7 +83,6 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     const barsBefore = await page.locator('.rainbow-bar').count();
     console.log(`7. Rainbow bars before adding a second annotation: ${barsBefore}`);
 
-    // Add a second annotation in a different color via the "+ add note" affordance.
     console.log('8. Adding a second (green) annotation...');
     const uncreated = page.locator('.sticky-note.uncreated-note').first();
     await uncreated.hover();

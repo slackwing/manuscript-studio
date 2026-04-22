@@ -1,10 +1,7 @@
 // backfill-prev-sentence walks every adjacent pair of completed migrations
 // for a single manuscript and populates sentence.previous_sentence_id by
 // re-running the same pairing logic the live migration processor uses.
-//
-// Idempotent: rerunning produces the same answer (modulo the matcher being
-// deterministic), and an unreachable pairing simply stays NULL — the history
-// feature degrades gracefully when chains break.
+// Idempotent; unreachable pairings stay NULL (history feature degrades cleanly).
 package main
 
 import (
@@ -99,7 +96,6 @@ func main() {
 				v := pid
 				newVal = &v
 			}
-			// Skip writes that wouldn't change anything.
 			if equalStrPtr(s.PreviousSentenceID, newVal) {
 				continue
 			}

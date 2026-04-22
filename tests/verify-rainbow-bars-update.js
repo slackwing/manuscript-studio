@@ -1,15 +1,7 @@
 /**
- * verify-rainbow-bars-update.js
- *
- * Verifies that the rainbow bars on a sentence update live when an
- * annotation is deleted. The sentence needs to have multiple annotations
- * for bars to be visible (a single-color sentence shows solid highlight,
- * not bars). We create two annotations with different colors and then
- * delete one.
- *
- * Previously this test hardcoded a sentence ID ("but-as-happens-fbad3020")
- * that no longer exists. Now the first .sentence is discovered at
- * runtime and the needed annotations are created via the palette.
+ * Rainbow bars update live when an annotation is deleted. Bars only show
+ * when a sentence has multiple annotations (single-color = solid highlight),
+ * so create two of different colors and delete one.
  */
 
 const { chromium } = require('playwright');
@@ -33,7 +25,6 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    // Discover a sentence dynamically.
     const sentenceId = await page.evaluate(() => {
       return document.querySelector('.sentence').dataset.sentenceId;
     });
@@ -43,12 +34,10 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await sentence.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
 
-    // Click sentence to open sticky notes panel.
     console.log('2. Clicking sentence to open sticky notes...');
     await sentence.click();
     await page.waitForTimeout(800);
 
-    // Create two annotations in different colors so rainbow bars appear.
     async function addNote(color) {
       const uncreated = page.locator('.sticky-note.uncreated-note').first();
       await uncreated.hover();
@@ -64,9 +53,8 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     console.log('4. Creating blue annotation...');
     await addNote('blue');
 
-    // Re-select sentence (in case focus shifted). Deselect first by clicking
-    // the grey app background — re-clicking the same selected sentence would
-    // open the suggested-edit modal.
+    // Deselect first via grey app background — re-clicking the same selected
+    // sentence would open the suggested-edit modal.
     await page.locator('#app-container').click({ position: { x: 5, y: 5 } });
     await page.waitForTimeout(200);
     await sentence.click();
@@ -79,7 +67,6 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       failed++;
     }
 
-    // Find a real (persisted) note and click its trash icon twice to delete.
     const firstNote = page.locator('.sticky-note:not(.uncreated-note)').first();
     await firstNote.hover();
     await page.waitForTimeout(300);

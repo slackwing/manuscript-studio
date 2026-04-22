@@ -64,13 +64,11 @@ async function syncToHead() {
 (async () => {
   console.log('=== History bars end-to-end ===\n');
 
-  // Reset everything to a known state, then build commit history.
   await cleanupTestAnnotations();
 
-  // Reset the repo back to the initial commit so test-history runs are
-  // idempotent — otherwise leftover commits from a prior failed run cause
-  // duplicate-hash conflicts on sync. cleanupTestAnnotations already
-  // re-bootstrapped the initial commit, so we don't sync after the reset.
+  // Reset the repo to the initial commit for idempotency — leftover commits
+  // from a prior failed run cause duplicate-hash conflicts on sync.
+  // cleanupTestAnnotations already re-bootstrapped the initial commit.
   const initialCommit = git('rev-list', '--max-parents=0', 'HEAD').trim();
   git('reset', '--hard', initialCommit);
 
@@ -85,16 +83,13 @@ async function syncToHead() {
 
   let browser;
   try {
-    // Edit the first sentence three times, syncing after each.
-    // The original first sentence in test.manuscript starts with "It is a"
-    // (per the wildfire opening). We'll just rewrite the very first paragraph.
+    // Edit the first prose paragraph three times, syncing after each.
     const lines = originalContent.split('\n');
-    // Find the first non-blank, non-heading line (the first prose line).
     let firstProseIdx = lines.findIndex(l => l.trim() && !l.startsWith('#'));
     if (firstProseIdx < 0) throw new Error('could not find prose line');
 
+    // Small per-version edits so the matcher pairs them.
     const versions = [
-      // Each version: a small edit so the matcher pairs them.
       'A short tweaked first sentence.',
       'A short tweaked first sentence here.',
       'A slightly longer tweaked first sentence here today.',
@@ -115,10 +110,8 @@ async function syncToHead() {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1400, height: 900 });
 
-    // Catch a regression where the history endpoint URL is wrong (404, 405,
-    // base-path mismatch, etc.). loadHistory swallows failures with a warn,
-    // so without this hook a routing bug looks like "no bars yet" in the
-    // assertions below — silent-fails wedged a 404 past the suite once.
+    // loadHistory swallows endpoint failures with warn, so a 404 silently
+    // looks like "no bars yet" in the assertions. Catch routing regressions here.
     const failedHistoryRequests = [];
     page.on('response', resp => {
       const url = resp.url();
@@ -131,8 +124,8 @@ async function syncToHead() {
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });
-    // Give history.js a moment to fetch + render.
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(2500); // history.js fetch + render
+
 
     assert(failedHistoryRequests.length === 0,
       `History endpoint returned ok (failed: ${failedHistoryRequests.join(', ') || 'none'})`);
@@ -140,12 +133,10 @@ async function syncToHead() {
     const totalBars = await page.locator('.history-bar').count();
     assert(totalBars > 0, `Some history bars rendered (got ${totalBars})`);
 
-    // The bar lanes carry data-lane="1|2|3"; lane 1 must exist for the most
-    // recently edited sentence.
+    // Lane 1 must exist for the most recently edited sentence.
     const lane1 = await page.locator('.history-bar[data-lane="1"]').count();
     assert(lane1 > 0, `At least one lane-1 bar (got ${lane1})`);
 
-    // Hover the first container, expect popup with at least one row.
     const firstContainer = page.locator('.history-bar-container').first();
     await firstContainer.hover();
     await page.waitForSelector('#history-popup', { timeout: 3000 });
@@ -154,7 +145,6 @@ async function syncToHead() {
     const hasNow = await page.locator('#history-popup .history-popup-current').count();
     assert(hasNow === 1, `Popup includes current "now" row`);
 
-    // Mouse out → popup gone.
     await page.mouse.move(0, 0);
     await page.waitForTimeout(300);
     const popupGone = await page.locator('#history-popup').count();
@@ -166,8 +156,7 @@ async function syncToHead() {
   } finally {
     if (browser) await browser.close();
 
-    // Reset the repo back to the initial commit; cleanupTestAnnotations will
-    // re-bootstrap it on the next test run.
+    // cleanupTestAnnotations will re-bootstrap the initial commit on next run.
     try {
       git('reset', '--hard', initialCommit);
     } catch (e) {

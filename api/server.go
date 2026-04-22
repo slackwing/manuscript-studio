@@ -85,8 +85,7 @@ func (s *Server) setupRouter() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Cap request bodies so a runaway upload can't OOM the process. All current
-	// POSTs are small JSON; per-route overrides can wrap http.MaxBytesHandler.
+	// Cap request bodies so a runaway upload can't OOM the process.
 	const maxRequestBody = 1 << 20 // 1 MiB
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -127,8 +126,7 @@ func (s *Server) setupRouter() {
 		})
 	}
 
-	// /livez: process is up (Docker liveness). /readyz: DB + manuscript repos
-	// reachable (readiness). /health: legacy alias for /readyz.
+	// /health: legacy alias for /readyz.
 	r.Get("/livez", s.livezHandler)
 	r.Get("/readyz", s.readyzHandler)
 	r.Get("/health", s.readyzHandler)
@@ -226,15 +224,14 @@ func (s *Server) setupRouter() {
 	s.router = r
 }
 
-// livezHandler: responds if the process is up. Does not probe downstreams.
+// Liveness probe: process is up. Does not probe downstreams.
 func (s *Server) livezHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"alive"}`))
 }
 
-// readyzHandler: 200 only if DB pings and every configured manuscript repo
-// is statable; degraded if a repo is missing (first sync will create it);
-// 503 if the DB is unreachable.
+// Readiness probe: 200 if DB pings and all manuscript repos are statable;
+// degraded if a repo is missing (first sync will create it); 503 on DB error.
 func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

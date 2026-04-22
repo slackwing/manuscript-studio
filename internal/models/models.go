@@ -6,7 +6,7 @@ import (
 
 type User struct {
 	Username     string    `json:"username"`
-	PasswordHash string    `json:"-"` // Never expose in JSON.
+	PasswordHash string    `json:"-"`
 	Role         string    `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -24,8 +24,7 @@ type Manuscript struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// Lifecycle: pending → running → done (success) or → error (.Error set).
-// Rows predating the status column default to "done".
+// Lifecycle: pending → running → done | error (.Error set on error).
 const (
 	MigrationStatusPending = "pending"
 	MigrationStatusRunning = "running"
@@ -33,14 +32,13 @@ const (
 	MigrationStatusError   = "error"
 )
 
-// Migration is one attempted (and possibly completed) state transition for a
-// (commit, segmenter). Result fields (BranchName, SentenceCount, *_Count,
-// SentenceIDArray) are zero until Status == "done"; consumers must filter.
+// Result fields (BranchName, SentenceCount, *_Count, SentenceIDArray) are
+// zero until Status == "done"; consumers must filter.
 type Migration struct {
 	MigrationID       int        `json:"migration_id"`
 	ManuscriptID      int        `json:"manuscript_id"`
 	CommitHash        string     `json:"commit_hash"`
-	Segmenter         string     `json:"segmenter"` // e.g. "segman-1.0.0"
+	Segmenter         string     `json:"segmenter"`
 	ParentMigrationID *int       `json:"parent_migration_id"`
 	BranchName        string     `json:"branch_name"`
 	ProcessedAt       time.Time  `json:"processed_at"`
@@ -58,28 +56,28 @@ type Migration struct {
 type Sentence struct {
 	SentenceID         string    `json:"sentence_id"`
 	MigrationID        int       `json:"migration_id"`
-	CommitHash         string    `json:"commit_hash"` // Denormalized for readability.
+	CommitHash         string    `json:"commit_hash"`
 	Text               string    `json:"text"`
 	WordCount          int       `json:"word_count"`
 	Ordinal            int       `json:"ordinal"`
 	CreatedAt          time.Time `json:"created_at"`
-	PreviousSentenceID *string   `json:"previous_sentence_id"` // Pairing from migration plan; null on bootstrap or insertions.
+	PreviousSentenceID *string   `json:"previous_sentence_id"` // null on bootstrap or new insertions
 }
 
 type Annotation struct {
 	AnnotationID int        `json:"annotation_id"`
 	SentenceID   string     `json:"sentence_id"`
-	UserID       string     `json:"user_id"`  // username (VARCHAR)
+	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Note         *string    `json:"note"`
 	Priority     string     `json:"priority"` // 'none', 'P0', 'P1', 'P2', 'P3'
 	Flagged      bool       `json:"flagged"`
-	Position     string     `json:"position"` // Fractional index.
+	Position     string     `json:"position"` // fractional index
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DeletedAt    *time.Time `json:"deleted_at"`
 	CompletedAt  *time.Time `json:"completed_at"`
-	Tags         []Tag      `json:"tags"` // Populated via JOIN; always serialize, even empty.
+	Tags         []Tag      `json:"tags"` // populated via JOIN; always serialize, even empty
 }
 
 type Tag struct {
@@ -116,7 +114,7 @@ type AnnotationVersion struct {
 	MigrationConfidence *float64  `json:"migration_confidence"`
 	OriginSentenceID    string    `json:"origin_sentence_id"`
 	OriginMigrationID   *int      `json:"origin_migration_id"`
-	OriginCommitHash    string    `json:"origin_commit_hash"` // Denormalized.
+	OriginCommitHash    string    `json:"origin_commit_hash"`
 	CreatedAt           time.Time `json:"created_at"`
 	CreatedBy           string    `json:"created_by"`
 }

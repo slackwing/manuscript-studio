@@ -40,11 +40,9 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await textarea.click();
 
     const phrase = 'hello, world! the quick brown fox jumps.';
-    // Fast keystrokes — delay 0 simulates a fast typist sending events
-    // before the annotation create round-trip resolves.
+    // delay 0 simulates a fast typist beating the create round-trip.
     await page.keyboard.type(phrase, { delay: 0 });
 
-    // Wait for the real note to appear and the typing flow to settle.
     await page.waitForSelector('.sticky-note:not(.uncreated-note) .note-input', { timeout: 5000 });
     await page.waitForTimeout(800);
 
@@ -52,14 +50,12 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     assert(finalValue === phrase,
       `All keystrokes preserved (expected ${phrase.length} chars, got ${finalValue.length}: "${finalValue}")`);
 
-    // Cursor should be at end so the user can keep typing.
     const cursorAtEnd = await page.evaluate(() => {
       const el = document.querySelector('.sticky-note:not(.uncreated-note) .note-input');
       return el && el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
     });
     assert(cursorAtEnd, 'Cursor positioned at end of preserved text');
 
-    // Reload should preserve the full text.
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });

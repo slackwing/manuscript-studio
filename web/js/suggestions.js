@@ -1,23 +1,19 @@
 /**
  * Suggested-edits feature.
  *
- * One in-memory map keyed by the original (unchanged) sentence_id so the
- * sentence_id never drifts even when a suggestion adds/removes sentence
- * boundaries. The diff vs. original is rendered inline (word-level via
- * diff-match-patch) into the existing <span class="sentence"> by
- * applyToSpans(), called from renderManuscript() AFTER wrapSentences() and
- * BEFORE smartquotes — so the diff compares straight quotes against straight
- * quotes (a curly-vs-straight apostrophe would otherwise show as a diff).
+ * Keyed by original sentence_id so it never drifts even if a suggestion adds
+ * or removes sentence boundaries. The word-level diff (via diff-match-patch)
+ * is rendered inline into the existing .sentence span by applyToSpans(),
+ * called from renderManuscript() AFTER wrapSentences() and BEFORE smartquotes
+ * so the diff compares straight quotes against straight quotes.
  *
- * Persisted via /api/sentences/{id}/suggestion. Loaded in parallel with the
- * manuscript by loadForMigration() — endpoint failure is non-fatal (the page
- * renders without diff markup until next reload).
+ * Loaded in parallel with the manuscript; endpoint failure is non-fatal.
  */
 
 const WriteSysSuggestions = {
   apiBaseUrl: 'api',
 
-  // sentence_id → suggestion text. Authoritative for the current render.
+  // sentence_id → suggestion text.
   bySentenceId: {},
 
   async loadForMigration(migrationID) {
@@ -34,9 +30,8 @@ const WriteSysSuggestions = {
     }
   },
 
-  // Walk every .sentence span in `container` and, for any whose id has a
-  // suggestion, replace its inner HTML with a word-level diff. Idempotent:
-  // safe to call after re-render since spans are recreated each time.
+  // For each .sentence with a suggestion, replace innerHTML with word-level
+  // diff. Idempotent — spans are recreated on every re-render.
   applyToSpans(container) {
     const root = container || document;
     const spans = root.querySelectorAll('.sentence[data-sentence-id]');
@@ -92,7 +87,6 @@ const WriteSysSuggestions = {
     const save = async () => {
       const newText = textarea.value;
       close();
-      // No change vs. what was already present → nothing to do.
       if (newText === current) return;
 
       try {
@@ -139,13 +133,11 @@ const WriteSysSuggestions = {
 };
 
 // Render a word-level diff as <del>removed</del><strong>added</strong>.
-// Falls back to a single <strong> wrap of the new text when diff-match-patch
-// isn't loaded — still visible as a suggestion, just without per-word marks.
+// Falls back to a single <strong> wrap when diff-match-patch isn't loaded.
 function renderDiffHTML(oldText, newText, dmp) {
   if (!dmp) return `<strong>${escapeHTML(newText)}</strong>`;
-  // Word-level diff: tokenise on whitespace boundaries by mapping tokens to
-  // unique chars (the standard diff-match-patch trick), diff at the char
-  // level, then map back. cleanupSemantic produces human-readable spans.
+  // Standard d-m-p trick: map each whitespace-token to a unique char, diff
+  // at the char level, then map back. cleanupSemantic readability pass.
   const a = dmp.diff_linesToWords_ ? dmp.diff_linesToWords_(oldText, newText) : null;
   let diffs;
   if (a) {
@@ -157,8 +149,7 @@ function renderDiffHTML(oldText, newText, dmp) {
   dmp.diff_cleanupSemantic(diffs);
 
   const parts = [];
-  // diff-match-patch's Diff objects are array-like (.length === 2, [0]=op,
-  // [1]=text) but not real Arrays — destructuring throws "not iterable".
+  // d-m-p Diff objects are array-like but not real Arrays; destructuring throws.
   for (let i = 0; i < diffs.length; i++) {
     const op = diffs[i][0];
     const data = diffs[i][1];
@@ -170,9 +161,9 @@ function renderDiffHTML(oldText, newText, dmp) {
   return parts.join('');
 }
 
-// Word-level tokeniser shim: diff-match-patch ships diff_linesToChars_ for
-// line-level diffs. We adapt it to whitespace-delimited "words" so prose
-// reads naturally: "the cat" → "the big cat" diffs as inserting "big ".
+// Word-level tokeniser shim: d-m-p ships diff_linesToChars_ for line diffs;
+// adapt to whitespace-delimited "words" so prose reads naturally
+// ("the cat" → "the big cat" diffs as inserting "big ").
 (function patchDMP() {
   if (typeof diff_match_patch === 'undefined') return;
   diff_match_patch.prototype.diff_linesToWords_ = function(text1, text2) {
@@ -182,8 +173,7 @@ function renderDiffHTML(oldText, newText, dmp) {
     function munge(text) {
       let chars = '';
       let lineArrayLength = lineArray.length;
-      // Whitespace runs and non-whitespace runs are both tokens — that way a
-      // missing or extra space shows up in the diff, not just changed words.
+      // Tokenize ws-runs AND non-ws-runs so missing/extra spaces show up too.
       const re = /\s+|\S+/g;
       let m;
       while ((m = re.exec(text)) !== null) {
@@ -191,8 +181,7 @@ function renderDiffHTML(oldText, newText, dmp) {
         if (lineHash.hasOwnProperty(token)) {
           chars += String.fromCharCode(lineHash[token]);
         } else {
-          // 65535 unique tokens fits in one UTF-16 code unit; punt to char
-          // diff for inputs that exceed it.
+          // 65535 = one UTF-16 code unit max; punt to char diff if exceeded.
           if (lineArrayLength === 65535) return null;
           chars += String.fromCharCode(lineArrayLength);
           lineHash[token] = lineArrayLength;
