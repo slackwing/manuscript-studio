@@ -29,11 +29,14 @@ const WriteSysHistory = {
   LANE_COUNT: 3,
   LANE_WIDTH_EM: 0.5,
   LANE_GAP_EM: 0.05,
-  LANE_OPACITIES: [1.0, 0.5, 0.2],
+  // Per-lane solid colors. We pre-flatten "color × opacity" into a literal RGB
+  // value so adjacent sentence bars in the same lane can overlap without
+  // alpha compositing producing darker stripes where they meet.
+  // Tier 0 = lane 1 (most recent change), tier 2 = lane 3 (oldest).
   COLORS: {
-    green: '#5CB85C',
-    yellow: '#F0AD4E',
-    red: '#D9534F',
+    green: ['#5CB85C', '#AEDCAE', '#DEEFDE'],
+    blue:  ['#5BC0DE', '#AEE0EF', '#DEEFF6'],
+    red:   ['#D9534F', '#ECA9A7', '#F7DDDC'],
   },
 
   async loadHistory(migrationID) {
@@ -62,7 +65,7 @@ const WriteSysHistory = {
     return count;
   },
 
-  // Returns one of 'green' | 'yellow' | 'red' | null. null = no change → no bar.
+  // Returns one of 'green' | 'blue' | 'red' | null. null = no change → no bar.
   // newer/older are sentence text strings; older may be null (newly inserted).
   diffColor(newer, older) {
     const newC = this.alnumCount(newer);
@@ -75,7 +78,7 @@ const WriteSysHistory = {
     const ratio = (newC - oldC) / oldC;
     if (ratio >= 0.25) return 'green';
     if (ratio <= -0.25) return 'red';
-    return 'yellow';
+    return 'blue';
   },
 
   // For a given sentence, returns up to LANE_COUNT lane colors (or nulls).
@@ -149,8 +152,7 @@ const WriteSysHistory = {
           // idx 0 → rightmost (innermost), idx 2 → leftmost.
           const offsetEm = idx * (this.LANE_WIDTH_EM + this.LANE_GAP_EM);
           lane.style.right = `${offsetEm}em`;
-          lane.style.backgroundColor = this.COLORS[color];
-          lane.style.opacity = String(this.LANE_OPACITIES[idx]);
+          lane.style.backgroundColor = this.COLORS[color][idx];
           lane.style.pointerEvents = 'auto';
           lane.style.cursor = 'help';
           lane.dataset.lane = String(idx + 1);
