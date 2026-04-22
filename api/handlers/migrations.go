@@ -21,9 +21,8 @@ type MigrationHandlers struct {
 }
 
 type SentenceInfo struct {
-	ID        string `json:"id"`
-	Text      string `json:"text"`
-	WordCount int    `json:"wordCount"`
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.Request) {
@@ -111,9 +110,8 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	sentenceInfos := make([]SentenceInfo, len(sentences))
 	for i, s := range sentences {
 		sentenceInfos[i] = SentenceInfo{
-			ID:        s.SentenceID,
-			Text:      s.Text,
-			WordCount: s.WordCount,
+			ID:   s.SentenceID,
+			Text: s.Text,
 		}
 	}
 

@@ -1,7 +1,6 @@
 package sentence
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 
@@ -216,13 +215,6 @@ func cleanSentenceBoundaries(text string) string {
 	}
 
 	return trimmed
-}
-
-// CountWords counts [a-zA-Z0-9]+ runs (the PLAN.md definition).
-func CountWords(text string) int {
-	wordPattern := regexp.MustCompile(`[a-zA-Z0-9]+`)
-	words := wordPattern.FindAllString(text, -1)
-	return len(words)
 }
 
 // normalizeText lowercases, strips non-letter/digit/space, and collapses

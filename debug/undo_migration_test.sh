@@ -112,9 +112,9 @@ setup_scenario() {
     local m1_sent_ids='["S1A","S1B"]'
     local m1
     m1=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commit1', 'segman-1.0.0', 'main', 2, 2, 0, 0, '$m1_sent_ids'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
-    x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES
-        ('S1A', $m1, 'commit1', 'sentence one', 2, 0),
-        ('S1B', $m1, 'commit1', 'sentence two', 2, 1);"
+    x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal) VALUES
+        ('S1A', $m1, 'commit1', 'sentence one', 0),
+        ('S1B', $m1, 'commit1', 'sentence two', 1);"
 
     # An annotation created during migration 1 on sentence S1A.
     local ann1
@@ -128,9 +128,9 @@ setup_scenario() {
     local m2_sent_ids='["S2A","S2B"]'
     local m2
     m2=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commit2', 'segman-1.0.0', 'main', 2, 0, 0, 0, '$m2_sent_ids'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
-    x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES
-        ('S2A', $m2, 'commit2', 'sentence one', 2, 0),
-        ('S2B', $m2, 'commit2', 'sentence two', 2, 1);"
+    x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal) VALUES
+        ('S2A', $m2, 'commit2', 'sentence one', 0),
+        ('S2B', $m2, 'commit2', 'sentence two', 1);"
     # The annotation moved to S2A as part of migration 2.
     x "UPDATE annotation SET sentence_id = 'S2A' WHERE annotation_id = $ann1;"
     x "INSERT INTO annotation_version (annotation_id, version, sentence_id, color, note, priority, flagged, sentence_id_history, migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash, created_by) VALUES
@@ -148,9 +148,9 @@ setup_scenario() {
     local m3_sent_ids='["S3A","S3B"]'
     local m3
     m3=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commit3', 'segman-1.0.0', 'main', 2, 0, 0, 0, '$m3_sent_ids'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
-    x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES
-        ('S3A', $m3, 'commit3', 'sentence one', 2, 0),
-        ('S3B', $m3, 'commit3', 'sentence two', 2, 1);"
+    x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal) VALUES
+        ('S3A', $m3, 'commit3', 'sentence one', 0),
+        ('S3B', $m3, 'commit3', 'sentence two', 1);"
     x "UPDATE annotation SET sentence_id = 'S3A' WHERE annotation_id = $ann1;"
     x "UPDATE annotation SET sentence_id = 'S3B' WHERE annotation_id = $ann2;"
     x "INSERT INTO annotation_version (annotation_id, version, sentence_id, color, note, priority, flagged, sentence_id_history, migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash, created_by) VALUES
@@ -228,7 +228,7 @@ mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'")
 
 # M1: done, with one annotation.
 m1=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commitA', 'segman-1.0.0', 'main', 1, 1, 0, 0, '[\"S1\"]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
-x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES ('S1', $m1, 'commitA', 'one sentence', 2, 0);"
+x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal) VALUES ('S1', $m1, 'commitA', 'one sentence', 0);"
 ann1=$(q "INSERT INTO annotation (sentence_id, user_id, color, priority, flagged, position) VALUES ('S1', 'undo_test_user', 'yellow', 'none', false, '0|x') RETURNING annotation_id")
 x "INSERT INTO annotation_version (annotation_id, version, sentence_id, color, note, priority, flagged, sentence_id_history, migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash, created_by) VALUES ($ann1, 1, 'S1', 'yellow', NULL, 'none', false, '[\"S1\"]'::jsonb, NULL, 'S1', $m1, 'commitA', 'undo_test_user');"
 
@@ -237,7 +237,7 @@ m2=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, st
 
 # M3: done, moved the annotation to S3.
 m3=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commitC', 'segman-1.0.0', 'main', 1, 0, 0, 0, '[\"S3\"]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
-x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal) VALUES ('S3', $m3, 'commitC', 'one sentence', 2, 0);"
+x "INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal) VALUES ('S3', $m3, 'commitC', 'one sentence', 0);"
 x "UPDATE annotation SET sentence_id = 'S3' WHERE annotation_id = $ann1;"
 x "INSERT INTO annotation_version (annotation_id, version, sentence_id, color, note, priority, flagged, sentence_id_history, migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash, created_by) VALUES ($ann1, 2, 'S3', 'yellow', NULL, 'none', false, '[\"S1\",\"S3\"]'::jsonb, 1.0, 'S1', $m3, 'commitA', 'undo_test_user');"
 

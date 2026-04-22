@@ -346,7 +346,6 @@ func segmentContent(content, commitHash string, migrationID int) ([]models.Sente
 			MigrationID: migrationID,
 			CommitHash:  commitHash,
 			Text:        t,
-			WordCount:   sentence.CountWords(t),
 			Ordinal:     i,
 		}
 	}

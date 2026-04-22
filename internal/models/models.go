@@ -58,7 +58,6 @@ type Sentence struct {
 	MigrationID        int       `json:"migration_id"`
 	CommitHash         string    `json:"commit_hash"`
 	Text               string    `json:"text"`
-	WordCount          int       `json:"word_count"`
 	Ordinal            int       `json:"ordinal"`
 	CreatedAt          time.Time `json:"created_at"`
 	PreviousSentenceID *string   `json:"previous_sentence_id"` // null on bootstrap or new insertions

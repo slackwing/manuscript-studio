@@ -464,8 +464,8 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	defer tx.Rollback(ctx)
 
 	query := `
-		INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, word_count, ordinal, previous_sentence_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal, previous_sentence_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
 	for _, s := range sentences {
@@ -474,7 +474,6 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 			s.MigrationID,
 			s.CommitHash,
 			s.Text,
-			s.WordCount,
 			s.Ordinal,
 			s.PreviousSentenceID,
 		)
@@ -510,7 +509,7 @@ func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Mi
 
 func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]models.Sentence, error) {
 	query := `
-		SELECT sentence_id, migration_id, commit_hash, text, word_count, ordinal, created_at, previous_sentence_id
+		SELECT sentence_id, migration_id, commit_hash, text, ordinal, created_at, previous_sentence_id
 		FROM sentence
 		WHERE migration_id = $1
 		ORDER BY ordinal
@@ -530,7 +529,6 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 			&s.MigrationID,
 			&s.CommitHash,
 			&s.Text,
-			&s.WordCount,
 			&s.Ordinal,
 			&s.CreatedAt,
 			&s.PreviousSentenceID,
