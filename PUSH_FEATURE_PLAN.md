@@ -1,8 +1,11 @@
 # Plan: Push-to-PR feature
 
-Status: planned, not yet built.
+Status: planned, not yet built. Prerequisite (UNIFIED_DATA_SHAPE) shipped
+in commit 61d3777 + 0daaf38. This plan was last updated 2026-04-22 to
+reflect the new sentence-storage shape; previously-blocking items
+("markdown loss", "can't restructure paragraphs") are now unblocked.
+
 Owner notes: this captures a design discussion between Slackwing and Claude.
-Implementation deferred until after the raw-markdown-storage change lands.
 
 ---
 
@@ -104,29 +107,37 @@ status in the UI, we'd add a `pr_state` table later — not for v1.
 
 ---
 
-## Source-level edits (depends on raw-markdown change)
+## Source-level edits
 
-This feature **requires** `sentence.text` to contain the raw markdown
-segment (e.g. `*The* fox jumped.`), not the stripped form. Without that:
+UNIFIED_DATA_SHAPE landed (commit 61d3777), so `sentence.text` already
+carries raw markdown plus optional leading structural marker
+(`\n\t` for new paragraph, `\n\n` for new section). Suggestions are
+edited as raw text (with glyph display: `¶`/`§`) and saved in the same
+storage form.
 
-- The user's suggestion textarea shows stripped text — they can't
-  preserve italics they didn't see.
-- Substring-replace into `.manuscript` would fail: stripped text doesn't
-  appear in the file.
+`ApplySuggestions(source []byte, suggestions []models.SuggestedChange)`:
 
-We're tracking that change separately. Once it lands:
+- For each suggestion, `bytes.Replace(source, []byte(originalRaw),
+  []byte(suggestionRaw), 1)`. Single replacement per sentence.
+- Sentences are stored with their leading marker, so a sentence whose
+  storage form is `"\n\tFoo bar."` matches the source bytes `\n\tFoo
+  bar.` directly — no special-casing needed.
+- Falls back gracefully (skip with warning, do not abort the whole PR)
+  if `originalRaw` isn't found — e.g. someone hand-edited the file
+  between segmentation and PR.
+- Suggestions that contain mid-content `\n\t` or `\n\n` (user expressing
+  "split this here") write that into the source verbatim. After the
+  webhook→migration round-trip, the segmenter splits one sentence into
+  two with the new sentence carrying the leading marker.
 
-- Modal pre-fills with raw markdown. User edits raw. Saved suggestion
-  text contains raw markdown.
-- `ApplySuggestions` does `bytes.Replace(source, []byte(originalRaw),
-  []byte(suggestionRaw), 1)`. Single replacement per sentence. Falls
-  back gracefully (skips with a warning) if `originalRaw` isn't found —
-  e.g. someone hand-edited the file between segmentation and PR.
+**Capability now unlocked**: suggestions CAN restructure paragraphs.
+Previous plan revision said "structural whitespace is not part of any
+sentence" — that constraint is gone with UNIFIED_DATA_SHAPE.
 
-Limitation: structural whitespace (paragraph breaks, leading `\t`) is
-NOT part of any sentence. It stays in the source unchanged. Suggestions
-can't restructure paragraphs — only edit within an existing sentence.
-That's fine for v1.
+**Glyph translation at apply time**: the suggestion's stored form is
+real `\n\t` / `\n\n` (the glyph→storage conversion happens at modal-save
+time, see `web/js/text-markers.js`). So when ApplySuggestions runs
+server-side, no further conversion is needed — write bytes as-is.
 
 ---
 
@@ -172,7 +183,7 @@ question of "what counts as match" given migration-time text drift.)
 | What happens to suggestions after merge? | Stay frozen on old `sentence_id`. Harmless. |
 | SSH key for push? | Same deploy key as pull, with write enabled. User responsibility to flip the GitHub setting. |
 | Stale-state handling? | Refuse with 409 if migration ≠ latest. Button also disabled client-side. |
-| Markdown loss in suggestions? | Blocker — fixed by storing raw markdown text. Both changes ship together. |
+| Markdown loss in suggestions? | RESOLVED in UNIFIED_DATA_SHAPE (commit 61d3777). Storage carries raw markdown + structural markers. |
 | GitHub API to auto-create PR? | No (v1). Link to compare URL. |
 | Branch name prefix? | `suggestions-` (NOT `claude-suggestions-`; suggestions come from the user, not Claude). |
 | Button label? | `Push` / `Push New`. Not "Open PR" — pushing the branch is what we actually do. |
@@ -181,12 +192,21 @@ question of "what counts as match" given migration-time text drift.)
 
 ## Implementation order
 
-1. (Prereq) Land raw-markdown-storage change. See separate plan / discussion.
-2. Backend endpoint + helpers + Go integration test.
+1. ~~(Prereq) Land raw-markdown-storage change.~~ DONE in commit 61d3777.
+2. Backend endpoint + helpers + Go integration test:
+   - `internal/sentence/apply.go` — pure `ApplySuggestions(source,
+     suggestions)` returning new file bytes. Unit test covering: no-op
+     suggestion, single substring replace, suggestion adding `\n\t`
+     mid-content (paragraph split), unfound-original (skip with warn),
+     multiple suggestions in one file.
+   - `internal/migrations/git.go` — extend with `CommitAndPush`. Mock
+     the actual `git push` in tests; assert local branch contents.
+   - `api/handlers/suggestions.go` — new `HandlePushSuggestions`. Stale
+     check, action enum, branch naming, calls into the helpers above.
 3. Frontend split-button + modal + diff preview.
 4. End-to-end Playwright test: write suggestion → push → verify branch
    exists in local repo with correct content. Skip the actual GitHub
-   push in tests.
+   push in tests (the local clone has no real remote in dev).
 5. Document in `docs/API.md`, `ARCHITECTURE.md`, `AGENTS.md`.
 
 ---
