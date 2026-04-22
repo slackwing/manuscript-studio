@@ -69,4 +69,74 @@
 
 set -euo pipefail
 
-ssh remote-deploy-latest-manuscript-studio
+HOST_ALIAS="remote-deploy-latest-manuscript-studio"
+EXPECTED_IDENTITY="$HOME/.ssh/deploy_latest_manuscript_studio_authorized"
+
+# Validate the SSH host alias before doing anything. `ssh -G` prints the
+# resolved config that ssh would actually use at connect time, so we can't be
+# fooled by typos in unrelated stanzas — if `ssh -G $HOST_ALIAS` shows the
+# right values, ssh $HOST_ALIAS will too.
+print_setup_instructions() {
+    cat <<EOF >&2
+
+remote-deploy.sh: SSH host alias not configured correctly.
+
+To fix, follow the one-time setup in the comments at the top of this script.
+Quick checklist:
+
+  - Keypair exists at $EXPECTED_IDENTITY (and .pub).
+  - ~/.ssh/config has a stanza:
+
+        Host $HOST_ALIAS
+            HostName your-vm.example.com
+            User your-vm-user
+            IdentityFile $EXPECTED_IDENTITY
+            IdentitiesOnly yes
+
+  - Public key is in your VM user's ~/.ssh/authorized_keys, prefixed with
+    a command="..." forced-command pointing at deploy_latest_manuscript_studio.sh
+    on the VM (so this key can ONLY run the deploy and nothing else).
+
+See the script header for the full step-by-step.
+EOF
+    exit 1
+}
+
+# Capture resolved config; fail closed if ssh can't even parse it.
+if ! resolved=$(ssh -G "$HOST_ALIAS" 2>/dev/null); then
+    echo "remote-deploy.sh: ssh -G $HOST_ALIAS failed (is ssh installed?)." >&2
+    print_setup_instructions
+fi
+
+# `ssh -G` always prints SOMETHING (it falls back to defaults), so the test for
+# "alias missing" is whether the resolved hostname is still the alias literal.
+resolved_host=$(awk '$1 == "hostname" {print $2; exit}' <<<"$resolved")
+if [ "$resolved_host" = "$HOST_ALIAS" ]; then
+    echo "remote-deploy.sh: no Host stanza found for '$HOST_ALIAS' in your ssh config." >&2
+    print_setup_instructions
+fi
+
+# IdentityFile must be EXACTLY the dedicated key path (ssh -G expands ~ to $HOME).
+# `ssh -G` lists every IdentityFile in priority order; we want OURS to be present.
+if ! awk '$1 == "identityfile" {print $2}' <<<"$resolved" | grep -Fxq "$EXPECTED_IDENTITY"; then
+    echo "remote-deploy.sh: '$HOST_ALIAS' is not configured to use the dedicated identity file." >&2
+    echo "  expected: IdentityFile $EXPECTED_IDENTITY" >&2
+    echo "  got:" >&2
+    awk '$1 == "identityfile" {print "    " $2}' <<<"$resolved" >&2
+    print_setup_instructions
+fi
+
+# IdentitiesOnly yes — without this, ssh would try other keys first and the
+# lockdown is moot.
+if [ "$(awk '$1 == "identitiesonly" {print $2; exit}' <<<"$resolved")" != "yes" ]; then
+    echo "remote-deploy.sh: '$HOST_ALIAS' must set 'IdentitiesOnly yes' so the dedicated key is the ONLY key tried." >&2
+    print_setup_instructions
+fi
+
+# Private key file must exist and be readable.
+if [ ! -r "$EXPECTED_IDENTITY" ]; then
+    echo "remote-deploy.sh: dedicated identity file not found: $EXPECTED_IDENTITY" >&2
+    print_setup_instructions
+fi
+
+ssh "$HOST_ALIAS"
