@@ -18,9 +18,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build both binaries
+# Build all binaries
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o manuscript-studio cmd/server/main.go && \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o admin-upsert cmd/admin-upsert/main.go
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o admin-upsert cmd/admin-upsert/main.go && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o backfill-prev-sentence cmd/backfill-prev-sentence/main.go
 
 # Stage 2: Create the runtime image
 FROM alpine:3.19
@@ -39,6 +40,7 @@ RUN mkdir -p /config /logs /repos && \
 # Copy binaries from builder
 COPY --from=builder /app/manuscript-studio /usr/local/bin/manuscript-studio
 COPY --from=builder /app/admin-upsert /usr/local/bin/admin-upsert
+COPY --from=builder /app/backfill-prev-sentence /usr/local/bin/backfill-prev-sentence
 
 # Copy web assets
 COPY --from=builder /app/web /app/web
