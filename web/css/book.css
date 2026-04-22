@@ -13,12 +13,15 @@
   --highlight-purple: #E0BBE4;
   --highlight-red: #FFCCCB;
   --highlight-orange: #FFD8A8;
-  --highlight-yellow-dark: #C9A800;
-  --highlight-green-dark: #4FA044;
-  --highlight-blue-dark: #2A7BB0;
-  --highlight-purple-dark: #8A4D9C;
-  --highlight-red-dark: #B33B3A;
-  --highlight-orange-dark: #C8761A;
+  /* Selected-state: roughly halfway between the base highlight and a fully
+     dark variant. Used as the background when a highlighted sentence is
+     selected. */
+  --highlight-yellow-dark: #E6CD52;
+  --highlight-green-dark: #89CE7E;
+  --highlight-blue-dark: #6CADD4;
+  --highlight-purple-dark: #B584C0;
+  --highlight-red-dark: #D98483;
+  --highlight-orange-dark: #E3A761;
 
   /* Sticky note backgrounds (lighter versions) */
   --sticky-yellow: #fef3c7;
@@ -548,9 +551,9 @@ p.indented {
 
 .note-input {
   width: 100%;
-  font-family: "Helvetica", sans-serif;
-  font-size: 12px;
-  line-height: 1.4;
+  font-family: "Caveat", "Helvetica", sans-serif;
+  font-size: 20px;
+  line-height: 1.2;
   padding: 0;
   border: none;
   background: transparent;
@@ -928,7 +931,7 @@ p.indented {
   gap: 16px;
   opacity: 0;
   transform: translateY(-8px);
-  transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
+  transition: all 0.1s cubic-bezier(0.4, 0.0, 0.2, 1);
 
   /* Make scrollable when content overflows */
   max-height: calc(100vh - var(--annotation-top) - 32px); /* Leave 32px bottom padding */

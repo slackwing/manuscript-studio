@@ -818,16 +818,26 @@ const WriteSysAnnotations = {
       console.log('Annotation completed:', annotationId);
 
       this.annotations = this.annotations.filter(a => a.annotation_id !== annotationId);
+
+      // Jump first so the next sentence shows up immediately. The rainbow-bar
+      // refresh below is a network roundtrip — let it happen in the background
+      // rather than block the UI.
+      const shouldJump = this.annotations.length === 0;
+
       this.renderStickyNotes();
       this.updateSentenceHighlights();
 
-      if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
-        await window.WriteSysRenderer.refreshRainbowBars();
+      if (shouldJump && window.WriteSysRenderer && window.WriteSysRenderer.currentAnnotations) {
+        // Optimistically remove the completed annotation from the renderer's
+        // copy so the jump-target search reflects current state without
+        // waiting on the server.
+        window.WriteSysRenderer.currentAnnotations =
+          window.WriteSysRenderer.currentAnnotations.filter(a => a.annotation_id !== annotationId);
+        this.jumpToNextAnnotatedSentence();
       }
 
-      // If the sentence has no annotations left, hop to the next annotated one.
-      if (this.annotations.length === 0) {
-        this.jumpToNextAnnotatedSentence();
+      if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
+        window.WriteSysRenderer.refreshRainbowBars();
       }
 
     } catch (error) {
