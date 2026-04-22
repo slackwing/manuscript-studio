@@ -177,11 +177,28 @@ const WriteSysAnnotations = {
       }
 
       this.renderStickyNotes();
+      this.focusFirstNoteTextarea();
 
     } catch (error) {
       console.error('Failed to fetch annotations:', error);
       this.annotations = [];
       this.renderStickyNotes();
+      this.focusFirstNoteTextarea();
+    }
+  },
+
+  // After a sentence is selected, drop the cursor into the first sticky-note's
+  // textarea so the user can start typing immediately. For a sentence with no
+  // annotations this is the grey uncreated-note; otherwise it's the first
+  // existing real note.
+  focusFirstNoteTextarea() {
+    const container = document.getElementById('sticky-notes-container');
+    if (!container) return;
+    const textarea = container.querySelector('.sticky-note .note-input');
+    if (textarea) {
+      textarea.focus();
+      const end = textarea.value.length;
+      textarea.setSelectionRange(end, end);
     }
   },
 

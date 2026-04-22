@@ -31,6 +31,7 @@ FAST_TESTS=(
   final-test
   test-complete-annotation
   test-typing-race-on-create
+  test-autofocus-on-select
   smoke
   multi-note-ui-test
   test-priority-flag
