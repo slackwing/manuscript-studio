@@ -126,8 +126,18 @@ const WriteSysHistory = {
 
         const sentenceRect = sentence.getBoundingClientRect();
         const pageRect = pageArea.getBoundingClientRect();
-        const top = Math.round(sentenceRect.top - pageRect.top);
-        const height = Math.round(sentenceRect.height);
+
+        // sentenceRect.height is just the text run's box (e.g. 17px for one
+        // line at line-height 25), so back-to-back single-line bars leave a
+        // visible gap. Pad each bar by half the line-leading on top and
+        // bottom so the bar fills its full line slot — adjacent bars then
+        // tile without gaps.
+        const lineHeight = parseFloat(getComputedStyle(sentence).lineHeight) || sentenceRect.height;
+        const fontHeight = parseFloat(getComputedStyle(sentence).fontSize) || sentenceRect.height;
+        const padPerSide = Math.max(0, (lineHeight - fontHeight) / 2);
+
+        const top = Math.round(sentenceRect.top - pageRect.top - padPerSide);
+        const height = Math.round(sentenceRect.height + padPerSide * 2);
 
         const totalWidthEm = this.LANE_COUNT * this.LANE_WIDTH_EM + (this.LANE_COUNT - 1) * this.LANE_GAP_EM;
         const container = document.createElement('div');
