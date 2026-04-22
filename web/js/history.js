@@ -19,6 +19,10 @@
  */
 
 const WriteSysHistory = {
+  // Relative URL so the page's <base href> resolves it correctly when the app
+  // is mounted under a prefix (e.g. /manuscripts on a shared subdomain).
+  apiBaseUrl: 'api',
+
   // Filled by loadHistory() — sentence_id → { history: [{text, commits_ago}, ...] }
   bySentenceId: {},
 
@@ -35,7 +39,7 @@ const WriteSysHistory = {
   async loadHistory(migrationID) {
     if (!migrationID) return;
     try {
-      const response = await fetchJSON(`/api/migrations/${migrationID}/history`, {}, true);
+      const response = await fetchJSON(`${this.apiBaseUrl}/migrations/${migrationID}/history`, {}, true);
       this.bySentenceId = {};
       (response.sentences || []).forEach(s => {
         this.bySentenceId[s.sentence_id] = s;

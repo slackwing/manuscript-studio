@@ -115,12 +115,27 @@ async function syncToHead() {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1400, height: 900 });
 
+    // Catch a regression where the history endpoint URL is wrong (404, 405,
+    // base-path mismatch, etc.). loadHistory swallows failures with a warn,
+    // so without this hook a routing bug looks like "no bars yet" in the
+    // assertions below — silent-fails wedged a 404 past the suite once.
+    const failedHistoryRequests = [];
+    page.on('response', resp => {
+      const url = resp.url();
+      if (/\/migrations\/\d+\/history/.test(url) && !resp.ok()) {
+        failedHistoryRequests.push(`${resp.status()} ${url}`);
+      }
+    });
+
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });
     // Give history.js a moment to fetch + render.
     await page.waitForTimeout(2500);
+
+    assert(failedHistoryRequests.length === 0,
+      `History endpoint returned ok (failed: ${failedHistoryRequests.join(', ') || 'none'})`);
 
     const totalBars = await page.locator('.history-bar').count();
     assert(totalBars > 0, `Some history bars rendered (got ${totalBars})`);
