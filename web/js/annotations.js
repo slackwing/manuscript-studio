@@ -223,6 +223,12 @@ const WriteSysAnnotations = {
     }
 
     container.classList.add('visible');
+
+    // autoResizeTextarea() needs scrollHeight, which is 0 on detached
+    // elements — call it again now that all notes are in the DOM so
+    // pre-existing long notes open at full height instead of waiting for
+    // the user to type.
+    container.querySelectorAll('.note-input').forEach(t => this.autoResizeTextarea(t));
   },
 
   createNextAnnotatedSentenceButton() {

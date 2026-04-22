@@ -213,6 +213,12 @@ const WriteSysHistory = {
       if (text === undefined) {
         textSpan.textContent = '(empty)';
         textSpan.classList.add('history-popup-empty');
+      } else if (text === currentText) {
+        // Same text as the current version — collapse to (same) so the user
+        // doesn't have to compare two identical paragraphs to spot what
+        // actually changed.
+        textSpan.textContent = '(same)';
+        textSpan.classList.add('history-popup-empty');
       } else {
         textSpan.textContent = text;
       }

@@ -1365,12 +1365,10 @@ p.indented {
 
 .history-popup-current .history-popup-label {
   color: #2a7bb0;
-  font-weight: bold;
 }
 
 .history-popup-current .history-popup-text {
-  color: #111;
-  font-weight: 500;
+  color: #333;
 }
 
 .history-popup-empty {
@@ -1381,7 +1379,7 @@ p.indented {
 /* Sentence with a pending suggested edit: subtle dashed underline so it's
    visible at a glance without competing with highlight colors. */
 .sentence.has-suggestion {
-  text-decoration: underline dashed #555;
+  text-decoration: underline dashed #aaa;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
