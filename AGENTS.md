@@ -64,14 +64,43 @@ margin elements.
 .circle:hover { width: 26px; height: 26px; } /* 22 × 1.18 */
 ```
 
-### N8 — Segmenter parity
+### N8 — Segmenter is vendored — DO NOT EDIT
 
-If you touch `web/js/segmenter.js`, you must also update
-`internal/segmenter/segman.go` (or vice versa). Both must split sentences
-identically, or sentence IDs will mismatch between browser and server and
-DOM wrapping will silently fail. The canonical source is the
-[segman](https://github.com/slackwing/segman) project; copy the current
-version into both locations when upgrading.
+`internal/segmenter/segman.go` and `web/js/segmenter.js` are **both
+vendored** from `~/src/feathers/15.segman/exports/lib/segman-{go,js}/`.
+NEVER edit them in this repo. Re-vendor from the source if you need a
+change. (This has bitten the user twice — once when a comment-cleaning
+agent edited `segman.go`, once when an automated pass edited
+`segmenter.js`.)
+
+Both must split sentences identically, or sentence IDs will mismatch
+between browser and server and DOM wrapping will silently fail.
+
+### N9 — Render order in renderer.js is load-bearing
+
+In `web/js/renderer.js renderManuscript()` the order MUST be:
+
+```
+wrapSentences() → applyAnnotations() → WriteSysSuggestions.applyToSpans() → smartquotes.element()
+```
+
+If `smartquotes` runs before `applyToSpans`, the DOM has curly apostrophes
+while the suggestion text has straight ones, and diff-match-patch reports
+every apostrophe as a spurious diff. Don't reorder.
+
+### N10 — Classify every new tests/*.js file
+
+`test-all.sh` has two arrays at the top (`FAST_TESTS`, `SLOW_TESTS`). When
+you add `tests/test-foo.js`, add `test-foo` (basename, no `.js`) to whichever
+is appropriate. The script's sanity check refuses to run if anything is
+unclassified. Threshold: ≤15 s wall time = `fast`, otherwise `slow`.
+
+### N11 — Suggestions FK to sentences in tests
+
+`suggested_change.sentence_id` FKs to `sentence`. If your test creates
+suggestions, **delete them before calling `cleanupTestAnnotations()`** or
+the FK will block the cascading sentence delete and the test that follows
+yours will run on dirty data.
 
 ---
 
@@ -91,18 +120,21 @@ version into both locations when upgrading.
 ## 2. Quick orientation
 
 ```
-api/             HTTP handlers
+api/             HTTP handlers (admin, annotations, auth, migrations, suggestions)
 cmd/server/      Main server entrypoint
 cmd/admin-upsert/ One-shot: seed the admin user from config
+cmd/backfill-prev-sentence/  CLI: populate previous_sentence_id for legacy data
 internal/        Core logic: config, database, auth, migrations, sentence,
-                 segmenter, fractional, models
-liquibase/       Database schema
+                 segmenter (vendored — see N8), fractional, models
+liquibase/       Database schema (frozen 001 + numbered changesets)
 web/             Frontend (vanilla JS, no build step)
-tests/           Playwright + Node test suite
+  js/vendor/     diff-match-patch.js (whitelisted in .gitignore)
+tests/           Playwright + Node test suite (classified in test-all.sh)
 testdata/        Fixtures (test.manuscript + init script)
 debug/           User-facing debugging scripts (nuke_database.sh, connect_db.sh)
 install.sh       One-liner installer
 Makefile         Dev workflow targets
+test-all.sh      Test runner (fast/slow/all/js-only)
 config.dev.yaml  Committed dev config (works out of the box)
 ARCHITECTURE.md  How the pieces fit together
 ```
@@ -146,6 +178,17 @@ When you discover a bug:
 | Smoke | `tests/smoke.js` | `node tests/smoke.js` |
 | Feature (tags, trash, rainbow, etc.) | `tests/test-*.js` or `tests/*-test.js` | `node tests/<name>.js` |
 | Go unit | `internal/**/*_test.go` | `go test ./...` |
+
+### Test split (fast / slow / all)
+
+| Command | Wall time | Use when |
+|---------|-----------|----------|
+| `make test-fast` | ~2.5 min | Inner dev loop |
+| `make test-slow` | ~7 min | Before committing UI-heavy changes |
+| `make test` | ~10 min | Before pushing |
+
+When you add a test file, **classify it** in `FAST_TESTS` or `SLOW_TESTS`
+in `test-all.sh` (see N10).
 
 ### Helpers
 
@@ -222,7 +265,37 @@ Documented more fully in [ARCHITECTURE.md](./ARCHITECTURE.md). Highlights:
 
 ---
 
-## 7. Tone / meta
+## 7. Recent subsystems — quick reference
+
+These were added in 2026-04 and are easy to miss. Full detail in
+ARCHITECTURE.md §6.5–§6.7.
+
+- **Sentence history** (`previous_sentence_id` column + `history.js` +
+  `GET /api/migrations/{id}/history`). The column is the **lynchpin of
+  cross-commit identity** — any code that asks "what was this sentence
+  before?" should walk this chain (or use `bestPreviousByNew` in the
+  processor). Don't re-implement matching.
+- **Suggested edits** (`suggested_change` table + `suggestions.js` +
+  `PUT/DELETE /api/sentences/{id}/suggestion` + `GET /api/migrations/{id}/suggestions`).
+  Re-clicking the selected sentence opens the modal. Diff is rendered
+  inline using `web/js/vendor/diff-match-patch.js`. See N9 for the render
+  order.
+- **Annotation completion** (`completed_at` column + green checkmark UI +
+  `POST /api/annotations/{id}/complete`). Filtered from reads, just like
+  `deleted_at`.
+- **401 → login redirect** (`web/js/auth.js authenticatedFetch`) — any
+  401 response sends the user to `login.html` so an expired session can't
+  silently break the UI.
+- **Confidence == 1.0** (in `internal/migrations`): the gate for
+  copy-forward of suggestions on a pairing. Annotations carry forward at
+  any confidence; suggestions only at exact-text match.
+
+Schema migrations 002–006 (status, sessions, completed, prev-sentence,
+suggested_change) are all live. 001 is frozen — see §3.
+
+---
+
+## 8. Tone / meta
 
 - If anything here conflicts with the code, the code wins. Propose updates
   to this file instead of diverging.

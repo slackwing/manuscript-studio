@@ -58,6 +58,19 @@ The server speaks plain HTTP and expects to be terminated by a reverse proxy (Ap
 
 Playwright must run headless (`headless: true`) — `make test` runs in CI without a display.
 
+## Fast vs slow test split
+
+`test-all.sh` accepts a mode arg, exposed via Make targets:
+
+| Target | Mode | Wall time | Notes |
+|--------|------|-----------|-------|
+| `make test-fast` | `fast` | ~2.5 min | Inner dev loop — assumes server already has state. |
+| `make test-slow` | `slow` | ~7 min | UI-heavy flows: history bars, suggestions, scrollable notes, multi-stage tag UI, etc. |
+| `make test` | `all` | ~10 min | Resets DB, seeds, bootstraps, runs Go + everything. |
+| `./test-all.sh js-only` | `js-only` | varies | Skips Go (server must be up). |
+
+Two arrays at the top of `test-all.sh` (`FAST_TESTS`, `SLOW_TESTS`) enumerate every test by basename. Threshold: ≤15 s wall = `fast`, otherwise `slow`. The script's sanity check refuses to run if any `tests/*.js` (other than `test-utils.js`) is unclassified — so when you add a test, classify it.
+
 ## Useful commands
 
 ```bash
@@ -66,6 +79,23 @@ debug/connect_db.sh                           # psql into the dev DB
 debug/nuke_database.sh                        # wipe + recreate the dev DB schema
 curl http://127.0.0.1:5001/livez              # liveness probe
 curl http://127.0.0.1:5001/readyz             # readiness probe (checks DB + repos)
+```
+
+## One-off CLI tools
+
+### `backfill-prev-sentence`
+
+Populates `sentence.previous_sentence_id` for manuscripts whose migrations were created before the history feature shipped. Idempotent; pairings that can't be re-derived stay `NULL` (the history feature degrades cleanly).
+
+```bash
+# Production (containerized):
+docker run --rm --network host \
+  -v $CONFIG_FILE:/config/config.yaml:ro \
+  manuscript-studio:latest \
+  backfill-prev-sentence --manuscript=NAME [--dry-run]
+
+# Dev (native binary):
+go run ./cmd/backfill-prev-sentence --manuscript=test-manuscripts [--dry-run]
 ```
 
 ## Code-review remediation

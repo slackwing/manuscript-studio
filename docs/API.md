@@ -48,13 +48,28 @@ Response 404: no completed migrations exist yet.
 Returns the markdown content + sentence list + this user's annotations for a completed migration.
 Response 404: migration not found OR migration not yet at status='done'.
 
+### `GET /api/migrations/{migration_id}/history`
+Returns up to 3 prior text versions per sentence, walking the
+`sentence.previous_sentence_id` chain. Batched in a single pass — no N+1.
+Response shape: `{"sentences": [{sentence_id, history: [{text, commit_hash, ...}, ...]}, ...]}`.
+Sentences with no history return an empty `history` array.
+
+### `GET /api/migrations/{migration_id}/suggestions`
+Returns all of the calling user's suggestions for the given migration.
+Response shape: `{"suggestions": [{suggestion_id, sentence_id, text, created_at, updated_at}, ...]}`.
+
 ### Annotations
-- `GET /api/annotations/{commit_hash}` — all annotations for a given commit (this user).
+- `GET /api/annotations/{commit_hash}` — all annotations for a given commit (this user). Excludes `deleted_at` and `completed_at`.
 - `GET /api/annotations/sentence/{sentence_id}` — annotations on one sentence.
 - `POST /api/annotations` — create. Body: `{sentence_id, color, note?, priority, flagged}`.
 - `PUT /api/annotations/{annotation_id}` — update.
 - `PUT /api/annotations/{annotation_id}/reorder` — change `position`.
-- `DELETE /api/annotations/{annotation_id}` — soft-delete.
+- `POST /api/annotations/{annotation_id}/complete` — mark as completed (sets `completed_at`). Two-click confirm in the UI.
+- `DELETE /api/annotations/{annotation_id}` — soft-delete (sets `deleted_at`).
+
+### Suggestions
+- `PUT /api/sentences/{sentence_id}/suggestion` — body: `{text}`. Idempotent upsert (UNIQUE on `sentence_id`+`user_id`). If `text` equals the original sentence text, the server collapses the call into a DELETE.
+- `DELETE /api/sentences/{sentence_id}/suggestion` — explicit clear.
 
 ### Tags
 - `GET /api/annotations/{annotation_id}/tags`

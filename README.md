@@ -8,6 +8,9 @@ A self-hosted, version-controlled manuscript annotation system that seamlessly i
 - **Version Control**: Every edit creates a migration, preserving annotation history
 - **Multi-Manuscript**: Manage multiple books/manuscripts in one instance
 - **Sentence-Level Annotations**: Create color-coded sticky notes on individual sentences
+- **Sentence History**: Walk back through prior versions of any sentence with inline left-margin history bars (up to 3 commits back)
+- **Suggested Edits**: Propose alternate text for any sentence — rendered as an inline diff against the original, copied forward across text-identical migrations
+- **Completion Tracking**: Mark sticky notes as done without losing the history
 - **Automatic Migration**: Push to Git triggers automatic annotation migration
 - **Self-Hosted**: Full control over your data with PostgreSQL backend
 - **Beautiful Reader**: Book-style pagination with typography optimizations
