@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/slackwing/manuscript-studio/internal/config"
@@ -141,6 +145,72 @@ func TestMatchManuscriptForWebhook(t *testing.T) {
 			}
 			if got.Name != tc.wantName {
 				t.Fatalf("expected match %q, got %q", tc.wantName, got.Name)
+			}
+		})
+	}
+}
+
+// Webhook ignores pushes to any branch other than the configured one.
+// Critical because the upcoming push-to-PR feature creates suggestions-*
+// branches that GitHub will fire push webhooks for; without the filter,
+// every PR branch would trigger a migration of the wrong commit as if
+// it were the canonical history.
+func TestHandleWebhook_IgnoresNonTrackedBranch(t *testing.T) {
+	const secret = "test-secret"
+	h := &AdminHandlers{
+		Config: &config.Config{
+			Auth: config.AuthConfig{WebhookSecret: secret},
+			Manuscripts: []config.ManuscriptConfig{{
+				Name: "wf",
+				Repository: config.RepositoryConfig{
+					Slug:   "owner/wf",
+					Branch: "main",
+					Path:   "manuscript.md",
+				},
+			}},
+		},
+	}
+
+	cases := []struct {
+		name       string
+		ref        string
+		wantStatus int
+		wantBody   string
+	}{
+		{"push to main matches → not ignored on branch grounds",
+			"refs/heads/main", http.StatusOK, "non-tracked"},
+		{"push to feature branch is ignored",
+			"refs/heads/suggestions-abc-test", http.StatusOK, "non-tracked"},
+		{"push to a tag is ignored",
+			"refs/tags/v1.0", http.StatusOK, "non-tracked"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"ref":"` + tc.ref + `","repository":{"name":"wf","full_name":"owner/wf","clone_url":"https://github.com/owner/wf.git"},"commits":[],"head_commit":{"id":"deadbeef"}}`
+			mac := hmac.New(sha256.New, []byte(secret))
+			mac.Write([]byte(body))
+			sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+			req := httptest.NewRequest(http.MethodPost, "/api/admin/webhook", strings.NewReader(body))
+			req.Header.Set("X-Hub-Signature-256", sig)
+			rec := httptest.NewRecorder()
+
+			h.HandleWebhook(rec, req)
+
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+			}
+			// "main" case should pass the branch check; the fact that no commits
+			// modify the manuscript path means the next gate ignores it as
+			// "manuscript not modified" — but NOT as "non-tracked branch".
+			isMainCase := tc.ref == "refs/heads/main"
+			gotNonTracked := strings.Contains(rec.Body.String(), "non-tracked")
+			if isMainCase && gotNonTracked {
+				t.Fatalf("main branch should not be filtered as non-tracked: %s", rec.Body.String())
+			}
+			if !isMainCase && !gotNonTracked {
+				t.Fatalf("non-main branch should be filtered as non-tracked: %s", rec.Body.String())
 			}
 		})
 	}

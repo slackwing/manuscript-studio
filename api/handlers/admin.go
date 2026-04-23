@@ -83,6 +83,22 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only the configured branch triggers a migration. Pushes to feature
+	// branches (including the suggestions-* branches the push-to-PR feature
+	// will create) must be ignored — otherwise the server would migrate
+	// every PR branch as if it were the canonical history.
+	wantBranch := manuscriptConfig.Repository.Branch
+	if wantBranch == "" {
+		wantBranch = "main"
+	}
+	expectedRef := "refs/heads/" + wantBranch
+	if payload.Ref != expectedRef {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status":"ignored","reason":"non-tracked branch","got_ref":%q,"want_ref":%q}`,
+			payload.Ref, expectedRef)
+		return
+	}
+
 	manuscriptModified := false
 	for _, commit := range payload.Commits {
 		for _, file := range commit.Modified {
