@@ -106,12 +106,13 @@ body {
 }
 
 /* Brand: present-but-quiet. Watermark grey so it sits behind the
-   actionable controls visually without disappearing. */
+   actionable controls visually without disappearing. Tight tracking gives
+   the wordmark a sturdier, more "logo-like" silhouette at this size. */
 #brand {
   font-family: Georgia, "Iowan Old Style", "Apple Garamond", serif;
   font-size: 22px;
   font-weight: 400;
-  letter-spacing: 0.005em;
+  letter-spacing: -0.03em;
   color: #c8ccd0;
   line-height: 1;
 }
