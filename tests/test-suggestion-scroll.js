@@ -64,6 +64,15 @@ function psql(sql) {
     });
     assert(!!target && !!target.id, `Found a far-down sentence (${target && target.id.slice(0, 12)}...)`);
 
+    // Scroll the target sentence into view first, so "stays in place" is a
+    // meaningful assertion. Without this the user is at y=0 and the sentence
+    // lives far down — it can't "stay visible" because it wasn't visible.
+    await page.evaluate((sid) => {
+      const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+      el.scrollIntoView({ block: 'center' });
+    }, target.id);
+    await page.waitForTimeout(500);
+
     const newText = target.text.replace(/\.$/, '') + ' (SCROLL TARGET).';
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), target.id);
     await page.waitForSelector('#suggestion-modal');
@@ -76,7 +85,25 @@ function psql(sql) {
     assert(url.includes(`scroll_to=${target.id}`),
       `URL stamped with ?scroll_to (got "${url.slice(-80)}")`);
 
-    // Reload — the sentence should end up in the viewport.
+    // The post-save in-place re-render should keep the sentence on-screen
+    // (no scroll-to-top jolt). Since we can't measure "did it jolt?"
+    // directly from the final state, just assert the sentence is visible.
+    const inPlaceVisible = await page.evaluate((sid) => {
+      const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.bottom > 0 && r.top < window.innerHeight;
+    }, target.id);
+    assert(inPlaceVisible, 'Sentence stays visible after in-place re-render');
+
+    // The affected sentence should be marked .selected after in-place save.
+    const selectedInPlace = await page.evaluate((sid) => {
+      const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+      return el && el.classList.contains('selected');
+    }, target.id);
+    assert(selectedInPlace, 'Sentence is marked .selected after in-place save');
+
+    // Reload — the sentence should end up in the viewport AND selected.
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForFunction(
@@ -84,13 +111,18 @@ function psql(sql) {
         const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
         if (!el) return false;
         const r = el.getBoundingClientRect();
-        // Visible means: any part of the element is on screen vertically.
         return r.bottom > 0 && r.top < window.innerHeight;
       },
       target.id,
       { timeout: 15000 }
     );
     assert(true, 'Affected sentence is visible after reload (scrolled into view)');
+
+    const selectedAfterReload = await page.evaluate((sid) => {
+      const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+      return el && el.classList.contains('selected');
+    }, target.id);
+    assert(selectedAfterReload, 'Sentence is marked .selected after reload');
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}`);

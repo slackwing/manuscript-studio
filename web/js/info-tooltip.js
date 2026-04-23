@@ -17,15 +17,16 @@ const WriteSysInfoTooltip = {
   _icon: null,
   _popup: null,
   _rows: [],
+  _hideTimer: null,
 
   init() {
     this._icon = document.getElementById('info-icon');
     if (!this._icon) return;
     this._icon.style.display = 'none'; // hidden until set() with rows
     this._icon.addEventListener('mouseenter', () => this._show());
-    this._icon.addEventListener('mouseleave', () => this._hide());
+    this._icon.addEventListener('mouseleave', () => this._scheduleHide());
     this._icon.addEventListener('focus', () => this._show());
-    this._icon.addEventListener('blur', () => this._hide());
+    this._icon.addEventListener('blur', () => this._scheduleHide());
   },
 
   // rows: [[label, value], ...]
@@ -37,8 +38,9 @@ const WriteSysInfoTooltip = {
   },
 
   _show() {
+    this._cancelHide();
     if (this._rows.length === 0) return;
-    if (this._popup) this._hide();
+    if (this._popup) return;
     const popup = document.createElement('div');
     popup.className = 'info-popup';
     popup.innerHTML = this._rows.map(([label, value]) => `
@@ -47,6 +49,10 @@ const WriteSysInfoTooltip = {
         <span class="info-popup-text">${escapeHTML(value)}</span>
       </div>
     `).join('');
+    // Pointer events on the popup itself so mousing over keeps it open.
+    popup.style.pointerEvents = 'auto';
+    popup.addEventListener('mouseenter', () => this._cancelHide());
+    popup.addEventListener('mouseleave', () => this._scheduleHide());
     document.body.appendChild(popup);
     const rect = this._icon.getBoundingClientRect();
     // Position below + slightly left so the popup tail visually anchors
@@ -56,7 +62,21 @@ const WriteSysInfoTooltip = {
     this._popup = popup;
   },
 
+  // Small delay so moving from icon → popup doesn't tear it down mid-traverse.
+  _scheduleHide() {
+    this._cancelHide();
+    this._hideTimer = setTimeout(() => this._hide(), 120);
+  },
+
+  _cancelHide() {
+    if (this._hideTimer) {
+      clearTimeout(this._hideTimer);
+      this._hideTimer = null;
+    }
+  },
+
   _hide() {
+    this._cancelHide();
     if (this._popup) {
       this._popup.remove();
       this._popup = null;

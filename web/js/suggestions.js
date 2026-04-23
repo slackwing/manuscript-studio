@@ -115,22 +115,25 @@ const WriteSysSuggestions = {
         this.bySentenceId[sentenceId] = newText;
       }
 
-      // Stamp the URL so a manual reload (or post-push refresh) returns to
-      // this sentence instead of the top of the manuscript. Use replaceState
-      // so we don't pollute back/forward history.
+      // Stamp the URL so a manual hard-reload comes back to this sentence
+      // instead of the top of the manuscript. replaceState — don't pollute
+      // back/forward history.
       const url = new URL(window.location.href);
       url.searchParams.set('scroll_to', sentenceId);
       window.history.replaceState(null, '', url.toString());
 
       if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
-        await window.WriteSysRenderer.renderManuscript();
+        // Pass the sentence id as both anchor (preserves viewport position
+        // across re-pagination) and selection target (highlights it after
+        // re-render so the user sees what changed).
+        await window.WriteSysRenderer.renderManuscript({
+          anchorSentenceId: sentenceId,
+          selectSentenceId: sentenceId,
+        });
       }
       if (window.WriteSysPush) {
         window.WriteSysPush.refresh();
       }
-      // Re-pagination by Paged.js dumps the viewport at the top; scroll back
-      // to the just-edited sentence so the diff is visible.
-      scrollToSentence(sentenceId);
     };
 
     overlay.addEventListener('click', close);
@@ -223,21 +226,6 @@ function escapeHTML(s) {
     .replace(/'/g, '&#39;');
 }
 
-// Scroll the .sentence with a given data-sentence-id into view. Sentences
-// can be split across pages by Paged.js (multiple span fragments share the
-// same id) — picking the first fragment is fine since they're laid out in
-// document order. Defers a tick to let any pending Paged.js layout settle.
-function scrollToSentence(sentenceId) {
-  if (!sentenceId) return;
-  // rAF + small delay: Paged.js renders asynchronously; without this the
-  // span exists but its layout coords are still 0,0 right after re-render.
-  requestAnimationFrame(() => setTimeout(() => {
-    const el = document.querySelector(`.sentence[data-sentence-id="${CSS.escape(sentenceId)}"]`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, 50));
-}
-
 // On a fresh page load, restore scroll position from ?scroll_to=. The
 // renderer fires renderManuscript() during init; we need to wait until
 // .sentence elements exist before trying to scroll. Poll briefly because
@@ -251,6 +239,9 @@ function restoreScrollFromURL() {
     const el = document.querySelector(`.sentence[data-sentence-id="${escaped}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'auto', block: 'center' });
+      // Also mark it selected so the user instantly sees what changed.
+      document.querySelectorAll(`.sentence[data-sentence-id="${escaped}"]`).forEach(s => s.classList.add('selected'));
+      if (window.WriteSysRenderer) window.WriteSysRenderer.currentSelectedSentenceId = target;
       return;
     }
     if (Date.now() - start < 10000) setTimeout(tick, 100);

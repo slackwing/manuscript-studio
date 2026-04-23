@@ -124,8 +124,9 @@ function psql(sql) {
     assert(stillSuggested, 'Suggestion persists across reload');
 
     // Re-saving the original text deletes the suggestion server-side.
-    await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
-    await page.waitForTimeout(300);
+    // After reload, restoreScrollFromURL already marks this sentence
+    // .selected — so a single click is a re-click that opens the modal
+    // directly.
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForSelector('#suggestion-modal');
     await page.locator('.suggestion-modal-textarea').fill(first.text);

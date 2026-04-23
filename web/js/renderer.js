@@ -114,8 +114,24 @@ const WriteSysRenderer = {
     }
   },
 
-  async renderManuscript() {
+  // opts:
+  //   anchorSentenceId: string — capture this sentence's viewport position
+  //     before re-render and restore it after, so the page doesn't visibly
+  //     scroll to the top during a re-paginate.
+  //   selectSentenceId: string — after the new render, add the .selected
+  //     class to that sentence's span(s) so it's easy to spot post-edit.
+  async renderManuscript(opts = {}) {
     const container = document.getElementById('manuscript-content');
+    const { anchorSentenceId, selectSentenceId } = opts;
+
+    // Capture the anchor's viewport offset BEFORE we touch the DOM. We'll
+    // re-locate the same sentence after re-render and adjust scroll so the
+    // viewport sits at the same offset — eliminates the scroll-to-top jolt.
+    let anchorOffset = null;
+    if (anchorSentenceId) {
+      const old = document.querySelector(`.sentence[data-sentence-id="${CSS.escape(anchorSentenceId)}"]`);
+      if (old) anchorOffset = old.getBoundingClientRect().top;
+    }
 
     // Sentences carry structural markers (\n\t / \n\n) and inline markdown.
     // Build paragraphs by walking the list; each sentence becomes its own
@@ -140,13 +156,16 @@ const WriteSysRenderer = {
 
       const paged = new Paged.Previewer();
       const appContainer = document.getElementById('app-container');
+      const oldPages = Array.from(appContainer.querySelectorAll('.pagedjs_pages'));
 
-      // Paged.js appends; clear prior renders so spans don't double up.
-      appContainer.querySelectorAll('.pagedjs_pages').forEach(el => el.remove());
-
-      // base-aware absolute URL so Paged.js resolves under a prefix or root.
+      // Render the new pages BEFORE removing the old ones — keeps document
+      // height (and therefore scroll offset) stable. Without this, the
+      // moment between "removed" and "rendered" collapses the document and
+      // browser snaps scrollTop to 0; the user sees a flash + jump.
       const bookCssUrl = new URL('css/book.css', document.baseURI).href;
       await paged.preview(wrappedHtml, [bookCssUrl], appContainer);
+
+      oldPages.forEach(el => el.remove());
 
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {
@@ -158,6 +177,28 @@ const WriteSysRenderer = {
     } else {
       container.innerHTML = wrappedHtml;
       this.setupSentenceHover();
+    }
+
+    // Restore the anchor's viewport position. If the sentence's new layout
+    // offset differs from the old one (it can — our edit may have changed
+    // its width/wrap), shift scroll so it lands at the original viewport
+    // y. The user perceives the diff appear in place.
+    if (anchorSentenceId && anchorOffset !== null) {
+      const fresh = document.querySelector(`.sentence[data-sentence-id="${CSS.escape(anchorSentenceId)}"]`);
+      if (fresh) {
+        const newOffset = fresh.getBoundingClientRect().top;
+        const delta = newOffset - anchorOffset;
+        if (Math.abs(delta) > 0.5) window.scrollBy({ top: delta, behavior: 'auto' });
+      }
+    }
+
+    if (selectSentenceId) {
+      // Mark the just-edited sentence as selected so the user sees what
+      // changed even before the diff catches their eye.
+      document.querySelectorAll(`.sentence[data-sentence-id="${CSS.escape(selectSentenceId)}"]`).forEach(el => {
+        el.classList.add('selected');
+      });
+      this.currentSelectedSentenceId = selectSentenceId;
     }
   },
 
