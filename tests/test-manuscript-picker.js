@@ -56,15 +56,18 @@ function psql(sql) {
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForTimeout(1000);
 
-    const pickerOptions = await page.evaluate(() => {
-      const sel = document.querySelector('#manuscript-picker-select');
-      if (!sel) return null;
-      return Array.from(sel.options).map(o => ({ value: o.value, text: o.textContent }));
+    // Open the picker dropdown and read its menu items.
+    await page.locator('.picker-btn-caret').click();
+    await page.waitForSelector('.picker-menu:not([hidden])', { timeout: 2000 });
+    const pickerNames = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.picker-menu-item'));
+      return items.map(it => it.querySelector('.picker-menu-name').textContent.trim());
     });
-    assert(Array.isArray(pickerOptions) && pickerOptions.length >= 1,
-      `Picker rendered with ${pickerOptions ? pickerOptions.length : 0} option(s)`);
-    assert(pickerOptions.some(o => o.text === TEST_MANUSCRIPT_NAME),
+    assert(pickerNames.length >= 1, `Picker rendered with ${pickerNames.length} item(s)`);
+    assert(pickerNames.includes(TEST_MANUSCRIPT_NAME),
       `Picker contains "${TEST_MANUSCRIPT_NAME}"`);
+    // Close the menu before continuing.
+    await page.locator('body').click({ position: { x: 5, y: 5 } });
 
     const url = new URL(page.url());
     assert(url.searchParams.get('manuscript_id') === String(TEST_MANUSCRIPT_ID),
@@ -86,7 +89,7 @@ function psql(sql) {
     await page.goto('http://localhost:5001/?manuscript_id=99999');
     await page.waitForTimeout(1500);
     const emptyState = await page.evaluate(() => ({
-      pickerPresent: !!document.querySelector('#manuscript-picker-select'),
+      pickerPresent: !!document.querySelector('.picker-btn-primary'),
       pageCount: document.querySelectorAll('.pagedjs_page').length,
       infoIconVisible: getComputedStyle(document.getElementById('info-icon')).display !== 'none',
     }));

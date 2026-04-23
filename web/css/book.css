@@ -116,33 +116,98 @@ body {
   line-height: 1;
 }
 
-/* Manuscript picker — same shape/size as the push button, white variant.
-   Native <select> with a custom caret SVG so it visually matches the
-   push button's ▼ caret. */
-.manuscript-picker { display: inline-flex; align-items: center; }
+/* Manuscript picker — same split-button + dropdown shape as the push
+   button (matches push-btn-primary / push-btn-caret / push-menu exactly)
+   but in white. Restyled to feel like a sibling of the push button.
+   Anchored under #controls to beat the existing `#controls button` rule. */
+.manuscript-picker { display: inline-flex; align-items: center; position: relative; }
 
-#controls .manuscript-picker select {
+#controls .picker-btn-primary,
+#controls .picker-btn-caret {
   font-family: "Helvetica", sans-serif;
   font-size: 13px;
-  color: #1f2328;
-  background-color: #fff;
   border: 1px solid #d0d7de;
-  border-radius: 4px;
-  padding: 5px 28px 5px 12px;
+  background: #fff;
+  color: #1f2328;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'><path fill='%2357606a' d='M3.22 5.22a.75.75 0 0 1 1.06 0L8 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 0-1.06z'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 10px;
+  padding: 5px 12px;
+  border-radius: 0;
 }
 
-#controls .manuscript-picker select:hover { border-color: #8c959f; background-color: #f6f8fa; }
-#controls .manuscript-picker select:focus {
-  outline: none;
-  border-color: #2a7bb0;
-  box-shadow: 0 0 0 3px rgba(42, 123, 176, 0.15);
+#controls .picker-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px 0 0 4px;
+  border-right: 1px solid #e5e9ed;
+}
+
+#controls .picker-btn-caret {
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+  padding: 5px 8px;
+}
+
+#controls .picker-btn-primary:hover,
+#controls .picker-btn-caret:hover {
+  background: #f6f8fa;
+  border-color: #8c959f;
+}
+
+#controls .picker-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #57606a;
+}
+
+/* Menu panel — same look as the push menu, anchored to the picker. */
+#controls .picker-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+  min-width: 240px;
+  z-index: 50;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+#controls .picker-menu-item {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  padding: 8px 12px;
+  font-family: "Helvetica", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #1f2328;
+  box-sizing: border-box;
+  line-height: 1.3;
+}
+
+#controls .picker-menu-item + .picker-menu-item { border-top: 1px solid #d8dee4; }
+
+#controls .picker-menu-item:hover { background: #f6f8fa; color: #1f2328; }
+
+#controls .picker-menu-item-selected { font-weight: 600; }
+
+#controls .picker-menu-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: #2a7bb0;
 }
 
 .manuscript-picker-empty {
