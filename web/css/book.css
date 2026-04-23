@@ -105,48 +105,49 @@ body {
   align-items: center;
 }
 
-/* Brand: bigger and a touch more "product". Display serif feels right
-   given the rest of the app is for typography work. */
+/* Brand: present-but-quiet. Watermark grey so it sits behind the
+   actionable controls visually without disappearing. */
 #brand {
   font-family: Georgia, "Iowan Old Style", "Apple Garamond", serif;
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.005em;
-  color: #1f2328;
+  color: #c8ccd0;
   line-height: 1;
-  margin-right: 18px; /* extra breathing room before the picker */
 }
 
-/* Manuscript picker: native <select> styled to feel inline with the brand. */
+/* Manuscript picker — same shape/size as the push button, white variant.
+   Native <select> with a custom caret SVG so it visually matches the
+   push button's ▼ caret. */
 .manuscript-picker { display: inline-flex; align-items: center; }
 
-.manuscript-picker select {
-  font-family: Georgia, serif;
-  font-size: 15px;
+#controls .manuscript-picker select {
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
   color: #1f2328;
-  background: #fff;
+  background-color: #fff;
   border: 1px solid #d0d7de;
-  border-radius: 5px;
-  padding: 4px 26px 4px 10px;
+  border-radius: 4px;
+  padding: 5px 28px 5px 12px;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'><path fill='%2357606a' d='M3.22 5.22a.75.75 0 0 1 1.06 0L8 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 0-1.06z'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 12px;
+  background-position: right 10px center;
+  background-size: 10px;
 }
 
-.manuscript-picker select:hover { border-color: #8c959f; }
-.manuscript-picker select:focus {
+#controls .manuscript-picker select:hover { border-color: #8c959f; background-color: #f6f8fa; }
+#controls .manuscript-picker select:focus {
   outline: none;
   border-color: #2a7bb0;
   box-shadow: 0 0 0 3px rgba(42, 123, 176, 0.15);
 }
 
 .manuscript-picker-empty {
-  font-family: Georgia, serif;
-  font-size: 14px;
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
   color: #8c959f;
   font-style: italic;
 }
