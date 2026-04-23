@@ -1564,9 +1564,11 @@ p.indented {
   font-size: 13px;
   cursor: pointer;
   color: #333;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
-.push-menu-item:hover { background: #f5f5f5; }
+.push-menu-item:hover { background: #f5f5f5; color: #333; }
 
 #logout-btn {
   margin-left: 20px;

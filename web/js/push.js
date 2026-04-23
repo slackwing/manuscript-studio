@@ -21,6 +21,7 @@ const WriteSysPush = {
   _container: null,
   _menuOpen: false,
   _branchExists: false, // server-reported
+  _compareURL: '',      // server-computed; empty when no slug configured
 
   init() {
     this._container = document.getElementById('push-button-container');
@@ -45,9 +46,11 @@ const WriteSysPush = {
         `${this.apiBaseUrl}/manuscripts/${r.manuscriptId}/migrations/${r.currentMigrationID}/push-state`
       );
       this._branchExists = !!data.branch_exists;
+      this._compareURL = data.compare_url || '';
     } catch (err) {
       console.warn('push-state lookup failed (defaulting to "new"):', err.message || err);
       this._branchExists = false;
+      this._compareURL = '';
     }
   },
 
@@ -64,21 +67,34 @@ const WriteSysPush = {
     const isUpdate = this._branchExists;
     const primaryLabel = isUpdate ? `Push (${count})` : `Push New (${count})`;
     const primaryAction = isUpdate ? 'update' : 'new';
-    // No existing branch → only "Push New" makes sense. Hide the dropdown
-    // (a "Push" option without a branch to update would 404 or worse).
-    const altLabel  = isUpdate ? `Push New (${count})` : null;
-    const altAction = isUpdate ? 'new' : null;
+
+    // Dropdown items. Each: {kind: 'push'|'view', label, action?, url?}.
+    // Only show "Push" alongside the primary if the primary is "Push New".
+    // Always show "View on GitHub" when we have a branch + compare URL.
+    const items = [];
+    if (isUpdate) {
+      items.push({ kind: 'push', label: `Push New (${count})`, action: 'new' });
+    }
+    if (isUpdate && this._compareURL) {
+      items.push({ kind: 'view', label: 'View on GitHub', url: this._compareURL });
+    }
 
     const ghIcon = `<svg class="push-btn-gh" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
-    const primaryCls = altAction ? 'push-btn-primary push-btn-grouped' : 'push-btn-primary push-btn-solo';
-    const caretHtml = altAction
-      ? `<button type="button" class="push-btn-caret" aria-haspopup="true" aria-expanded="false">▼</button>
-         <div class="push-menu" hidden>
-           <button type="button" class="push-menu-item" data-action="${altAction}">${altLabel}</button>
-         </div>`
-      : '';
+    const hasMenu = items.length > 0;
+    const primaryCls = hasMenu ? 'push-btn-primary push-btn-grouped' : 'push-btn-primary push-btn-solo';
 
-    this._container.innerHTML = `<button type="button" class="${primaryCls}" data-action="${primaryAction}">${ghIcon}<span class="push-btn-label">${primaryLabel}</span></button>${caretHtml}`;
+    let menuHtml = '';
+    if (hasMenu) {
+      const itemsHtml = items.map((it, i) => it.kind === 'view'
+        // <a> so middle-click + cmd-click open in new tab; styled like a button.
+        ? `<a class="push-menu-item" href="${it.url}" target="_blank" rel="noopener" data-idx="${i}">${it.label}</a>`
+        : `<button type="button" class="push-menu-item" data-idx="${i}">${it.label}</button>`
+      ).join('');
+      menuHtml = `<button type="button" class="push-btn-caret" aria-haspopup="true" aria-expanded="false">▼</button>
+         <div class="push-menu" hidden>${itemsHtml}</div>`;
+    }
+
+    this._container.innerHTML = `<button type="button" class="${primaryCls}" data-action="${primaryAction}">${ghIcon}<span class="push-btn-label">${primaryLabel}</span></button>${menuHtml}`;
 
     const primary = this._container.querySelector('.push-btn-primary');
     const caret   = this._container.querySelector('.push-btn-caret');
@@ -89,9 +105,16 @@ const WriteSysPush = {
         e.stopPropagation();
         this._toggleMenu();
       });
-      menu.querySelector('.push-menu-item').addEventListener('click', () => {
-        this._closeMenu();
-        this._confirmAndPush(altAction, count);
+      menu.querySelectorAll('.push-menu-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const it = items[parseInt(el.dataset.idx, 10)];
+          this._closeMenu();
+          if (it.kind === 'push') {
+            e.preventDefault();
+            this._confirmAndPush(it.action, count);
+          }
+          // 'view' is an <a target="_blank">; let the browser handle it.
+        });
       });
     }
   },
@@ -147,17 +170,14 @@ const WriteSysPush = {
       }
       const data = await resp.json();
 
+      // Cache the URL so the dropdown's "View on GitHub" works immediately
+      // (push-state will re-confirm it on the next refresh).
+      if (data.compare_url) this._compareURL = data.compare_url;
       const skippedNote = data.skipped > 0
-        ? `\n\n${data.skipped} suggestion(s) were skipped (originals not found in source).`
+        ? ` (${data.skipped} skipped — originals not found in source)`
         : '';
-      if (data.compare_url) {
-        const open = confirm(
-          `Pushed ${data.applied} edit(s) to branch "${data.branch}".${skippedNote}\n\nOpen the GitHub compare page now?`
-        );
-        if (open) window.open(data.compare_url, '_blank', 'noopener');
-      } else {
-        alert(`Pushed ${data.applied} edit(s) to branch "${data.branch}".${skippedNote}`);
-      }
+      const viewHint = data.compare_url ? '. Use the ▼ menu → View on GitHub.' : '.';
+      alert(`Pushed ${data.applied} edit(s) to branch "${data.branch}"${skippedNote}${viewHint}`);
       // Refresh from server so label flips to "Push" after a successful "new".
       await this._loadBranchState();
       this.refresh();

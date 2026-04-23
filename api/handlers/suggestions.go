@@ -233,10 +233,16 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	compareURL := ""
+	if mc.Repository.Slug != "" {
+		compareURL = fmt.Sprintf("https://github.com/%s/compare/%s", mc.Repository.Slug, branch)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"branch":        branch,
 		"branch_exists": exists,
+		"compare_url":   compareURL,
 	})
 }
 

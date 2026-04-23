@@ -202,6 +202,12 @@ func (s *Server) setupRouter() {
 		}
 		filePath := filepath.Join("web", path)
 
+		// HTML must always revalidate so updated ?v= cache-busters on JS/CSS
+		// actually take effect. Without this, browsers heuristically cache
+		// index.html for hours and continue requesting the OLD asset versions.
+		if strings.HasSuffix(path, ".html") {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		if strings.HasSuffix(path, ".html") && basePath != "" {
 			data, err := os.ReadFile(filePath)
 			if err != nil {
