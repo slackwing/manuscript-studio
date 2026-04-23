@@ -16,6 +16,11 @@
  * client guess. Refreshed on init and after every successful push.
  */
 
+// Octicons-style monochrome SVGs sized to 16px so they line up with the
+// text baseline without extra wrapping.
+const ICON_BRANCH = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM3.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/></svg>`;
+const ICON_EXTERNAL = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3a.75.75 0 0 0-1.5 0v3a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3a.75.75 0 0 0 0-1.5h-3zm6.854-1a.75.75 0 0 0 0 1.5h1.836L8.22 7.22a.75.75 0 1 0 1.06 1.06L13.5 4.06v1.836a.75.75 0 0 0 1.5 0V1.75A.75.75 0 0 0 14.25 1h-3.646z"/></svg>`;
+
 const WriteSysPush = {
   apiBaseUrl: 'api',
   _container: null,
@@ -68,15 +73,26 @@ const WriteSysPush = {
     const primaryLabel = isUpdate ? `Push (${count})` : `Push New (${count})`;
     const primaryAction = isUpdate ? 'update' : 'new';
 
-    // Dropdown items. Each: {kind: 'push'|'view', label, action?, url?}.
-    // Only show "Push" alongside the primary if the primary is "Push New".
-    // Always show "View on GitHub" when we have a branch + compare URL.
+    // Dropdown items, GitHub-merge-button style:
+    //   {kind, label, desc, icon (svg string), action?, url?}
     const items = [];
     if (isUpdate) {
-      items.push({ kind: 'push', label: `Push New (${count})`, action: 'new' });
+      items.push({
+        kind: 'push',
+        label: `Push New (${count})`,
+        desc:  'Create a fresh branch instead of overwriting the current one.',
+        icon:  ICON_BRANCH,
+        action: 'new',
+      });
     }
     if (isUpdate && this._compareURL) {
-      items.push({ kind: 'view', label: 'View on GitHub', url: this._compareURL });
+      items.push({
+        kind: 'view',
+        label: 'View on GitHub',
+        desc:  'Open the compare page in a new tab.',
+        icon:  ICON_EXTERNAL,
+        url:   this._compareURL,
+      });
     }
 
     const ghIcon = `<svg class="push-btn-gh" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
@@ -85,10 +101,16 @@ const WriteSysPush = {
 
     let menuHtml = '';
     if (hasMenu) {
+      const inner = (it) => `
+        <span class="push-menu-icon">${it.icon || ''}</span>
+        <span class="push-menu-text">
+          <span class="push-menu-label">${it.label}</span>
+          ${it.desc ? `<span class="push-menu-desc">${it.desc}</span>` : ''}
+        </span>`;
       const itemsHtml = items.map((it, i) => it.kind === 'view'
         // <a> so middle-click + cmd-click open in new tab; styled like a button.
-        ? `<a class="push-menu-item" href="${it.url}" target="_blank" rel="noopener" data-idx="${i}">${it.label}</a>`
-        : `<button type="button" class="push-menu-item" data-idx="${i}">${it.label}</button>`
+        ? `<a class="push-menu-item" href="${it.url}" target="_blank" rel="noopener" data-idx="${i}">${inner(it)}</a>`
+        : `<button type="button" class="push-menu-item" data-idx="${i}">${inner(it)}</button>`
       ).join('');
       menuHtml = `<button type="button" class="push-btn-caret" aria-haspopup="true" aria-expanded="false">▼</button>
          <div class="push-menu" hidden>${itemsHtml}</div>`;
