@@ -1,9 +1,8 @@
 # Plan: Push-to-PR feature
 
-Status: planned, not yet built. Prerequisite (UNIFIED_DATA_SHAPE) shipped
-in commit 61d3777 + 0daaf38. This plan was last updated 2026-04-22 to
-reflect the new sentence-storage shape; previously-blocking items
-("markdown loss", "can't restructure paragraphs") are now unblocked.
+Status: **SHIPPED 2026-04-22**. Implemented per this plan; see
+ARCHITECTURE.md §6.8 for the live design summary. Kept here for the design
+notes and risk register.
 
 Owner notes: this captures a design discussion between Slackwing and Claude.
 

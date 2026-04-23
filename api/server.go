@@ -59,6 +59,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 		suggestionHandlers: &handlers.SuggestionHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
+			Config:       cfg,
 		},
 		adminHandlers: &handlers.AdminHandlers{
 			DB:        dbWrapper,
@@ -148,6 +149,8 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/{migration_id}/suggestions", s.suggestionHandlers.HandleGetSuggestionsForMigration)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
+			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
+			r.Get("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state", s.suggestionHandlers.HandleGetPushState)
 
 			r.Get("/annotations/{commit_hash}", s.annotationHandlers.HandleGetAnnotationsByCommit)
 			r.Get("/annotations/sentence/{sentence_id}", s.annotationHandlers.HandleGetAnnotationsBySentence)

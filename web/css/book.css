@@ -1481,6 +1481,82 @@ p.indented {
   background: #225f8c;
 }
 
+/* Push-to-PR split-button (lives in #controls). */
+.push-button-container {
+  display: inline-flex;
+  margin-left: 16px;
+  position: relative;
+  vertical-align: middle;
+}
+
+.push-button-container.push-busy { opacity: 0.6; pointer-events: none; }
+
+.push-btn-primary,
+.push-btn-caret {
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
+  border: 1px solid #2a7bb0;
+  background: #2a7bb0;
+  color: #fff;
+  cursor: pointer;
+  padding: 5px 12px;
+}
+
+.push-btn-primary {
+  border-radius: 4px 0 0 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.push-btn-caret {
+  border-left: 1px solid #225f8c;
+  border-radius: 0 4px 4px 0;
+  padding: 5px 8px;
+}
+
+.push-btn-primary:hover,
+.push-btn-caret:hover {
+  background: #225f8c;
+}
+
+.push-btn-primary:disabled,
+.push-btn-caret:disabled {
+  cursor: default;
+  background: #6b9ec1;
+  border-color: #6b9ec1;
+}
+
+.push-btn-gh { display: inline-block; }
+
+.push-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 140px;
+  z-index: 50;
+}
+
+.push-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 8px 12px;
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  color: #333;
+}
+
+.push-menu-item:hover { background: #f5f5f5; }
+
 /* Print styles */
 @media print {
   #controls,

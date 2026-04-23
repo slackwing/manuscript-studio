@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -216,6 +217,115 @@ func (g *GitRepository) ensureBareRemoteURL(ctx context.Context) error {
 		return fmt.Errorf("failed to set remote URL: %w", err)
 	}
 	return nil
+}
+
+// WriteCommitPushBranch creates (or force-updates) a branch from a given
+// base commit, with `fileContent` as the only change to `g.FilePath`,
+// committed as `message` and pushed to `origin`. Uses git plumbing
+// (read-tree + hash-object + commit-tree + update-ref) so it never touches
+// the working tree or HEAD — safe to call concurrently with the migration
+// processor's pull/checkout.
+//
+// `force` controls whether the push uses --force (used for `update` mode
+// where the same branch is overwritten with a fresh commit). For a brand
+// new branch, force is typically false.
+func (g *GitRepository) WriteCommitPushBranch(
+	ctx context.Context,
+	baseCommit, branch string,
+	fileContent []byte,
+	message string,
+	force bool,
+) (commitSHA string, err error) {
+	// 1. Hash the new file content as a blob in the object DB.
+	blobCmd := exec.CommandContext(ctx, "git", "-C", g.Path, "hash-object", "-w", "--stdin")
+	blobCmd.Stdin = bytes.NewReader(fileContent)
+	blobOut, err := blobCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git hash-object: %w", err)
+	}
+	blobSHA := strings.TrimSpace(string(blobOut))
+
+	// 2. Build a tree based on baseCommit, with the new blob swapped in.
+	indexFile, err := os.CreateTemp("", "manuscript-studio-index-*")
+	if err != nil {
+		return "", fmt.Errorf("temp index: %w", err)
+	}
+	indexPath := indexFile.Name()
+	indexFile.Close()
+	defer os.Remove(indexPath)
+
+	indexEnv := append(os.Environ(), "GIT_INDEX_FILE="+indexPath)
+
+	readTree := exec.CommandContext(ctx, "git", "-C", g.Path, "read-tree", baseCommit)
+	readTree.Env = indexEnv
+	if out, err := readTree.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git read-tree %s: %w (%s)", baseCommit, err, out)
+	}
+
+	updateIdx := exec.CommandContext(ctx, "git", "-C", g.Path, "update-index", "--add",
+		"--cacheinfo", fmt.Sprintf("100644,%s,%s", blobSHA, g.FilePath))
+	updateIdx.Env = indexEnv
+	if out, err := updateIdx.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git update-index: %w (%s)", err, out)
+	}
+
+	writeTree := exec.CommandContext(ctx, "git", "-C", g.Path, "write-tree")
+	writeTree.Env = indexEnv
+	treeOut, err := writeTree.Output()
+	if err != nil {
+		return "", fmt.Errorf("git write-tree: %w", err)
+	}
+	treeSHA := strings.TrimSpace(string(treeOut))
+
+	// 3. Make a commit with the user-author signature pulled from environment
+	// or the manuscript repo's git config (whichever git resolves first).
+	commitTree := exec.CommandContext(ctx, "git", "-C", g.Path, "commit-tree",
+		treeSHA, "-p", baseCommit, "-m", message)
+	commitOut, err := commitTree.Output()
+	if err != nil {
+		return "", fmt.Errorf("git commit-tree: %w", err)
+	}
+	commitSHA = strings.TrimSpace(string(commitOut))
+
+	// 4. Move the branch ref to the new commit. -m updates if it exists,
+	// creates if it doesn't. update-ref doesn't go through reflog/policy
+	// hooks so it always succeeds.
+	updateRef := exec.CommandContext(ctx, "git", "-C", g.Path, "update-ref",
+		"refs/heads/"+branch, commitSHA)
+	if out, err := updateRef.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git update-ref refs/heads/%s: %w (%s)", branch, err, out)
+	}
+
+	// 5. Push.
+	args := []string{"-C", g.Path, "push", "origin", "refs/heads/" + branch}
+	if force {
+		args = append(args[:3], append([]string{"--force"}, args[3:]...)...)
+	}
+	pushCmd, cleanup, err := g.gitCommand(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	if out, err := pushCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git push %s: %w (%s)", branch, err, scrubToken(string(out), g.AuthToken))
+	}
+
+	return commitSHA, nil
+}
+
+// LocalBranchExists reports whether refs/heads/<branch> exists in the local
+// clone. Used to decide between Push and Push New labels in the UI.
+func (g *GitRepository) LocalBranchExists(ctx context.Context, branch string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", g.Path, "rev-parse", "--verify", "--quiet",
+		"refs/heads/"+branch)
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("rev-parse refs/heads/%s: %w", branch, err)
 }
 
 func (g *GitRepository) isGitRepo() bool {

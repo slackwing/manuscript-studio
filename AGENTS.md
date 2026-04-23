@@ -283,6 +283,13 @@ ARCHITECTURE.md §6.5–§6.7.
 - **Annotation completion** (`completed_at` column + green checkmark UI +
   `POST /api/annotations/{id}/complete`). Filtered from reads, just like
   `deleted_at`.
+- **Push-to-PR** (`web/js/push.js` split-button + `internal/sentence/apply.go`
+  + `internal/migrations/git.go WriteCommitPushBranch` +
+  `POST /api/manuscripts/{id}/migrations/{mid}/push-suggestions`). User
+  pushes their suggestions as a `suggestions-{shortSHA}-{user}` branch on
+  the manuscript repo's `origin`. Commits are written via git plumbing so
+  the working tree/HEAD are untouched. See ARCHITECTURE.md §6.8 and
+  `PUSH_FEATURE_PLAN.md`.
 - **401 → login redirect** (`web/js/auth.js authenticatedFetch`) — any
   401 response sends the user to `login.html` so an expired session can't
   silently break the UI.

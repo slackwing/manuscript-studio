@@ -70,6 +70,8 @@ Response shape: `{"suggestions": [{suggestion_id, sentence_id, text, created_at,
 ### Suggestions
 - `PUT /api/sentences/{sentence_id}/suggestion` — body: `{text}`. Idempotent upsert (UNIQUE on `sentence_id`+`user_id`). If `text` equals the original sentence text, the server collapses the call into a DELETE.
 - `DELETE /api/sentences/{sentence_id}/suggestion` — explicit clear.
+- `GET /api/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state` — returns `{branch, branch_exists}` so the client can label its push button "Push" (update) vs "Push New" (create). `branch` is the canonical `suggestions-{shortSHA}-{user}` name.
+- `POST /api/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions` — body: `{action: "update" | "new"}`. Applies the calling user's suggestions for the migration into the .manuscript file at the migration's commit, commits, and force-pushes (`update`) or pushes (`new`) to the configured `origin`. Response: `{branch, compare_url, commit_sha, applied, skipped, results}`. Returns 409 with `{error: "stale"}` when the migration is no longer the latest for the manuscript.
 
 ### Tags
 - `GET /api/annotations/{annotation_id}/tags`

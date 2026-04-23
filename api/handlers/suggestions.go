@@ -1,21 +1,27 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
+	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
+	"github.com/slackwing/manuscript-studio/internal/migrations"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 // Suggestions are per-user, per-sentence, scoped to a migration via sentence_id FK.
 type SuggestionHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
+	Config       *config.Config
 }
 
 type upsertSuggestionRequest struct {
@@ -140,5 +146,302 @@ func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *ht
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type pushSuggestionsRequest struct {
+	Action string `json:"action"` // "update" | "new"
+}
+
+type pushSuggestionsResponse struct {
+	Branch     string                            `json:"branch"`
+	CompareURL string                            `json:"compare_url"`
+	CommitSHA  string                            `json:"commit_sha"`
+	Applied    int                               `json:"applied"`
+	Skipped    int                               `json:"skipped"`
+	Results    []sentence.SuggestionApplyResult  `json:"results"`
+}
+
+// Branch component sanitizer: the username appears in a ref name, so anything
+// outside [a-zA-Z0-9_-] becomes '-'. Empty becomes "user".
+var branchSafe = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+
+func sanitizeBranchComponent(s string) string {
+	out := branchSafe.ReplaceAllString(s, "-")
+	if out == "" {
+		return "user"
+	}
+	return out
+}
+
+// HandleGetPushState reports whether the canonical "suggestions-{shortSHA}-{user}"
+// branch already exists locally — used by the UI to label the push button as
+// "Push" (update) vs "Push New" (create).
+func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	manuscriptIDStr := chi.URLParam(r, "manuscript_id")
+	manuscriptID, err := strconv.Atoi(manuscriptIDStr)
+	if err != nil {
+		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
+		return
+	}
+	migrationIDStr := chi.URLParam(r, "migration_id")
+	migrationID, err := strconv.Atoi(migrationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	migration, err := h.DB.GetMigrationByID(ctx, migrationID)
+	if err != nil || migration == nil {
+		http.Error(w, "Migration not found", http.StatusNotFound)
+		return
+	}
+	manuscript, err := h.DB.GetManuscriptByID(ctx, manuscriptID)
+	if err != nil || manuscript == nil {
+		http.Error(w, "Manuscript not found", http.StatusNotFound)
+		return
+	}
+	mc := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
+	if mc == nil {
+		http.Error(w, "Manuscript not configured on this server", http.StatusNotImplemented)
+		return
+	}
+
+	commitShort := migration.CommitHash
+	if len(commitShort) > 7 {
+		commitShort = commitShort[:7]
+	}
+	userPart := sanitizeBranchComponent(session.Username)
+	branch := fmt.Sprintf("suggestions-%s-%s", commitShort, userPart)
+
+	gitRepo := &migrations.GitRepository{
+		Path:      h.Config.RepoPath(mc.Name),
+		Branch:    mc.Repository.Branch,
+		RemoteURL: mc.Repository.CloneURL(),
+		FilePath:  mc.Repository.Path,
+		AuthToken: mc.Repository.AuthToken,
+	}
+	exists, err := gitRepo.LocalBranchExists(ctx, branch)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to check branch: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"branch":        branch,
+		"branch_exists": exists,
+	})
+}
+
+// HandlePushSuggestions pushes the calling user's unmerged suggestions for the
+// given manuscript as a branch on the manuscript's GitHub repo. See
+// PUSH_FEATURE_PLAN.md for the contract.
+func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	manuscriptIDStr := chi.URLParam(r, "manuscript_id")
+	manuscriptID, err := strconv.Atoi(manuscriptIDStr)
+	if err != nil {
+		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
+		return
+	}
+
+	migrationIDStr := chi.URLParam(r, "migration_id")
+	migrationID, err := strconv.Atoi(migrationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	csrfToken := r.Header.Get("X-CSRF-Token")
+	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+
+	var req pushSuggestionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Action != "update" && req.Action != "new" {
+		http.Error(w, `action must be "update" or "new"`, http.StatusBadRequest)
+		return
+	}
+
+	// 1. Stale-migration guard: only push from the latest migration.
+	latest, err := h.DB.GetLatestMigration(ctx, manuscriptID)
+	if err != nil {
+		http.Error(w, "Failed to load latest migration", http.StatusInternalServerError)
+		return
+	}
+	if latest == nil {
+		http.Error(w, "No migrations exist for this manuscript", http.StatusNotFound)
+		return
+	}
+	if latest.MigrationID != migrationID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":          "stale",
+			"latest_id":      strconv.Itoa(latest.MigrationID),
+			"requested_id":   strconv.Itoa(migrationID),
+			"hint":           "manuscript has been updated — please refresh",
+		})
+		return
+	}
+
+	// 2. Resolve manuscript → config so we know which repo to push to.
+	manuscript, err := h.DB.GetManuscriptByID(ctx, manuscriptID)
+	if err != nil || manuscript == nil {
+		http.Error(w, "Manuscript not found", http.StatusNotFound)
+		return
+	}
+	mc := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
+	if mc == nil {
+		http.Error(w, "Manuscript not configured on this server", http.StatusNotImplemented)
+		return
+	}
+
+	// 3. Load this user's suggestions and the original sentence texts.
+	suggestions, err := h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
+	if err != nil {
+		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
+		return
+	}
+	if len(suggestions) == 0 {
+		http.Error(w, "No suggestions to push", http.StatusBadRequest)
+		return
+	}
+	sentenceIDs := make([]string, len(suggestions))
+	for i, s := range suggestions {
+		sentenceIDs[i] = s.SentenceID
+	}
+	sentenceRows, err := h.DB.GetSentenceTextsByIDs(ctx, sentenceIDs)
+	if err != nil {
+		http.Error(w, "Failed to load sentence originals", http.StatusInternalServerError)
+		return
+	}
+	originals := make(map[string]string, len(sentenceRows))
+	for id, row := range sentenceRows {
+		originals[id] = row.Text
+	}
+
+	// 4. Read the .manuscript file at the latest commit hash from the local clone.
+	gitRepo := &migrations.GitRepository{
+		Path:      h.Config.RepoPath(mc.Name),
+		Branch:    mc.Repository.Branch,
+		RemoteURL: mc.Repository.CloneURL(),
+		FilePath:  mc.Repository.Path,
+		AuthToken: mc.Repository.AuthToken,
+	}
+	srcStr, err := gitRepo.GetFileContent(ctx, latest.CommitHash)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read manuscript at %s: %v", latest.CommitHash, err), http.StatusInternalServerError)
+		return
+	}
+
+	// 5. Apply suggestions in-memory.
+	newContent, results := sentence.ApplySuggestions([]byte(srcStr), suggestions, originals)
+	applied, skipped := 0, 0
+	for _, r := range results {
+		if r.Applied {
+			applied++
+		} else {
+			skipped++
+		}
+	}
+	if applied == 0 {
+		http.Error(w, "No suggestions applied (all originals missing from source)", http.StatusConflict)
+		return
+	}
+
+	// 6. Pick branch name. `commitShort` is first 7 chars of the SHA.
+	commitShort := latest.CommitHash
+	if len(commitShort) > 7 {
+		commitShort = commitShort[:7]
+	}
+	userPart := sanitizeBranchComponent(session.Username)
+	baseName := fmt.Sprintf("suggestions-%s-%s", commitShort, userPart)
+	branch, force, err := h.resolveBranchName(ctx, gitRepo, baseName, req.Action)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to pick branch name: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 7. Write commit + push.
+	message := fmt.Sprintf("Apply %d suggested edit(s) from %s", applied, session.Username)
+	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, force)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to push branch: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	compareURL := ""
+	if mc.Repository.Slug != "" {
+		compareURL = fmt.Sprintf("https://github.com/%s/compare/%s", mc.Repository.Slug, branch)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pushSuggestionsResponse{
+		Branch:     branch,
+		CompareURL: compareURL,
+		CommitSHA:  commitSHA,
+		Applied:    applied,
+		Skipped:    skipped,
+		Results:    results,
+	})
+}
+
+// resolveBranchName returns (branch, force):
+//   - "update": always returns baseName, force=true (overwrite the canonical branch).
+//   - "new":    tries baseName first, then baseName-2, baseName-3, ... up to
+//               the first that does NOT exist locally. force=false.
+//
+// "new" only checks LOCAL refs, not remote. Pushing without --force will fail
+// fast on conflict, which is the right behaviour (the operator can refresh).
+func (h *SuggestionHandlers) resolveBranchName(ctx context.Context, g *migrations.GitRepository, baseName, action string) (string, bool, error) {
+	if action == "update" {
+		return baseName, true, nil
+	}
+	candidates := append([]string{baseName}, func() []string {
+		out := make([]string, 0, 998)
+		for n := 2; n < 1000; n++ {
+			out = append(out, fmt.Sprintf("%s-%d", baseName, n))
+		}
+		return out
+	}()...)
+	for _, candidate := range candidates {
+		exists, err := g.LocalBranchExists(ctx, candidate)
+		if err != nil {
+			return "", false, err
+		}
+		if !exists {
+			return candidate, false, nil
+		}
+	}
+	return "", false, fmt.Errorf("could not find unused branch name under %s", baseName)
+}
+
+func (h *SuggestionHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {
+	for i, m := range h.Config.Manuscripts {
+		if m.Repository.CloneURL() == repoURL && m.Repository.Path == filePath {
+			return &h.Config.Manuscripts[i]
+		}
+	}
+	return nil
 }
 

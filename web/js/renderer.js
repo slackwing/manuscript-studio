@@ -73,6 +73,10 @@ const WriteSysRenderer = {
       this.showStatus(`Loaded ${this.currentSentences.length} sentences`);
       document.getElementById('sentence-count').textContent = `${this.currentSentences.length} sentences`;
 
+      if (window.WriteSysPush) {
+        window.WriteSysPush.init();
+      }
+
     } catch (error) {
       console.error('Failed to load manuscript:', error);
       this.showStatus(`Error: ${error.message}`, 'error');

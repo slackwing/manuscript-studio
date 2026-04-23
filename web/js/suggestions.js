@@ -118,6 +118,9 @@ const WriteSysSuggestions = {
       if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
         await window.WriteSysRenderer.renderManuscript();
       }
+      if (window.WriteSysPush) {
+        window.WriteSysPush.refresh();
+      }
     };
 
     overlay.addEventListener('click', close);
