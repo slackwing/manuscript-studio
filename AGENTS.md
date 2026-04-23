@@ -123,7 +123,6 @@ yours will run on dirty data.
 api/             HTTP handlers (admin, annotations, auth, migrations, suggestions)
 cmd/server/      Main server entrypoint
 cmd/admin-upsert/ One-shot: seed the admin user from config
-cmd/backfill-prev-sentence/  CLI: populate previous_sentence_id for legacy data
 internal/        Core logic: config, database, auth, migrations, sentence,
                  segmenter (vendored — see N8), fractional, models
 liquibase/       Database schema (frozen 001 + numbered changesets)
@@ -132,6 +131,7 @@ web/             Frontend (vanilla JS, no build step)
 tests/           Playwright + Node test suite (classified in test-all.sh)
 testdata/        Fixtures (test.manuscript + init script)
 debug/           User-facing debugging scripts (nuke_database.sh, connect_db.sh)
+old/             Archived one-shot tools (see old/README.md)
 install.sh       One-liner installer
 Makefile         Dev workflow targets
 test-all.sh      Test runner (fast/slow/all/js-only)
@@ -293,6 +293,14 @@ ARCHITECTURE.md §6.5–§6.7.
 - **401 → login redirect** (`web/js/auth.js authenticatedFetch`) — any
   401 response sends the user to `login.html` so an expired session can't
   silently break the UI.
+- **Manuscript picker + access guard** (`web/js/picker.js` top-bar
+  dropdown; `api/handlers/access.go` `requireManuscriptAccess*`). Manuscript
+  is no longer baked into the session — it's URL-driven via
+  `?manuscript_id=N`. Every per-manuscript endpoint (handlers in
+  `migrations.go`, `suggestions.go`, `annotations.go`) calls one of the
+  `requireManuscriptAccess*` helpers; they 404 on access miss to avoid
+  existence leaks. Last-opened manuscript is persisted on the user row so
+  the next login lands on it.
 - **Confidence == 1.0** (in `internal/migrations`): the gate for
   copy-forward of suggestions on a pairing. Annotations carry forward at
   any confidence; suggestions only at exact-text match.

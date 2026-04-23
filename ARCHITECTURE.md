@@ -57,8 +57,9 @@ api/                 HTTP router, request handlers
 cmd/
   server/            Main server entrypoint (cmd/server/main.go)
   admin-upsert/      One-shot binary: seeds admin user from config
-  backfill-prev-sentence/  CLI to populate sentence.previous_sentence_id
-                     for manuscripts that pre-date the history feature
+old/                 Archived one-shot tools (see old/README.md)
+  cmd/backfill-prev-sentence/  Populated sentence.previous_sentence_id (one-time)
+  cmd/backfill-raw-text/       Populated sentence.text raw form (one-time)
 internal/            Shared Go code not intended for import outside this repo
   auth/              Sessions, bcrypt, CSRF, admin-token check
   config/            YAML loader
@@ -109,8 +110,8 @@ test-all.sh          Test runner with fast/slow/all/js-only modes
   - **`previous_sentence_id`** (nullable, self-FK) — set by the migration
     processor when an old→new pairing is found. This is the **lynchpin of
     cross-commit identity**: any code that asks "what was this sentence
-    before?" walks this chain. Backfilled for legacy data by
-    `cmd/backfill-prev-sentence`.
+    before?" walks this chain. Legacy data was backfilled once via
+    `old/cmd/backfill-prev-sentence`.
 - **`annotation`** — the user-facing layer: color, note, priority, flagged,
   position (fractional index for within-sentence ordering). Soft-deleted via
   `deleted_at`. References a `sentence_id`.
@@ -398,7 +399,19 @@ AGENTS.md for the full rule.
 
 - **Sessions** — cookie-based, server-side session store
   (`internal/auth/auth.go`). Bcrypt password hashes in the `user` table.
-  Sessions expire after 24 hours.
+  Sessions expire after 24 hours. The session row carries identity only
+  (`username`, `csrf_token`); manuscript selection is **runtime state**
+  driven by the URL (`?manuscript_id=N`).
+- **Manuscript picker** — login lands the user on
+  `user.last_manuscript_name` (if still accessible), else the first
+  accessible manuscript. The top-bar picker (`web/js/picker.js`) lets users
+  switch without re-logging-in; selecting a manuscript reloads with the new
+  `?manuscript_id=N` and POSTs `/api/session/last-manuscript`.
+- **Per-manuscript access guard** — every per-manuscript endpoint goes
+  through one of `requireManuscriptAccess{,ForMigration,ForSentence,ForAnnotation}`
+  in `api/handlers/access.go`. They resolve the requested entity back to a
+  manuscript name, check `manuscript_access`, and 404 on miss (the same
+  status as "doesn't exist", to avoid existence leaks).
 - **CSRF** — per-session token. State-changing routes require
   `X-CSRF-Token` header matching the session's token.
 - **Admin (system) token** — for server-to-server operations (GitHub
@@ -408,8 +421,7 @@ AGENTS.md for the full rule.
 - **Timing-safe login** — login always runs bcrypt, even for unknown users
   (dummy hash), so response time doesn't leak whether a username exists.
 - **Generic error messages** — failed login always says "Invalid
-  credentials", whether the problem was a missing user, wrong password, or
-  lack of manuscript access. Prevents enumeration.
+  credentials".
 
 ---
 

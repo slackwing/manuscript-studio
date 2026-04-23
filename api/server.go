@@ -55,6 +55,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 		annotationHandlers: &handlers.AnnotationHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
+			Config:       cfg,
 		},
 		suggestionHandlers: &handlers.SuggestionHandlers{
 			DB:           dbWrapper,
@@ -135,12 +136,12 @@ func (s *Server) setupRouter() {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/login", s.authHandlers.HandleLogin)
 		r.Get("/users", s.authHandlers.HandleGetUsers)
-		r.Get("/manuscripts", s.authHandlers.HandleGetManuscripts)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(s.sessionStore))
 			r.Post("/logout", s.authHandlers.HandleLogout)
 			r.Get("/session", s.authHandlers.HandleGetSession)
+			r.Post("/session/last-manuscript", s.authHandlers.HandleSetLastManuscript)
 
 			r.Get("/migrations", s.migrationHandlers.HandleGetMigrations)
 			r.Get("/migrations/latest", s.migrationHandlers.HandleGetLatestMigration)

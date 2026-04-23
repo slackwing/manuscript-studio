@@ -36,6 +36,9 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
 		return
 	}
+	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
+		return
+	}
 
 	session, err := auth.GetSession(r)
 	if err != nil {
@@ -67,6 +70,9 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 	sentenceID := chi.URLParam(r, "sentence_id")
 	if sentenceID == "" {
 		http.Error(w, "sentence_id required", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
 		return
 	}
 
@@ -127,6 +133,9 @@ func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *ht
 		http.Error(w, "sentence_id required", http.StatusBadRequest)
 		return
 	}
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
+		return
+	}
 
 	session, err := auth.GetSession(r)
 	if err != nil {
@@ -184,6 +193,9 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 	migrationID, err := strconv.Atoi(migrationIDStr)
 	if err != nil {
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
 		return
 	}
 	session, err := auth.GetSession(r)
@@ -253,6 +265,9 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	migrationID, err := strconv.Atoi(migrationIDStr)
 	if err != nil {
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
 		return
 	}
 

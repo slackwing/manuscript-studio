@@ -29,11 +29,10 @@ const SessionTTL = 24 * time.Hour
 const sessionRefreshThreshold = 6 * time.Hour
 
 type Session struct {
-	Username       string
-	ManuscriptName string
-	CSRFToken      string
-	CreatedAt      time.Time
-	ExpiresAt      time.Time
+	Username  string
+	CSRFToken string
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }
 
 // SessionStore persists sessions in the `session` table so they survive process
@@ -50,8 +49,9 @@ func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
 	return s
 }
 
-// Create inserts a session row and returns the cookie token.
-func (s *SessionStore) Create(username, manuscriptName string) (string, error) {
+// Create inserts a session row and returns the cookie token. Sessions no
+// longer carry a manuscript — that's runtime state driven by the URL.
+func (s *SessionStore) Create(username string) (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
 		return "", err
@@ -68,10 +68,10 @@ func (s *SessionStore) Create(username, manuscriptName string) (string, error) {
 	defer cancel()
 
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO session (id, username, manuscript_name, csrf_token,
+		INSERT INTO session (id, username, csrf_token,
 		                     created_at, expires_at, last_activity_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $5)
-	`, token, username, manuscriptName, csrfToken, now, expires)
+		VALUES ($1, $2, $3, $4, $5, $4)
+	`, token, username, csrfToken, now, expires)
 	if err != nil {
 		return "", fmt.Errorf("failed to insert session: %w", err)
 	}
@@ -90,14 +90,14 @@ func (s *SessionStore) Get(token string) (*Session, bool) {
 	defer cancel()
 
 	var (
-		username, manuscriptName, csrfToken string
-		createdAt, expiresAt                time.Time
+		username, csrfToken  string
+		createdAt, expiresAt time.Time
 	)
 	err := s.pool.QueryRow(ctx, `
-		SELECT username, manuscript_name, csrf_token, created_at, expires_at
+		SELECT username, csrf_token, created_at, expires_at
 		FROM session
 		WHERE id = $1
-	`, token).Scan(&username, &manuscriptName, &csrfToken, &createdAt, &expiresAt)
+	`, token).Scan(&username, &csrfToken, &createdAt, &expiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false
 	}
@@ -121,11 +121,10 @@ func (s *SessionStore) Get(token string) (*Session, bool) {
 	`, now, newExpires, token)
 
 	return &Session{
-		Username:       username,
-		ManuscriptName: manuscriptName,
-		CSRFToken:      csrfToken,
-		CreatedAt:      createdAt,
-		ExpiresAt:      newExpires,
+		Username:  username,
+		CSRFToken: csrfToken,
+		CreatedAt: createdAt,
+		ExpiresAt: newExpires,
 	}, true
 }
 

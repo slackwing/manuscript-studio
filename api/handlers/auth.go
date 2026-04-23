@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -18,15 +19,22 @@ type AuthHandlers struct {
 }
 
 type LoginRequest struct {
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	ManuscriptName string `json:"manuscript_name"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// ManuscriptOption pairs the friendly name with its DB-keyed id so the
+// frontend can both display and route to a manuscript.
+type ManuscriptOption struct {
+	Name         string `json:"name"`
+	ManuscriptID int    `json:"manuscript_id"`
 }
 
 type LoginResponse struct {
-	Username       string `json:"username"`
-	ManuscriptName string `json:"manuscript_name"`
-	CSRFToken      string `json:"csrf_token"`
+	Username           string             `json:"username"`
+	CSRFToken          string             `json:"csrf_token"`
+	LastManuscriptName string             `json:"last_manuscript_name,omitempty"`
+	Manuscripts        []ManuscriptOption `json:"manuscripts"`
 }
 
 // Real bcrypt hash at production cost factor. Used so VerifyPassword does
@@ -45,7 +53,7 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" || req.Password == "" || req.ManuscriptName == "" {
+	if req.Username == "" || req.Password == "" {
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
@@ -61,23 +69,15 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		hashToCompare = user.PasswordHash
 	}
-	// Bcrypt and access check both run unconditionally; results are combined
-	// below. The wall-clock cost is what makes the login timing-safe.
+	// Bcrypt always runs (real hash or dummy) so timing doesn't reveal user
+	// existence.
 	passwordValid := auth.VerifyPassword(req.Password, hashToCompare)
-
-	hasAccess, err := h.DB.HasManuscriptAccess(ctx, req.Username, req.ManuscriptName)
-	if err != nil {
-		log.Printf("Error checking manuscript access: %v", err)
+	if user == nil || !passwordValid {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	if user == nil || !passwordValid || !hasAccess {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	token, err := h.SessionStore.Create(req.Username, req.ManuscriptName)
+	token, err := h.SessionStore.Create(req.Username)
 	if err != nil {
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
@@ -95,14 +95,54 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	})
 
-	response := LoginResponse{
-		Username:       user.Username,
-		ManuscriptName: req.ManuscriptName,
-		CSRFToken:      session.CSRFToken,
+	// Pre-compute the picker payload so the client can land on the right
+	// manuscript without a follow-up round trip.
+	options, err := h.userManuscriptOptions(ctx, user.Username)
+	if err != nil {
+		log.Printf("Error loading user manuscripts: %v", err)
+		options = nil
+	}
+	last, err := h.DB.GetLastManuscriptName(ctx, user.Username)
+	if err != nil {
+		log.Printf("Error loading last manuscript: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(LoginResponse{
+		Username:           user.Username,
+		CSRFToken:          session.CSRFToken,
+		LastManuscriptName: last,
+		Manuscripts:        options,
+	})
+}
+
+// userManuscriptOptions resolves the user's access-list (names) into picker
+// entries (name + manuscript_id). Entries without a DB row (config exists but
+// the manuscript hasn't been bootstrapped yet) are skipped — the picker only
+// shows manuscripts the user can actually open right now.
+func (h *AuthHandlers) userManuscriptOptions(ctx context.Context, username string) ([]ManuscriptOption, error) {
+	access, err := h.DB.GetManuscriptAccessForUser(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ManuscriptOption, 0, len(access))
+	for _, ma := range access {
+		mc, err := h.Config.GetManuscript(ma.ManuscriptName)
+		if err != nil {
+			// Config entry was removed; skip silently.
+			continue
+		}
+		m, err := h.DB.GetManuscript(ctx, mc.Repository.CloneURL(), mc.Repository.Path)
+		if err != nil || m == nil {
+			// Not bootstrapped yet — skip.
+			continue
+		}
+		out = append(out, ManuscriptOption{
+			Name:         ma.ManuscriptName,
+			ManuscriptID: m.ManuscriptID,
+		})
+	}
+	return out, nil
 }
 
 func (h *AuthHandlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -162,34 +202,70 @@ func (h *AuthHandlers) HandleGetSession(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ctx := r.Context()
-	manuscripts, err := h.DB.GetManuscriptAccessForUser(ctx, session.Username)
+	options, err := h.userManuscriptOptions(ctx, session.Username)
 	if err != nil {
 		http.Error(w, "Failed to get manuscript access", http.StatusInternalServerError)
 		return
 	}
 
-	manuscriptNames := make([]string, len(manuscripts))
-	for i, m := range manuscripts {
-		manuscriptNames[i] = m.ManuscriptName
+	last, err := h.DB.GetLastManuscriptName(ctx, session.Username)
+	if err != nil {
+		// Non-fatal: just leave it empty so the client picks first-accessible.
+		last = ""
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"username":               session.Username,
-		"manuscript_name":        session.ManuscriptName,
 		"csrf_token":             session.CSRFToken,
-		"accessible_manuscripts": manuscriptNames,
+		"accessible_manuscripts": options,
+		"last_manuscript_name":   last,
 	})
 }
 
-// HandleGetManuscripts returns configured manuscript names (login dropdown). Unauthenticated.
-func (h *AuthHandlers) HandleGetManuscripts(w http.ResponseWriter, r *http.Request) {
-	names := make([]string, 0, len(h.Config.Manuscripts))
-	for _, m := range h.Config.Manuscripts {
-		names = append(names, m.Name)
+// HandleSetLastManuscript records the user's most recently opened manuscript.
+// Idempotent; silently ignores manuscripts the user can't access.
+func (h *AuthHandlers) HandleSetLastManuscript(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"manuscripts": names,
-	})
+
+	csrfToken := r.Header.Get("X-CSRF-Token")
+	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		ManuscriptName string `json:"manuscript_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.ManuscriptName == "" {
+		http.Error(w, "manuscript_name required", http.StatusBadRequest)
+		return
+	}
+
+	hasAccess, err := h.DB.HasManuscriptAccess(ctx, session.Username, req.ManuscriptName)
+	if err != nil {
+		http.Error(w, "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := h.DB.SetLastManuscriptName(ctx, session.Username, req.ManuscriptName); err != nil {
+		http.Error(w, "Failed to record last manuscript", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
+

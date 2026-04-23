@@ -11,12 +11,31 @@ const WriteSysRenderer = {
   async init() {
     console.log('WriteSys Renderer initialized');
 
-    const urlParams = new URLSearchParams(window.location.search);
-    this.manuscriptId = parseInt(urlParams.get('manuscript_id') || '1', 10);
-    console.log(`Using manuscript_id: ${this.manuscriptId}`);
-
     // Bind once at init, not per-render — saves trigger re-renders.
     window.addEventListener('resize', () => this.applyResponsiveScaling());
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const idStr = urlParams.get('manuscript_id');
+    this.manuscriptId = idStr ? parseInt(idStr, 10) : null;
+
+    // Picker is independent of the manuscript being loadable: always init it
+    // so the user can switch even from an empty/no-access state.
+    if (window.WriteSysPicker) await window.WriteSysPicker.init();
+
+    if (!this.manuscriptId) {
+      console.log('No manuscript_id in URL; showing empty state.');
+      return;
+    }
+
+    // Defense in depth: the picker only listed accessible manuscripts, but a
+    // hand-typed URL could point at one the user can't open. Treat that the
+    // same as "not loaded".
+    const accessible = (window.WriteSysPicker && window.WriteSysPicker.accessible) || [];
+    if (accessible.length > 0 && !accessible.find(m => m.manuscript_id === this.manuscriptId)) {
+      console.log(`manuscript_id ${this.manuscriptId} not in accessible list; showing empty state.`);
+      this.manuscriptId = null;
+      return;
+    }
 
     await this.loadLatestMigration();
   },
@@ -33,17 +52,18 @@ const WriteSysRenderer = {
       const shortHash = migration.commit_hash.substring(0, 7);
       const date = new Date(migration.processed_at).toLocaleDateString();
       const session = window.currentSession || {};
-      // Tooltip on the ⓘ icon: line-broken so a hover reads as a small fact card.
-      const info = [
-        session.manuscript_name ? `Manuscript: ${session.manuscript_name}` : null,
-        session.username ? `User: ${session.username}` : null,
-        `Commit: ${shortHash}`,
-        `Segmenter: ${migration.segmenter}`,
-        `Loaded: ${date}`,
-        `Sentences: ${migration.sentence_count}`,
-      ].filter(Boolean).join('\n');
-      const infoIcon = document.getElementById('info-icon');
-      if (infoIcon) infoIcon.title = info;
+      const picker = window.WriteSysPicker;
+      const manuscriptName = (picker && picker.currentName) || '';
+      if (window.WriteSysInfoTooltip) {
+        window.WriteSysInfoTooltip.set([
+          manuscriptName ? ['Manuscript', manuscriptName] : null,
+          session.username ? ['User', session.username] : null,
+          ['Commit', shortHash],
+          ['Segmenter', migration.segmenter],
+          ['Loaded', date],
+          ['Sentences', String(migration.sentence_count)],
+        ].filter(Boolean));
+      }
 
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
@@ -52,8 +72,9 @@ const WriteSysRenderer = {
     } catch (error) {
       console.error('Failed to load latest migration:', error);
       this.showStatus(`Error: ${error.message}`, 'error');
-      const infoIcon = document.getElementById('info-icon');
-      if (infoIcon) infoIcon.title = `Error: ${error.message}`;
+      if (window.WriteSysInfoTooltip) {
+        window.WriteSysInfoTooltip.set([['Error', error.message]]);
+      }
     }
   },
 

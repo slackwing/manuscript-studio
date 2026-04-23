@@ -39,6 +39,9 @@ func (h *MigrationHandlers) HandleGetMigrations(w http.ResponseWriter, r *http.R
 		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
 		return
 	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
+		return
+	}
 
 	migrations, err := h.DB.GetMigrations(ctx, manuscriptID)
 	if err != nil {
@@ -64,6 +67,9 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 	manuscriptID, err := strconv.Atoi(manuscriptIDStr)
 	if err != nil {
 		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
 		return
 	}
 
@@ -92,6 +98,9 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	migrationID, err := strconv.Atoi(migrationIDStr)
 	if err != nil {
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
 		return
 	}
 
@@ -158,6 +167,9 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 	migrationID, err := strconv.Atoi(migrationIDStr)
 	if err != nil {
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
 		return
 	}
 

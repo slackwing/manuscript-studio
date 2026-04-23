@@ -105,12 +105,49 @@ body {
   align-items: center;
 }
 
+/* Brand: bigger and a touch more "product". Display serif feels right
+   given the rest of the app is for typography work. */
 #brand {
-  font-family: "Helvetica", sans-serif;
-  font-size: 15px;
+  font-family: Georgia, "Iowan Old Style", "Apple Garamond", serif;
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   color: #1f2328;
+  line-height: 1;
+}
+
+/* Manuscript picker: native <select> styled to feel inline with the brand. */
+.manuscript-picker { display: inline-flex; align-items: center; }
+
+.manuscript-picker select {
+  font-family: Georgia, serif;
+  font-size: 15px;
+  color: #1f2328;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 5px;
+  padding: 4px 26px 4px 10px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'><path fill='%2357606a' d='M3.22 5.22a.75.75 0 0 1 1.06 0L8 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 0-1.06z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+}
+
+.manuscript-picker select:hover { border-color: #8c959f; }
+.manuscript-picker select:focus {
+  outline: none;
+  border-color: #2a7bb0;
+  box-shadow: 0 0 0 3px rgba(42, 123, 176, 0.15);
+}
+
+.manuscript-picker-empty {
+  font-family: Georgia, serif;
+  font-size: 14px;
+  color: #8c959f;
+  font-style: italic;
 }
 
 #info-icon {
@@ -119,12 +156,49 @@ body {
   justify-content: center;
   width: 22px;
   height: 22px;
-  color: #57606a;
+  color: #8c959f;
   cursor: help;
   border-radius: 50%;
 }
 
 #info-icon:hover { color: #1f2328; background: #f6f8fa; }
+
+/* Info tooltip — same look as .history-popup so the app feels coherent. */
+.info-popup {
+  position: absolute;
+  z-index: 100;
+  background: #fafafa;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  max-width: 360px;
+  font-family: Georgia, serif;
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.info-popup-row {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.info-popup-row:last-child { border-bottom: none; }
+
+.info-popup-label {
+  flex: 0 0 88px;
+  color: #888;
+  font-family: "Helvetica", sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  padding-top: 2px;
+  letter-spacing: 0.04em;
+}
+
+.info-popup-text { flex: 1 1 auto; color: #333; word-break: break-word; }
 
 #controls label {
   font-family: "Helvetica", sans-serif;

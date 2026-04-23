@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
+	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
@@ -15,6 +16,7 @@ import (
 type AnnotationHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
+	Config       *config.Config
 }
 
 type CreateAnnotationRequest struct {
@@ -66,6 +68,9 @@ func (h *AnnotationHandlers) HandleGetAnnotationsByCommit(w http.ResponseWriter,
 func (h *AnnotationHandlers) HandleGetAnnotationsBySentence(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sentenceID := chi.URLParam(r, "sentence_id")
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
+		return
+	}
 
 	session, err := auth.GetSession(r)
 	if err != nil {
@@ -95,6 +100,9 @@ func (h *AnnotationHandlers) HandleCreateAnnotation(w http.ResponseWriter, r *ht
 	}
 	if req.Color == "" || req.SentenceID == "" {
 		http.Error(w, "Missing required fields: color, sentence_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, req.SentenceID) {
 		return
 	}
 

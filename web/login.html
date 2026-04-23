@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WriteSys - Login</title>
+  <title>Manuscript Studio — Login</title>
   <style>
     * {
       margin: 0;
@@ -141,8 +141,8 @@
 </head>
 <body>
   <div class="login-container">
-    <h1>WriteSys</h1>
-    <p class="subtitle">Book Annotation System</p>
+    <h1>Manuscript Studio</h1>
+    <p class="subtitle">Sign in to continue</p>
 
     <div id="error" class="error"></div>
 
@@ -159,13 +159,6 @@
         <div class="password-toggle">
           <input type="password" id="password" name="password" required autocomplete="current-password" />
         </div>
-      </div>
-
-      <div class="form-group">
-        <label for="manuscript">Manuscript</label>
-        <select id="manuscript" name="manuscript" required>
-          <option value="">Select a manuscript</option>
-        </select>
       </div>
 
       <button type="submit" id="login-btn">Log In</button>
@@ -197,27 +190,9 @@
       }
     }
 
-    // Load manuscripts from the server
-    async function loadManuscripts() {
-      try {
-        const response = await fetch('api/manuscripts');
-        if (!response.ok) throw new Error('Failed to load manuscripts');
-
-        const data = await response.json();
-        const select = document.getElementById('manuscript');
-
-        select.innerHTML = '<option value="">Select a manuscript</option>';
-        (data.manuscripts || []).forEach(name => {
-          const option = document.createElement('option');
-          option.value = name;
-          option.textContent = name;
-          select.appendChild(option);
-        });
-      } catch (error) {
-        showError('Failed to load manuscripts. Please refresh the page.');
-        console.error(error);
-      }
-    }
+    // Manuscript selection happens AFTER login via the top-bar picker.
+    // The login response carries the user's accessible manuscripts and which
+    // one to land on (last_manuscript_name; falls back to the first one).
 
     // Handle login form submission
     document.getElementById('login-form').addEventListener('submit', async function(e) {
@@ -225,9 +200,8 @@
 
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
-      const manuscript = document.getElementById('manuscript').value;
 
-      if (!username || !password || !manuscript) {
+      if (!username || !password) {
         showError('Please fill in all fields');
         return;
       }
@@ -243,11 +217,7 @@
             'Content-Type': 'application/json',
           },
           credentials: 'include',
-          body: JSON.stringify({
-            username,
-            password,
-            manuscript_name: manuscript
-          })
+          body: JSON.stringify({ username, password })
         });
 
         if (!response.ok) {
@@ -255,14 +225,26 @@
           throw new Error(errorText || 'Login failed');
         }
 
-        // Store CSRF token in sessionStorage
         const data = await response.json();
         if (data.csrf_token) {
           sessionStorage.setItem('csrf_token', data.csrf_token);
         }
 
-        // Login successful, redirect to main app
-        window.location.href = './';
+        // Pick landing manuscript: last opened (if still accessible),
+        // else the first accessible, else open the empty app.
+        const accessible = data.manuscripts || [];
+        let landing = null;
+        if (data.last_manuscript_name) {
+          landing = accessible.find(m => m.name === data.last_manuscript_name) || null;
+        }
+        if (!landing && accessible.length > 0) {
+          landing = accessible[0];
+        }
+        if (landing) {
+          window.location.href = `./?manuscript_id=${landing.manuscript_id}`;
+        } else {
+          window.location.href = './';
+        }
       } catch (error) {
         showError(error.message);
         loginBtn.disabled = false;
@@ -280,9 +262,7 @@
       }, 5000);
     }
 
-    // Load users and manuscripts on page load
     loadUsers();
-    loadManuscripts();
   </script>
 </body>
 </html>

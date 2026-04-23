@@ -1,16 +1,15 @@
 /**
  * Test utilities for Manuscript Studio integration tests.
  *
- * Ported from 14.writesys/tests/test-utils.js. Faithfully maintains the same
- * exported surface (TEST_MANUSCRIPT_ID, TEST_URL, API_BASE_URL,
- * cleanupTestAnnotations, loginAsTestUser) so ported tests need no changes.
+ * The single bootstrap surface for tests:
+ *   - TEST_MANUSCRIPT_ID / TEST_MANUSCRIPT_NAME / TEST_URL — the test manuscript.
+ *   - cleanupTestAnnotations() — wipes test data + re-bootstraps the manuscript.
+ *   - loginAsTestUser(page) — logs in (no manuscript dropdown anymore; the
+ *     test page navigates directly to TEST_URL).
  *
- * Adaptations:
- *  - TEST_MANUSCRIPT_ID is 1 (dev has only one manuscript: test-manuscripts).
- *  - Cleanup uses psql against the dev Postgres on localhost:5433, then
- *    calls the admin /sync endpoint to re-bootstrap.
- *  - Login selects manuscript "test-manuscripts" (our only manuscript).
- *  - Test user is "test" with password "test".
+ * If something here changes shape, every test inherits the change. Resist
+ * the urge to do bespoke login flows in individual tests — fold any new
+ * setup steps into here.
  */
 
 const { execSync } = require('child_process');
@@ -122,7 +121,14 @@ async function cleanupTestAnnotations() {
 }
 
 /**
- * Login to the application with test credentials.
+ * Login to the application with test credentials. Manuscripts are no
+ * longer chosen at login time — the post-login redirect goes to the user's
+ * last-opened manuscript, falling back to the first accessible. For tests
+ * we want the SAME manuscript every run; we follow the redirect (whatever
+ * it is), then the test calls page.goto(TEST_URL) explicitly to land on
+ * TEST_MANUSCRIPT_ID. That `goto` also covers the "no last-opened yet"
+ * path on a fresh DB.
+ *
  * @param {Page} page - Playwright page object
  */
 async function loginAsTestUser(page) {
@@ -131,18 +137,29 @@ async function loginAsTestUser(page) {
   await page.goto(loginUrl, { waitUntil: 'networkidle' });
   await page.waitForLoadState('domcontentloaded');
 
-  // Wait for users and manuscripts dropdowns to populate via JS.
-  await page.waitForTimeout(1000);
+  // Wait for the username dropdown to populate via JS.
+  await page.waitForTimeout(500);
 
   await page.selectOption('#username', TEST_USERNAME);
-  await page.waitForTimeout(500);
   await page.fill('#password', TEST_PASSWORD);
-  await page.selectOption('#manuscript', TEST_MANUSCRIPT_NAME);
   await page.click('#login-btn');
 
-  // Wait for redirect to main app
-  await page.waitForURL(/localhost:5001\/?(\?.*)?$/, { timeout: 5000 });
-  await page.waitForTimeout(1000);
+  // Wait for the post-login redirect to land somewhere on the app.
+  await page.waitForURL(/localhost:5001\/(\?.*)?$/, { timeout: 5000 });
+  await page.waitForTimeout(500);
+}
+
+/**
+ * Wipe sessions for the test user. Call between runs that depend on a
+ * clean "no last-opened manuscript" state.
+ */
+async function cleanupTestSessions() {
+  try {
+    psql(`DELETE FROM session WHERE username = '${TEST_USERNAME}';
+          UPDATE "user" SET last_manuscript_name = NULL WHERE username = '${TEST_USERNAME}';`);
+  } catch (err) {
+    console.warn('[CLEANUP] session cleanup warning:', err.message);
+  }
 }
 
 module.exports = {
@@ -154,5 +171,6 @@ module.exports = {
   TEST_PASSWORD,
   SYSTEM_TOKEN,
   cleanupTestAnnotations,
-  loginAsTestUser
+  cleanupTestSessions,
+  loginAsTestUser,
 };

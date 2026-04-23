@@ -83,20 +83,9 @@ curl http://127.0.0.1:5001/readyz             # readiness probe (checks DB + rep
 
 ## One-off CLI tools
 
-### `backfill-prev-sentence`
+### Archived backfills
 
-Populates `sentence.previous_sentence_id` for manuscripts whose migrations were created before the history feature shipped. Idempotent; pairings that can't be re-derived stay `NULL` (the history feature degrades cleanly).
-
-```bash
-# Production (containerized):
-docker run --rm --network host \
-  -v $CONFIG_FILE:/config/config.yaml:ro \
-  manuscript-studio:latest \
-  backfill-prev-sentence --manuscript=NAME [--dry-run]
-
-# Dev (native binary):
-go run ./cmd/backfill-prev-sentence --manuscript=test-manuscripts [--dry-run]
-```
+Earlier one-shot tools (`backfill-prev-sentence`, `backfill-raw-text`) have moved to `old/cmd/`. They were run during the deploys that landed schemas 005 and 006/007 respectively, and aren't expected to run again. See `old/README.md`.
 
 ## Code-review remediation
 

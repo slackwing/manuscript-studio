@@ -41,11 +41,15 @@ async function runTests() {
     const controlsVisibleBefore = await page.locator('#controls').isVisible();
     assert(controlsVisibleBefore, 'Controls are visible on page load');
 
-    // Test 2: Migration info displayed
-    const migrationInfo = await page.evaluate(() => {
-      return document.getElementById('migration-info').textContent;
+    // Migration info now lives in the ⓘ tooltip rather than a visible field.
+    await page.locator('#info-icon').hover();
+    await page.waitForTimeout(150);
+    const tooltipText = await page.evaluate(() => {
+      const popup = document.querySelector('.info-popup');
+      return popup ? popup.textContent : '';
     });
-    assert(migrationInfo && migrationInfo !== 'Loading...', `Migration info displayed (${migrationInfo})`);
+    assert(tooltipText.includes('Commit'),
+      `Migration info tooltip shown (got: "${tooltipText.slice(0, 60).replace(/\s+/g, ' ')}...")`);
 
     // Test 3: Manuscript auto-loaded on page load
     const pagesRendered = await page.locator('.pagedjs_page').count();

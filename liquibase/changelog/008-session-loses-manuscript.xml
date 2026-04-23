@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Manuscript is no longer baked into the session at login time. Instead,
+        the user picks a manuscript via the in-app picker (URL-driven), and
+        the server records "last opened" on the user row so the next login
+        lands on the same manuscript.
+
+        Why on `users` rather than `session`: a user with multiple devices
+        gets one canonical "last opened" rather than per-session drift.
+    -->
+
+    <changeSet id="008-session-drop-manuscript-name" author="slackwing">
+        <dropColumn tableName="session" columnName="manuscript_name"/>
+    </changeSet>
+
+    <changeSet id="008-users-add-last-manuscript-name" author="slackwing">
+        <addColumn tableName="user">
+            <column name="last_manuscript_name" type="VARCHAR(255)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

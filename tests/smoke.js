@@ -13,26 +13,26 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
   // Wait for commits to load and page to render
   await page.waitForTimeout(8000);
 
-  // Check if migration info was loaded
-  const migrationInfo = await page.evaluate(() => {
-    return document.getElementById('migration-info').textContent;
+  // The header no longer carries a visible "migration info" line — that data
+  // moved to the ⓘ-icon tooltip. Check the tooltip got populated by hovering.
+  await page.locator('#info-icon').hover();
+  await page.waitForTimeout(150);
+  const tooltipText = await page.evaluate(() => {
+    const popup = document.querySelector('.info-popup');
+    return popup ? popup.textContent : '';
   });
+  console.log('Info tooltip:', tooltipText.replace(/\s+/g, ' ').trim());
 
-  console.log('Migration info:', migrationInfo);
-
-  // Check if manuscript was auto-loaded
+  // Check the manuscript was auto-loaded.
   const manuscriptLoaded = await page.evaluate(() => {
     const pages = document.querySelectorAll('.pagedjs_page');
-    const sentenceCount = document.getElementById('sentence-count').textContent;
-    return {
-      pageCount: pages.length,
-      sentenceCountText: sentenceCount
-    };
+    const sentences = document.querySelectorAll('.sentence');
+    return { pageCount: pages.length, sentenceCount: sentences.length };
   });
 
   console.log('\nManuscript auto-load status:');
   console.log(`  Pages rendered: ${manuscriptLoaded.pageCount}`);
-  console.log(`  Sentence count: ${manuscriptLoaded.sentenceCountText}`);
+  console.log(`  Sentences rendered: ${manuscriptLoaded.sentenceCount}`);
 
   // Take screenshot (create dir if needed)
   const fs = require('fs');

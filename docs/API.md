@@ -15,16 +15,15 @@ Response bodies are JSON unless noted.
 ## Public
 
 ### `POST /api/login`
-Body: `{"username": "...", "password": "...", "manuscript_name": "..."}`
-Response 200: `{"username", "manuscript_name", "csrf_token"}` + `Set-Cookie: session_token=...`
+Body: `{"username": "...", "password": "..."}`. The manuscript is no longer
+chosen at login time — see `GET /api/session` for the user's accessible
+manuscripts and the `?manuscript_id=N` URL convention.
+Response 200: `{"username", "csrf_token", "last_manuscript_name", "manuscripts": [{name, manuscript_id}, ...]}` + `Set-Cookie: session_token=...`. The client lands on `last_manuscript_name` if it's still in `manuscripts`, else the first entry.
 Response 401: `Invalid credentials` (same body for any failure mode — timing-safe, no enumeration).
 Response 400: `Invalid request body` / `Missing required fields`.
 
 ### `GET /api/users`
 List of usernames for the login dropdown. Response: `{"users": [{"username": ...}]}`.
-
-### `GET /api/manuscripts`
-List of configured manuscript names. Response: `{"manuscripts": ["..."]}`.
 
 ---
 
@@ -34,8 +33,13 @@ List of configured manuscript names. Response: `{"manuscripts": ["..."]}`.
 Clears the session cookie. Returns 204.
 
 ### `GET /api/session`
-Response 200: `{"username", "manuscript_name", "csrf_token", "accessible_manuscripts": [...]}`. Refreshes the session's expiry if it's in the last quarter of TTL.
+Response 200: `{"username", "csrf_token", "last_manuscript_name", "accessible_manuscripts": [{name, manuscript_id}, ...]}`. Refreshes the session's expiry if it's in the last quarter of TTL.
 Response 401: when the cookie is missing/invalid/expired.
+
+### `POST /api/session/last-manuscript`
+Body: `{"manuscript_name": "..."}`. Records the user's most recently opened manuscript so the next login lands on the same one. Returns 204 on success, 403 if the user lacks access to the named manuscript, 400 on missing field.
+
+All per-manuscript endpoints below return **404 Not Found** when the calling user lacks `manuscript_access` to the requested manuscript (whether by direct `manuscript_id` or transitively via `migration_id`/`sentence_id`/`annotation_id`). 404 is used uniformly so the response doesn't leak whether the id exists.
 
 ### `GET /api/migrations?manuscript_id=N`
 Returns all completed migrations for that manuscript, newest first. Pending/running/error rows are excluded.
@@ -70,8 +74,8 @@ Response shape: `{"suggestions": [{suggestion_id, sentence_id, text, created_at,
 ### Suggestions
 - `PUT /api/sentences/{sentence_id}/suggestion` — body: `{text}`. Idempotent upsert (UNIQUE on `sentence_id`+`user_id`). If `text` equals the original sentence text, the server collapses the call into a DELETE.
 - `DELETE /api/sentences/{sentence_id}/suggestion` — explicit clear.
-- `GET /api/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state` — returns `{branch, branch_exists}` so the client can label its push button "Push" (update) vs "Push New" (create). `branch` is the canonical `suggestions-{shortSHA}-{user}` name.
-- `POST /api/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions` — body: `{action: "update" | "new"}`. Applies the calling user's suggestions for the migration into the .manuscript file at the migration's commit, commits, and force-pushes (`update`) or pushes (`new`) to the configured `origin`. Response: `{branch, compare_url, commit_sha, applied, skipped, results}`. Returns 409 with `{error: "stale"}` when the migration is no longer the latest for the manuscript.
+- `GET /api/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state` — returns `{branch, branch_exists, compare_url}`. `branch` is the canonical `suggestions-{shortSHA}-{user}` name; `branch_exists` toggles the dropdown's "View on GitHub" item; `compare_url` is empty when `repository.slug` isn't configured.
+- `POST /api/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions` — body is ignored (single mode: force-push the canonical branch). Applies the calling user's suggestions to the `.manuscript` file at the migration's commit, commits, and force-pushes to `origin`. Response: `{branch, compare_url, commit_sha, applied, skipped, results}`. Returns 409 with `{error: "stale"}` when the migration is no longer the latest for the manuscript.
 
 ### Tags
 - `GET /api/annotations/{annotation_id}/tags`
