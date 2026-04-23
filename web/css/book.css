@@ -114,6 +114,7 @@ body {
   letter-spacing: 0.005em;
   color: #1f2328;
   line-height: 1;
+  margin-right: 18px; /* extra breathing room before the picker */
 }
 
 /* Manuscript picker: native <select> styled to feel inline with the brand. */
@@ -163,7 +164,10 @@ body {
 
 #info-icon:hover { color: #1f2328; background: #f6f8fa; }
 
-/* Info tooltip — same look as .history-popup so the app feels coherent. */
+/* Info tooltip — same look as .history-popup so the app feels coherent.
+   Sized to content; rows never wrap so the popup grows as wide as the
+   widest value (commit hashes and segmenter strings deserve to be read
+   intact). */
 .info-popup {
   position: absolute;
   z-index: 100;
@@ -172,24 +176,27 @@ body {
   border-radius: 4px;
   padding: 8px 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  max-width: 360px;
   font-family: Georgia, serif;
   font-size: 13px;
   line-height: 1.4;
   pointer-events: none;
+  width: max-content;
+  max-width: calc(100vw - 24px);
 }
 
 .info-popup-row {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   padding: 4px 0;
   border-bottom: 1px solid #eee;
+  white-space: nowrap;
 }
 
 .info-popup-row:last-child { border-bottom: none; }
 
 .info-popup-label {
-  flex: 0 0 88px;
+  flex: 0 0 auto;
+  min-width: 88px;
   color: #888;
   font-family: "Helvetica", sans-serif;
   font-size: 10px;
@@ -198,7 +205,7 @@ body {
   letter-spacing: 0.04em;
 }
 
-.info-popup-text { flex: 1 1 auto; color: #333; word-break: break-word; }
+.info-popup-text { flex: 0 0 auto; color: #333; }
 
 #controls label {
   font-family: "Helvetica", sans-serif;
