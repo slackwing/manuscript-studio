@@ -83,10 +83,9 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only the configured branch triggers a migration. Pushes to feature
-	// branches (including the suggestions-* branches the push-to-PR feature
-	// will create) must be ignored — otherwise the server would migrate
-	// every PR branch as if it were the canonical history.
+	// Pushes to non-canonical branches (e.g. suggestions-*) must be ignored
+	// or the server would migrate every PR branch as if it were main. See
+	// TestHandleWebhook_IgnoresNonTrackedBranch.
 	wantBranch := manuscriptConfig.Repository.Branch
 	if wantBranch == "" {
 		wantBranch = "main"

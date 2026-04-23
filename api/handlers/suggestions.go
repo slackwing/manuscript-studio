@@ -282,7 +282,7 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// 1. Stale-migration guard: only push from the latest migration.
+	// Stale-migration guard: only push from the latest migration.
 	latest, err := h.DB.GetLatestMigration(ctx, manuscriptID)
 	if err != nil {
 		http.Error(w, "Failed to load latest migration", http.StatusInternalServerError)
@@ -304,7 +304,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// 2. Resolve manuscript → config so we know which repo to push to.
 	manuscript, err := h.DB.GetManuscriptByID(ctx, manuscriptID)
 	if err != nil || manuscript == nil {
 		http.Error(w, "Manuscript not found", http.StatusNotFound)
@@ -316,7 +315,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// 3. Load this user's suggestions and the original sentence texts.
 	suggestions, err := h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
 	if err != nil {
 		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
@@ -340,7 +338,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		originals[id] = row.Text
 	}
 
-	// 4. Read the .manuscript file at the latest commit hash from the local clone.
 	gitRepo := &migrations.GitRepository{
 		Path:      h.Config.RepoPath(mc.Name),
 		Branch:    mc.Repository.Branch,
@@ -354,7 +351,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// 5. Apply suggestions in-memory.
 	newContent, results := sentence.ApplySuggestions([]byte(srcStr), suggestions, originals)
 	applied, skipped := 0, 0
 	for _, r := range results {
@@ -369,7 +365,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// 6. Pick branch name. `commitShort` is first 7 chars of the SHA.
 	commitShort := latest.CommitHash
 	if len(commitShort) > 7 {
 		commitShort = commitShort[:7]
@@ -382,7 +377,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// 7. Write commit + push.
 	message := fmt.Sprintf("Apply %d suggested edit(s) from %s", applied, session.Username)
 	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, force)
 	if err != nil {

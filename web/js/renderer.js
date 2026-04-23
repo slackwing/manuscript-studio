@@ -275,8 +275,8 @@ const WriteSysRenderer = {
     });
   },
 
-  // Must mirror Go normalizeText: lowercase, [^a-z0-9\s] stripped, ws collapsed.
-  // Pages may split a sentence across fragments; events update all of them.
+  // A sentence may be split across page fragments; hover/click events propagate
+  // to every fragment with the same data-sentence-id.
   setupSentenceHover() {
     document.querySelectorAll('.sentence').forEach(span => {
       span.addEventListener('mouseenter', () => {

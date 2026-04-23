@@ -32,7 +32,6 @@ func Reconstruct(sentences []string) string {
 
 	for _, s := range sentences {
 		if IsHeaderText(s) {
-			// Ensure blank-line gap before header (if anything came before).
 			if b.Len() > 0 {
 				ensureTrailingBlankLine(&b)
 			}
@@ -43,39 +42,27 @@ func Reconstruct(sentences []string) string {
 			continue
 		}
 
-		// Non-header.
-		if strings.HasPrefix(s, MarkerSection) {
-			// "\n\n" marker. We want exactly one blank line of gap.
+		switch {
+		case strings.HasPrefix(s, MarkerSection):
 			if prevWasHeader {
-				// Header already ended with "\n"; prevWasHeader path closed
-				// with single newline. We need ONE more newline for the gap,
-				// then the rest of the content (without the marker).
+				// Header already ended with "\n"; one more newline gives the
+				// blank-line gap, then the body sans marker.
 				b.WriteByte('\n')
 				b.WriteString(s[len(MarkerSection):])
 			} else {
-				// Continuation context: emit the marker as-is.
 				b.WriteString(s)
 			}
-		} else if strings.HasPrefix(s, MarkerParagraph) {
-			// "\n\t" marker.
+		case strings.HasPrefix(s, MarkerParagraph):
+			b.WriteString(s)
+		default:
 			if prevWasHeader {
-				// "# H\n\n\tContent" → header wrote "# H\n", we add "\n\t" + body.
-				b.WriteString(s)
-			} else {
-				b.WriteString(s)
-			}
-		} else {
-			// No marker.
-			if prevWasHeader {
-				// Header wrote "# H\n"; we want a blank line before content.
 				b.WriteByte('\n')
 				b.WriteString(s)
 			} else if prevWasContent {
-				// Two plain sentences in the same paragraph: single space.
+				// Continuation within a paragraph.
 				b.WriteByte(' ')
 				b.WriteString(s)
 			} else {
-				// First sentence of the manuscript.
 				b.WriteString(s)
 			}
 		}
@@ -83,7 +70,6 @@ func Reconstruct(sentences []string) string {
 		prevWasContent = true
 	}
 
-	// Trailing newline so the file ends cleanly.
 	if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
 		b.WriteByte('\n')
 	}

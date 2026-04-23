@@ -7,6 +7,52 @@ import (
 	"testing"
 )
 
+// TestReconstruct_SmallCases pins down the per-branch behavior of Reconstruct
+// directly (without going through TokenizeWithMarkers) so that an erroneous
+// edit to one specific branch is caught even if the round-trip test happens
+// not to hit that branch with the current testdata corpus.
+func TestReconstruct_SmallCases(t *testing.T) {
+	cases := []struct {
+		name      string
+		sentences []string
+		want      string
+	}{
+		{
+			name:      "two plain sentences in a paragraph share a single space",
+			sentences: []string{"One.", "Two."},
+			want:      "One. Two.\n",
+		},
+		{
+			name:      "section marker after a header drops the marker and just gives a blank-line gap",
+			sentences: []string{"# H", "\n\nBody."},
+			want:      "# H\n\nBody.\n",
+		},
+		{
+			name:      "section marker mid-paragraph emits the blank-line gap verbatim",
+			sentences: []string{"One.", "\n\nNew section."},
+			want:      "One.\n\nNew section.\n",
+		},
+		{
+			name:      "paragraph marker emits its leading \\n\\t as-is",
+			sentences: []string{"One.", "\n\tIndented."},
+			want:      "One.\n\tIndented.\n",
+		},
+		{
+			name:      "header followed by plain sentence inserts a blank line",
+			sentences: []string{"# H", "Body."},
+			want:      "# H\n\nBody.\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Reconstruct(tc.sentences)
+			if got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestTokenizeReconstructRoundTrip is the contract that justifies the
 // raw-text storage shape: parsing a manuscript and reconstructing it
 // from the resulting sentence list should round-trip to (nearly) the

@@ -16,15 +16,13 @@
 const SECTION_GLYPH = '\u00A7';   // §
 const PARAGRAPH_GLYPH = '\u00B6'; // ¶
 
-// Storage → UI: replace real `\n\n` with §, real `\n\t` with ¶.
 function toGlyphs(text) {
   if (text == null) return '';
   return text.replace(/\n\n/g, SECTION_GLYPH).replace(/\n\t/g, PARAGRAPH_GLYPH);
 }
 
-// UI → storage: glyphs become real chars; escape-style literals become real
-// chars. Order matters: glyphs first so a literal "\n\n" typed by the user
-// doesn't collide with a § that already became a real newline.
+// Glyphs are converted before escape-literals so a user-typed "\n\n" doesn't
+// collide with a § that has already become a real newline.
 function fromGlyphs(text) {
   if (text == null) return '';
   text = text.replace(new RegExp(SECTION_GLYPH, 'g'), '\n\n');

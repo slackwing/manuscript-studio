@@ -287,9 +287,9 @@ func (g *GitRepository) WriteCommitPushBranch(
 	}
 	commitSHA = strings.TrimSpace(string(commitOut))
 
-	// 4. Move the branch ref to the new commit. -m updates if it exists,
-	// creates if it doesn't. update-ref doesn't go through reflog/policy
-	// hooks so it always succeeds.
+	// 4. Move the branch ref to the new commit. update-ref creates the ref if
+	// it doesn't exist and overwrites unconditionally if it does — exactly the
+	// "update or create" semantics we want, with no policy hooks in the way.
 	updateRef := exec.CommandContext(ctx, "git", "-C", g.Path, "update-ref",
 		"refs/heads/"+branch, commitSHA)
 	if out, err := updateRef.CombinedOutput(); err != nil {

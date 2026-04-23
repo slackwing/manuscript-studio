@@ -51,7 +51,7 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 	}
 
 	out := make([]string, 0, len(rawSegments))
-	cursor := 0   // walking position in source
+	cursor := 0
 	prevHeader := false
 
 	for _, seg := range rawSegments {
@@ -126,8 +126,6 @@ func isHeaderSegment(segment string) bool {
 //
 // Returns (-1, -1) if not found — caller should fall back gracefully.
 func locateSegment(source string, cursor int, seg string) (int, int) {
-	// `start` advances past leading whitespace then anchors on the first
-	// non-whitespace character. That's the segment's true start position.
 	for start := cursor; start < len(source); start++ {
 		if isASCIISpace(source[start]) {
 			continue
@@ -184,11 +182,10 @@ func skipSegmentInSource(source string, cursor int, seg string) int {
 		}
 		return cursor
 	}
-	start, end := locateSegment(source, cursor, cleaned)
-	if start < 0 {
+	_, end := locateSegment(source, cursor, cleaned)
+	if end < 0 {
 		return cursor
 	}
-	_ = start
 	return end
 }
 

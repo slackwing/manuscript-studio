@@ -145,10 +145,10 @@ function teardownBareRemote(bareDir) {
     assert(/^Push New \(1\)$/.test(initialLabel),
       `Initial label is "Push New (1)" (got "${initialLabel}")`);
 
-    // First push: no cached branch → action="new".
+    // First push: no existing branch → action="new".
     await page.locator('.push-btn-primary').click();
-    // Wait for the network call + response handling; sessionStorage cache is set
-    // and refresh() runs synchronously after.
+    // Wait for the push response, the post-push push-state refetch, and the
+    // synchronous refresh() that flips the label.
     await page.waitForFunction(
       () => {
         const lbl = document.querySelector('.push-btn-primary .push-btn-label');
