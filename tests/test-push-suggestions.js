@@ -6,11 +6,13 @@
  * has no `origin`.
  *
  * Flow under test:
- *   1. Write a suggestion → split-button appears with "Push New (1)".
- *   2. Click Push New → confirm dialogs → POST /push-suggestions.
- *   3. Verify branch exists in the bare remote at the expected commit.
+ *   1. Write a suggestion → button appears with "Push (1)".
+ *   2. Click Push → POST /push-suggestions (no confirm dialog).
+ *   3. Verify branch exists in the bare remote at the expected commit
+ *      with the canonical suggestions-{shortSHA}-{user} name.
  *   4. Verify the file content on that branch reflects the suggestion.
- *   5. Click again → label is now "Push (1)" (update mode).
+ *   5. Click again → branch list unchanged (force-push reuses same name).
+ *   6. After the first push, "View on GitHub" appears in the dropdown.
  *
  * Cleanup: remove the bare remote + clear suggestions.
  */
@@ -89,17 +91,11 @@ function teardownBareRemote(bareDir) {
   });
   page.on('pageerror', err => console.log(`[page error] ${err.message}`));
 
-  // Auto-confirm both browser dialogs (push confirm + open-link confirm).
-  // Reject the "open compare URL" dialog so the test doesn't try to open
-  // a github.com URL that doesn't exist in this dev setup.
-  let confirmCount = 0;
+  // No dialogs are expected on the happy path. Accept any that arise
+  // (failure alerts) so they don't deadlock the test, and surface them.
   page.on('dialog', async (d) => {
-    confirmCount++;
-    if (d.message().includes('Open the GitHub')) {
-      await d.dismiss();
-    } else {
-      await d.accept();
-    }
+    console.log(`[unexpected dialog] ${d.message()}`);
+    await d.accept();
   });
 
   let failed = false;
@@ -139,72 +135,70 @@ function teardownBareRemote(bareDir) {
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
 
-    // Push button should now show.
+    // Push button should now show. Label is always "Push (N)" — no Push New.
     await page.waitForSelector('.push-btn-primary', { timeout: 3000 });
     const initialLabel = (await page.locator('.push-btn-primary .push-btn-label').textContent()).trim();
-    assert(/^Push New \(1\)$/.test(initialLabel),
-      `Initial label is "Push New (1)" (got "${initialLabel}")`);
+    assert(/^Push \(1\)$/.test(initialLabel),
+      `Initial label is "Push (1)" (got "${initialLabel}")`);
+    // No dropdown caret before any push (no branch yet → no View item).
+    assert(await page.locator('.push-btn-caret').count() === 0,
+      `No dropdown caret before first push`);
 
-    // First push: no existing branch → action="new".
+    // Click Push — no confirm, no alert on success.
     await page.locator('.push-btn-primary').click();
-    // Wait for the push response, the post-push push-state refetch, and the
-    // synchronous refresh() that flips the label.
+    // Wait for the spinner to come and go (busy class toggles).
     await page.waitForFunction(
       () => {
-        const lbl = document.querySelector('.push-btn-primary .push-btn-label');
-        return lbl && /^Push \(\d+\)$/.test(lbl.textContent.trim());
+        const c = document.getElementById('push-button-container');
+        // Spinner SVG class set during the request.
+        return c && !c.classList.contains('push-busy');
       },
       null,
       { timeout: 10000 }
     );
-    assert(true, 'Confirmation dialogs handled');
+    // After push, the dropdown caret should appear (View on GitHub item).
+    await page.waitForSelector('.push-btn-caret', { timeout: 3000 });
+    assert(true, 'Push completed and dropdown appears');
 
-    const postPushLabel = (await page.locator('.push-btn-primary .push-btn-label').textContent()).trim();
-    assert(/^Push \(1\)$/.test(postPushLabel),
-      `Label flips to "Push (1)" after first push (got "${postPushLabel}")`);
-
-    // Verify the branch landed on the bare remote.
+    // Verify the branch landed on the bare remote with the canonical name.
     const branches = execSync(`git -C "${bareDir}" branch --list`, { encoding: 'utf-8' });
-    const suggestionsBranch = branches
+    const suggestionsBranches = branches
       .split('\n')
       .map(s => s.replace('*', '').trim())
-      .find(b => b.startsWith('suggestions-'));
-    assert(!!suggestionsBranch, `Bare remote has a suggestions-* branch (saw: ${branches.replace(/\n/g, ' | ')})`);
+      .filter(b => b.startsWith('suggestions-'));
+    assert(suggestionsBranches.length === 1, `Exactly one suggestions branch on remote (saw ${suggestionsBranches.length}: "${suggestionsBranches.join('|')}")`);
+    const branch = suggestionsBranches[0];
+    const expected = new RegExp(`^suggestions-[0-9a-f]{7}-${TEST_USERNAME}$`);
+    assert(expected.test(branch),
+      `Branch name matches suggestions-{sha7}-${TEST_USERNAME} (got "${branch}")`);
+    const fileOnBranch = execSync(
+      `git -C "${bareDir}" show ${branch}:test.manuscript`,
+      { encoding: 'utf-8' }
+    );
+    assert(fileOnBranch.includes('PUSHED EDIT'),
+      `Pushed branch contains the suggested edit`);
 
-    if (suggestionsBranch) {
-      // suggestions-{commitShort}-{username} per resolveBranchName ("new" picks
-      // baseName when free, else baseName-N — first run from a clean repo gets
-      // baseName).
-      const expected = new RegExp(`^suggestions-[0-9a-f]{7}-${TEST_USERNAME}$`);
-      assert(expected.test(suggestionsBranch),
-        `Branch name matches suggestions-{sha7}-${TEST_USERNAME} (got "${suggestionsBranch}")`);
-
-      const fileOnBranch = execSync(
-        `git -C "${bareDir}" show ${suggestionsBranch}:test.manuscript`,
-        { encoding: 'utf-8' }
-      );
-      assert(fileOnBranch.includes('PUSHED EDIT'),
-        `Pushed branch contains the suggested edit`);
-    }
-
-    // Second push from the same UI session: button is "Push" → action="update" → force-push.
-    // No new branch should appear; the existing one should stay (or be force-updated to the same content).
-    const branchesBefore = execSync(`git -C "${bareDir}" branch --list 'suggestions-*'`, { encoding: 'utf-8' }).trim();
+    // Second push: force-update, branch list unchanged.
     await page.locator('.push-btn-primary').click();
-    await page.waitForTimeout(2000);
-    const branchesAfter = execSync(`git -C "${bareDir}" branch --list 'suggestions-*'`, { encoding: 'utf-8' }).trim();
-    assert(branchesBefore === branchesAfter,
-      `"Push" (update) reuses the same branch (before: "${branchesBefore}", after: "${branchesAfter}")`);
+    await page.waitForFunction(
+      () => {
+        const c = document.getElementById('push-button-container');
+        return c && !c.classList.contains('push-busy');
+      },
+      null,
+      { timeout: 10000 }
+    );
+    const branchesAfter = execSync(`git -C "${bareDir}" branch --list 'suggestions-*'`, { encoding: 'utf-8' })
+      .split('\n').map(s => s.replace('*', '').trim()).filter(Boolean);
+    assert(branchesAfter.length === 1 && branchesAfter[0] === branch,
+      `Second push reuses the same branch (saw "${branchesAfter.join('|')}")`);
 
-    // Third path: open the dropdown menu and click "Push New" → should create -2 branch.
+    // View on GitHub menu item points at the canonical compare URL.
     await page.locator('.push-btn-caret').click();
     await page.waitForSelector('.push-menu:not([hidden])', { timeout: 2000 });
-    await page.locator('.push-menu-item').click();
-    await page.waitForTimeout(2000);
-    const branchesAfterNew = execSync(`git -C "${bareDir}" branch --list 'suggestions-*'`, { encoding: 'utf-8' });
-    const newBranchCount = branchesAfterNew.split('\n').filter(b => b.trim().startsWith('suggestions-')).length;
-    assert(newBranchCount === 2,
-      `"Push New" creates a second branch (got ${newBranchCount} branches: "${branchesAfterNew.replace(/\n/g, ' | ')}")`);
+    const viewHref = await page.locator('.push-menu-item').getAttribute('href');
+    assert(typeof viewHref === 'string' && viewHref.includes(`/compare/${branch}`),
+      `View on GitHub points at /compare/${branch} (got "${viewHref}")`);
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}\n${e.stack}`);

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -148,10 +147,6 @@ func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type pushSuggestionsRequest struct {
-	Action string `json:"action"` // "update" | "new"
-}
-
 type pushSuggestionsResponse struct {
 	Branch     string                            `json:"branch"`
 	CompareURL string                            `json:"compare_url"`
@@ -213,12 +208,7 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	commitShort := migration.CommitHash
-	if len(commitShort) > 7 {
-		commitShort = commitShort[:7]
-	}
-	userPart := sanitizeBranchComponent(session.Username)
-	branch := fmt.Sprintf("suggestions-%s-%s", commitShort, userPart)
+	branch := canonicalSuggestionsBranch(migration.CommitHash, session.Username)
 
 	gitRepo := &migrations.GitRepository{
 		Path:      h.Config.RepoPath(mc.Name),
@@ -278,15 +268,9 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	var req pushSuggestionsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-	if req.Action != "update" && req.Action != "new" {
-		http.Error(w, `action must be "update" or "new"`, http.StatusBadRequest)
-		return
-	}
+	// Body is intentionally ignored — this endpoint has exactly one mode
+	// (force-push the canonical branch). Older clients that send
+	// {"action":"update"} continue to work; "new" is silently dropped.
 
 	// Stale-migration guard: only push from the latest migration.
 	latest, err := h.DB.GetLatestMigration(ctx, manuscriptID)
@@ -371,22 +355,13 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	commitShort := latest.CommitHash
-	if len(commitShort) > 7 {
-		commitShort = commitShort[:7]
-	}
-	userPart := sanitizeBranchComponent(session.Username)
-	baseName := fmt.Sprintf("suggestions-%s-%s", commitShort, userPart)
-	branch, force, err := h.resolveBranchName(ctx, gitRepo, baseName, req.Action)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to pick branch name: %v", err), http.StatusInternalServerError)
-		return
-	}
-
+	branch := canonicalSuggestionsBranch(latest.CommitHash, session.Username)
 	message := fmt.Sprintf("Apply %d suggested edit(s) from %s", applied, session.Username)
 	// Synth an email so commit-tree never depends on host-side git config.
 	authorEmail := fmt.Sprintf("%s@manuscript-studio.local", sanitizeBranchComponent(session.Username))
-	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, force, session.Username, authorEmail)
+	// Always force-push: the branch is a per-(commit, user) canonical name and
+	// we own it.
+	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, true, session.Username, authorEmail)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to push branch: %v", err), http.StatusInternalServerError)
 		return
@@ -408,34 +383,15 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	})
 }
 
-// resolveBranchName returns (branch, force):
-//   - "update": always returns baseName, force=true (overwrite the canonical branch).
-//   - "new":    tries baseName first, then baseName-2, baseName-3, ... up to
-//               the first that does NOT exist locally. force=false.
-//
-// "new" only checks LOCAL refs, not remote. Pushing without --force will fail
-// fast on conflict, which is the right behaviour (the operator can refresh).
-func (h *SuggestionHandlers) resolveBranchName(ctx context.Context, g *migrations.GitRepository, baseName, action string) (string, bool, error) {
-	if action == "update" {
-		return baseName, true, nil
+// canonicalSuggestionsBranch is the one-and-only branch name that push and
+// push-state target for this (commit, user). Stable across sessions so
+// View-on-GitHub always points at the right place.
+func canonicalSuggestionsBranch(commitHash, username string) string {
+	commitShort := commitHash
+	if len(commitShort) > 7 {
+		commitShort = commitShort[:7]
 	}
-	candidates := append([]string{baseName}, func() []string {
-		out := make([]string, 0, 998)
-		for n := 2; n < 1000; n++ {
-			out = append(out, fmt.Sprintf("%s-%d", baseName, n))
-		}
-		return out
-	}()...)
-	for _, candidate := range candidates {
-		exists, err := g.LocalBranchExists(ctx, candidate)
-		if err != nil {
-			return "", false, err
-		}
-		if !exists {
-			return candidate, false, nil
-		}
-	}
-	return "", false, fmt.Errorf("could not find unused branch name under %s", baseName)
+	return fmt.Sprintf("suggestions-%s-%s", commitShort, sanitizeBranchComponent(username))
 }
 
 func (h *SuggestionHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {

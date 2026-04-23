@@ -105,6 +105,27 @@ body {
   align-items: center;
 }
 
+#brand {
+  font-family: "Helvetica", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #1f2328;
+}
+
+#info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: #57606a;
+  cursor: help;
+  border-radius: 50%;
+}
+
+#info-icon:hover { color: #1f2328; background: #f6f8fa; }
+
 #controls label {
   font-family: "Helvetica", sans-serif;
   font-size: 11px;
@@ -1489,7 +1510,15 @@ p.indented {
   vertical-align: middle;
 }
 
-.push-button-container.push-busy { opacity: 0.6; pointer-events: none; }
+/* While pushing, dim the menu but keep the spinner crisp. */
+.push-button-container.push-busy .push-btn-caret,
+.push-button-container.push-busy .push-btn-label { opacity: 0.7; }
+
+.push-btn-spinner { animation: push-spin 0.8s linear infinite; }
+
+@keyframes push-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* `#controls button` is more specific than `.push-btn-primary` because it
    chains an ID + element. Match its specificity by anchoring under #controls

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WriteSys - Book Annotation System</title>
+  <title>Manuscript Studio</title>
 
   <!-- Caveat — handwriting font for note-input textareas. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Book-style CSS -->
-  <link rel="stylesheet" href="css/book.css?v=78">
+  <link rel="stylesheet" href="css/book.css?v=79">
 
   <!-- Paged.js for book pagination - loaded but not auto-run -->
   <script>
@@ -23,15 +23,17 @@
   <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"></script>
 </head>
 <body>
-  <!-- Info bar (not paginated) -->
+  <!-- Top bar (not paginated) -->
   <div id="controls" class="pagedjs_ignore">
-    <div class="control-group">
-      <label>Migration:</label>
-      <span id="migration-info">Loading...</span>
+    <div class="control-group control-group-left">
+      <span id="brand">Manuscript Studio</span>
+      <span id="info-icon" tabindex="0" aria-label="Manuscript info" title="">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm6.5-.25A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75zM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+        </svg>
+      </span>
     </div>
-    <div class="control-group">
-      <span id="status">Ready</span>
-      <span id="sentence-count"></span>
+    <div class="control-group control-group-right">
       <span id="push-button-container" class="push-button-container"></span>
       <button id="logout-btn" onclick="logout()">Logout</button>
     </div>
@@ -72,12 +74,6 @@
       if (session.csrf_token) {
         sessionStorage.setItem('csrf_token', session.csrf_token);
       }
-
-      // Update UI with user info
-      const statusEl = document.getElementById('status');
-      if (statusEl) {
-        statusEl.textContent = `Logged in as ${session.username} | ${session.manuscript_name}`;
-      }
     })();
   </script>
 
@@ -96,11 +92,11 @@
 
   <!-- Application scripts -->
   <script src="js/text-markers.js?v=1"></script>
-  <script src="js/renderer.js?v=64"></script>
+  <script src="js/renderer.js?v=65"></script>
   <script src="js/annotations.js?v=51"></script>
   <script src="js/vendor/diff-match-patch.js"></script>
   <script src="js/history.js?v=7"></script>
   <script src="js/suggestions.js?v=5"></script>
-  <script src="js/push.js?v=5"></script>
+  <script src="js/push.js?v=6"></script>
 </body>
 </html>

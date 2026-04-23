@@ -38,7 +38,12 @@ paths:
 manuscripts:
   - name: "test-manuscripts"
     repository:
+      # `url` wins over `slug`+`use_ssh` for clone/fetch, so the slug below is
+      # only used to construct a /compare/ URL for the push-to-PR feature's
+      # "View on GitHub" link. github.com/dev/test-manuscripts won't resolve
+      # to a real repo — that's fine for dev.
       url: "~/.config/manuscript-studio-dev/repos/test-manuscripts"
+      slug: "dev/test-manuscripts"
       branch: "main"
       path: "test.manuscript"
       auth_token: ""

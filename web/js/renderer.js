@@ -32,8 +32,18 @@ const WriteSysRenderer = {
 
       const shortHash = migration.commit_hash.substring(0, 7);
       const date = new Date(migration.processed_at).toLocaleDateString();
-      document.getElementById('migration-info').textContent =
-        `${shortHash} (${migration.segmenter}, ${date}, ${migration.sentence_count} sentences)`;
+      const session = window.currentSession || {};
+      // Tooltip on the ⓘ icon: line-broken so a hover reads as a small fact card.
+      const info = [
+        session.manuscript_name ? `Manuscript: ${session.manuscript_name}` : null,
+        session.username ? `User: ${session.username}` : null,
+        `Commit: ${shortHash}`,
+        `Segmenter: ${migration.segmenter}`,
+        `Loaded: ${date}`,
+        `Sentences: ${migration.sentence_count}`,
+      ].filter(Boolean).join('\n');
+      const infoIcon = document.getElementById('info-icon');
+      if (infoIcon) infoIcon.title = info;
 
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
@@ -42,7 +52,8 @@ const WriteSysRenderer = {
     } catch (error) {
       console.error('Failed to load latest migration:', error);
       this.showStatus(`Error: ${error.message}`, 'error');
-      document.getElementById('migration-info').textContent = 'Error loading migration';
+      const infoIcon = document.getElementById('info-icon');
+      if (infoIcon) infoIcon.title = `Error: ${error.message}`;
     }
   },
 
@@ -71,7 +82,6 @@ const WriteSysRenderer = {
       await this.renderManuscript();
 
       this.showStatus(`Loaded ${this.currentSentences.length} sentences`);
-      document.getElementById('sentence-count').textContent = `${this.currentSentences.length} sentences`;
 
       if (window.WriteSysPush) {
         window.WriteSysPush.init();
@@ -356,9 +366,9 @@ const WriteSysRenderer = {
   },
 
   showStatus(message, type = 'info') {
-    const statusEl = document.getElementById('status');
-    statusEl.textContent = message;
-    statusEl.className = type;
+    // Header no longer renders a visible status field. Errors still log to
+    // console; the info-icon tooltip carries the load context.
+    if (type === 'error') console.warn('[status]', message);
   },
 
   getColorValue(colorName) {
