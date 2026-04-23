@@ -229,19 +229,24 @@ func (g *GitRepository) ensureBareRemoteURL(ctx context.Context) error {
 // `force` controls whether the push uses --force (used for `update` mode
 // where the same branch is overwritten with a fresh commit). For a brand
 // new branch, force is typically false.
+// authorName/authorEmail are passed via env so commit-tree doesn't depend on
+// the host's global git config (which often isn't set in containers).
 func (g *GitRepository) WriteCommitPushBranch(
 	ctx context.Context,
 	baseCommit, branch string,
 	fileContent []byte,
 	message string,
 	force bool,
+	authorName, authorEmail string,
 ) (commitSHA string, err error) {
 	// 1. Hash the new file content as a blob in the object DB.
 	blobCmd := exec.CommandContext(ctx, "git", "-C", g.Path, "hash-object", "-w", "--stdin")
 	blobCmd.Stdin = bytes.NewReader(fileContent)
+	var blobErr bytes.Buffer
+	blobCmd.Stderr = &blobErr
 	blobOut, err := blobCmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git hash-object: %w", err)
+		return "", fmt.Errorf("git hash-object: %w (%s)", err, strings.TrimSpace(blobErr.String()))
 	}
 	blobSHA := strings.TrimSpace(string(blobOut))
 
@@ -271,19 +276,29 @@ func (g *GitRepository) WriteCommitPushBranch(
 
 	writeTree := exec.CommandContext(ctx, "git", "-C", g.Path, "write-tree")
 	writeTree.Env = indexEnv
+	var writeErr bytes.Buffer
+	writeTree.Stderr = &writeErr
 	treeOut, err := writeTree.Output()
 	if err != nil {
-		return "", fmt.Errorf("git write-tree: %w", err)
+		return "", fmt.Errorf("git write-tree: %w (%s)", err, strings.TrimSpace(writeErr.String()))
 	}
 	treeSHA := strings.TrimSpace(string(treeOut))
 
-	// 3. Make a commit with the user-author signature pulled from environment
-	// or the manuscript repo's git config (whichever git resolves first).
+	// 3. Make a commit. Author/committer come from env so we don't need
+	// global `git config user.email` to be set on the host.
 	commitTree := exec.CommandContext(ctx, "git", "-C", g.Path, "commit-tree",
 		treeSHA, "-p", baseCommit, "-m", message)
+	commitTree.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME="+authorName,
+		"GIT_AUTHOR_EMAIL="+authorEmail,
+		"GIT_COMMITTER_NAME="+authorName,
+		"GIT_COMMITTER_EMAIL="+authorEmail,
+	)
+	var commitErr bytes.Buffer
+	commitTree.Stderr = &commitErr
 	commitOut, err := commitTree.Output()
 	if err != nil {
-		return "", fmt.Errorf("git commit-tree: %w", err)
+		return "", fmt.Errorf("git commit-tree: %w (%s)", err, strings.TrimSpace(commitErr.String()))
 	}
 	commitSHA = strings.TrimSpace(string(commitOut))
 

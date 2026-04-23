@@ -85,7 +85,7 @@ func TestWriteCommitPushBranch_CreatesBranchAndPushes(t *testing.T) {
 	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
 
 	newContent := []byte("Edited.\n")
-	commitSHA, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", newContent, "Apply suggestions", false)
+	commitSHA, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", newContent, "Apply suggestions", false, "Test", "test@example.com")
 	if err != nil {
 		t.Fatalf("WriteCommitPushBranch: %v", err)
 	}
@@ -131,13 +131,13 @@ func TestWriteCommitPushBranch_ForceUpdatesExistingBranch(t *testing.T) {
 
 	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
 
-	first, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", []byte("First.\n"), "first", false)
+	first, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", []byte("First.\n"), "first", false, "Test", "test@example.com")
 	if err != nil {
 		t.Fatalf("first push: %v", err)
 	}
 
 	// Force-update with new content from the same base.
-	second, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", []byte("Second.\n"), "second", true)
+	second, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", []byte("Second.\n"), "second", true, "Test", "test@example.com")
 	if err != nil {
 		t.Fatalf("force update: %v", err)
 	}
@@ -148,6 +148,30 @@ func TestWriteCommitPushBranch_ForceUpdatesExistingBranch(t *testing.T) {
 	remoteSHA := strings.TrimSpace(runOut(t, remote, "git", "rev-parse", "refs/heads/suggestions-abc"))
 	if remoteSHA != second {
 		t.Fatalf("remote not force-updated: %s != %s", remoteSHA, second)
+	}
+}
+
+// Regression: in production the manuscript repo has no `user.email` set,
+// and `commit-tree` defaults to host git config — which also wasn't set.
+// The fix passes the author via env. This test removes both repo-level and
+// any ambient HOME-level git config so the env passing is what makes it
+// work.
+func TestWriteCommitPushBranch_NoGitConfig(t *testing.T) {
+	g, _ := setupLocalRemote(t, "Original.\n")
+	// Strip the repo-level user.* set up by setupLocalRemote.
+	mustRun(t, g.Path, "git", "config", "--unset", "user.email")
+	mustRun(t, g.Path, "git", "config", "--unset", "user.name")
+
+	// Point HOME at an empty dir so global ~/.gitconfig can't satisfy the
+	// identity requirement either.
+	emptyHome := t.TempDir()
+	t.Setenv("HOME", emptyHome)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
+	if _, err := g.WriteCommitPushBranch(context.Background(), baseSHA, "suggestions-noconfig",
+		[]byte("Edited.\n"), "msg", false, "Author", "author@example.com"); err != nil {
+		t.Fatalf("expected success even with no git identity configured: %v", err)
 	}
 }
 

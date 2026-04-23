@@ -378,7 +378,9 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	}
 
 	message := fmt.Sprintf("Apply %d suggested edit(s) from %s", applied, session.Username)
-	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, force)
+	// Synth an email so commit-tree never depends on host-side git config.
+	authorEmail := fmt.Sprintf("%s@manuscript-studio.local", sanitizeBranchComponent(session.Username))
+	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, force, session.Username, authorEmail)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to push branch: %v", err), http.StatusInternalServerError)
 		return
