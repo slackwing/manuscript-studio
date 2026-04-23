@@ -1491,8 +1491,11 @@ p.indented {
 
 .push-button-container.push-busy { opacity: 0.6; pointer-events: none; }
 
-.push-btn-primary,
-.push-btn-caret {
+/* `#controls button` is more specific than `.push-btn-primary` because it
+   chains an ID + element. Match its specificity by anchoring under #controls
+   so these rules actually win. */
+#controls .push-btn-primary,
+#controls .push-btn-caret {
   font-family: "Helvetica", sans-serif;
   font-size: 13px;
   border: 1px solid #2a7bb0;
@@ -1503,36 +1506,36 @@ p.indented {
   border-radius: 0;
 }
 
-.push-btn-primary {
+#controls .push-btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
 /* No dropdown — primary is the whole button. */
-.push-btn-primary.push-btn-solo { border-radius: 4px; }
+#controls .push-btn-primary.push-btn-solo { border-radius: 4px; }
 
 /* With dropdown — primary + caret share a seam. Round only the outside
    corners, drop the caret's left border (the seam itself does the work),
-   and add a faint divider so they read as one button with two zones. */
-.push-btn-primary.push-btn-grouped {
+   and add a divider so they read as one button with two zones. */
+#controls .push-btn-primary.push-btn-grouped {
   border-radius: 4px 0 0 4px;
-  border-right: 1px solid rgba(255, 255, 255, 0.35);
+  border-right: 1px solid rgba(255, 255, 255, 0.55);
 }
 
-.push-btn-caret {
+#controls .push-btn-caret {
   border-left: 0;
   border-radius: 0 4px 4px 0;
   padding: 5px 8px;
 }
 
-.push-btn-primary:hover,
-.push-btn-caret:hover {
+#controls .push-btn-primary:hover,
+#controls .push-btn-caret:hover {
   background: #225f8c;
 }
 
-.push-btn-primary:disabled,
-.push-btn-caret:disabled {
+#controls .push-btn-primary:disabled,
+#controls .push-btn-caret:disabled {
   cursor: default;
   background: #6b9ec1;
   border-color: #6b9ec1;
@@ -1570,7 +1573,7 @@ p.indented {
 
 .push-menu-item:hover { background: #f5f5f5; color: #333; }
 
-#logout-btn {
+#controls #logout-btn {
   margin-left: 20px;
   padding: 5px 12px;
   font-family: "Helvetica", sans-serif;
@@ -1582,7 +1585,7 @@ p.indented {
   cursor: pointer;
 }
 
-#logout-btn:hover { background: #8b2e25; border-color: #8b2e25; }
+#controls #logout-btn:hover { background: #8b2e25; border-color: #8b2e25; }
 
 /* Print styles */
 @media print {
