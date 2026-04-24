@@ -1,38 +1,16 @@
 package segman
 
 import (
-	"encoding/json"
-	"os"
 	"strings"
-	"sync"
 	"unicode"
 )
 
-var (
-	cachedVersion string
-	versionOnce   sync.Once
-)
-
-// Version returns the current SEGMAN version from VERSION.json
-func Version() string {
-	versionOnce.Do(func() {
-		data, err := os.ReadFile("../../VERSION.json")
-		if err != nil {
-			cachedVersion = "unknown"
-			return
-		}
-
-		var v struct {
-			Version string `json:"version"`
-		}
-		if err := json.Unmarshal(data, &v); err != nil {
-			cachedVersion = "unknown"
-			return
-		}
-		cachedVersion = v.Version
-	})
-	return cachedVersion
-}
+// Version is segman's library version. Bumped by tools/bump-version.sh
+// alongside js/segman.js, rust/Cargo.toml, and the root VERSION.json so
+// all four stay in lockstep. The same string is what consumers should
+// stamp onto their own data when they need to record "which segmenter
+// produced this".
+const Version = "1.0.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -683,3 +661,4 @@ func splitAtBoundaries(runes []rune, boundaries []boundaryMark) []string {
 
 	return sentences
 }
+// Test comment

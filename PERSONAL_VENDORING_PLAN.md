@@ -1,5 +1,20 @@
 # Plan: Personal vendor repos (segman + tuft)
 
+**Status: SHIPPED 2026-04-24.**
+
+- segman v1.0.0 lives at github.com/slackwing/segman (clean layout,
+  package renamed from `senseg`, version exported as `const Version`).
+- tuft v0.1.0 lives at github.com/slackwing/tuft.
+- manuscript-studio vendors both via `scripts/vendor-{segman,tuft}.sh`,
+  pinned to tags by default.
+- `migrations.SegmenterVersion` reads from upstream's exported `Version`
+  constant — vendor refresh automatically updates the migration stamp.
+
+The plan below is preserved as a record of how it was done. The
+"deep refactor in Phase 6" was abandoned mid-execution and folded
+into the upstream repo's first proper release; manuscript-studio was
+re-vendored against that release rather than the messy first import.
+
 Goal: extract `segman` (sentence segmenter) and `rainbow-slice.js` into
 their own GitHub repos, then re-import them into manuscript-studio via a
 clean vendor-by-copy workflow.

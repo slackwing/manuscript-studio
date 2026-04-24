@@ -654,29 +654,15 @@ function splitAtBoundaries(chars, boundaries) {
     return sentences;
 }
 
-/**
- * Get the current SEGMAN version from VERSION.json
- * @returns {string} - The version string
- */
-let cachedVersion = null;
-function getVersion() {
-    if (cachedVersion) {
-        return cachedVersion;
-    }
+// segman version. Bumped by tools/bump-version.sh alongside go/segman.go,
+// rust/Cargo.toml, and the root VERSION.json so all four stay in lockstep.
+const VERSION = '1.0.0';
 
-    try {
-        const fs = require('fs');
-        const path = require('path');
-        const versionFile = path.join(__dirname, '../../VERSION.json');
-        const data = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
-        cachedVersion = data.version;
-        return cachedVersion;
-    } catch (err) {
-        return 'unknown';
-    }
-}
-
-// Export for Node.js
+// Export for both Node (CommonJS) and the browser. In the browser we
+// expose a `window.segman` namespace AND keep `segment` as a top-level
+// global for back-compat with consumers that call segment() bare.
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { segment, getVersion };
+    module.exports = { segment, VERSION };
+} else if (typeof window !== 'undefined') {
+    window.segman = { segment, VERSION };
 }

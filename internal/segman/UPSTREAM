@@ -1,5 +1,4 @@
 source: github.com/slackwing/segman
-ref:    main
-sha:    3960ab1
-branch: main
-at:     2026-04-24T07:49:23Z
+ref:    v1.0.0
+sha:    1dfc6f7
+at:     2026-04-24T08:19:49Z

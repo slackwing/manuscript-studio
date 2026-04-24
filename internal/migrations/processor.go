@@ -12,10 +12,11 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
-// Stamped onto every migration row. Sourced from segman/VERSION.json via
-// go:embed, so a vendor upgrade automatically flows through here without
-// any hand-edit. See scripts/vendor-segman.sh and segman/version.go.
-var SegmenterVersion = segman.EmbeddedVersion()
+// Stamped onto every migration row. Sourced from the vendored segman
+// library's exported Version constant — re-vendoring against a new
+// segman tag automatically updates this string. Format mirrors the
+// historical "segman-X.Y.Z" stamp.
+var SegmenterVersion = "segman-" + segman.Version
 
 // Lifecycle: caller reserves a row with CreatePendingMigration, then calls
 // Run, which transitions running → done/error before returning.

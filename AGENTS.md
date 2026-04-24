@@ -71,14 +71,13 @@ re-vendor instead via the script.
 
 | File | Source | Vendor script |
 |------|--------|---------------|
-| `internal/segman/segman.go` | github.com/slackwing/segman | `scripts/vendor-segman.sh` |
-| `internal/segman/VERSION.json` | github.com/slackwing/segman | (same) |
-| `web/js/segman.js` | github.com/slackwing/segman | (same) |
+| `internal/segman/segman.go` | github.com/slackwing/segman (tag pinned in script) | `scripts/vendor-segman.sh` |
+| `web/js/segman.js` | github.com/slackwing/segman (same) | (same) |
 | `web/js/rainbow-slice.js` | github.com/slackwing/tuft | `scripts/vendor-tuft.sh` |
 
 Provenance stamps live next to the vendored files
 (`internal/segman/UPSTREAM`, `web/js/TUFT_UPSTREAM`). PR review can
-read them to see "what got vendored when, from what ref."
+read them to see "what got vendored when, from what ref/sha."
 
 The Go and JS segmenters MUST split sentences identically, or sentence
 IDs will mismatch between browser and server and DOM wrapping will
@@ -86,10 +85,11 @@ silently fail. Both come from the same upstream so this is enforced
 upstream — but if you ever bump one without the other, you'll find out
 the hard way.
 
-`internal/segman/version.go` is hand-written (NOT vendored): it
-go:embeds VERSION.json so the segmenter version flows into
-`migrations.SegmenterVersion` automatically on re-vendor. See
-PERSONAL_VENDORING_PLAN.md §4.
+`internal/segman/segman.go` exports `const Version = "X.Y.Z"`; the
+manuscript-studio side reads it as `var SegmenterVersion = "segman-" +
+segman.Version` in `internal/migrations/processor.go`. Re-vendoring
+against a new segman tag automatically updates the version stamped
+onto new migration rows — no hand-edit required.
 
 ### N9 — Render order in renderer.js is load-bearing
 
