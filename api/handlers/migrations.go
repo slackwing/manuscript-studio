@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
-	"github.com/slackwing/manuscript-studio/internal/migrations"
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
@@ -241,27 +239,3 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 	})
 }
 
-// findManuscriptConfig matches by CloneURL() (the resolved URL git uses), which
-// is what was stored when the manuscript row was created.
-func (h *MigrationHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {
-	for i, m := range h.Config.Manuscripts {
-		if m.Repository.CloneURL() == repoURL && m.Repository.Path == filePath {
-			return &h.Config.Manuscripts[i]
-		}
-	}
-	return nil
-}
-
-func (h *MigrationHandlers) readGitContent(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (string, error) {
-	if err := migrations.ValidateCommitRef(commitHash); err != nil {
-		return "", err
-	}
-	gitRepo := &migrations.GitRepository{
-		Path:      h.Config.RepoPath(m.Name),
-		Branch:    m.Repository.Branch,
-		RemoteURL: m.Repository.CloneURL(),
-		FilePath:  m.Repository.Path,
-		AuthToken: m.Repository.AuthToken,
-	}
-	return gitRepo.GetFileContent(ctx, commitHash)
-}

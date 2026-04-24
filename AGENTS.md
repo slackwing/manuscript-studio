@@ -72,18 +72,16 @@ re-vendor instead via the script.
 | File | Source | Vendor script |
 |------|--------|---------------|
 | `internal/segman/segman.go` | github.com/slackwing/segman (tag pinned in script) | `scripts/vendor-segman.sh` |
-| `web/js/segman.js` | github.com/slackwing/segman (same) | (same) |
 | `web/js/rainbow-slice.js` | github.com/slackwing/tuft | `scripts/vendor-tuft.sh` |
 
 Provenance stamps live next to the vendored files
 (`internal/segman/UPSTREAM`, `web/js/TUFT_UPSTREAM`). PR review can
 read them to see "what got vendored when, from what ref/sha."
 
-The Go and JS segmenters MUST split sentences identically, or sentence
-IDs will mismatch between browser and server and DOM wrapping will
-silently fail. Both come from the same upstream so this is enforced
-upstream — but if you ever bump one without the other, you'll find out
-the hard way.
+Segmentation is **server-side only**. The Go segman library produces
+sentence rows during migration; the browser receives pre-segmented
+sentences over the API. We do NOT vendor the JS segman — there's no
+JS-side segmentation to keep parity with.
 
 `internal/segman/segman.go` exports `const Version = "X.Y.Z"`; the
 manuscript-studio side reads it as `var SegmenterVersion = "segman-" +

@@ -331,13 +331,12 @@ GitHub repo so they can open a PR. Single-user, single-repo, GitHub-only.
   4. Apply annotation highlights (`highlight-yellow` etc.) based on
      sentence ID.
   5. Hand the wrapped HTML to Paged.js for pagination.
-- **Segmenter parity required.** The JS segmenter (`web/js/segman.js`)
-  must produce identical sentence splits as the Go segmenter
-  (`internal/segman/segman.go`), because sentence IDs are derived from
-  text+ordinal and must match for DOM wrapping to find its targets. Both
-  files are vendored from **github.com/slackwing/segman** via
-  `scripts/vendor-segman.sh` and must NEVER be edited directly in this
-  repo — re-vendor instead. See AGENTS.md N8.
+- **Segmentation is server-side only.** The Go segman library (vendored
+  to `internal/segman/segman.go`) runs during migration and produces the
+  sentence rows. The browser receives the pre-segmented sentence list
+  over the API and never re-segments. We don't vendor the JS segman
+  here — there's no JS-side segmentation to keep parity with. See
+  AGENTS.md N8 for the vendoring contract.
 
 ### JS module map
 
@@ -345,7 +344,6 @@ GitHub repo so they can open a PR. Single-user, single-repo, GitHub-only.
 |------|---------------|
 | `auth.js` | Login, session, `authenticatedFetch` (auto-redirects to `login.html` on any 401 so an expired session can't silently break the UI). |
 | `renderer.js` | Top-level render pipeline. See render-order constraint in §6.6. |
-| `segman.js` | Vendored from github.com/slackwing/segman — see above. |
 | `annotations.js` | Sticky-note CRUD, color picker, two-click complete, auto-jump to next annotated sentence. |
 | `history.js` | Left-margin history bars (see §6.5). |
 | `suggestions.js` | Re-click-to-edit modal + inline diff (see §6.6). |

@@ -10,13 +10,14 @@
 # Layout it produces:
 #   internal/segman/segman.go        # vendored Go library (package segman)
 #   internal/segman/UPSTREAM         # provenance stamp
-#   web/js/segman.js                 # vendored JS library
 #
 # Notes:
 #   - We pin to a tag (v1.0.0) by default rather than `main`, so vendor
 #     refreshes are deliberate version moves rather than "whatever HEAD is."
 #   - segman.Version is a const baked into segman.go at the upstream's build
 #     time; we don't need a separate VERSION.json in this repo.
+#   - We don't vendor the JS segman: manuscript-studio segments server-side
+#     only (the browser receives pre-segmented sentences from the API).
 #   - go build ./... runs after the copy to catch any breakage immediately.
 
 set -euo pipefail
@@ -47,18 +48,15 @@ git -C "$SOURCE" checkout --quiet "$REF"
 UPSTREAM_SHA=$(git -C "$SOURCE" rev-parse --short HEAD)
 NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-for f in go/segman.go js/segman.js; do
-    if [ ! -f "$SOURCE/$f" ]; then
-        echo "vendor-segman: missing expected file $SOURCE/$f" >&2
-        exit 1
-    fi
-done
+if [ ! -f "$SOURCE/go/segman.go" ]; then
+    echo "vendor-segman: missing $SOURCE/go/segman.go" >&2
+    exit 1
+fi
 
-mkdir -p internal/segman web/js
-rm -f internal/segman/segman.go web/js/segman.js
+mkdir -p internal/segman
+rm -f internal/segman/segman.go
 
 cp "$SOURCE/go/segman.go" internal/segman/segman.go
-cp "$SOURCE/js/segman.js" web/js/segman.js
 
 cat > internal/segman/UPSTREAM <<EOF
 source: github.com/slackwing/segman
@@ -68,7 +66,6 @@ at:     $NOW
 EOF
 
 echo "  copied internal/segman/segman.go"
-echo "  copied web/js/segman.js"
 echo "  stamped internal/segman/UPSTREAM (@ $UPSTREAM_SHA)"
 
 echo "== Verifying build =="
@@ -76,4 +73,4 @@ go build ./... >/dev/null
 
 echo "== Done. =="
 echo "Vendored segman from $REF (sha $UPSTREAM_SHA)"
-echo "Review: git diff internal/segman web/js/segman.js"
+echo "Review: git diff internal/segman"
