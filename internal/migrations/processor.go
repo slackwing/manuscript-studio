@@ -8,11 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/segman"
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
-// Stamped onto every migration row.
-const SegmenterVersion = "segman-1.0.0"
+// Stamped onto every migration row. Sourced from segman/VERSION.json via
+// go:embed, so a vendor upgrade automatically flows through here without
+// any hand-edit. See scripts/vendor-segman.sh and segman/version.go.
+var SegmenterVersion = segman.EmbeddedVersion()
 
 // Lifecycle: caller reserves a row with CreatePendingMigration, then calls
 // Run, which transitions running → done/error before returning.

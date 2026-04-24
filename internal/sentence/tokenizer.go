@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/slackwing/manuscript-studio/internal/segmenter"
+	"github.com/slackwing/manuscript-studio/internal/segman"
 )
 
 type Tokenizer struct{}
@@ -18,7 +18,7 @@ func (t *Tokenizer) SplitIntoSentences(text string) []string {
 		return []string{}
 	}
 
-	sentences := segmenter.Segment(text)
+	sentences := segman.Segment(text)
 
 	var result []string
 	for _, sent := range sentences {
@@ -45,7 +45,7 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 		return []string{}
 	}
 
-	rawSegments := segmenter.Segment(source)
+	rawSegments := segman.Segment(source)
 	if len(rawSegments) == 0 {
 		return []string{}
 	}

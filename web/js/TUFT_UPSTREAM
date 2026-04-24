@@ -1,0 +1,6 @@
+source: github.com/slackwing/tuft
+ref:    main
+sha:    dbac660
+branch: main
+at:     2026-04-24T07:51:12Z
+files:  rainbow-slice.js

@@ -64,17 +64,32 @@ margin elements.
 .circle:hover { width: 26px; height: 26px; } /* 22 × 1.18 */
 ```
 
-### N8 — Segmenter is vendored — DO NOT EDIT
+### N8 — Vendored libraries — DO NOT EDIT
 
-`internal/segmenter/segman.go` and `web/js/segmenter.js` are **both
-vendored** from `~/src/feathers/15.segman/exports/lib/segman-{go,js}/`.
-NEVER edit them in this repo. Re-vendor from the source if you need a
-change. (This has bitten the user twice — once when a comment-cleaning
-agent edited `segman.go`, once when an automated pass edited
-`segmenter.js`.)
+These files are vendored from external repos. NEVER edit them here —
+re-vendor instead via the script.
 
-Both must split sentences identically, or sentence IDs will mismatch
-between browser and server and DOM wrapping will silently fail.
+| File | Source | Vendor script |
+|------|--------|---------------|
+| `internal/segman/segman.go` | github.com/slackwing/segman | `scripts/vendor-segman.sh` |
+| `internal/segman/VERSION.json` | github.com/slackwing/segman | (same) |
+| `web/js/segman.js` | github.com/slackwing/segman | (same) |
+| `web/js/rainbow-slice.js` | github.com/slackwing/tuft | `scripts/vendor-tuft.sh` |
+
+Provenance stamps live next to the vendored files
+(`internal/segman/UPSTREAM`, `web/js/TUFT_UPSTREAM`). PR review can
+read them to see "what got vendored when, from what ref."
+
+The Go and JS segmenters MUST split sentences identically, or sentence
+IDs will mismatch between browser and server and DOM wrapping will
+silently fail. Both come from the same upstream so this is enforced
+upstream — but if you ever bump one without the other, you'll find out
+the hard way.
+
+`internal/segman/version.go` is hand-written (NOT vendored): it
+go:embeds VERSION.json so the segmenter version flows into
+`migrations.SegmenterVersion` automatically on re-vendor. See
+PERSONAL_VENDORING_PLAN.md §4.
 
 ### N9 — Render order in renderer.js is load-bearing
 

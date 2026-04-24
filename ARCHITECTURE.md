@@ -331,12 +331,13 @@ GitHub repo so they can open a PR. Single-user, single-repo, GitHub-only.
   4. Apply annotation highlights (`highlight-yellow` etc.) based on
      sentence ID.
   5. Hand the wrapped HTML to Paged.js for pagination.
-- **Segmenter parity required.** The JS segmenter (`web/js/segmenter.js`)
+- **Segmenter parity required.** The JS segmenter (`web/js/segman.js`)
   must produce identical sentence splits as the Go segmenter
-  (`internal/segmenter/segman.go`), because sentence IDs are derived from
-  text+ordinal and must match for DOM wrapping to find its targets. **Both
-  files are vendored** from `~/src/feathers/15.segman/exports/lib/segman-{go,js}/`
-  and must NEVER be edited directly in this repo — re-vendor instead.
+  (`internal/segman/segman.go`), because sentence IDs are derived from
+  text+ordinal and must match for DOM wrapping to find its targets. Both
+  files are vendored from **github.com/slackwing/segman** via
+  `scripts/vendor-segman.sh` and must NEVER be edited directly in this
+  repo — re-vendor instead. See AGENTS.md N8.
 
 ### JS module map
 
@@ -344,11 +345,11 @@ GitHub repo so they can open a PR. Single-user, single-repo, GitHub-only.
 |------|---------------|
 | `auth.js` | Login, session, `authenticatedFetch` (auto-redirects to `login.html` on any 401 so an expired session can't silently break the UI). |
 | `renderer.js` | Top-level render pipeline. See render-order constraint in §6.6. |
-| `segmenter.js` | Vendored — see above. |
+| `segman.js` | Vendored from github.com/slackwing/segman — see above. |
 | `annotations.js` | Sticky-note CRUD, color picker, two-click complete, auto-jump to next annotated sentence. |
 | `history.js` | Left-margin history bars (see §6.5). |
 | `suggestions.js` | Re-click-to-edit modal + inline diff (see §6.6). |
-| `rainbow-slice.js` | Per-sentence color stripe summarizing all annotations on it. |
+| `rainbow-slice.js` | Vendored from github.com/slackwing/tuft. Per-sentence color stripe summarizing all annotations on it. |
 | `pagedjs-config.js` | Paged.js handlers (page numbering, breaks). |
 | `vendor/diff-match-patch.js` | Google's diff-match-patch (used by `suggestions.js`). |
 

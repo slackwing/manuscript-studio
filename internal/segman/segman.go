@@ -1,4 +1,4 @@
-package segmenter
+package segman
 
 import (
 	"encoding/json"
