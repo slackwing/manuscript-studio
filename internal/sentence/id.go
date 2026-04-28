@@ -8,10 +8,16 @@ import (
 )
 
 // GenerateSentenceID: "{first-three-words}-{8 hex}" where the hex is
-// SHA-256(normalizedText + ordinal + commitHash) truncated to 8 chars.
-// Sentences with no alphanumeric words (e.g. "***") get prefix "heading".
-// See TestGenerateSentenceID.
-func GenerateSentenceID(text string, ordinal int, commitHash string) string {
+// SHA-256(normalizedText + ordinal + commitHash + segmenterVersion) truncated
+// to 8 chars. Sentences with no alphanumeric words (e.g. "***") get prefix
+// "heading". See TestGenerateSentenceID.
+//
+// segmenterVersion is part of the hash so a segmenter bump on the same commit
+// always produces fresh IDs — different ID = different row, no PK collision
+// when both old and new migrations want to coexist. Existing IDs in the DB
+// were generated under the old 3-input formula and remain valid forever; this
+// function only affects fresh writes.
+func GenerateSentenceID(text string, ordinal int, commitHash, segmenterVersion string) string {
 	words := ExtractWords(text)
 
 	var prefix string
@@ -23,7 +29,7 @@ func GenerateSentenceID(text string, ordinal int, commitHash string) string {
 	}
 
 	normalizedText := normalizeText(text)
-	data := fmt.Sprintf("%s-%d-%s", normalizedText, ordinal, commitHash)
+	data := fmt.Sprintf("%s-%d-%s-%s", normalizedText, ordinal, commitHash, segmenterVersion)
 	hash := sha256.Sum256([]byte(data))
 	suffix := hex.EncodeToString(hash[:4])
 

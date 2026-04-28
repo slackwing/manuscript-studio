@@ -66,7 +66,7 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 		}
 	}()
 
-	newSentences, newSentenceIDs, newSentenceMap := segmentContent(content, commitHash, migrationID)
+	newSentences, newSentenceIDs, newSentenceMap := segmentContent(content, commitHash, p.segmenterVersion, migrationID)
 
 	parent, err := db.GetLatestMigration(ctx, manuscriptID)
 	if err != nil {
@@ -333,7 +333,7 @@ func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMa
 // "\n\n" structural marker (per UNIFIED_DATA_SHAPE_PLAN.md). Sentence IDs
 // are stable across this change because GenerateSentenceID's normalizeText
 // strips the marker before hashing.
-func segmentContent(content, commitHash string, migrationID int) ([]models.Sentence, []string, map[string]string) {
+func segmentContent(content, commitHash, segmenterVersion string, migrationID int) ([]models.Sentence, []string, map[string]string) {
 	tokenizer := sentence.NewTokenizer()
 	texts := tokenizer.TokenizeWithMarkers(content)
 
@@ -342,7 +342,7 @@ func segmentContent(content, commitHash string, migrationID int) ([]models.Sente
 	textByID := make(map[string]string, len(texts))
 
 	for i, t := range texts {
-		id := sentence.GenerateSentenceID(t, i, commitHash)
+		id := sentence.GenerateSentenceID(t, i, commitHash, segmenterVersion)
 		ids[i] = id
 		textByID[id] = t
 		sentences[i] = models.Sentence{

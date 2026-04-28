@@ -186,33 +186,18 @@ the segmenter version (verified — see id.go), the JS side has nothing
 to do. The migration row records the version that segmented; the IDs
 themselves are version-agnostic by design.
 
-### ⚠️ Known divergence risk — separate plan needed
+### Segmenter-version divergence — RESOLVED
 
-The user flagged this and is correct: **two different segmenter
-versions can produce different sentences for the same commit**, which
-means **different sentence_ids for the "same" text** even though the
-commit hash going into the hash is identical. The `migration.segmenter`
-column tells you which segmenter ran, but the IDs themselves carry no
-version info, so cross-version comparisons can silently wrong-match.
-
-Concrete failure modes (all dormant at v1.0.0 with one version live):
-
-- A vendor upgrade rebuilds the same commit → new migration → new IDs
-  → old annotations/suggestions only reachable via
-  `previous_sentence_id` chain.
-- Browser JS segmenter (vendored to one version) disagreeing with
-  server Go segmenter (vendored to another) during a partial deploy.
-
-Out of scope for this plan. The right fix is one of:
-1. Mix `segmenterVersion` into `GenerateSentenceID`'s hash. (Most
-   correct; existing sentence_ids change meaning, so do a one-shot
-   ID backfill if you care.)
-2. Refuse to bootstrap a commit that already has a migration with a
-   different segmenter.
-3. Pin segmenter version per manuscript in config.
-
-Track this as `SEGMENTER_VERSION_HARDENING_PLAN.md` once segman is
-properly extracted.
+Originally flagged as a separate hardening plan: two different
+segmenter versions producing different sentences for the same commit
+would have collided in the `sentence` table (PK is `sentence_id`).
+Resolution: `GenerateSentenceID` now mixes the segmenter version into
+the hash, so a bump produces fresh IDs and old/new migrations coexist
+without PK conflict. Existing IDs in the DB were generated under the
+old 3-input formula and remain valid forever — `GenerateSentenceID` is
+only called for fresh writes. Browser-side segmentation was also
+removed (segmentation is now server-side only), so there's no
+client/server segmenter parity concern either.
 
 ---
 

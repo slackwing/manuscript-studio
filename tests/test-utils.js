@@ -144,8 +144,11 @@ async function loginAsTestUser(page) {
   await page.fill('#password', TEST_PASSWORD);
   await page.click('#login-btn');
 
-  // Wait for the post-login redirect to land somewhere on the app.
-  await page.waitForURL(/localhost:5001\/(\?.*)?$/, { timeout: 5000 });
+  // Wait for the post-login redirect to land somewhere on the app. Don't
+  // wait for `load` — Paged.js pagination can keep the load event pending
+  // for tens of seconds. URL match alone is sufficient: the test will
+  // explicitly wait for whatever DOM it needs after returning.
+  await page.waitForURL(/localhost:5001\/(\?.*)?$/, { timeout: 5000, waitUntil: 'commit' });
   await page.waitForTimeout(500);
 }
 
