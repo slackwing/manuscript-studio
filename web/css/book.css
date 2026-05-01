@@ -1564,6 +1564,21 @@ p.indented {
   font-weight: 600;
 }
 
+/* Pending structural markers in a suggested edit. The visible glyph is
+   muted; the visual line break + indent mimic what a real paragraph
+   break would look like after commit + resegmentation. Inside <del>
+   the glyph picks up the strikethrough — no <br> is emitted there. */
+.sentence .suggested-marker {
+  color: #888;
+  opacity: 0.7;
+  font-weight: normal;
+}
+
+.sentence .suggested-pindent {
+  display: inline-block;
+  width: 2em;
+}
+
 /* Suggested-edit modal. Monospace textarea since the user is editing source. */
 #suggestion-modal-overlay {
   position: fixed;

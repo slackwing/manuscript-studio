@@ -82,6 +82,29 @@ const WriteSysSuggestions = {
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
+    // Live conversion: a real newline pressed in the textarea is the
+    // user's natural way of expressing a paragraph break. Map \n\n → §
+    // (section) and remaining \n → ¶ (paragraph) on every input. Done
+    // here rather than only on save so the user sees the glyphs the
+    // moment they hit Enter, matching what the diff in the page shows.
+    if (tm) {
+      textarea.addEventListener('input', () => {
+        const before = textarea.value;
+        // Skip if no newlines — saves the round-trip on most keystrokes.
+        if (!/\n/.test(before)) return;
+        const caret = textarea.selectionStart;
+        // Count newline characters before the caret so we can adjust.
+        const newlinesBefore = (before.slice(0, caret).match(/\n/g) || []).length;
+        const after = before.replace(/\n\n/g, tm.SECTION_GLYPH).replace(/\n/g, tm.PARAGRAPH_GLYPH);
+        if (after === before) return;
+        textarea.value = after;
+        // Each \n collapses to a 1-char glyph, so subtract the count
+        // of newlines that were strictly before the caret.
+        const newCaret = caret - newlinesBefore;
+        textarea.setSelectionRange(newCaret, newCaret);
+      });
+    }
+
     const close = () => {
       overlay.remove();
       modal.remove();
@@ -247,7 +270,56 @@ function renderDiffHTML(oldText, newText, dmp) {
     if (dels) parts.push(`<del>${escapeHTML(dels)}</del>`);
     if (inses) parts.push(`<strong>${escapeHTML(inses)}</strong>`);
   }
-  return pairItalicsAcrossInserts(parts.join(''));
+  return renderStructuralMarkers(pairItalicsAcrossInserts(parts.join('')));
+}
+
+// Replace storage-form structural markers with visible inline HTML.
+//   \n\n  → "§" + line break + indent (section break)
+//   \n\t  → "¶" + line break + indent (paragraph break)
+// The break is purely visual — the surrounding .sentence span still owns
+// the click handler / data-sentence-id. Inside a <del> we render a
+// struck-through marker only (no actual <br>), so removed paragraph
+// breaks read naturally instead of pulling text down to a new line.
+//
+// Indent matches p.indented (text-indent: 2em) so the preview reads like
+// a real paragraph break would after commit + resegmentation.
+function renderStructuralMarkers(html) {
+  // Walk the string tracking <del> depth so we know whether to break.
+  let out = '';
+  let inDel = false;
+  let inTag = false;
+  for (let i = 0; i < html.length; i++) {
+    const c = html[i];
+    if (c === '<') {
+      inTag = true;
+      if (html.startsWith('<del', i)) inDel = true;
+      else if (html.startsWith('</del>', i)) inDel = false;
+      out += c;
+      continue;
+    }
+    if (inTag) {
+      out += c;
+      if (c === '>') inTag = false;
+      continue;
+    }
+    // Match \n\n first so it doesn't get consumed by the \n\t branch.
+    if (c === '\n' && html[i + 1] === '\n') {
+      out += inDel
+        ? '<span class="suggested-marker">§</span>'
+        : '<span class="suggested-marker">§</span><br><span class="suggested-pindent"></span>';
+      i++;
+      continue;
+    }
+    if (c === '\n' && html[i + 1] === '\t') {
+      out += inDel
+        ? '<span class="suggested-marker">¶</span>'
+        : '<span class="suggested-marker">¶</span><br><span class="suggested-pindent"></span>';
+      i++;
+      continue;
+    }
+    out += c;
+  }
+  return out;
 }
 
 // Replace *x* with <em>x</em> across the assembled diff HTML. The naïve
