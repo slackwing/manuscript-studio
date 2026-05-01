@@ -4,6 +4,12 @@ Status: **SHIPPED 2026-04-22**. Implemented per this plan; see
 ARCHITECTURE.md §6.8 for the live design summary. Kept here for the design
 notes and risk register.
 
+Post-ship enhancement (2026-04-30): the push commit also stages a sibling
+`<name>.segman` file (sentence-per-line, produced by the
+github.com/slackwing/segman library and its pre-commit hook) when one
+already exists at the base commit, so PR diffs can be reviewed at
+sentence granularity. See ARCHITECTURE.md §6.8.
+
 Owner notes: this captures a design discussion between Slackwing and Claude.
 
 ---

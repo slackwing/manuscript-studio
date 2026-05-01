@@ -291,28 +291,40 @@ Lets a user push their suggested edits as a real branch on the manuscript's
 GitHub repo so they can open a PR. Single-user, single-repo, GitHub-only.
 
 - **Endpoints**:
-  - `GET .../push-state` — returns `{branch, branch_exists}` so the UI can
-    label the button "Push" (update) vs "Push New" (create).
-  - `POST .../push-suggestions` — body `{action: "update" | "new"}`. Server
-    loads the user's suggestions, applies them to the .manuscript bytes at
-    the migration's commit (via `internal/sentence/apply.go`), and uses git
-    plumbing (`internal/migrations/git.go WriteCommitPushBranch`) to write
-    a commit on `suggestions-{shortSHA}-{user}` (or `-N`) and push to
-    `origin`. Plumbing route (`hash-object` → `read-tree` → `update-index` →
-    `write-tree` → `commit-tree` → `update-ref`) means the working tree and
-    HEAD stay untouched, so this is safe to run alongside the migration
-    processor's pull/checkout.
-  - Stale-migration check refuses with 409 if the requested migration isn't
-    the latest for the manuscript.
-- **Frontend**: `web/js/push.js`. Split-button in the top toolbar; primary
-  label adapts from `push-state`, dropdown exposes the alternate action.
-  After a successful push it re-queries `push-state` so the label flips.
+  - `GET .../push-state` — returns `{branch, branch_exists, compare_url}`
+    so the UI can show the right label and a working "View on GitHub" link.
+  - `POST .../push-suggestions` — single mode (force-push the canonical
+    branch). Server loads the user's suggestions, applies them to the
+    `.manuscript` bytes at the migration's commit (via
+    `internal/sentence/apply.go`), and uses git plumbing
+    (`internal/migrations/git.go WriteCommitPushBranch`) to write a commit
+    on `suggestions-{shortSHA}-{user}` and push to `origin`. The plumbing
+    route (`hash-object` → `read-tree` → `update-index` → `write-tree` →
+    `commit-tree` → `update-ref`) means the working tree and HEAD stay
+    untouched — safe to run alongside the migration processor's
+    pull/checkout. Stale-migration check refuses with 409 if the requested
+    migration isn't the latest.
+- **`.segman` opt-in**: if a sibling `<name>.segman` (sentence-per-line
+  file produced by [github.com/slackwing/segman](https://github.com/slackwing/segman))
+  exists at the base commit, the push regenerates it from the post-edit
+  manuscript bytes (in-process via `segman.Segment`) and stages BOTH
+  files in the same commit. PR diffs read sentence-by-sentence on the
+  segman side, paragraph-by-paragraph on the .manuscript side. If no
+  `.segman` exists at base, only the `.manuscript` is touched — we don't
+  force the format on repos that don't use it. The existence probe is
+  `git ls-tree --name-only baseCommit -- <path>` (cleaner than
+  `cat-file -e`, which exits 128 ambiguously). Both files are staged via
+  the same `WriteCommitPushBranch(files map[string][]byte)` call.
+- **Frontend**: `web/js/push.js`. Single button in the top toolbar with
+  "Push (N)" label; dropdown surfaces "View on GitHub" once a branch
+  exists. After a successful push it re-queries `push-state` so the
+  dropdown appears.
 - **Webhook interaction**: when the user merges the PR on GitHub, the
   existing webhook fires → migration runs → fuzzy-paired suggestions stay
   frozen on the old `sentence_id` (correct: they were "incorporated"). The
-  webhook's branch-filter (only the configured branch counts) is what stops
-  push events for the `suggestions-*` branches from triggering migrations
-  of intermediate states.
+  webhook's branch-filter (only the configured branch counts) stops push
+  events for the `suggestions-*` branches from triggering migrations of
+  intermediate states.
 
 ---
 

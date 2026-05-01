@@ -301,8 +301,12 @@ ARCHITECTURE.md §6.5–§6.7.
   `POST /api/manuscripts/{id}/migrations/{mid}/push-suggestions`). User
   pushes their suggestions as a `suggestions-{shortSHA}-{user}` branch on
   the manuscript repo's `origin`. Commits are written via git plumbing so
-  the working tree/HEAD are untouched. See ARCHITECTURE.md §6.8 and
-  `PUSH_FEATURE_PLAN.md`.
+  the working tree/HEAD are untouched. If the manuscript repo maintains a
+  `<name>.segman` sibling (sentence-per-line file from the segman
+  pre-commit hook — see github.com/slackwing/segman), the push regenerates
+  it via in-process `segman.Segment` and stages both files in the same
+  commit so PR diffs read sentence-by-sentence. See ARCHITECTURE.md §6.8
+  and `PUSH_FEATURE_PLAN.md`.
 - **401 → login redirect** (`web/js/auth.js authenticatedFetch`) — any
   401 response sends the user to `login.html` so an expired session can't
   silently break the UI.
