@@ -158,7 +158,8 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("annotation migration: %w", err)
 	}
 
-	if err := migrateSuggestions(ctx, db, plan); err != nil {
+	suggestionsMigrated, err := migrateSuggestions(ctx, db, plan)
+	if err != nil {
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
 
@@ -182,6 +183,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 	log.Info("migrate complete",
 		slog.Int("sentences", len(newSentences)),
 		slog.Int("annotations_migrated", annotationsMigrated),
+		slog.Int("suggestions_migrated", suggestionsMigrated),
 	)
 	return &MigrationResult{
 		MigrationID:         migrationID,
@@ -242,16 +244,23 @@ type plannedMove struct {
 // migrateSuggestions copies suggested_change rows forward only on exact-match
 // pairings. Fuzzy/fallback pairings have changed text, so a stale suggestion
 // would be wrong — leave it on the old sentence.
-func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) error {
+// migrateSuggestions copies suggested_change rows forward only on exact-match
+// pairings (Confidence == 1.0). Returns the total number of suggestion rows
+// inserted across all paired sentences — a useful log signal for "did we
+// move anything?".
+func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) (int, error) {
+	moved := 0
 	for oldID, move := range plan {
 		if move.NewSentenceID == "" || move.Confidence < 1.0 {
 			continue
 		}
-		if err := db.CopySuggestionsForward(ctx, oldID, move.NewSentenceID); err != nil {
-			return fmt.Errorf("copy suggestions %s → %s: %w", oldID, move.NewSentenceID, err)
+		n, err := db.CopySuggestionsForward(ctx, oldID, move.NewSentenceID)
+		if err != nil {
+			return moved, fmt.Errorf("copy suggestions %s → %s: %w", oldID, move.NewSentenceID, err)
 		}
+		moved += n
 	}
-	return nil
+	return moved, nil
 }
 
 // RecomputePreviousByNew returns newID → bestOldID via the live pairing logic.

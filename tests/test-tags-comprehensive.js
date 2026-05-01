@@ -204,32 +204,15 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
 
     await createYellowAnnotation();
 
-    // Add three tags — first via UI, rest via API because the UI pops an
-    // alert after every tag POST (empty-body 201 JSON parse) which makes
-    // chaining fragile. We still exercise the UI once.
+    // Add three tags via UI. Used to bypass to API for the 2nd+3rd tag
+    // because the tag-add response was empty and the JSON parse popped
+    // an alert; the API now returns {tags: [...]} so chaining is reliable.
     await addTagViaUI('tag-one');
     await page.waitForTimeout(500);
-
-    // API add for remaining tags
-    const cookies = await page.context().cookies();
-    const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    const apiUrl = 'http://localhost:5001';
-    const annResp = await fetch(`${apiUrl}/api/annotations/sentence/${sentenceId5}`, {
-      headers: { 'Cookie': cookieHeader }
-    });
-    const annData = await annResp.json();
-    const annId5 = annData.annotations[0].annotation_id;
-    const migResp = await fetch(`${apiUrl}/api/migrations/latest?manuscript_id=1`, {
-      headers: { 'Cookie': cookieHeader }
-    });
-    const migId = (await migResp.json()).migration_id;
-    for (const tagName of ['tag-two', 'tag-three']) {
-      await fetch(`${apiUrl}/api/annotations/${annId5}/tags`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader },
-        body: JSON.stringify({ tag_name: tagName, migration_id: migId })
-      });
-    }
+    await addTagViaUI('tag-two');
+    await page.waitForTimeout(500);
+    await addTagViaUI('tag-three');
+    await page.waitForTimeout(500);
     await refreshSentence(sentenceId5);
 
     const multiTagCount = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag)').count();

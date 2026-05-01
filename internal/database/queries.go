@@ -404,8 +404,10 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 // CopySuggestionsForward duplicates rows from one sentence to another (used
 // by the migration processor on exact-match pairings). On per-user collision
 // the existing destination row wins.
-func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSentenceID string) error {
-	_, err := db.Pool.Exec(ctx, `
+// Returns the number of suggestion rows actually inserted (after ON CONFLICT
+// dedup). Zero is fine — most paired sentences have no suggestions.
+func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSentenceID string) (int, error) {
+	tag, err := db.Pool.Exec(ctx, `
 		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
 		SELECT $2, user_id, text, NOW(), NOW()
 		FROM suggested_change
@@ -413,9 +415,9 @@ func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSent
 		ON CONFLICT (sentence_id, user_id) DO NOTHING
 	`, fromSentenceID, toSentenceID)
 	if err != nil {
-		return fmt.Errorf("copy suggestions: %w", err)
+		return 0, fmt.Errorf("copy suggestions: %w", err)
 	}
-	return nil
+	return int(tag.RowsAffected()), nil
 }
 
 // SetPreviousSentenceID: used by the backfill CLI. The migration processor
@@ -590,6 +592,18 @@ func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username s
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating annotations: %w", err)
+	}
+
+	// Tags are needed for the in-memory annotation cache the frontend reads
+	// per-sentence-click. Loading them here keeps clicks free of network
+	// roundtrips. Per-annotation query — N+1 in shape, but the manuscript
+	// has at most a few hundred annotations and each tag list is tiny.
+	for i := range annotations {
+		tags, err := db.GetTagsForAnnotation(ctx, annotations[i].AnnotationID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get tags for annotation %d: %w", annotations[i].AnnotationID, err)
+		}
+		annotations[i].Tags = tags
 	}
 
 	return annotations, nil

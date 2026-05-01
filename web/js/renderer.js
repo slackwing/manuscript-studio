@@ -598,19 +598,15 @@ const WriteSysRenderer = {
     }, 600); // matches CSS animation
   },
 
-  async refreshRainbowBars() {
-    if (!this.currentMigrationID) {
-      return;
-    }
-
-    try {
-      const url = `${this.apiBaseUrl}/migrations/${this.currentMigrationID}/manuscript`;
-      const data = await fetchJSON(url, {}, false);
-      this.currentAnnotations = data.annotations || [];
-      this.addRainbowBars();
-    } catch (error) {
-      console.error('Failed to refresh rainbow bars:', error);
-    }
+  // Re-render the per-sentence rainbow bars from the in-memory annotation
+  // cache. Annotation mutations (create/delete/complete) keep
+  // currentAnnotations in sync via the annotations module's _cacheAdd /
+  // _cacheRemove + in-place property edits — so we don't need a refetch
+  // here. Refetching would also corrupt the shared-object invariant the
+  // sentence-click cache read depends on.
+  refreshRainbowBars() {
+    if (!this.currentMigrationID) return;
+    this.addRainbowBars();
   }
 };
 

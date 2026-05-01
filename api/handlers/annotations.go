@@ -378,7 +378,17 @@ func (h *AnnotationHandlers) HandleAddTagToAnnotation(w http.ResponseWriter, r *
 		return
 	}
 
+	// Return the post-add tag list so the client can update its in-memory
+	// annotation cache without a follow-up GET. Frontend's tag-add code
+	// reads `data.tags`.
+	tags, err := h.DB.GetTagsForAnnotation(ctx, annotationID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load tags after add: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"tags": tags})
 }
 
 func (h *AnnotationHandlers) HandleRemoveTagFromAnnotation(w http.ResponseWriter, r *http.Request) {

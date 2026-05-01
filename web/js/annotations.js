@@ -142,7 +142,27 @@ const WriteSysAnnotations = {
     }
   },
 
-  async showAnnotationsForSentence(sentenceId, sentenceText) {
+  // Mirror of an annotation insert into the renderer's authoritative
+  // cache. Property edits (color/note/priority/flag) mutate the
+  // annotation object in place, so they propagate without help; only
+  // array-shape changes (push/filter) need this.
+  _cacheAdd(annotation) {
+    const r = window.WriteSysRenderer;
+    if (r && Array.isArray(r.currentAnnotations)) r.currentAnnotations.push(annotation);
+  },
+
+  _cacheRemove(annotationId) {
+    const r = window.WriteSysRenderer;
+    if (r && Array.isArray(r.currentAnnotations)) {
+      r.currentAnnotations = r.currentAnnotations.filter(a => a.annotation_id !== annotationId);
+    }
+  },
+
+  // Reads from WriteSysRenderer.currentAnnotations (preloaded with the
+  // manuscript) rather than fetching per click — clicks need to feel
+  // instant. Local mutations (create/delete/complete/color/note/priority/
+  // flag) keep currentAnnotations in sync, so the cache is the truth.
+  showAnnotationsForSentence(sentenceId, sentenceText) {
     this.commitPendingNote(null);
 
     this.currentSentenceId = sentenceId;
@@ -157,28 +177,11 @@ const WriteSysAnnotations = {
       preview.classList.add('visible');
     }
 
-    try {
-      const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations/sentence/${sentenceId}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          this.annotations = [];
-        } else {
-          throw new Error(`HTTP ${response.status}`);
-        }
-      } else {
-        const data = await response.json();
-        this.annotations = data.annotations || [];
-      }
+    const all = (window.WriteSysRenderer && window.WriteSysRenderer.currentAnnotations) || [];
+    this.annotations = all.filter(a => a.sentence_id === sentenceId);
 
-      this.renderStickyNotes();
-      this.focusFirstNoteTextarea();
-
-    } catch (error) {
-      console.error('Failed to fetch annotations:', error);
-      this.annotations = [];
-      this.renderStickyNotes();
-      this.focusFirstNoteTextarea();
-    }
+    this.renderStickyNotes();
+    this.focusFirstNoteTextarea();
   },
 
   // Drop cursor into the first note's textarea so the user can type immediately.
@@ -730,6 +733,7 @@ const WriteSysAnnotations = {
       };
 
       this.annotations.push(newAnnotation);
+      this._cacheAdd(newAnnotation);
       this.renderStickyNotes();
 
       // Move in-flight text into the new real-note textarea and persist any
@@ -794,6 +798,7 @@ const WriteSysAnnotations = {
       console.log('Annotation deleted:', annotationId);
 
       this.annotations = this.annotations.filter(a => a.annotation_id !== annotationId);
+      this._cacheRemove(annotationId);
       this.renderStickyNotes();
       this.updateSentenceHighlights();
 
@@ -820,6 +825,7 @@ const WriteSysAnnotations = {
       console.log('Annotation completed:', annotationId);
 
       this.annotations = this.annotations.filter(a => a.annotation_id !== annotationId);
+      this._cacheRemove(annotationId);
 
       // Jump first; refresh runs unawaited so the network roundtrip doesn't block UI.
       const shouldJump = this.annotations.length === 0;
@@ -827,11 +833,7 @@ const WriteSysAnnotations = {
       this.renderStickyNotes();
       this.updateSentenceHighlights();
 
-      if (shouldJump && window.WriteSysRenderer && window.WriteSysRenderer.currentAnnotations) {
-        // Optimistically drop the completed annotation so jump-target search
-        // sees current state without waiting on the server.
-        window.WriteSysRenderer.currentAnnotations =
-          window.WriteSysRenderer.currentAnnotations.filter(a => a.annotation_id !== annotationId);
+      if (shouldJump) {
         this.jumpToNextAnnotatedSentence();
       }
 

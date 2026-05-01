@@ -39,9 +39,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await context.clearCookies();
     if (withoutSession.length) await context.addCookies(withoutSession);
 
-    // Trigger an authenticated request by clicking a sentence (which fetches
-    // annotations). The expired-session 401 should redirect to login.
-    await page.locator('.sentence').first().click();
+    // Trigger any authenticatedFetch — its 401 handler is what does the
+    // redirect. (Sentence clicks no longer fetch; they read from the
+    // in-memory annotation cache. So we hit a known authenticated
+    // endpoint directly.)
+    await page.evaluate(() => window.authenticatedFetch('api/session'));
 
     await page.waitForURL(/login\.html/, { timeout: 5000 });
     assert(/login\.html/.test(page.url()), `Redirected to login page (got ${page.url()})`);
