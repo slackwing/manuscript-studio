@@ -162,9 +162,10 @@ const WriteSysSuggestions = {
 //     ("wildfires" → "wild" + "fires") to find smaller common substrings.
 //     The token-level diff already produces whole-word changes, so we skip
 //     the readability pass to preserve token boundaries.
-//   * Asterisks → <em>. Matches renderer.applyInlineFormatting so a
-//     suggestion like "*alone*" renders italicized in the diff view
-//     instead of showing literal green asterisks.
+//   * Asterisks → <em>. Done in a post-pass (pairItalicsAcrossInserts)
+//     because the diff often splits an italic pair across two inserts
+//     ("*A ... away*" becomes <strong>...*A</strong> ... <strong>away*</strong>)
+//     and per-segment substitution can't see the matching `*`.
 function renderDiffHTML(oldText, newText, dmp) {
   if (!dmp) return `<strong>${applyInlineFormatting(newText)}</strong>`;
   const a = dmp.diff_linesToWords_ ? dmp.diff_linesToWords_(oldText, newText) : null;
@@ -227,12 +228,13 @@ function renderDiffHTML(oldText, newText, dmp) {
 
   // Group adjacent dels and inses so they emit as single tags. Order
   // within a change cluster: dels first, then inses, regardless of
-  // original interleaving.
+  // original interleaving. Italics are NOT substituted here — see the
+  // pairItalicsAcrossInserts pass below for why.
   const parts = [];
   let i = 0;
   while (i < segs.length) {
     if (segs[i][0] === 0) {
-      parts.push(applyInlineFormatting(segs[i][1]));
+      parts.push(escapeHTML(segs[i][1]));
       i++;
       continue;
     }
@@ -242,16 +244,59 @@ function renderDiffHTML(oldText, newText, dmp) {
       else if (segs[i][0] === 1) inses += segs[i][1];
       i++;
     }
-    if (dels) parts.push(`<del>${applyInlineFormatting(dels)}</del>`);
-    if (inses) parts.push(`<strong>${applyInlineFormatting(inses)}</strong>`);
+    if (dels) parts.push(`<del>${escapeHTML(dels)}</del>`);
+    if (inses) parts.push(`<strong>${escapeHTML(inses)}</strong>`);
   }
-  return parts.join('');
+  return pairItalicsAcrossInserts(parts.join(''));
 }
 
-// Escape HTML, then turn *x* into <em>x</em>. Mirrors the inline formatting
-// applied to non-suggestion sentences in renderer.applyInlineFormatting so
-// italics survive the diff overlay. Per-segment: a *...* pair split across
-// an insert/delete boundary won't italicize — accepted as rare.
+// Replace *x* with <em>x</em> across the assembled diff HTML. The naïve
+// per-segment substitution misses the common case where the user wraps
+// existing text in asterisks: the diff splits the open and close `*`
+// into separate <strong> inserts with unchanged text between, e.g.
+//   <strong>fixtures. *A</strong> tesselated ... <strong>away*.</strong>
+// Pair these by scanning the full HTML, tracking whether we're inside
+// a <del> (whose asterisks are "deleted markdown" and must not pair
+// with surviving ones), and inserting <em> tags around the matched
+// content. The resulting <em> may straddle a <strong> boundary —
+// browsers handle <em>foo<strong>bar</strong>baz</em> fine in inline
+// flow, and the visual result is the intended italics.
+function pairItalicsAcrossInserts(html) {
+  // Find positions of `*` outside <del>...</del> and outside any tag.
+  const stars = [];
+  let inDel = false;
+  let inTag = false;
+  for (let i = 0; i < html.length; i++) {
+    const c = html[i];
+    if (c === '<') {
+      inTag = true;
+      // Detect <del ...> open and </del> close.
+      if (html.startsWith('<del', i)) inDel = true;
+      else if (html.startsWith('</del>', i)) inDel = false;
+      continue;
+    }
+    if (inTag) {
+      if (c === '>') inTag = false;
+      continue;
+    }
+    if (c === '*' && !inDel) stars.push(i);
+  }
+  // Pair greedily: 0+1, 2+3, etc. Replace from the right so earlier
+  // indices stay valid.
+  const pairs = [];
+  for (let i = 0; i + 1 < stars.length; i += 2) {
+    pairs.push([stars[i], stars[i + 1]]);
+  }
+  for (let p = pairs.length - 1; p >= 0; p--) {
+    const [a, b] = pairs[p];
+    html = html.slice(0, a) + '<em>' + html.slice(a + 1, b) + '</em>' + html.slice(b + 1);
+  }
+  return html;
+}
+
+// Used only by the no-d-m-p fallback path. The main path escapes
+// per-segment and then runs pairItalicsAcrossInserts on the joined HTML
+// to handle cross-insert italic pairs.
 function applyInlineFormatting(text) {
   return escapeHTML(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
 }
