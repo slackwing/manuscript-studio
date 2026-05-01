@@ -43,6 +43,14 @@ function git(args, cwd) {
 }
 
 function setupBareRemote() {
+  // Reset the test manuscript repo to its original commit. A previous test
+  // run may have created additional commits (e.g. the .segman opt-in
+  // commit later in this test). main must be at "Initial test manuscript"
+  // so the assertions about base state hold.
+  const initialCommit = execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
+  execSync(`git -C "${REPO_DIR}" reset --hard ${initialCommit} 2>/dev/null`);
+  execSync(`git -C "${REPO_DIR}" clean -fd 2>/dev/null`);
+
   const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-push-remote-'));
   execSync(`git init --bare -q -b main "${bareDir}"`);
   try { git(`remote remove origin`); } catch (_) {}
@@ -199,6 +207,18 @@ function teardownBareRemote(bareDir) {
     const viewHref = await page.locator('.push-menu-item').getAttribute('href');
     assert(typeof viewHref === 'string' && viewHref.includes(`/compare/${branch}`),
       `View on GitHub points at /compare/${branch} (got "${viewHref}")`);
+
+    // Without a sibling .segman in the source tree, the pushed commit
+    // should NOT include one — we don't presume on repos that don't use
+    // the format. (The opt-in path — where a .segman exists at base and
+    // gets refreshed alongside the .manuscript — is unit-tested in
+    // internal/migrations: TestWriteCommitPushBranch_MultipleFiles +
+    // TestPathExistsAtCommit. Reproducing end-to-end here would require
+    // moving the test repo's HEAD between commits and re-bootstrapping,
+    // which tangles with the dev server's local-clone state in flaky ways.)
+    const filesOnBranch = execSync(`git -C "${bareDir}" ls-tree -r --name-only ${branch}`, { encoding: 'utf-8' });
+    assert(!filesOnBranch.split('\n').some(p => p.endsWith('.segman')),
+      `No .segman pushed when none exists at base (saw: ${filesOnBranch.split('\n').filter(Boolean).join(', ')})`);
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}\n${e.stack}`);

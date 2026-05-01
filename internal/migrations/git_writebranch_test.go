@@ -85,7 +85,9 @@ func TestWriteCommitPushBranch_CreatesBranchAndPushes(t *testing.T) {
 	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
 
 	newContent := []byte("Edited.\n")
-	commitSHA, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", newContent, "Apply suggestions", false, "Test", "test@example.com")
+	commitSHA, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc",
+		map[string][]byte{"manuscript.md": newContent},
+		"Apply suggestions", false, "Test", "test@example.com")
 	if err != nil {
 		t.Fatalf("WriteCommitPushBranch: %v", err)
 	}
@@ -131,13 +133,17 @@ func TestWriteCommitPushBranch_ForceUpdatesExistingBranch(t *testing.T) {
 
 	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
 
-	first, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", []byte("First.\n"), "first", false, "Test", "test@example.com")
+	first, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc",
+		map[string][]byte{"manuscript.md": []byte("First.\n")},
+		"first", false, "Test", "test@example.com")
 	if err != nil {
 		t.Fatalf("first push: %v", err)
 	}
 
 	// Force-update with new content from the same base.
-	second, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc", []byte("Second.\n"), "second", true, "Test", "test@example.com")
+	second, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-abc",
+		map[string][]byte{"manuscript.md": []byte("Second.\n")},
+		"second", true, "Test", "test@example.com")
 	if err != nil {
 		t.Fatalf("force update: %v", err)
 	}
@@ -170,8 +176,62 @@ func TestWriteCommitPushBranch_NoGitConfig(t *testing.T) {
 
 	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
 	if _, err := g.WriteCommitPushBranch(context.Background(), baseSHA, "suggestions-noconfig",
-		[]byte("Edited.\n"), "msg", false, "Author", "author@example.com"); err != nil {
+		map[string][]byte{"manuscript.md": []byte("Edited.\n")},
+		"msg", false, "Author", "author@example.com"); err != nil {
 		t.Fatalf("expected success even with no git identity configured: %v", err)
+	}
+}
+
+// Multi-file commit: stage two files in the same commit (e.g. .manuscript +
+// .segman). Both blobs must end up in the new tree.
+func TestWriteCommitPushBranch_MultipleFiles(t *testing.T) {
+	g, remote := setupLocalRemote(t, "Original.\n")
+	ctx := context.Background()
+
+	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
+
+	commitSHA, err := g.WriteCommitPushBranch(ctx, baseSHA, "suggestions-multi",
+		map[string][]byte{
+			"manuscript.md": []byte("Edited manuscript.\n"),
+			"manuscript.segman": []byte("Edited manuscript.\n"),
+		},
+		"two files", false, "Test", "test@example.com")
+	if err != nil {
+		t.Fatalf("WriteCommitPushBranch: %v", err)
+	}
+
+	for path, want := range map[string]string{
+		"manuscript.md":     "Edited manuscript.\n",
+		"manuscript.segman": "Edited manuscript.\n",
+	} {
+		got := runOut(t, remote, "git", "show", commitSHA+":"+path)
+		if got != want {
+			t.Fatalf("%s on remote = %q, want %q", path, got, want)
+		}
+	}
+}
+
+// PathExistsAtCommit reports presence of a path in a commit's tree —
+// the "did the user opt into the .segman format?" probe.
+func TestPathExistsAtCommit(t *testing.T) {
+	g, _ := setupLocalRemote(t, "Original.\n")
+	ctx := context.Background()
+	baseSHA := strings.TrimSpace(runOut(t, g.Path, "git", "rev-parse", "HEAD"))
+
+	exists, err := g.PathExistsAtCommit(ctx, baseSHA, "manuscript.md")
+	if err != nil {
+		t.Fatalf("PathExistsAtCommit(manuscript.md): %v", err)
+	}
+	if !exists {
+		t.Fatal("manuscript.md should exist at base commit")
+	}
+
+	exists, err = g.PathExistsAtCommit(ctx, baseSHA, "manuscript.segman")
+	if err != nil {
+		t.Fatalf("PathExistsAtCommit(manuscript.segman): %v", err)
+	}
+	if exists {
+		t.Fatal("manuscript.segman should NOT exist at base commit")
 	}
 }
 

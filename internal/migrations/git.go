@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -219,38 +220,70 @@ func (g *GitRepository) ensureBareRemoteURL(ctx context.Context) error {
 	return nil
 }
 
-// WriteCommitPushBranch creates (or force-updates) a branch from a given
-// base commit, with `fileContent` as the only change to `g.FilePath`,
-// committed as `message` and pushed to `origin`. Uses git plumbing
-// (read-tree + hash-object + commit-tree + update-ref) so it never touches
-// the working tree or HEAD — safe to call concurrently with the migration
-// processor's pull/checkout.
+// PathExistsAtCommit returns true if `path` exists in the tree at
+// `commitHash`. Used by the push handler to decide whether to also stage
+// a sibling file (e.g. a .segman alongside the .manuscript) — the
+// presence of the file at the base commit is the "user opted in" signal.
 //
-// `force` controls whether the push uses --force (used for `update` mode
-// where the same branch is overwritten with a fresh commit). For a brand
-// new branch, force is typically false.
-// authorName/authorEmail are passed via env so commit-tree doesn't depend on
-// the host's global git config (which often isn't set in containers).
+// Implementation note: `git cat-file -e` exits 128 for both "missing
+// object" and most other errors, so it's not safe to distinguish "no" from
+// "real failure" by exit code. `git ls-tree --name-only` is cleaner: empty
+// output = absent, any output = present, errors = real errors.
+func (g *GitRepository) PathExistsAtCommit(ctx context.Context, commitHash, path string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", g.Path, "ls-tree", "--name-only",
+		commitHash, "--", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("ls-tree %s -- %s: %w", commitHash, path, err)
+	}
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
+// WriteCommitPushBranch creates (or force-updates) a branch from a given
+// base commit, with each entry in `files` (path → content) staged as a
+// modification, committed as `message` and pushed to `origin`. Uses git
+// plumbing (read-tree + hash-object + commit-tree + update-ref) so it
+// never touches the working tree or HEAD — safe to call concurrently
+// with the migration processor's pull/checkout.
+//
+// `force` controls whether the push uses --force (used for the canonical
+// branch where the same name is overwritten with a fresh commit).
+// authorName/authorEmail are passed via env so commit-tree doesn't depend
+// on the host's global git config (often unset in containers).
 func (g *GitRepository) WriteCommitPushBranch(
 	ctx context.Context,
 	baseCommit, branch string,
-	fileContent []byte,
+	files map[string][]byte,
 	message string,
 	force bool,
 	authorName, authorEmail string,
 ) (commitSHA string, err error) {
-	// 1. Hash the new file content as a blob in the object DB.
-	blobCmd := exec.CommandContext(ctx, "git", "-C", g.Path, "hash-object", "-w", "--stdin")
-	blobCmd.Stdin = bytes.NewReader(fileContent)
-	var blobErr bytes.Buffer
-	blobCmd.Stderr = &blobErr
-	blobOut, err := blobCmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git hash-object: %w (%s)", err, strings.TrimSpace(blobErr.String()))
+	if len(files) == 0 {
+		return "", fmt.Errorf("WriteCommitPushBranch: no files to commit")
 	}
-	blobSHA := strings.TrimSpace(string(blobOut))
 
-	// 2. Build a tree based on baseCommit, with the new blob swapped in.
+	// 1. Hash each new file's content as a blob in the object DB. Sort the
+	// paths so the resulting commits are reproducible across calls.
+	paths := make([]string, 0, len(files))
+	for p := range files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	blobSHAByPath := make(map[string]string, len(files))
+	for _, path := range paths {
+		blobCmd := exec.CommandContext(ctx, "git", "-C", g.Path, "hash-object", "-w", "--stdin")
+		blobCmd.Stdin = bytes.NewReader(files[path])
+		var blobErr bytes.Buffer
+		blobCmd.Stderr = &blobErr
+		blobOut, err := blobCmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("git hash-object %s: %w (%s)", path, err, strings.TrimSpace(blobErr.String()))
+		}
+		blobSHAByPath[path] = strings.TrimSpace(string(blobOut))
+	}
+
+	// 2. Build a tree based on baseCommit, with each new blob swapped in.
 	indexFile, err := os.CreateTemp("", "manuscript-studio-index-*")
 	if err != nil {
 		return "", fmt.Errorf("temp index: %w", err)
@@ -267,11 +300,13 @@ func (g *GitRepository) WriteCommitPushBranch(
 		return "", fmt.Errorf("git read-tree %s: %w (%s)", baseCommit, err, out)
 	}
 
-	updateIdx := exec.CommandContext(ctx, "git", "-C", g.Path, "update-index", "--add",
-		"--cacheinfo", fmt.Sprintf("100644,%s,%s", blobSHA, g.FilePath))
-	updateIdx.Env = indexEnv
-	if out, err := updateIdx.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("git update-index: %w (%s)", err, out)
+	for _, path := range paths {
+		updateIdx := exec.CommandContext(ctx, "git", "-C", g.Path, "update-index", "--add",
+			"--cacheinfo", fmt.Sprintf("100644,%s,%s", blobSHAByPath[path], path))
+		updateIdx.Env = indexEnv
+		if out, err := updateIdx.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("git update-index %s: %w (%s)", path, err, out)
+		}
 	}
 
 	writeTree := exec.CommandContext(ctx, "git", "-C", g.Path, "write-tree")

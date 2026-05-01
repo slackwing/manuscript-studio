@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
@@ -13,8 +15,20 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/migrations"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/segman"
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
+
+// segmanSiblingPath returns the .segman counterpart for a manuscript
+// path: "book.manuscript" → "book.segman", "dir/x.manuscript" → "dir/x.segman".
+// Other extensions are passed through unchanged so absurd inputs don't
+// silently land somewhere weird.
+func segmanSiblingPath(manuscriptPath string) string {
+	if strings.HasSuffix(manuscriptPath, ".manuscript") {
+		return strings.TrimSuffix(manuscriptPath, ".manuscript") + ".segman"
+	}
+	return manuscriptPath + ".segman"
+}
 
 // Suggestions are per-user, per-sentence, scoped to a migration via sentence_id FK.
 type SuggestionHandlers struct {
@@ -370,13 +384,42 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
+	files := map[string][]byte{
+		mc.Repository.Path: newContent,
+	}
+
+	// Sentence-per-line companion file (see github.com/slackwing/segman
+	// integrations/git-hook). Only stage it if the user maintains one in
+	// their repo at the base commit — that's the "they opted in to this
+	// format" signal. We don't presume to create it for repos that don't
+	// already use it.
+	segmanPath := segmanSiblingPath(mc.Repository.Path)
+	hasSegman, err := gitRepo.PathExistsAtCommit(ctx, latest.CommitHash, segmanPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to probe segman sibling: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if hasSegman {
+		segmented := segman.Segment(string(newContent))
+		var b bytes.Buffer
+		for _, s := range segmented {
+			// Defensive: collapse any embedded newlines so the
+			// "one sentence per line" invariant of the file format
+			// holds even if a future segman revision starts emitting
+			// multi-line sentences.
+			b.WriteString(strings.ReplaceAll(s, "\n", " "))
+			b.WriteByte('\n')
+		}
+		files[segmanPath] = b.Bytes()
+	}
+
 	branch := canonicalSuggestionsBranch(latest.CommitHash, session.Username)
 	message := fmt.Sprintf("Apply %d suggested edit(s) from %s", applied, session.Username)
 	// Synth an email so commit-tree never depends on host-side git config.
 	authorEmail := fmt.Sprintf("%s@manuscript-studio.local", sanitizeBranchComponent(session.Username))
 	// Always force-push: the branch is a per-(commit, user) canonical name and
 	// we own it.
-	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, newContent, message, true, session.Username, authorEmail)
+	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, files, message, true, session.Username, authorEmail)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to push branch: %v", err), http.StatusInternalServerError)
 		return
