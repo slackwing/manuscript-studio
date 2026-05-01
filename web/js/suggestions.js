@@ -176,15 +176,74 @@ function renderDiffHTML(oldText, newText, dmp) {
     diffs = dmp.diff_main(oldText, newText);
   }
 
+  // d-m-p Diff objects are array-like but not real Arrays; copy into a
+  // plain [op, data] array so we can splice/merge freely.
+  const segs = [];
+  for (let i = 0; i < diffs.length; i++) segs.push([diffs[i][0], diffs[i][1]]);
+
+  // Coalesce alternating del/ins runs into contiguous blocks. The token
+  // diff produces e.g. DEL "big" EQ " " DEL "red" because spaces between
+  // changed words match — visually that's an unreadable barber-pole. Pull
+  // pure-whitespace EQ runs INTO the surrounding del+ins so each change
+  // becomes one red-strike block followed by one green-bold block.
+  //
+  // Rule: an EQ run consisting only of whitespace, with a del or ins on
+  // both sides (in either order), is absorbed into both. Stops at any
+  // non-whitespace EQ — those are real preserved content and must stay
+  // visible.
+  const isWS = s => /^\s+$/.test(s);
+  function neighborsHaveChange(idx) {
+    let hasDel = false, hasIns = false;
+    for (let j = idx - 1; j >= 0 && segs[j][0] !== 0; j--) {
+      if (segs[j][0] === -1) hasDel = true;
+      if (segs[j][0] === 1) hasIns = true;
+    }
+    for (let j = idx + 1; j < segs.length && segs[j][0] !== 0; j++) {
+      if (segs[j][0] === -1) hasDel = true;
+      if (segs[j][0] === 1) hasIns = true;
+    }
+    return hasDel && hasIns;
+  }
+  for (let i = 0; i < segs.length; i++) {
+    if (segs[i][0] === 0 && isWS(segs[i][1]) && neighborsHaveChange(i)) {
+      const ws = segs[i][1];
+      segs.splice(i, 1);
+      // Append to last del-block before, prepend to first ins-block after.
+      // Fall back to creating a new segment if the corresponding side is
+      // missing (shouldn't happen given neighborsHaveChange, but safe).
+      let delIdx = -1;
+      for (let j = i - 1; j >= 0 && segs[j][0] !== 0; j--) {
+        if (segs[j][0] === -1) { delIdx = j; break; }
+      }
+      if (delIdx >= 0) segs[delIdx][1] += ws;
+      let insIdx = -1;
+      for (let j = i; j < segs.length && segs[j][0] !== 0; j++) {
+        if (segs[j][0] === 1) { insIdx = j; break; }
+      }
+      if (insIdx >= 0) segs[insIdx][1] = ws + segs[insIdx][1];
+      i--; // re-check the now-collapsed neighborhood
+    }
+  }
+
+  // Group adjacent dels and inses so they emit as single tags. Order
+  // within a change cluster: dels first, then inses, regardless of
+  // original interleaving.
   const parts = [];
-  // d-m-p Diff objects are array-like but not real Arrays; destructuring throws.
-  for (let i = 0; i < diffs.length; i++) {
-    const op = diffs[i][0];
-    const data = diffs[i][1];
-    const html = applyInlineFormatting(data);
-    if (op === 0) parts.push(html);
-    else if (op === -1) parts.push(`<del>${html}</del>`);
-    else if (op === 1) parts.push(`<strong>${html}</strong>`);
+  let i = 0;
+  while (i < segs.length) {
+    if (segs[i][0] === 0) {
+      parts.push(applyInlineFormatting(segs[i][1]));
+      i++;
+      continue;
+    }
+    let dels = '', inses = '';
+    while (i < segs.length && segs[i][0] !== 0) {
+      if (segs[i][0] === -1) dels += segs[i][1];
+      else if (segs[i][0] === 1) inses += segs[i][1];
+      i++;
+    }
+    if (dels) parts.push(`<del>${applyInlineFormatting(dels)}</del>`);
+    if (inses) parts.push(`<strong>${applyInlineFormatting(inses)}</strong>`);
   }
   return parts.join('');
 }
