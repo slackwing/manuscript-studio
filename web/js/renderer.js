@@ -167,6 +167,15 @@ const WriteSysRenderer = {
 
       oldPages.forEach(el => el.remove());
 
+      // Re-run the inter-sentence space insertion now that the OLD pages
+      // are gone. pagedjs-config.js's afterRendered already ran it, but
+      // during in-place re-renders both old and new .pagedjs_pages
+      // coexist briefly; that hook hits document.querySelector(
+      // '.pagedjs_pages') which finds the OLD one and patches it instead
+      // of the new one. Re-running here guarantees the new pages get it.
+      const newPages = document.querySelector('.pagedjs_pages');
+      if (newPages) this.insertSpacesBetweenSentences(newPages);
+
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {
         originalContent.style.display = 'none';
