@@ -69,8 +69,6 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		hashToCompare = user.PasswordHash
 	}
-	// Bcrypt always runs (real hash or dummy) so timing doesn't reveal user
-	// existence.
 	passwordValid := auth.VerifyPassword(req.Password, hashToCompare)
 	if user == nil || !passwordValid {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)

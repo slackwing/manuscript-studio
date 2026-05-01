@@ -68,10 +68,8 @@
       const session = await checkAuth();
       if (!session) return; // Will redirect to login
 
-      // Store session info for the app to use
       window.currentSession = session;
 
-      // Store CSRF token in sessionStorage if present
       if (session.csrf_token) {
         sessionStorage.setItem('csrf_token', session.csrf_token);
       }

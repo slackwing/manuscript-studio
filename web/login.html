@@ -168,7 +168,6 @@
   <script>
     // All URLs are relative so <base href> injected by the server handles path prefix.
 
-    // Load users on page load
     async function loadUsers() {
       try {
         const response = await fetch('api/users');
@@ -194,7 +193,6 @@
     // The login response carries the user's accessible manuscripts and which
     // one to land on (last_manuscript_name; falls back to the first one).
 
-    // Handle login form submission
     document.getElementById('login-form').addEventListener('submit', async function(e) {
       e.preventDefault();
 
