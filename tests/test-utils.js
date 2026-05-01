@@ -82,6 +82,11 @@ async function cleanupTestAnnotations() {
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
         )
       );
+      DELETE FROM suggested_change WHERE sentence_id IN (
+        SELECT sentence_id FROM sentence WHERE migration_id IN (
+          SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
+        )
+      );
       DELETE FROM tag WHERE migration_id IN (
         SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
       );

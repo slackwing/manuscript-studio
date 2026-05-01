@@ -154,10 +154,19 @@ const WriteSysSuggestions = {
 
 // Render a word-level diff as <del>removed</del><strong>added</strong>.
 // Falls back to a single <strong> wrap when diff-match-patch isn't loaded.
+//
+// Two non-obvious decisions:
+//   * No diff_cleanupSemantic. It runs *after* diff_charsToLines_ has
+//     expanded each token-char back to its full token text, and at that
+//     point it operates char-by-char and will happily split tokens
+//     ("wildfires" → "wild" + "fires") to find smaller common substrings.
+//     The token-level diff already produces whole-word changes, so we skip
+//     the readability pass to preserve token boundaries.
+//   * Asterisks → <em>. Matches renderer.applyInlineFormatting so a
+//     suggestion like "*alone*" renders italicized in the diff view
+//     instead of showing literal green asterisks.
 function renderDiffHTML(oldText, newText, dmp) {
-  if (!dmp) return `<strong>${escapeHTML(newText)}</strong>`;
-  // Standard d-m-p trick: map each whitespace-token to a unique char, diff
-  // at the char level, then map back. cleanupSemantic readability pass.
+  if (!dmp) return `<strong>${applyInlineFormatting(newText)}</strong>`;
   const a = dmp.diff_linesToWords_ ? dmp.diff_linesToWords_(oldText, newText) : null;
   let diffs;
   if (a) {
@@ -166,19 +175,26 @@ function renderDiffHTML(oldText, newText, dmp) {
   } else {
     diffs = dmp.diff_main(oldText, newText);
   }
-  dmp.diff_cleanupSemantic(diffs);
 
   const parts = [];
   // d-m-p Diff objects are array-like but not real Arrays; destructuring throws.
   for (let i = 0; i < diffs.length; i++) {
     const op = diffs[i][0];
     const data = diffs[i][1];
-    const html = escapeHTML(data);
+    const html = applyInlineFormatting(data);
     if (op === 0) parts.push(html);
     else if (op === -1) parts.push(`<del>${html}</del>`);
     else if (op === 1) parts.push(`<strong>${html}</strong>`);
   }
   return parts.join('');
+}
+
+// Escape HTML, then turn *x* into <em>x</em>. Mirrors the inline formatting
+// applied to non-suggestion sentences in renderer.applyInlineFormatting so
+// italics survive the diff overlay. Per-segment: a *...* pair split across
+// an insert/delete boundary won't italicize — accepted as rare.
+function applyInlineFormatting(text) {
+  return escapeHTML(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
 }
 
 // Word-level tokeniser shim: d-m-p ships diff_linesToChars_ for line diffs;
