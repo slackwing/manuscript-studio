@@ -1580,9 +1580,10 @@ p.section-break {
   font-weight: normal;
 }
 
+/* Indent for a paragraph-break preview. Uses nbsps as content (not
+   width:) so text-align: justify on the parent <p> can't collapse it. */
 .sentence .suggested-pindent {
-  display: inline-block;
-  width: 2em;
+  white-space: pre;
 }
 
 /* Suggested-edit modal. Monospace textarea since the user is editing source. */

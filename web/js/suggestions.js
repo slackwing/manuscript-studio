@@ -330,7 +330,7 @@ function renderStructuralMarkers(html) {
       } else if (leading || inDel) {
         out += `<span class="suggested-marker">${glyph}</span>`;
       } else {
-        out += `<span class="suggested-marker">${glyph}</span><br><span class="suggested-pindent"></span>`;
+        out += `<span class="suggested-marker">${glyph}</span><br><span class="suggested-pindent">\u00a0\u00a0\u00a0\u00a0</span>`;
       }
       i++;
       continue;
