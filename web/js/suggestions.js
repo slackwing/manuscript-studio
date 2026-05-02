@@ -291,21 +291,30 @@ function renderDiffHTML(oldText, newText, dmp) {
 // Indent matches p.indented (text-indent: 2em) so the preview reads like
 // a real paragraph break would after commit + resegmentation.
 function renderStructuralMarkers(html) {
-  // Walk the string tracking <del> depth so we know whether to break.
-  // Also track whether we've seen any rendered text content yet — a
-  // leading marker (one before any visible character) is suppressed
-  // visually because the surrounding <p> already provides the line
-  // break + indent. We still emit the glyph so the marker is visible.
+  // Walk the string tracking which diff context we're inside (<del>,
+  // <strong>, or neither = EQ) and whether we've emitted any visible
+  // content yet. Three rules:
+  //   * Leading EQ marker: emit nothing. The marker was already there
+  //     pre-edit; the surrounding <p> shows it; a glyph would just be
+  //     noise the user didn't add or change.
+  //   * Leading INS or DEL marker: emit the glyph (so the user sees
+  //     they added/removed it) but no <br>+indent (the <p> handles the
+  //     visual break). DEL gets the strikethrough via parent <del>.
+  //   * Mid-content marker: full preview — glyph + <br> + 2em indent —
+  //     except inside <del> where we skip the break (it's being removed).
   let out = '';
   let inDel = false;
+  let inStrong = false;
   let inTag = false;
-  let leading = true; // no non-marker content emitted yet
+  let leading = true;
   for (let i = 0; i < html.length; i++) {
     const c = html[i];
     if (c === '<') {
       inTag = true;
       if (html.startsWith('<del', i)) inDel = true;
       else if (html.startsWith('</del>', i)) inDel = false;
+      else if (html.startsWith('<strong', i)) inStrong = true;
+      else if (html.startsWith('</strong>', i)) inStrong = false;
       out += c;
       continue;
     }
@@ -314,17 +323,19 @@ function renderStructuralMarkers(html) {
       if (c === '>') inTag = false;
       continue;
     }
-    // Match \n\n first so it doesn't get consumed by the \n\t branch.
     if (c === '\n' && (html[i + 1] === '\n' || html[i + 1] === '\t')) {
       const glyph = (html[i + 1] === '\n') ? '§' : '¶';
-      const skipBreak = inDel || leading;
-      out += skipBreak
-        ? `<span class="suggested-marker">${glyph}</span>`
-        : `<span class="suggested-marker">${glyph}</span><br><span class="suggested-pindent"></span>`;
+      const isEq = !inDel && !inStrong;
+      if (leading && isEq) {
+        // Pre-existing marker at sentence start — drop entirely.
+      } else if (leading || inDel) {
+        out += `<span class="suggested-marker">${glyph}</span>`;
+      } else {
+        out += `<span class="suggested-marker">${glyph}</span><br><span class="suggested-pindent"></span>`;
+      }
       i++;
       continue;
     }
-    // Anything else is real visible content.
     if (!/\s/.test(c)) leading = false;
     out += c;
   }
