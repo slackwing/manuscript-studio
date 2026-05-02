@@ -223,20 +223,19 @@ function renderDiffHTML(oldText, newText, dmp) {
   // non-whitespace EQ — those are real preserved content and must stay
   // visible.
   const isWS = s => /^\s+$/.test(s);
-  function neighborsHaveChange(idx) {
-    let hasDel = false, hasIns = false;
-    for (let j = idx - 1; j >= 0 && segs[j][0] !== 0; j--) {
-      if (segs[j][0] === -1) hasDel = true;
-      if (segs[j][0] === 1) hasIns = true;
-    }
-    for (let j = idx + 1; j < segs.length && segs[j][0] !== 0; j++) {
-      if (segs[j][0] === -1) hasDel = true;
-      if (segs[j][0] === 1) hasIns = true;
-    }
-    return hasDel && hasIns;
+  // Only coalesce a whitespace EQ that sits BETWEEN two change clusters.
+  // Both immediate neighbors must be non-EQ (a del or ins). A leading or
+  // trailing whitespace EQ would otherwise get absorbed into the
+  // adjacent change and render as a phantom marker — e.g. a preserved
+  // \n\n at sentence start being pulled into the next INS and rendered
+  // as a fake section-break preview.
+  function isInterChange(idx) {
+    const prev = idx > 0 && segs[idx - 1][0] !== 0;
+    const next = idx + 1 < segs.length && segs[idx + 1][0] !== 0;
+    return prev && next;
   }
   for (let i = 0; i < segs.length; i++) {
-    if (segs[i][0] === 0 && isWS(segs[i][1]) && neighborsHaveChange(i)) {
+    if (segs[i][0] === 0 && isWS(segs[i][1]) && isInterChange(i)) {
       const ws = segs[i][1];
       segs.splice(i, 1);
       // Append to last del-block before, prepend to first ins-block after.
