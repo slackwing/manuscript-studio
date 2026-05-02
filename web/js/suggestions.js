@@ -42,7 +42,14 @@ const WriteSysSuggestions = {
       const suggestion = this.bySentenceId[id];
       if (suggestion === undefined) return;
 
-      const original = span.textContent;
+      // Use sentenceMap (storage form, leading \n\t / \n\n included) rather
+      // than span.textContent (which has those stripped). This way a sentence
+      // that was already a new paragraph diffs cleanly against a suggestion
+      // that preserves that leading marker — the marker shows up as EQ
+      // instead of an INS that would render a duplicate paragraph break in
+      // the preview.
+      const map = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap) || {};
+      const original = (map[id] !== undefined) ? map[id] : span.textContent;
       span.classList.add('has-suggestion');
       span.innerHTML = renderDiffHTML(original, suggestion, dmp);
     });
@@ -285,9 +292,14 @@ function renderDiffHTML(oldText, newText, dmp) {
 // a real paragraph break would after commit + resegmentation.
 function renderStructuralMarkers(html) {
   // Walk the string tracking <del> depth so we know whether to break.
+  // Also track whether we've seen any rendered text content yet — a
+  // leading marker (one before any visible character) is suppressed
+  // visually because the surrounding <p> already provides the line
+  // break + indent. We still emit the glyph so the marker is visible.
   let out = '';
   let inDel = false;
   let inTag = false;
+  let leading = true; // no non-marker content emitted yet
   for (let i = 0; i < html.length; i++) {
     const c = html[i];
     if (c === '<') {
@@ -303,20 +315,17 @@ function renderStructuralMarkers(html) {
       continue;
     }
     // Match \n\n first so it doesn't get consumed by the \n\t branch.
-    if (c === '\n' && html[i + 1] === '\n') {
-      out += inDel
-        ? '<span class="suggested-marker">§</span>'
-        : '<span class="suggested-marker">§</span><br><span class="suggested-pindent"></span>';
+    if (c === '\n' && (html[i + 1] === '\n' || html[i + 1] === '\t')) {
+      const glyph = (html[i + 1] === '\n') ? '§' : '¶';
+      const skipBreak = inDel || leading;
+      out += skipBreak
+        ? `<span class="suggested-marker">${glyph}</span>`
+        : `<span class="suggested-marker">${glyph}</span><br><span class="suggested-pindent"></span>`;
       i++;
       continue;
     }
-    if (c === '\n' && html[i + 1] === '\t') {
-      out += inDel
-        ? '<span class="suggested-marker">¶</span>'
-        : '<span class="suggested-marker">¶</span><br><span class="suggested-pindent"></span>';
-      i++;
-      continue;
-    }
+    // Anything else is real visible content.
+    if (!/\s/.test(c)) leading = false;
     out += c;
   }
   return out;
