@@ -277,7 +277,7 @@ const WriteSysRenderer = {
       if (body.startsWith('\n\n')) {
         flush();
         body = body.slice(2);
-        cls = '';
+        cls = 'section-break';
       } else if (body.startsWith('\n\t')) {
         flush();
         body = body.slice(2);

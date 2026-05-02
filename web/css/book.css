@@ -455,6 +455,12 @@ p.indented {
   text-indent: 2em;
 }
 
+/* Section breaks (\n\n in .manuscript): a blank line above so the visual
+   gap matches the semantic break. No text-indent — sections start flush. */
+p.section-break {
+  margin-top: 1em;
+}
+
 /* Sentence spans (for annotation) */
 .sentence {
   cursor: pointer;
