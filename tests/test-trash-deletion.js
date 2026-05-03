@@ -82,11 +82,14 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     console.log('\nTest 3: Confirming state auto-resets (no deletion) after timeout...');
     await page.waitForTimeout(2200);
     const stillConfirming = await trash.evaluate(el => el.classList.contains('confirming'));
-    const hasYellow = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
-    if (!stillConfirming && hasYellow > 0) {
+    // Sentences no longer carry .highlight-{color} as a passive default;
+    // the annotation's continued existence is signalled by the surviving
+    // real sticky note (and its rainbow side-bar).
+    const noteCountAfterTimeout = await page.locator('.sticky-note:not(.uncreated-note)').count();
+    if (!stillConfirming && noteCountAfterTimeout > 0) {
       console.log('✓ Confirming cleared after timeout; annotation preserved');
     } else {
-      console.log(`✗ Expected confirming cleared & annotation preserved (confirming=${stillConfirming}, yellow=${hasYellow})`);
+      console.log(`✗ Expected confirming cleared & annotation preserved (confirming=${stillConfirming}, notes=${noteCountAfterTimeout})`);
       failed++;
     }
 
@@ -97,12 +100,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await trash.click();
     await page.waitForTimeout(800);
 
-    const hasYellowAfter = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
     const realNoteCount = await page.locator('.sticky-note:not(.uncreated-note)').count();
-    if (hasYellowAfter === 0 && realNoteCount === 0) {
+    if (realNoteCount === 0) {
       console.log('✓ Annotation deleted after second trash click');
     } else {
-      console.log(`✗ Annotation should be gone (yellow=${hasYellowAfter}, realNotes=${realNoteCount})`);
+      console.log(`✗ Annotation should be gone (realNotes=${realNoteCount})`);
       failed++;
     }
 
@@ -132,9 +134,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       }
     }
 
-    const hasBlue = await page.locator(`.sentence[data-sentence-id="${secondSentenceId}"].highlight-blue`).count();
-    if (hasBlue === 0) {
-      console.log('✗ Blue highlight should apply');
+    // Blue annotation is signalled by the .color-blue sticky note (already
+    // waited for above) and a blue rainbow side-bar.
+    const blueBar = await page.locator(`.rainbow-bar[data-sentence-id="${secondSentenceId}"][data-color="blue"]`).count();
+    if (blueBar === 0) {
+      console.log('✗ Blue rainbow bar should be present');
       failed++;
     }
 
@@ -151,11 +155,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       failed++;
     }
 
-    const stillBlue = await page.locator(`.sentence[data-sentence-id="${secondSentenceId}"].highlight-blue`).count();
-    if (stillBlue > 0) {
-      console.log('✓ Blue highlight still present');
+    const stillBlueBar = await page.locator(`.rainbow-bar[data-sentence-id="${secondSentenceId}"][data-color="blue"]`).count();
+    if (stillBlueBar > 0) {
+      console.log('✓ Blue annotation still present (bar)');
     } else {
-      console.log('✗ Blue highlight should still be present');
+      console.log('✗ Blue annotation should still be present');
       failed++;
     }
 

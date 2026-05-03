@@ -102,12 +102,14 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await addTagViaUI('comp-tag-one');
     await refreshSentence(sentenceId);
 
-    const hasYellow = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
+    // Sentence backgrounds aren't tinted by annotation presence anymore;
+    // a yellow annotation surfaces as a yellow rainbow side-bar.
+    const yellowBar = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="yellow"]`).count();
     const hasTag1 = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip[data-tag-name="comp-tag-one"]').count();
-    if (hasYellow > 0 && hasTag1 > 0) {
+    if (yellowBar > 0 && hasTag1 > 0) {
       console.log('✓ Yellow annotation has tag "comp-tag-one"\n');
     } else {
-      console.log(`✗ Expected yellow annotation + tag (yellow=${hasYellow}, tag=${hasTag1})\n`);
+      console.log(`✗ Expected yellow bar + tag (yellow bar=${yellowBar}, tag=${hasTag1})\n`);
       failed++;
     }
 
@@ -121,7 +123,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
         await page.waitForTimeout(400);
         await page.waitForSelector('.sticky-note:not(.uncreated-note) .sticky-note-palette.visible', { timeout: 2000 });
         await page.locator('.sticky-note:not(.uncreated-note) .color-circle[data-color="green"]').first().click({ force: true });
-        await page.waitForSelector(`.sentence[data-sentence-id="${sentenceId}"].highlight-green`, { timeout: 3000 });
+        await page.waitForSelector(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="green"]`, { timeout: 3000 });
         await page.waitForTimeout(800);
         break;
       } catch (e) {
@@ -130,12 +132,12 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       }
     }
 
-    const hasGreen = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-green`).count();
+    const greenBar = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="green"]`).count();
     const stillHasTag1 = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip[data-tag-name="comp-tag-one"]').count();
-    if (hasGreen > 0 && stillHasTag1 > 0) {
+    if (greenBar > 0 && stillHasTag1 > 0) {
       console.log('✓ Color change yellow → green; tag persists\n');
     } else {
-      console.log(`✗ Expected green + tag (green=${hasGreen}, tag=${stillHasTag1})\n`);
+      console.log(`✗ Expected green bar + tag (green bar=${greenBar}, tag=${stillHasTag1})\n`);
       failed++;
     }
 
@@ -146,12 +148,12 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.locator('.sticky-note:not(.uncreated-note) .tag-chip[data-tag-name="comp-tag-one"] .tag-chip-remove').first().click();
     await page.waitForTimeout(800);
 
-    const greenStill = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-green`).count();
+    const greenBarStill = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="green"]`).count();
     const tagGone = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip[data-tag-name="comp-tag-one"]').count();
-    if (greenStill > 0 && tagGone === 0) {
-      console.log('✓ Tag removed; annotation persists (has color)\n');
+    if (greenBarStill > 0 && tagGone === 0) {
+      console.log('✓ Tag removed; annotation persists (green bar)\n');
     } else {
-      console.log(`✗ Expected annotation to persist after tag removal (green=${greenStill}, tag=${tagGone})\n`);
+      console.log(`✗ Expected annotation to persist after tag removal (green bar=${greenBarStill}, tag=${tagGone})\n`);
       failed++;
     }
 

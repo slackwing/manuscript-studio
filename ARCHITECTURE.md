@@ -263,7 +263,6 @@ In `web/js/renderer.js renderManuscript()` the order is:
 
 ```
 wrapSentences()                       // span every sentence
-applyAnnotations()                    // highlight colors
 WriteSysSuggestions.applyToSpans()    // inline diff overlay
 smartquotes.element()                 // straight → curly quotes
 ```

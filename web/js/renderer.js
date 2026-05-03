@@ -140,7 +140,11 @@ const WriteSysRenderer = {
     const tempContainer = document.createElement('div');
     tempContainer.innerHTML = this.renderSentencesToHTML(this.currentSentences);
 
-    this.applyAnnotations(tempContainer);
+    // Sentence backgrounds are now driven by note focus (not annotation
+    // presence): a sentence stays unfilled by default, picks up its
+    // selected-grey on click, and tints to a note's color only while
+    // that note's textarea has the typing caret. Side-bars (rainbow)
+    // still convey the annotation set at a glance — see addRainbowBars().
 
     if (window.WriteSysSuggestions && window.WriteSysSuggestions.applyToSpans) {
       window.WriteSysSuggestions.applyToSpans(tempContainer);
@@ -314,48 +318,6 @@ const WriteSysRenderer = {
   },
 
 
-  applyAnnotations(container) {
-    if (!this.currentAnnotations || this.currentAnnotations.length === 0) {
-      console.log('No annotations to apply');
-      return;
-    }
-
-    console.log(`Applying ${this.currentAnnotations.length} annotations...`);
-
-    const annotationsBySentence = {};
-    this.currentAnnotations.forEach(annotation => {
-      if (!annotation.color) return;
-      const sentenceId = annotation.sentence_id;
-      if (!annotationsBySentence[sentenceId]) {
-        annotationsBySentence[sentenceId] = [];
-      }
-      annotationsBySentence[sentenceId].push(annotation);
-    });
-
-    // Apply only the first color per sentence (API sorts by position);
-    // extras surface via sidebar rainbow bars.
-    Object.keys(annotationsBySentence).forEach(sentenceId => {
-      const annotations = annotationsBySentence[sentenceId];
-      if (annotations.length === 0) return;
-
-      const firstAnnotation = annotations[0];
-      const color = firstAnnotation.color;
-
-      const sentenceElements = container.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
-
-      if (sentenceElements.length === 0) {
-        console.warn(`No sentence found with ID: ${sentenceId}`);
-        return;
-      }
-
-      sentenceElements.forEach(el => {
-        el.classList.add(`highlight-${color}`);
-      });
-
-      console.log(`Applied ${color} highlight to sentence ${sentenceId} (${sentenceElements.length} fragment(s), ${annotations.length} total annotations)`);
-    });
-  },
-
   // A sentence may be split across page fragments; hover/click events propagate
   // to every fragment with the same data-sentence-id.
   setupSentenceHover() {
@@ -448,13 +410,13 @@ const WriteSysRenderer = {
   },
 
   getRainbowBarAnnotations(annotations) {
-    if (annotations.length < 2) return [];
+    if (annotations.length === 0) return [];
 
     const colors = annotations.map(a => a.color);
-    const barColors = rainbowSlice(colors, { skip: 1, maxSize: 4 });
+    const barColors = rainbowSlice(colors, { skip: 0, maxSize: 5 });
 
     const barAnnotations = [];
-    let searchStartIndex = 1;
+    let searchStartIndex = 0;
 
     barColors.forEach(colorName => {
       for (let i = searchStartIndex; i < annotations.length; i++) {
@@ -496,6 +458,20 @@ const WriteSysRenderer = {
     bar.addEventListener('click', (e) => {
       e.stopPropagation();
       this.handleRainbowBarClick(sentenceId, annId, annotation.color);
+    });
+
+    // Mirror sentence-hover behaviour: hovering a bar previews which
+    // sentence it belongs to. Light-grey only — the bar carries the
+    // colour cue, the sentence just signals "this is the one".
+    bar.addEventListener('mouseenter', () => {
+      document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`).forEach(fragment => {
+        fragment.classList.add('hover');
+      });
+    });
+    bar.addEventListener('mouseleave', () => {
+      document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`).forEach(fragment => {
+        fragment.classList.remove('hover');
+      });
     });
 
     return bar;

@@ -181,7 +181,14 @@ const WriteSysAnnotations = {
     this.annotations = all.filter(a => a.sentence_id === sentenceId);
 
     this.renderStickyNotes();
-    this.focusFirstNoteTextarea();
+    // Don't auto-focus the first note. Sentence stays grey-selected
+    // until the user explicitly clicks into a note's textarea — at
+    // which point the focus listener tints the sentence in that
+    // note's color. (The uncreated/empty note still gets focus when
+    // there are no real notes; see renderStickyNotes.)
+    if (this.annotations.length === 0) {
+      this.focusFirstNoteTextarea();
+    }
   },
 
   // Drop cursor into the first note's textarea so the user can type immediately.
@@ -553,6 +560,19 @@ const WriteSysAnnotations = {
     const textarea = note.querySelector('.note-input');
     let saveTimeout;
 
+    // Caret-in-note → tint the sentence in this note's color. Caret-out
+    // → strip the tint. The "second click on a sentence to edit" flow
+    // is just blur of the note, so this handles it implicitly. If the
+    // user moves caret between two notes on the same sentence, blur
+    // fires for the first and focus for the second; net result is the
+    // new colour, which is the correct end state.
+    textarea.addEventListener('focus', () => {
+      this.applyFocusHighlight(annotation.sentence_id, annotation.color);
+    });
+    textarea.addEventListener('blur', () => {
+      this.clearFocusHighlight(annotation.sentence_id);
+    });
+
     textarea.addEventListener('input', async () => {
       this.autoResizeTextarea(textarea);
 
@@ -681,7 +701,16 @@ const WriteSysAnnotations = {
       annotation.color = color;
 
       this.renderStickyNotes();
-      this.updateSentenceHighlights();
+
+      // renderStickyNotes recreates the DOM, dropping focus from the
+      // old textarea (and with it the focus-tint). Restore focus to
+      // the same annotation so the user keeps their typing context
+      // and the sentence picks up the new color.
+      const note = document.querySelector(`.sticky-note[data-annotation-id="${annotationId}"] .note-input`);
+      if (note) {
+        note.focus();
+        note.setSelectionRange(note.value.length, note.value.length);
+      }
 
       if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
         await window.WriteSysRenderer.refreshRainbowBars();
@@ -767,22 +796,25 @@ const WriteSysAnnotations = {
     }
   },
 
-  updateSentenceHighlights() {
-    if (!this.currentSentenceId) return;
+  // No-op now. Sentence backgrounds are driven by note focus
+  // (applyFocusHighlight / clearFocusHighlight) rather than annotation
+  // list shape; existing callers from tag/priority/flag flows keep
+  // calling this so they can be left in place during partial refactors.
+  updateSentenceHighlights() {},
 
-    const sentenceFragments = document.querySelectorAll(`.sentence[data-sentence-id="${this.currentSentenceId}"]`);
+  applyFocusHighlight(sentenceId, color) {
+    if (!sentenceId || !color) return;
+    document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`).forEach(fragment => {
+      this.COLORS.forEach(c => fragment.classList.remove(`highlight-${c}`));
+      fragment.classList.add(`highlight-${color}`);
+    });
+  },
 
-    sentenceFragments.forEach(fragment => {
+  clearFocusHighlight(sentenceId) {
+    if (!sentenceId) return;
+    document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`).forEach(fragment => {
       this.COLORS.forEach(c => fragment.classList.remove(`highlight-${c}`));
     });
-
-    // Apply only the first color; extras surface via sidebar rainbow bars.
-    if (this.annotations.length > 0 && this.annotations[0].color) {
-      const color = this.annotations[0].color;
-      sentenceFragments.forEach(fragment => {
-        fragment.classList.add(`highlight-${color}`);
-      });
-    }
   },
 
   async deleteAnnotation(annotationId) {

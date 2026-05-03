@@ -82,11 +82,13 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await uncreatedNoteInput.type('Test note', { delay: 5 });
     await page.waitForTimeout(1500);
 
-    const hasYellow = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
-    if (hasYellow > 0) {
-      console.log('✓ Typing auto-creates a yellow-highlighted annotation');
+    // Sentence backgrounds are no longer driven by annotation presence;
+    // a new yellow annotation surfaces as a yellow rainbow side-bar.
+    const yellowBar = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="yellow"]`).count();
+    if (yellowBar > 0) {
+      console.log('✓ Typing auto-creates a yellow annotation (yellow bar present)');
     } else {
-      console.log('✗ Should auto-default to yellow highlight when typing');
+      console.log('✗ Should auto-default to yellow annotation when typing');
       failed++;
     }
 
@@ -115,12 +117,12 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       }
     }
 
-    const hasBlueNow = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-blue`).count();
-    const hasYellowStill = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-yellow`).count();
-    if (hasBlueNow > 0 && hasYellowStill === 0) {
+    const blueBarNow = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="blue"]`).count();
+    const yellowBarStill = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="yellow"]`).count();
+    if (blueBarNow > 0 && yellowBarStill === 0) {
       console.log('✓ Manually changing color yellow → blue works');
     } else {
-      console.log(`✗ Color change failed (blue=${hasBlueNow}, yellow still=${hasYellowStill})`);
+      console.log(`✗ Color change failed (blue bar=${blueBarNow}, yellow bar still=${yellowBarStill})`);
       failed++;
     }
 
@@ -157,11 +159,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       failed++;
     }
 
-    const persistedBlue = await page.locator(`.sentence[data-sentence-id="${sentenceId}"].highlight-blue`).count();
-    if (persistedBlue > 0) {
-      console.log('✓ Blue highlight persists after reload');
+    const persistedBlueBar = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="blue"]`).count();
+    if (persistedBlueBar > 0) {
+      console.log('✓ Blue annotation persists after reload (bar)');
     } else {
-      console.log('✗ Blue highlight should persist after reload');
+      console.log('✗ Blue annotation should persist after reload');
       failed++;
     }
 

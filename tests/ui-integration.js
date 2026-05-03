@@ -215,45 +215,28 @@ async function runTests() {
     await page.locator('.uncreated-note .note-input').first().type('Test note');
     await page.waitForTimeout(1000);
 
-    // Verify yellow highlight applied by default
-    const hasYellow = await page.evaluate((sentenceId) => {
-      const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
-      return fragments.length > 0 && Array.from(fragments).every(f => f.classList.contains('highlight-yellow'));
-    }, testSentenceId);
-    assert(hasYellow, 'Sentence has yellow highlight after creating note');
+    // Sentence backgrounds aren't tinted by annotation presence anymore.
+    // The annotation surfaces as a rainbow side-bar of the matching color.
+    const yellowBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="yellow"]`).count();
+    assert(yellowBar > 0, 'Yellow rainbow bar present after creating note');
 
-    // Hover over color circle to show palette, then click green
     await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note:not(.uncreated-note) .color-circle[data-color="green"]').first().click();
     await page.waitForTimeout(1000);
 
-    // Verify green highlight applied (check all fragments)
-    const hasGreen = await page.evaluate((sentenceId) => {
-      const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
-      return fragments.length > 0 && Array.from(fragments).every(f => f.classList.contains('highlight-green'));
-    }, testSentenceId);
-    assert(hasGreen, 'Sentence has green highlight after clicking green');
+    const greenBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="green"]`).count();
+    assert(greenBar > 0, 'Green rainbow bar present after switching to green');
 
-    // Hover over color circle again and change to blue
     await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note:not(.uncreated-note) .color-circle[data-color="blue"]').first().click();
     await page.waitForTimeout(1000);
 
-    // Verify blue highlight applied and green removed (check all fragments)
-    const colorChange = await page.evaluate((sentenceId) => {
-      const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
-      const hasBlue = fragments.length > 0 && Array.from(fragments).every(f => f.classList.contains('highlight-blue'));
-      const noGreen = fragments.length > 0 && Array.from(fragments).every(f => !f.classList.contains('highlight-green'));
-      return {
-        hasBlue,
-        hasGreen: !noGreen,
-        fragmentCount: fragments.length
-      };
-    }, testSentenceId);
-    assert(colorChange.hasBlue && !colorChange.hasGreen,
-      `Highlight color changed from green to blue (blue: ${colorChange.hasBlue}, green removed: ${!colorChange.hasGreen}, ${colorChange.fragmentCount} fragments)`);
+    const blueBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="blue"]`).count();
+    const greenGone = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="green"]`).count();
+    assert(blueBar > 0 && greenGone === 0,
+      `Switched green → blue (blue bar=${blueBar}, green bar=${greenGone})`);
 
     // Test 18: Annotation persists across page reload.
     // Guards the GET /migrations/{id}/manuscript read path — which must include
@@ -262,15 +245,9 @@ async function runTests() {
     await page.reload();
     await page.waitForTimeout(8000);
 
-    const persistedHighlight = await page.evaluate((sentenceId) => {
-      const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
-      return {
-        fragmentCount: fragments.length,
-        allBlue: fragments.length > 0 && Array.from(fragments).every(f => f.classList.contains('highlight-blue')),
-      };
-    }, testSentenceId);
-    assert(persistedHighlight.allBlue,
-      `Annotation persists after reload (fragments: ${persistedHighlight.fragmentCount}, all blue: ${persistedHighlight.allBlue})`);
+    const persistedBlueBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="blue"]`).count();
+    assert(persistedBlueBar > 0,
+      `Annotation persists after reload (blue bar count: ${persistedBlueBar})`);
 
     // Take screenshot for visual inspection
     await page.screenshot({ path: 'tests/screenshots/ui-integration.png', fullPage: true });

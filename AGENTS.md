@@ -94,7 +94,7 @@ onto new migration rows — no hand-edit required.
 In `web/js/renderer.js renderManuscript()` the order MUST be:
 
 ```
-wrapSentences() → applyAnnotations() → WriteSysSuggestions.applyToSpans() → smartquotes.element()
+wrapSentences() → WriteSysSuggestions.applyToSpans() → smartquotes.element()
 ```
 
 If `smartquotes` runs before `applyToSpans`, the DOM has curly apostrophes

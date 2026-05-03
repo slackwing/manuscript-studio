@@ -16,12 +16,6 @@
   /* Selected-state: roughly halfway between the base highlight and a fully
      dark variant. Used as the background when a highlighted sentence is
      selected. */
-  --highlight-yellow-dark: #E6CD52;
-  --highlight-green-dark: #89CE7E;
-  --highlight-blue-dark: #6CADD4;
-  --highlight-purple-dark: #B584C0;
-  --highlight-red-dark: #D98483;
-  --highlight-orange-dark: #E3A761;
 
   /* Sticky note backgrounds (lighter versions) */
   --sticky-yellow: #fef3c7;
@@ -470,34 +464,21 @@ p.section-break {
   white-space: normal;
 }
 
-/* Hover state - applies to all sentences, even when another is selected */
-/* But NOT to highlighted sentences */
-.sentence:not(.selected):not([class*="highlight-"]):hover,
-.sentence:not(.selected):not([class*="highlight-"]).hover {
-  background-color: #e0e0e0 !important; /* Light grey for mouseover */
+/* Hover (also applied programmatically by the rainbow side-bars when
+   their sentence is hovered). Light grey across the board. */
+.sentence:not(.selected):hover,
+.sentence:not(.selected).hover {
+  background-color: #e0e0e0 !important;
 }
 
-/* Selected state - higher specificity, overrides hover */
-/* But NOT for highlighted sentences */
-.sentence.selected:not([class*="highlight-"]) {
-  background-color: #d0d0d0 !important; /* Medium grey for selection */
-}
-
-/* Keep selected highlighted even when hovering over it */
-.sentence.selected:not([class*="highlight-"]):hover {
+.sentence.selected,
+.sentence.selected:hover {
   background-color: #d0d0d0 !important;
 }
 
-/* Selected + highlighted: swap the background to the darker variant of the
-   highlight color so the selected sentence is visually distinct. */
-.sentence.selected.highlight-yellow { background-color: var(--highlight-yellow-dark) !important; }
-.sentence.selected.highlight-green  { background-color: var(--highlight-green-dark) !important; }
-.sentence.selected.highlight-blue   { background-color: var(--highlight-blue-dark) !important; }
-.sentence.selected.highlight-purple { background-color: var(--highlight-purple-dark) !important; }
-.sentence.selected.highlight-red    { background-color: var(--highlight-red-dark) !important; }
-.sentence.selected.highlight-orange { background-color: var(--highlight-orange-dark) !important; }
-
-/* Kindle-like highlight colors */
+/* Note-focus tint. .highlight-{color} is only added while a sticky
+   note's textarea has the typing caret (see annotations.applyFocusHighlight).
+   It overrides .selected and hover via source order — no specificity tricks. */
 .sentence.highlight-yellow {
   background-color: var(--highlight-yellow) !important;
   border-radius: 2px;
