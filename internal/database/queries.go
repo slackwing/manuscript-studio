@@ -401,6 +401,51 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 	return out, rows.Err()
 }
 
+// PruneNoOpSuggestionsForMigration deletes suggestions on sentences in the
+// given migration whose suggestion text matches the sentence text under
+// NormalizeText. These are no-ops with nothing to actually suggest — typically
+// left behind when a suggestion's text gets incorporated into the source by a
+// later commit and carried forward across exact-match pairings.
+// Scoped to current migration so old migrations remain untouched audit data.
+// Returns the count deleted.
+func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID int) (int, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT sc.suggestion_id, sc.text, s.text
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		WHERE s.migration_id = $1
+	`, migrationID)
+	if err != nil {
+		return 0, fmt.Errorf("scan suggestions for prune: %w", err)
+	}
+	defer rows.Close()
+	var noOpIDs []int
+	for rows.Next() {
+		var id int
+		var suggText, sentText string
+		if err := rows.Scan(&id, &suggText, &sentText); err != nil {
+			return 0, fmt.Errorf("scan suggestion row: %w", err)
+		}
+		if sentence.NormalizeText(suggText) == sentence.NormalizeText(sentText) {
+			noOpIDs = append(noOpIDs, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iter suggestion rows: %w", err)
+	}
+	if len(noOpIDs) == 0 {
+		return 0, nil
+	}
+	tag, err := db.Pool.Exec(ctx,
+		`DELETE FROM suggested_change WHERE suggestion_id = ANY($1)`,
+		noOpIDs,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete no-op suggestions: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 // CopySuggestionsForward duplicates rows from one sentence to another (used
 // by the migration processor on exact-match pairings). On per-user collision
 // the existing destination row wins.

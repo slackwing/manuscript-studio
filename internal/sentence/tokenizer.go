@@ -214,9 +214,9 @@ func cleanSentenceBoundaries(text string) string {
 	return trimmed
 }
 
-// normalizeText lowercases, strips non-letter/digit/space, and collapses
+// NormalizeText lowercases, strips non-letter/digit/space, and collapses
 // whitespace. Used by the fuzzy matcher and by ExtractWords.
-func normalizeText(text string) string {
+func NormalizeText(text string) string {
 	text = strings.ToLower(text)
 
 	var builder strings.Builder
@@ -232,6 +232,6 @@ func normalizeText(text string) string {
 }
 
 func ExtractWords(text string) []string {
-	normalized := normalizeText(text)
+	normalized := NormalizeText(text)
 	return strings.Fields(normalized)
 }

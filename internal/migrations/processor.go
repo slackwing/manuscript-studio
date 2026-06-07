@@ -163,6 +163,11 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
 
+	suggestionsPruned, err := db.PruneNoOpSuggestionsForMigration(ctx, migrationID)
+	if err != nil {
+		return nil, fmt.Errorf("prune no-op suggestions: %w", err)
+	}
+
 	parentID := parent.MigrationID
 	if err := db.MarkMigrationDone(ctx, &models.Migration{
 		MigrationID:       migrationID,
@@ -184,6 +189,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		slog.Int("sentences", len(newSentences)),
 		slog.Int("annotations_migrated", annotationsMigrated),
 		slog.Int("suggestions_migrated", suggestionsMigrated),
+		slog.Int("suggestions_pruned_noop", suggestionsPruned),
 	)
 	return &MigrationResult{
 		MigrationID:         migrationID,

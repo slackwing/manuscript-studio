@@ -618,6 +618,52 @@ func TestMigration_SuggestionsCopyOnExactMatch(t *testing.T) {
 	}
 }
 
+// A suggestion whose text matches its sentence's current text is a no-op —
+// nothing to suggest — and should be pruned by the migration so the UI never
+// shows a "ghost" dotted underline with empty diff. Carry-forward across an
+// unchanged sentence preserves the suggestion, but if normalized texts now
+// match, the row gets cleaned up. Whitespace/punctuation/case differences
+// don't save it: normalization is the same one the matcher uses.
+func TestMigration_NoOpSuggestionsPrunedFromCurrentMigration(t *testing.T) {
+	f := newFixture(t)
+
+	src := "Stable sentence one. Stable sentence two."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", src)
+	oneID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence one")
+	twoID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence two")
+
+	// Suggestion that matches sentence text exactly (a no-op).
+	if _, err := f.db.UpsertSuggestion(f.ctx, oneID1, f.username, "Stable sentence one."); err != nil {
+		t.Fatalf("upsert exact no-op suggestion: %v", err)
+	}
+	// Suggestion that matches under normalization only (different whitespace
+	// and trailing punctuation; same normalized form).
+	if _, err := f.db.UpsertSuggestion(f.ctx, twoID1, f.username, "  Stable   sentence   two  "); err != nil {
+		t.Fatalf("upsert normalized no-op suggestion: %v", err)
+	}
+
+	// Re-migrate at an unchanged source: exact-match pairings carry forward.
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", src)
+
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("expected no-op suggestions to be pruned from current migration, got %d row(s): %+v", len(rows), rows)
+	}
+
+	// Old migration is audit data and stays put.
+	oldRows, err := f.db.GetSuggestionsForMigration(f.ctx, mID1, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m1: %v", err)
+	}
+	if len(oldRows) != 2 {
+		t.Errorf("expected both no-op suggestions to remain on the prior migration as audit data, got %d", len(oldRows))
+	}
+}
+
 // Reusing a commit hash must trip the unique constraint as ErrMigrationInProgress,
 // leaving the existing row untouched.
 func TestMigration_DuplicateCommitConflicts(t *testing.T) {

@@ -28,7 +28,7 @@ func GenerateSentenceID(text string, ordinal int, commitHash, segmenterVersion s
 		prefix = strings.Join(words[:numWords], "-")
 	}
 
-	normalizedText := normalizeText(text)
+	normalizedText := NormalizeText(text)
 	data := fmt.Sprintf("%s-%d-%s-%s", normalizedText, ordinal, commitHash, segmenterVersion)
 	hash := sha256.Sum256([]byte(data))
 	suffix := hex.EncodeToString(hash[:4])

@@ -111,8 +111,8 @@ func TestTokenizeReconstructRoundTrip(t *testing.T) {
 				t.Errorf("total %d sentences drifted on re-tokenize", drift)
 			}
 
-			origNorm := normalizeText(string(src))
-			reconNorm := normalizeText(reconstructed)
+			origNorm := NormalizeText(string(src))
+			reconNorm := NormalizeText(reconstructed)
 			prefix := reconNorm
 			if len(prefix) > 200 {
 				prefix = prefix[:200]

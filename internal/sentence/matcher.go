@@ -24,8 +24,8 @@ type SentenceDiff struct {
 // ComputeSimilarity returns 1 − wordLevenshtein(norm1, norm2) / maxLen.
 // Using a word tokenization avoids over-penalizing minor edits within words.
 func ComputeSimilarity(text1, text2 string) float64 {
-	norm1 := normalizeText(text1)
-	norm2 := normalizeText(text2)
+	norm1 := NormalizeText(text1)
+	norm2 := NormalizeText(text2)
 
 	words1 := strings.Fields(norm1)
 	words2 := strings.Fields(norm2)
@@ -111,13 +111,13 @@ func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *Sentence
 	// Normalized text → []id, for exact matching.
 	oldNormalized := make(map[string][]string)
 	for id, text := range oldSentences {
-		norm := normalizeText(text)
+		norm := NormalizeText(text)
 		oldNormalized[norm] = append(oldNormalized[norm], id)
 	}
 
 	newNormalized := make(map[string][]string)
 	for id, text := range newSentences {
-		norm := normalizeText(text)
+		norm := NormalizeText(text)
 		newNormalized[norm] = append(newNormalized[norm], id)
 	}
 
