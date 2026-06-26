@@ -336,6 +336,27 @@ set up the SSH host alias yet, point them at the header of
 or the SSH alias isn't configured, ask the user to deploy manually
 rather than guessing at credentials.
 
+Docker on the VM rebuilds from scratch on each deploy, so expect the
+script to take several minutes to return. Don't assume it failed; let it
+run.
+
+### Diagnosing prod (read-only shell)
+
+For server-side diagnostics — tailing `docker logs`, peeking at `psql`,
+checking `apache2` configs/logs, etc. — use the `ws_ssh` shell alias.
+It's a standard interactive ssh into the prod VM (not the locked-down
+deploy key), so you have a normal shell once connected. Use it for
+investigation only; for code changes, edit locally and redeploy via
+`./remote-deploy.sh`. Sensitive credentials may appear in
+`~/.config/manuscript-studio/config.yaml` on the VM — do not echo them
+back into the conversation.
+
+To seed/manage users on prod, call the admin API on the VM. Helper at
+`scripts/seed-user.sh`. Reads the system token from the config file by
+default; override with `SYSTEM_TOKEN=...`. There is no "admin" role at
+the DB level — all users are `author`-role; access is gated by
+`manuscript_access` grants.
+
 ---
 
 ## 8. Tone / meta

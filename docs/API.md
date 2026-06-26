@@ -22,9 +22,6 @@ Response 200: `{"username", "csrf_token", "last_manuscript_name", "manuscripts":
 Response 401: `Invalid credentials` (same body for any failure mode — timing-safe, no enumeration).
 Response 400: `Invalid request body` / `Missing required fields`.
 
-### `GET /api/users`
-List of usernames for the login dropdown. Response: `{"users": [{"username": ...}]}`.
-
 ---
 
 ## Session-protected

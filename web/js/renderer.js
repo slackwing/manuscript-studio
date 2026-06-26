@@ -50,7 +50,8 @@ const WriteSysRenderer = {
       this.currentSegmenter = migration.segmenter;
 
       const shortHash = migration.commit_hash.substring(0, 7);
-      const date = new Date(migration.processed_at).toLocaleDateString();
+      const processedAt = new Date(migration.processed_at);
+      const date = processedAt.toLocaleDateString();
       const session = window.currentSession || {};
       const picker = window.WriteSysPicker;
       const manuscriptName = (picker && picker.currentName) || '';
@@ -64,6 +65,7 @@ const WriteSysRenderer = {
           ['Sentences', String(migration.sentence_count)],
         ].filter(Boolean));
       }
+      this.renderUpdatedLabel(processedAt);
 
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
@@ -75,7 +77,24 @@ const WriteSysRenderer = {
       if (window.WriteSysInfoTooltip) {
         window.WriteSysInfoTooltip.set([['Error', error.message]]);
       }
+      this.renderUpdatedLabel(null);
     }
+  },
+
+  // Top-bar "Manuscript Updated: …" — formatted in the browser's timezone so
+  // the abbreviation (EDT/EST/etc.) reflects where the reader is, not the VM.
+  renderUpdatedLabel(processedAt) {
+    const el = document.getElementById('manuscript-updated');
+    if (!el) return;
+    if (!processedAt) {
+      el.textContent = '';
+      return;
+    }
+    const monthDay = processedAt.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    const time = processedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+    const parts = processedAt.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ');
+    const tz = parts[parts.length - 1] || '';
+    el.textContent = `Manuscript Updated: ${monthDay}, ${time}${tz ? ' ' + tz : ''}`;
   },
 
   async loadManuscriptByMigration(migrationID) {

@@ -135,7 +135,6 @@ func (s *Server) setupRouter() {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/login", s.authHandlers.HandleLogin)
-		r.Get("/users", s.authHandlers.HandleGetUsers)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(s.sessionStore))

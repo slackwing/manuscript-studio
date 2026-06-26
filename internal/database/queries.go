@@ -1353,35 +1353,6 @@ func (db *DB) GetUserByUsername(ctx context.Context, username string) (*models.U
 	return &u, nil
 }
 
-func (db *DB) GetAllUsers(ctx context.Context) ([]models.User, error) {
-	query := `
-		SELECT username, password_hash, role, created_at
-		FROM "user"
-		ORDER BY username
-	`
-
-	rows, err := db.Pool.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query users: %w", err)
-	}
-	defer rows.Close()
-
-	var users []models.User
-	for rows.Next() {
-		var u models.User
-		if err := rows.Scan(&u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan user: %w", err)
-		}
-		users = append(users, u)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating users: %w", err)
-	}
-
-	return users, nil
-}
-
 func (db *DB) GetManuscriptAccessForUser(ctx context.Context, username string) ([]models.ManuscriptAccess, error) {
 	query := `
 		SELECT username, manuscript_name, created_at

@@ -161,31 +161,6 @@ func (h *AuthHandlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleGetUsers returns all users (for the login dropdown), omitting password hashes.
-func (h *AuthHandlers) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	users, err := h.DB.GetAllUsers(ctx)
-	if err != nil {
-		http.Error(w, "Failed to get users", http.StatusInternalServerError)
-		return
-	}
-
-	type UserInfo struct {
-		Username string `json:"username"`
-	}
-
-	userInfos := make([]UserInfo, len(users))
-	for i, u := range users {
-		userInfos[i] = UserInfo{Username: u.Username}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"users": userInfos,
-	})
-}
-
 func (h *AuthHandlers) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session_token")
 	if err != nil {
