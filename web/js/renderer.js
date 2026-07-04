@@ -70,6 +70,7 @@ const WriteSysRenderer = {
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
       await this.loadManuscriptByMigration(migration.migration_id);
+      this.startMigrationPoll();
 
     } catch (error) {
       console.error('Failed to load latest migration:', error);
@@ -95,6 +96,55 @@ const WriteSysRenderer = {
     const parts = processedAt.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ');
     const tz = parts[parts.length - 1] || '';
     el.textContent = `Manuscript Updated: ${monthDay}, ${time}${tz ? ' ' + tz : ''}`;
+  },
+
+  // Poll /migrations/latest so a webhook-driven migration that arrives while
+  // the tab is open doesn't leave the reader silently editing an orphan
+  // (see the server-side stale-migration guard on PUT /suggestion). We don't
+  // auto-reload — an open suggestion modal would lose unsaved text. Instead
+  // we surface a persistent banner and let the user click Reload.
+  MIGRATION_POLL_MS: 15000,
+
+  startMigrationPoll() {
+    if (this._migrationPollTimer) return;
+    this._migrationPollTimer = setInterval(() => this.checkForNewerMigration(), this.MIGRATION_POLL_MS);
+  },
+
+  async checkForNewerMigration() {
+    if (!this.manuscriptId || !this.currentMigrationID) return;
+    if (this._newerMigrationSeen) return; // banner already up
+    try {
+      const migration = await fetchJSON(`${this.apiBaseUrl}/migrations/latest?manuscript_id=${this.manuscriptId}`, {}, false);
+      if (migration && migration.migration_id !== this.currentMigrationID) {
+        this._newerMigrationSeen = true;
+        this.showStaleBanner(migration);
+        clearInterval(this._migrationPollTimer);
+        this._migrationPollTimer = null;
+      }
+    } catch (e) {
+      // Transient failures are fine — next tick tries again.
+    }
+  },
+
+  showStaleBanner(migration) {
+    if (document.getElementById('stale-migration-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'stale-migration-banner';
+    banner.className = 'stale-migration-banner';
+    const processedAt = new Date(migration.processed_at);
+    const when = processedAt.toLocaleString(undefined, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+    const short = (migration.commit_hash || '').substring(0, 7);
+    const textSpan = document.createElement('span');
+    textSpan.className = 'stale-migration-text';
+    textSpan.textContent = `Manuscript was updated (${when}, ${short}). New edits will be blocked until you reload.`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'stale-migration-reload';
+    btn.textContent = 'Reload';
+    btn.addEventListener('click', () => window.location.reload());
+    banner.appendChild(textSpan);
+    banner.appendChild(btn);
+    document.body.appendChild(banner);
   },
 
   async loadManuscriptByMigration(migrationID) {

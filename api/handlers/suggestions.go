@@ -78,6 +78,12 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 // HandlePutSuggestion upserts a suggestion. Text identical to the original
 // sentence is collapsed into a delete so "revert by re-saving the original"
 // works without client logic.
+//
+// Rejects writes against sentences on a non-latest migration with 409 stale.
+// Without this guard, a stale tab (loaded before a new migration arrived)
+// would silently accumulate suggestions on orphaned sentence_ids — they'd
+// still be per-user and access-checked, but they'd never surface for the
+// current view of the manuscript and never carry forward.
 func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -105,6 +111,37 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 	var req upsertSuggestionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	sentenceMigrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
+	if err != nil {
+		http.Error(w, "Failed to resolve sentence migration", http.StatusInternalServerError)
+		return
+	}
+	if sentenceMigrationID == 0 {
+		http.Error(w, "Sentence not found", http.StatusNotFound)
+		return
+	}
+	migration, err := h.DB.GetMigrationByID(ctx, sentenceMigrationID)
+	if err != nil || migration == nil {
+		http.Error(w, "Failed to load migration", http.StatusInternalServerError)
+		return
+	}
+	latest, err := h.DB.GetLatestMigration(ctx, migration.ManuscriptID)
+	if err != nil {
+		http.Error(w, "Failed to load latest migration", http.StatusInternalServerError)
+		return
+	}
+	if latest != nil && latest.MigrationID != sentenceMigrationID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":        "stale",
+			"latest_id":    latest.MigrationID,
+			"sentence_id":  sentenceID,
+			"hint":         "manuscript has been updated — please refresh",
+		})
 		return
 	}
 

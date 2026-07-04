@@ -230,6 +230,41 @@ body {
   white-space: nowrap;
 }
 
+/* Stale-migration banner: shown when the poll detects a newer migration
+   than the one this tab loaded. We don't auto-reload because an open
+   suggestion modal would lose unsaved text. */
+.stale-migration-banner {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fff8e1;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
+  color: #66512c;
+}
+
+.stale-migration-reload {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #d97706;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.stale-migration-reload:hover { background: #b45309; }
+
 #info-icon:hover { color: #1f2328; background: #f6f8fa; }
 
 /* Info tooltip — same look as .history-popup so the app feels coherent.

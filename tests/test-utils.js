@@ -142,10 +142,7 @@ async function loginAsTestUser(page) {
   await page.goto(loginUrl, { waitUntil: 'networkidle' });
   await page.waitForLoadState('domcontentloaded');
 
-  // Wait for the username dropdown to populate via JS.
-  await page.waitForTimeout(500);
-
-  await page.selectOption('#username', TEST_USERNAME);
+  await page.fill('#username', TEST_USERNAME);
   await page.fill('#password', TEST_PASSWORD);
   await page.click('#login-btn');
 

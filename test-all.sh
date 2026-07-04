@@ -37,6 +37,7 @@ FAST_TESTS=(
   multi-note-ui-test
   test-priority-flag
   test-trash-deletion
+  test-suggestion-stale-guard
 )
 
 SLOW_TESTS=(
