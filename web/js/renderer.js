@@ -23,6 +23,16 @@ const WriteSysRenderer = {
     if (window.WriteSysPicker) await window.WriteSysPicker.init();
     if (window.WriteSysOutline) window.WriteSysOutline.init();
 
+    // Delegated click for inline references: scroll to the target sentence.
+    // Attached once; survives re-renders since it's on document.
+    document.addEventListener('click', (e) => {
+      const ref = e.target.closest && e.target.closest('.inline-ref[data-ref-target]');
+      if (ref) {
+        e.preventDefault();
+        this.scrollToSentence(ref.dataset.refTarget);
+      }
+    });
+
     if (!this.manuscriptId) {
       console.log('No manuscript_id in URL; showing empty state.');
       return;
@@ -407,8 +417,46 @@ const WriteSysRenderer = {
   },
 
   applyInlineFormatting(text) {
-    const escaped = this.escapeHtml(text);
-    return escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Inline &-commands (&reference / &anchor) are rendered specially; the
+    // rest of the text gets escape + *italics*. We find command ranges on the
+    // RAW text (correct offsets), then process each non-command span normally.
+    const cmds = (window.WriteSysCommand && window.WriteSysCommand.findInline)
+      ? window.WriteSysCommand.findInline(text)
+      : [];
+    if (cmds.length === 0) {
+      return this.escapeHtml(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    }
+    const chars = Array.from(text);
+    let out = '';
+    let pos = 0;
+    for (const c of cmds) {
+      const before = chars.slice(pos, c.start).join('');
+      out += this.escapeHtml(before).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      out += this.renderInlineCommand(c);
+      pos = c.end;
+    }
+    out += this.escapeHtml(chars.slice(pos).join('')).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    return out;
+  },
+
+  // renderInlineCommand renders a single inline &reference/&anchor. A
+  // reference resolves against the slug map (from the outline); a resolvable
+  // one is a link that scrolls to its target, a dangling one shows a broken
+  // marker. An inline anchor is an invisible target span.
+  renderInlineCommand(c) {
+    if (c.kind === 'anchor') {
+      const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
+      // Invisible marker (zero-width) — the host sentence is the scroll target.
+      return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`;
+    }
+    // reference
+    const slugMap = (window.WriteSysOutline && window.WriteSysOutline.slugMap) || {};
+    const targetId = c.slug ? slugMap[c.slug] : undefined;
+    const notes = c.notes ? this.escapeHtml(c.notes) : ('↪ ' + this.escapeHtml(c.slug || ''));
+    if (targetId) {
+      return `<a class="inline-ref" data-ref-target="${this.escapeHtml(targetId)}" title="${this.escapeHtml(c.slug)}">${notes}</a>`;
+    }
+    return `<span class="inline-ref broken" title="unresolved reference: ${this.escapeHtml(c.slug || '')}">${notes}</span>`;
   },
 
   // renderBlockCommand renders a block &-command sentence as a heading

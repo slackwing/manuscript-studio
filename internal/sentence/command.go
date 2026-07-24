@@ -83,6 +83,64 @@ type StaticSlug struct {
 	Kind       CommandKind
 }
 
+// Reference is an inline &reference#slug{notes} occurrence: the target slug,
+// the notes text, and the char range within its host sentence's text.
+type Reference struct {
+	Slug       string
+	Notes      string
+	Start, End int // rune-index range in the host sentence text
+}
+
+// FindInlineCommands scans a sentence's text for inline &reference and
+// &anchor commands (those that are NOT the whole sentence — inline ones ride
+// inside prose). Returns each with its rune range. A block sentence (the whole
+// text is one command) yields nothing here; block commands are handled
+// separately (slug index / outline).
+func FindInlineCommands(text string) (refs []Reference, anchors []Reference) {
+	runes := []rune(text)
+	// If the entire trimmed text is one block command, it's not inline.
+	if IsBlockCommandText(text) {
+		return nil, nil
+	}
+	for i := 0; i < len(runes); i++ {
+		if runes[i] != '&' {
+			continue
+		}
+		cmd, ok := ParseCommand(string(runes[i:]))
+		if !ok {
+			continue
+		}
+		end := i + len([]rune(cmd.Raw))
+		notes := ""
+		if len(cmd.Args) > 0 {
+			notes = cmd.Args[0]
+		}
+		switch cmd.Kind {
+		case CmdReference:
+			refs = append(refs, Reference{Slug: cmd.Slug, Notes: notes, Start: i, End: end})
+		case CmdAnchor:
+			anchors = append(anchors, Reference{Slug: cmd.Slug, Notes: notes, Start: i, End: end})
+		}
+		i = end - 1 // skip past the matched command
+	}
+	return refs, anchors
+}
+
+// FindReferences returns just the reference slugs across a set of sentences,
+// for migration-time dangling detection. Ignores anchors.
+func FindReferences(ids []string, textByID map[string]string) []Reference {
+	var out []Reference
+	for _, id := range ids {
+		text, ok := textByID[id]
+		if !ok {
+			continue
+		}
+		refs, _ := FindInlineCommands(text)
+		out = append(out, refs...)
+	}
+	return out
+}
+
 // ExtractStaticSlugs walks (sentenceID -> text) block-command sentences and
 // returns each author-written static #slug with its sentence and kind. Only
 // static slugs are returned — a command with no #slug contributes nothing

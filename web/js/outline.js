@@ -8,6 +8,8 @@
 const WriteSysOutline = {
   apiBaseUrl: 'api',
   el: null,
+  // slug -> sentence_id, for resolving inline &reference targets.
+  slugMap: {},
 
   init() {
     this.el = document.getElementById('outline-margin');
@@ -31,6 +33,19 @@ const WriteSysOutline = {
 
   render(outline) {
     if (!this.el) return;
+    // Rebuild the slug -> sentence_id map from the outline so inline
+    // references can resolve their targets.
+    this.slugMap = {};
+    const note = (n) => { if (n && n.slug) this.slugMap[n.slug] = n.sentence_id; };
+    if (outline.title) note(outline.title);
+    (outline.top_chapters || []).forEach(c => { note(c); (c.anchors || []).forEach(note); });
+    (outline.top_anchors || []).forEach(note);
+    (outline.parts || []).forEach(part => {
+      note(part);
+      (part.chapters || []).forEach(c => { note(c); (c.anchors || []).forEach(note); });
+      (part.anchors || []).forEach(note);
+    });
+
     const items = [];
 
     if (outline.title && outline.title.name) {

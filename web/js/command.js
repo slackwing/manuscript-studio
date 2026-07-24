@@ -77,6 +77,29 @@ const WriteSysCommand = {
     return this.SLUG_RE.test(slug);
   },
 
+  // findInline scans a string for inline &reference / &anchor commands (those
+  // not spanning the whole string) and returns [{kind, slug, notes, start,
+  // end}] in order. Used to render references as links and anchors as markers
+  // within a sentence's visible text.
+  findInline(text) {
+    const chars = Array.from(text);
+    const out = [];
+    // If the whole (trimmed) text is one block command, nothing is inline.
+    if (this.isBlockCommandText(text)) return out;
+    let i = 0;
+    while (i < chars.length) {
+      if (chars[i] !== '&') { i++; continue; }
+      const cmd = this.parse(chars.slice(i).join(''));
+      if (!cmd) { i++; continue; }
+      const end = i + Array.from(cmd.raw).length;
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor') {
+        out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', start: i, end });
+      }
+      i = end;
+    }
+    return out;
+  },
+
   // structuralForm describes how a stored sentence renders as a heading-like
   // element, or null if it's ordinary content. Unifies Markdown headers and
   // block &-commands so the renderer and the suggestion-preview path agree on

@@ -533,6 +533,30 @@ h3 {
   break-before: auto;
 }
 
+/* Inline &reference: a link to another sentence. Broken (unresolved) refs
+   are flagged so the author sees a dangling link. Inline &anchor is an
+   invisible target marker. */
+.inline-ref {
+  color: #2a6fb0;
+  text-decoration: none;
+  border-bottom: 1px dotted #2a6fb0;
+  cursor: pointer;
+}
+.inline-ref:hover {
+  text-decoration: none;
+  border-bottom-style: solid;
+}
+.inline-ref.broken {
+  color: #c0392b;
+  border-bottom: 1px dashed #c0392b;
+  cursor: help;
+}
+.inline-anchor {
+  display: inline;
+  width: 0;
+  height: 0;
+}
+
 .cmd-anchor {
   text-align: center;
   font-style: italic;

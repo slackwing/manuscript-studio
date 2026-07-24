@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/slackwing/manuscript-studio/internal/database"
@@ -40,6 +41,9 @@ type MigrationResult struct {
 	ChangesCount        int    `json:"changes_count"`
 	AnnotationsMigrated int    `json:"annotations_migrated"`
 	Message             string `json:"message"`
+	// UnresolvedReferences are &reference#slug targets with no matching slug
+	// in this migration — dangling links. Surfaced (warned), never fatal.
+	UnresolvedReferences []string `json:"unresolved_references,omitempty"`
 }
 
 // Run always leaves the row at 'done' or 'error'.
@@ -111,13 +115,19 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 		return nil, fmt.Errorf("mark migration done: %w", err)
 	}
 
-	log.Info("bootstrap complete", slog.Int("sentences", len(newSentences)))
+	unresolved := unresolvedReferences(newSentences)
+	if len(unresolved) > 0 {
+		log.Warn("bootstrap has dangling references", slog.Any("unresolved_references", unresolved))
+	}
+
+	log.Info("bootstrap complete", slog.Int("sentences", len(newSentences)), slog.Int("unresolved_references", len(unresolved)))
 	return &MigrationResult{
-		MigrationID:    migrationID,
-		Status:         "bootstrap_complete",
-		SentenceCount:  len(newSentences),
-		AdditionsCount: len(newSentences),
-		Message:        fmt.Sprintf("Bootstrap complete: %d sentences", len(newSentences)),
+		MigrationID:          migrationID,
+		Status:               "bootstrap_complete",
+		SentenceCount:        len(newSentences),
+		AdditionsCount:       len(newSentences),
+		Message:              fmt.Sprintf("Bootstrap complete: %d sentences", len(newSentences)),
+		UnresolvedReferences: unresolved,
 	}, nil
 }
 
@@ -208,21 +218,28 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("mark migration done: %w", err)
 	}
 
+	unresolved := unresolvedReferences(newSentences)
+	if len(unresolved) > 0 {
+		log.Warn("migration has dangling references", slog.Any("unresolved_references", unresolved))
+	}
+
 	log.Info("migrate complete",
 		slog.Int("sentences", len(newSentences)),
 		slog.Int("annotations_migrated", annotationsMigrated),
 		slog.Int("suggestions_migrated", suggestionsMigrated),
 		slog.Int("suggestions_pruned_noop", suggestionsPruned),
+		slog.Int("unresolved_references", len(unresolved)),
 	)
 	return &MigrationResult{
-		MigrationID:         migrationID,
-		Status:              "migration_complete",
-		SentenceCount:       len(newSentences),
-		AdditionsCount:      len(diff.Added),
-		DeletionsCount:      len(diff.Deleted),
-		ChangesCount:        len(diff.Deleted),
-		AnnotationsMigrated: annotationsMigrated,
-		Message:             fmt.Sprintf("Migration complete: %d sentences, %d annotations migrated", len(newSentences), annotationsMigrated),
+		MigrationID:          migrationID,
+		Status:               "migration_complete",
+		SentenceCount:        len(newSentences),
+		AdditionsCount:       len(diff.Added),
+		DeletionsCount:       len(diff.Deleted),
+		ChangesCount:         len(diff.Deleted),
+		AnnotationsMigrated:  annotationsMigrated,
+		Message:              fmt.Sprintf("Migration complete: %d sentences, %d annotations migrated", len(newSentences), annotationsMigrated),
+		UnresolvedReferences: unresolved,
 	}, nil
 }
 
@@ -378,6 +395,34 @@ func storeSlugs(ctx context.Context, db *database.DB, migrationID int, sentences
 	}
 	slugs := sentence.ExtractStaticSlugs(ids, textByID)
 	return db.StoreCommandSlugs(ctx, migrationID, slugs)
+}
+
+// unresolvedReferences returns the sorted, de-duplicated set of &reference
+// slugs in the migration's sentences that don't resolve against its static
+// slug set. Dangling references are surfaced (warned) but never fail the
+// migration (TEX_COMMANDS_PLAN.md §4).
+func unresolvedReferences(sentences []models.Sentence) []string {
+	ids := make([]string, len(sentences))
+	textByID := make(map[string]string, len(sentences))
+	known := make(map[string]bool)
+	for i, s := range sentences {
+		ids[i] = s.SentenceID
+		textByID[s.SentenceID] = s.Text
+	}
+	for _, ss := range sentence.ExtractStaticSlugs(ids, textByID) {
+		known[ss.Slug] = true
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, ref := range sentence.FindReferences(ids, textByID) {
+		if ref.Slug == "" || known[ref.Slug] || seen[ref.Slug] {
+			continue
+		}
+		seen[ref.Slug] = true
+		out = append(out, ref.Slug)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // segmentContent returns sentences ready for db.CreateSentences, the id slice

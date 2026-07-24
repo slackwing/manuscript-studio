@@ -171,3 +171,36 @@ func TestExtractStaticSlugs(t *testing.T) {
 		}
 	}
 }
+
+func TestFindInlineCommands(t *testing.T) {
+	refs, anchors := FindInlineCommands("See &reference#origin{the opening} and the fire &anchor#firemark{} spread.")
+	if len(refs) != 1 || refs[0].Slug != "origin" || refs[0].Notes != "the opening" {
+		t.Errorf("refs wrong: %+v", refs)
+	}
+	if len(anchors) != 1 || anchors[0].Slug != "firemark" {
+		t.Errorf("anchors wrong: %+v", anchors)
+	}
+	// A block command sentence yields no inline commands.
+	r2, a2 := FindInlineCommands("&chapter#p1c1{I}{Smoke}")
+	if len(r2) != 0 || len(a2) != 0 {
+		t.Errorf("block command should yield no inline: %+v %+v", r2, a2)
+	}
+	// Literal & is not a command.
+	r3, _ := FindInlineCommands("Smith & Sons and R&D survived.")
+	if len(r3) != 0 {
+		t.Errorf("literal & should yield no refs: %+v", r3)
+	}
+}
+
+func TestFindReferences_dangling(t *testing.T) {
+	ids := []string{"s0", "s1", "s2"}
+	textByID := map[string]string{
+		"s0": "&chapter#p1c1{I}{Smoke}",             // defines slug p1c1
+		"s1": "See &reference#p1c1{the chapter}.",   // resolves
+		"s2": "See &reference#ghost{missing} here.", // dangling
+	}
+	refs := FindReferences(ids, textByID)
+	if len(refs) != 2 {
+		t.Fatalf("want 2 references, got %d: %+v", len(refs), refs)
+	}
+}
