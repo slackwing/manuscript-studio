@@ -115,14 +115,14 @@ Manuscript Studio consists of:
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for development setup.
 
 ```bash
-# Run locally with docker-compose
-docker-compose up
+# Run locally (dev Postgres + server)
+make dev
 
 # Run tests
 go test ./...
 
 # Run frontend tests
-npm test
+./test-all.sh
 ```
 
 ## Documentation

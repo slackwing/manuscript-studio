@@ -89,10 +89,6 @@ auth:
   # Generate with: openssl rand -hex 32
   system_token: "REPLACE_ME_OR_SERVER_WONT_START"
 
-  # Secret for signing session cookies
-  # Generate with: openssl rand -hex 32
-  session_secret: "REPLACE_ME_OR_SERVER_WONT_START"
-
   # GitHub webhook validation secret (required when env=production)
   # Must match the secret configured in GitHub webhook settings.
   # Generate with: openssl rand -hex 32

@@ -1,0 +1,46 @@
+# Applies to BOTH Dockerfile and Dockerfile.liquibase (shared build context).
+# The builds need: go.mod, go.sum, Go sources (api/, cmd/, internal/),
+# web/, and liquibase/. Everything else is excluded from the context.
+
+# VCS
+.git
+.gitignore
+.gitattributes
+.claude
+
+# Node / test tooling (build is pure Go + static web assets)
+node_modules
+package.json
+package-lock.json
+playwright.config.js
+tests
+testdata
+test-results
+test-all.sh
+
+# Local build output
+bin
+
+# Dev-only infra and configs (prod config is mounted, never baked in)
+docker-compose.dev.yaml
+config.dev.yaml
+config.example.yaml
+
+# Archived tools, debug helpers, docs, plans
+old
+debug
+docs
+scripts
+*.md
+LICENSE
+
+# Host-side install/deploy tooling (runs on the host, not in the image)
+install.sh
+deploy_latest_manuscript_studio.sh
+remote-deploy.sh
+Makefile
+
+# The Docker build files themselves
+Dockerfile
+Dockerfile.liquibase
+.dockerignore

@@ -55,7 +55,6 @@ auth:
   admin_username: "admin"
   admin_password: "admin"
   system_token: "dev-system-token-not-for-production"
-  session_secret: "dev-session-secret-not-for-production"
   webhook_secret: "dev-webhook-secret"
 
 # ============================================================

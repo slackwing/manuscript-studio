@@ -24,6 +24,13 @@ PASSWORD="${2:?password required}"
 MANUSCRIPT="${3:?manuscript_name required}"
 SERVER="${4:-http://127.0.0.1:5001}"
 
+# jq builds the JSON bodies so quotes/backslashes in passwords can't break
+# (or inject into) the JSON.
+if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required (to safely build JSON request bodies) but was not found. Install jq and retry." >&2
+    exit 1
+fi
+
 if [ -z "${SYSTEM_TOKEN:-}" ]; then
     CONFIG="${MANUSCRIPT_STUDIO_CONFIG_FILE:-config.dev.yaml}"
     if [ ! -f "$CONFIG" ]; then
@@ -33,12 +40,17 @@ if [ -z "${SYSTEM_TOKEN:-}" ]; then
     SYSTEM_TOKEN=$(grep system_token "$CONFIG" | head -1 | sed 's/.*: *"\(.*\)".*/\1/')
 fi
 
+USER_BODY=$(jq -n --arg u "$USERNAME" --arg p "$PASSWORD" \
+    '{username: $u, password: $p, role: "author"}')
+GRANT_BODY=$(jq -n --arg u "$USERNAME" --arg m "$MANUSCRIPT" \
+    '{username: $u, manuscript_name: $m}')
+
 curl -sf -X POST "$SERVER/api/admin/users" \
     -H "Authorization: Bearer $SYSTEM_TOKEN" -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\",\"role\":\"author\"}" >/dev/null
+    -d "$USER_BODY" >/dev/null
 
 curl -sf -X POST "$SERVER/api/admin/grants" \
     -H "Authorization: Bearer $SYSTEM_TOKEN" -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"manuscript_name\":\"$MANUSCRIPT\"}" >/dev/null
+    -d "$GRANT_BODY" >/dev/null
 
 echo "Created/updated user '$USERNAME' with access to '$MANUSCRIPT'."

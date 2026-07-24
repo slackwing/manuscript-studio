@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Manuscript Studio Installation Script
-# One-liner: curl -sSL https://raw.githubusercontent.com/slackwing/manuscript-studio/main/install.sh | bash
+# One-liner: bash <(curl -fsSL https://raw.githubusercontent.com/slackwing/manuscript-studio/main/install.sh)
+# (the <(...) form keeps stdin on the terminal so prompts work; see prompt_yn)
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-04-22.2"
+SCRIPT_VERSION="2026-07-24.2"
 
 set -euo pipefail
 
@@ -109,7 +110,8 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
         fi
     else
         log_info "Downloading configuration template..."
-        curl -sSL "$REPO_URL/raw/main/$CONFIG_SOURCE_TEMPLATE" -o "$CONFIG_FILE" || {
+        # -f: fail on HTTP errors instead of writing an error page into config.yaml
+        curl -fsSL "$REPO_URL/raw/main/$CONFIG_SOURCE_TEMPLATE" -o "$CONFIG_FILE" || {
             log_error "Failed to download configuration template"
         }
 
@@ -118,14 +120,15 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
         # database/repo specifics, not handcraft cryptographic secrets.
         if command -v openssl &>/dev/null; then
             log_info "Generating random secrets in $CONFIG_FILE..."
-            for field in system_token session_secret webhook_secret; do
+            for field in system_token webhook_secret; do
                 token=$(openssl rand -hex 32)
                 # In-place replace just the line for this field. macOS sed
                 # needs an empty extension arg; GNU sed accepts -i with no arg.
+                # Use [[:space:]] (POSIX class) — BSD sed BRE does not support \s.
                 if sed --version &>/dev/null; then
-                    sed -i "s|^\(\s*${field}:\s*\)\"REPLACE_ME_OR_SERVER_WONT_START\"|\1\"${token}\"|" "$CONFIG_FILE"
+                    sed -i "s|^\([[:space:]]*${field}:[[:space:]]*\)\"REPLACE_ME_OR_SERVER_WONT_START\"|\1\"${token}\"|" "$CONFIG_FILE"
                 else
-                    sed -i "" "s|^\(\s*${field}:\s*\)\"REPLACE_ME_OR_SERVER_WONT_START\"|\1\"${token}\"|" "$CONFIG_FILE"
+                    sed -i "" "s|^\([[:space:]]*${field}:[[:space:]]*\)\"REPLACE_ME_OR_SERVER_WONT_START\"|\1\"${token}\"|" "$CONFIG_FILE"
                 fi
             done
         else
@@ -141,7 +144,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
         echo "  3. Manuscript repository settings (URL, branch, path, auth_token)"
         echo "  4. Admin password (replace REPLACE_ME)"
         echo ""
-        echo "Cryptographic secrets (system/session/webhook) have been generated for you."
+        echo "Cryptographic secrets (system/webhook) have been generated for you."
         echo "Then run this script again to complete installation."
         exit 0
     fi
@@ -209,6 +212,10 @@ DB_ERR=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER
                 log_warn "Failed to create database (continuing; the user may lack CREATEDB)"
             fi
         fi
+    else
+        # Anything else (bad password, unreachable host, ...) is not
+        # recoverable here — nothing later in the install can succeed.
+        log_error "Unexpected database connection failure. Check the database settings (host/port/user/password) in $CONFIG_FILE and re-run."
     fi
 }
 
@@ -317,7 +324,9 @@ docker run --rm \
     --username="$DB_USER" \
     --password="$DB_PASSWORD" \
     update || {
-    log_warn "Migration failed - database may already be up to date"
+    # Liquibase `update` exits 0 when the database is already up to date,
+    # so a nonzero exit is always a real failure.
+    log_error "Database migration failed. Fix the error above and re-run."
 }
 
 # Step 8b: Upsert admin user from config
@@ -340,11 +349,44 @@ else
     CONTAINER_NAME="manuscript-studio-server"
 fi
 
-# Stop existing container if running
+# Serialize the stop → start → health-check window so two concurrent deploys
+# can't interleave. The lock (fd 9) is held until this script exits.
+LOCK_FILE="/tmp/manuscript-studio-deploy.lock"
+exec 9>"$LOCK_FILE"
+if command -v flock &>/dev/null; then
+    flock -w 60 9 || log_error "Another deploy holds the lock ($LOCK_FILE). Try again shortly."
+else
+    log_warn "flock not available — proceeding without the deploy lock (avoid concurrent deploys)."
+fi
+
+# Keep the old container renamed aside (instead of removed) so a failed
+# start or health check can roll back to it.
+PREV_CONTAINER="${CONTAINER_NAME}-previous"
+HAD_OLD=0
+
+rollback_old_container() {
+    if [[ "$HAD_OLD" == "1" ]]; then
+        log_warn "Rolling back to the previous $CONTAINER_NAME container..."
+        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+        if docker rename "$PREV_CONTAINER" "$CONTAINER_NAME" 2>/dev/null; then
+            docker start "$CONTAINER_NAME" >/dev/null 2>&1 \
+                && log_info "Previous container restored and restarted." \
+                || log_warn "Restored previous container but failed to start it."
+        else
+            log_warn "Could not restore previous container ($PREV_CONTAINER)."
+        fi
+    fi
+}
+
+# Stop existing container if running, renaming it aside for rollback.
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_info "Stopping existing $CONTAINER_NAME..."
+    # A stale rollback container from an earlier failed deploy would block
+    # the rename; the currently-named container is the one worth keeping.
+    docker rm -f "$PREV_CONTAINER" 2>/dev/null || true
+    log_info "Stopping existing $CONTAINER_NAME (kept as $PREV_CONTAINER until the new one is healthy)..."
     docker stop "$CONTAINER_NAME" 2>/dev/null || true
-    docker rm "$CONTAINER_NAME" 2>/dev/null || true
+    docker rename "$CONTAINER_NAME" "$PREV_CONTAINER"
+    HAD_OLD=1
 fi
 
 # Start new container.
@@ -360,9 +402,16 @@ if [[ "$DEV_MODE" == "1" ]]; then
         -v "$CONFIG_DIR/logs:/logs" \
         -v "$MANUSCRIPT_REPOS_DIR:/repos" \
         manuscript-studio:latest || {
+        rollback_old_container
         log_error "Failed to start server"
     }
 else
+    # SSH directory mounted read-only into the container so git can pull
+    # private manuscript repos over SSH. Defaults to $HOME/.ssh so existing
+    # deploys keep working, but RECOMMENDED: point MANUSCRIPT_STUDIO_SSH_DIR
+    # at a directory containing ONLY a dedicated deploy key, so the container
+    # never sees your personal keys.
+    SSH_MOUNT_DIR="${MANUSCRIPT_STUDIO_SSH_DIR:-$HOME/.ssh}"
     docker run -d \
         --name "$CONTAINER_NAME" \
         --restart unless-stopped \
@@ -370,23 +419,36 @@ else
         -v "$CONFIG_FILE:/config/config.yaml:ro" \
         -v "$CONFIG_DIR/logs:/logs" \
         -v "$MANUSCRIPT_REPOS_DIR:/repos" \
-        -v "$HOME/.ssh:/home/manuscript/.ssh:ro" \
+        -v "$SSH_MOUNT_DIR:/home/manuscript/.ssh:ro" \
         manuscript-studio:latest || {
+        rollback_old_container
         log_error "Failed to start server"
     }
 fi
 
-# Wait for server to be ready
+# Wait for server to be ready: retry the health endpoint for up to ~30s
+# instead of a single probe after a fixed sleep.
 log_info "Waiting for server to be ready..."
-sleep 5
+HEALTHY=0
+for _ in $(seq 1 30); do
+    if curl -s http://localhost:5001/health | grep -q "healthy"; then
+        HEALTHY=1
+        break
+    fi
+    sleep 1
+done
 
 # Step 10: Verify installation
 log_step "Verifying installation..."
 
-if curl -s http://localhost:5001/health | grep -q "healthy"; then
+if [[ "$HEALTHY" == "1" ]]; then
     log_info "✓ Server is running and healthy!"
+    if [[ "$HAD_OLD" == "1" ]]; then
+        docker rm "$PREV_CONTAINER" >/dev/null 2>&1 || true
+    fi
 else
-    log_error "Server health check failed"
+    rollback_old_container
+    log_error "Server health check failed (no healthy response within ~30s)"
 fi
 
 # Step 11: Show next steps

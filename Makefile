@@ -108,8 +108,11 @@ db-reset: postgres-up
 	$(MAKE) db-migrate
 
 # Seed admin + test user via admin endpoints. Uses config values.
+# JSON bodies are built with jq so quotes/backslashes in config values
+# can't break (or inject into) the JSON.
 .PHONY: seed
 seed:
+	@command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required for 'make seed'. Install jq and retry."; exit 1; }
 	@SYSTEM_TOKEN=$$(grep system_token $(DEV_CONFIG_FILE) | head -1 | sed 's/.*: *"\(.*\)".*/\1/') && \
 	ADMIN_USER=$$(grep admin_username $(DEV_CONFIG_FILE) | head -1 | sed 's/.*: *"\(.*\)".*/\1/') && \
 	ADMIN_PASS=$$(grep admin_password $(DEV_CONFIG_FILE) | head -1 | sed 's/.*: *"\(.*\)".*/\1/') && \
@@ -117,17 +120,17 @@ seed:
 	echo "Seeding admin user: $$ADMIN_USER" && \
 	curl -sf -X POST http://127.0.0.1:5001/api/admin/users \
 	    -H "Authorization: Bearer $$SYSTEM_TOKEN" -H "Content-Type: application/json" \
-	    -d "{\"username\":\"$$ADMIN_USER\",\"password\":\"$$ADMIN_PASS\",\"role\":\"author\"}" >/dev/null && \
+	    -d "$$(jq -n --arg u "$$ADMIN_USER" --arg p "$$ADMIN_PASS" '{username: $$u, password: $$p, role: "author"}')" >/dev/null && \
 	curl -sf -X POST http://127.0.0.1:5001/api/admin/grants \
 	    -H "Authorization: Bearer $$SYSTEM_TOKEN" -H "Content-Type: application/json" \
-	    -d "{\"username\":\"$$ADMIN_USER\",\"manuscript_name\":\"$$MANUSCRIPT_NAME\"}" >/dev/null && \
+	    -d "$$(jq -n --arg u "$$ADMIN_USER" --arg m "$$MANUSCRIPT_NAME" '{username: $$u, manuscript_name: $$m}')" >/dev/null && \
 	echo "Seeding test user: test/test" && \
 	curl -sf -X POST http://127.0.0.1:5001/api/admin/users \
 	    -H "Authorization: Bearer $$SYSTEM_TOKEN" -H "Content-Type: application/json" \
 	    -d '{"username":"test","password":"test","role":"author"}' >/dev/null && \
 	curl -sf -X POST http://127.0.0.1:5001/api/admin/grants \
 	    -H "Authorization: Bearer $$SYSTEM_TOKEN" -H "Content-Type: application/json" \
-	    -d "{\"username\":\"test\",\"manuscript_name\":\"$$MANUSCRIPT_NAME\"}" >/dev/null && \
+	    -d "$$(jq -n --arg m "$$MANUSCRIPT_NAME" '{username: "test", manuscript_name: $$m}')" >/dev/null && \
 	echo "Seeded."
 
 .PHONY: bootstrap

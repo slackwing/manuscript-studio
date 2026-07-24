@@ -139,4 +139,9 @@ if [ ! -r "$EXPECTED_IDENTITY" ]; then
     print_setup_instructions
 fi
 
-ssh "$HOST_ALIAS"
+# Pass an explicit sentinel command ("deploy"): when the VM-side forced
+# command is configured, sshd ignores the argument and runs the deploy script
+# anyway. When it is NOT configured, a bare `ssh` would silently degrade to an
+# interactive shell; `ssh -n ... deploy` instead fails fast ("deploy: command
+# not found"). -n detaches stdin so nothing can be typed into a remote shell.
+ssh -n "$HOST_ALIAS" deploy
