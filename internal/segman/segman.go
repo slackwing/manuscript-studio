@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "1.0.0"
+const Version = "1.1.1"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -661,4 +661,3 @@ func splitAtBoundaries(runes []rune, boundaries []boundaryMark) []string {
 
 	return sentences
 }
-// Test comment

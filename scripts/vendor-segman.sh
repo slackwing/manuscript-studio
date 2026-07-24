@@ -3,7 +3,7 @@
 # Vendor segman from github.com/slackwing/segman into manuscript-studio.
 #
 # Usage:
-#   scripts/vendor-segman.sh                       # default ref=v1.0.0, source=~/src/segman
+#   scripts/vendor-segman.sh                       # default ref=v1.1.1, source=~/src/segman
 #   scripts/vendor-segman.sh --ref=v1.1.0
 #   scripts/vendor-segman.sh --source=/some/clone
 #
@@ -12,7 +12,7 @@
 #   internal/segman/UPSTREAM         # provenance stamp
 #
 # Notes:
-#   - We pin to a tag (v1.0.0) by default rather than `main`, so vendor
+#   - We pin to a tag (v1.1.1) by default rather than `main`, so vendor
 #     refreshes are deliberate version moves rather than "whatever HEAD is."
 #   - segman.Version is a const baked into segman.go at the upstream's build
 #     time; we don't need a separate VERSION.json in this repo.
@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-REF="v1.0.0"
+REF="v1.1.1"
 SOURCE="$HOME/src/segman"
 for arg in "$@"; do
     case "$arg" in
