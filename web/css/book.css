@@ -502,24 +502,27 @@ h3 {
   margin: 0;
 }
 
-/* Title: large, upper-centered like a title page. */
+/* Title: large, upper-centered like a title page. A full blank page carries
+   large type well — small type looks lost. */
 .cmd-title {
-  font-size: 26pt;
+  font-size: 40pt;
+  line-height: 1.15;
   font-style: italic;
-  /* nudge toward the classic upper third rather than dead center */
+  /* classic upper third rather than dead center */
   justify-content: flex-start;
-  padding-top: 30%;
+  padding-top: 28%;
 }
 
-/* Part divider: the label (e.g. "I.") large and centered, with the
-   description below as a subtitle. */
+/* Part divider: the label (e.g. "Part One" / "I.") large and centered, with
+   the description below as a subtitle. */
 .cmd-part {
-  font-size: 24pt;
+  font-size: 34pt;
+  line-height: 1.15;
 }
 .cmd-part .cmd-part-desc {
   display: block;
-  margin-top: 0.8em;
-  font-size: 15pt;
+  margin-top: 0.9em;
+  font-size: 19pt;
   font-style: italic;
   color: #333;
 }
