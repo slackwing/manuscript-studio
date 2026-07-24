@@ -22,7 +22,10 @@ type PreparedCommit struct {
 // Accepts a 7-40 char hex SHA, the literal "HEAD", or a simple branch name.
 // Rejects shell metacharacters — defense-in-depth even though git is invoked
 // via exec.Command (no shell). Keeps future refactors and log lines safer.
-var commitRefPattern = regexp.MustCompile(`^(?:HEAD|[A-Fa-f0-9]{7,40}|[A-Za-z0-9._/-]+)$`)
+// The branch alternative must not start with '-' or '/': a leading dash
+// would reach git argv as an option (e.g. "--upload-pack=..."), defeating
+// the point of the validator.
+var commitRefPattern = regexp.MustCompile(`^(?:HEAD|[A-Fa-f0-9]{7,40}|[A-Za-z0-9._][A-Za-z0-9._/-]*)$`)
 
 // ValidateCommitRef must run at every API boundary that accepts a ref.
 func ValidateCommitRef(ref string) error {

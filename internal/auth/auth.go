@@ -39,14 +39,22 @@ type Session struct {
 // restarts and can be shared across replicas.
 type SessionStore struct {
 	pool *pgxpool.Pool
+	stop chan struct{}
 }
 
 // NewSessionStore returns a store backed by pool and starts a background
-// goroutine that periodically purges expired rows.
+// goroutine that periodically purges expired rows. Call Close to stop it
+// (matters for tests and any future multi-store use; the singleton server
+// store lives for the whole process).
 func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
-	s := &SessionStore{pool: pool}
+	s := &SessionStore{pool: pool, stop: make(chan struct{})}
 	go s.cleanupExpired()
 	return s
+}
+
+// Close stops the background cleanup goroutine. Safe to call once.
+func (s *SessionStore) Close() {
+	close(s.stop)
 }
 
 // Create inserts a session row and returns the cookie token. Sessions no
@@ -112,13 +120,16 @@ func (s *SessionStore) Get(token string) (*Session, bool) {
 		return nil, false
 	}
 
+	// Only write when actually refreshing — the whole point of the
+	// threshold is a sliding window WITHOUT a DB write on every request
+	// (Get runs at least once per API call, twice on mutations).
 	newExpires := expiresAt
 	if expiresAt.Sub(now) < sessionRefreshThreshold {
 		newExpires = now.Add(SessionTTL)
+		_, _ = s.pool.Exec(ctx, `
+			UPDATE session SET last_activity_at = $1, expires_at = $2 WHERE id = $3
+		`, now, newExpires, token)
 	}
-	_, _ = s.pool.Exec(ctx, `
-		UPDATE session SET last_activity_at = $1, expires_at = $2 WHERE id = $3
-	`, now, newExpires, token)
 
 	return &Session{
 		Username:  username,
@@ -142,12 +153,17 @@ func (s *SessionStore) Delete(token string) {
 func (s *SessionStore) cleanupExpired() {
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		_, err := s.pool.Exec(ctx, `DELETE FROM session WHERE expires_at < NOW()`)
-		cancel()
-		if err != nil {
-			log.Printf("session cleanup error: %v", err)
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := s.pool.Exec(ctx, `DELETE FROM session WHERE expires_at < NOW()`)
+			cancel()
+			if err != nil {
+				log.Printf("session cleanup error: %v", err)
+			}
 		}
 	}
 }
@@ -214,7 +230,9 @@ func GetSession(r *http.Request) (*Session, error) {
 func CSRFMiddleware(store *SessionStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == "POST" || r.Method == "PUT" || r.Method == "DELETE" {
+			// Skip only the safe methods — an allowlist of mutating verbs
+			// would silently exempt a future PATCH route from CSRF checks.
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 				cookie, err := r.Cookie("session_token")
 				if err != nil {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)

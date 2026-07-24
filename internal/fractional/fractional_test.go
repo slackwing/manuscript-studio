@@ -293,3 +293,77 @@ func TestOrderingInvariant(t *testing.T) {
 		}
 	}
 }
+
+// Regression: extended-precision digits are a decimal fraction, not an
+// integer. The old Sscanf("%d") math produced midpoints that sorted OUTSIDE
+// the (before, after) interval — e.g. midpoint("a0001","a00015") == "a0008",
+// which sorts after "a00015".
+func TestMidpointExtendedPrecision(t *testing.T) {
+	cases := []struct{ before, after string }{
+		{"a0001", "a00015"},
+		{"a0000", "a00005"},
+		{"a00005", "a0001"},
+		{"a0001", "a000105"},
+		{"a00015", "a0002"},
+	}
+	for _, c := range cases {
+		got, err := midpoint(c.before, c.after)
+		if err != nil {
+			t.Errorf("midpoint(%q, %q) error: %v", c.before, c.after, err)
+			continue
+		}
+		if !(c.before < got && got < c.after) {
+			t.Errorf("midpoint(%q, %q) = %q — not strictly between", c.before, c.after, got)
+		}
+	}
+}
+
+// Regression: GeneratePositionBetween("", after) with extended-precision
+// after must sort BEFORE it (old code returned "a0004" for "a00005").
+func TestDecrementExtendedPrecision(t *testing.T) {
+	for _, after := range []string{"a00005", "a00015", "a000105"} {
+		got, err := GeneratePositionBetween("", after)
+		if err != nil {
+			t.Errorf("GeneratePositionBetween(\"\", %q) error: %v", after, err)
+			continue
+		}
+		if got >= after {
+			t.Errorf("GeneratePositionBetween(\"\", %q) = %q — sorts at/after its upper bound", after, got)
+		}
+	}
+}
+
+// Increment on extended-precision positions must sort after the input.
+func TestIncrementExtendedPrecision(t *testing.T) {
+	for _, before := range []string{"a00005", "a00015", "a99995"} {
+		got, err := GeneratePositionBetween(before, "")
+		if err != nil {
+			t.Errorf("GeneratePositionBetween(%q, \"\") error: %v", before, err)
+			continue
+		}
+		if got <= before {
+			t.Errorf("GeneratePositionBetween(%q, \"\") = %q — sorts at/before its lower bound", before, got)
+		}
+	}
+}
+
+// Stress the reorder pattern that drifted in production code: repeatedly
+// insert between adjacent positions, then between the new neighbor pairs,
+// and assert the full list stays strictly ordered.
+func TestRepeatedMidpointInsertsStayOrdered(t *testing.T) {
+	positions := []string{"a0000", "a0001"}
+	for i := 0; i < 40; i++ {
+		// Always split the first gap — this is the worst case that keeps
+		// extending precision.
+		mid, err := GeneratePositionBetween(positions[0], positions[1])
+		if err != nil {
+			t.Fatalf("iteration %d: %v", i, err)
+		}
+		positions = append([]string{positions[0], mid}, positions[1:]...)
+		for j := 1; j < len(positions); j++ {
+			if positions[j-1] >= positions[j] {
+				t.Fatalf("iteration %d: ordering broken: %q >= %q", i, positions[j-1], positions[j])
+			}
+		}
+	}
+}

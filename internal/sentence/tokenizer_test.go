@@ -209,3 +209,32 @@ func TestExtractWords(t *testing.T) {
 		})
 	}
 }
+
+// Regression: a failed locateSegment used to poison cursor with -1, and the
+// next call indexed source[-1] — a panic that killed the whole server since
+// migrations run in a bare goroutine.
+func TestLocateSegmentNegativeCursorDoesNotPanic(t *testing.T) {
+	start, end := locateSegment("some source text", -1, "source")
+	if start < 0 || end < 0 {
+		t.Fatalf("expected to find segment from clamped cursor, got (%d, %d)", start, end)
+	}
+}
+
+// Regression: rune(trimmed[0]) decoded only the first byte, so a leading
+// em-dash (multibyte) was never stripped and the curly-quote guards never
+// fired on their own comparisons.
+func TestCleanSentenceBoundariesMultibyte(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"—He paused.", "He paused."},                      // em-dash now stripped
+		{"— He paused.", "He paused."},                     // em-dash + space
+		{"“Hello,” she said.", "“Hello,” she said."},       // opening curly quote preserved
+		{"„Guten Tag.“", "„Guten Tag.“"},                   // low-9 quote preserved
+		{". Stray period lead-in", "Stray period lead-in"}, // ASCII path unchanged
+		{"-dash lead", "dash lead"},                        // ASCII dash unchanged
+	}
+	for _, c := range cases {
+		if got := cleanSentenceBoundaries(c.in); got != c.want {
+			t.Errorf("cleanSentenceBoundaries(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package sentence
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -101,23 +102,30 @@ func max(a, b int) int {
 
 // ComputeSentenceDiff: added (new-only), deleted (old-only), and exact
 // matches (pairs with identical normalized text).
-func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *SentenceDiff {
+//
+// oldOrder/newOrder carry the document order of the IDs so duplicate texts
+// pair first↔first, second↔second. Building the per-norm lists from map
+// iteration made those pairings random per run, which let annotation and
+// previous_sentence_id chains hop between identical sentences on every
+// migration. Pass nil to fall back to sorted-ID order (still deterministic,
+// but not ordinal-aware).
+func ComputeSentenceDiff(oldSentences, newSentences map[string]string, oldOrder, newOrder []string) *SentenceDiff {
 	diff := &SentenceDiff{
 		Unchanged: make(map[string]string),
 		OldTexts:  oldSentences,
 		NewTexts:  newSentences,
 	}
 
-	// Normalized text → []id, for exact matching.
+	// Normalized text → []id in document order, for exact matching.
 	oldNormalized := make(map[string][]string)
-	for id, text := range oldSentences {
-		norm := NormalizeText(text)
+	for _, id := range orderedIDs(oldSentences, oldOrder) {
+		norm := NormalizeText(oldSentences[id])
 		oldNormalized[norm] = append(oldNormalized[norm], id)
 	}
 
 	newNormalized := make(map[string][]string)
-	for id, text := range newSentences {
-		norm := NormalizeText(text)
+	for _, id := range orderedIDs(newSentences, newOrder) {
+		norm := NormalizeText(newSentences[id])
 		newNormalized[norm] = append(newNormalized[norm], id)
 	}
 
@@ -148,6 +156,31 @@ func ComputeSentenceDiff(oldSentences, newSentences map[string]string) *Sentence
 	}
 
 	return diff
+}
+
+// orderedIDs returns every key of texts exactly once: first the ids listed
+// in order (skipping unknowns), then any stragglers in sorted order so a
+// stale/partial order slice can never drop a sentence from matching.
+func orderedIDs(texts map[string]string, order []string) []string {
+	ids := make([]string, 0, len(texts))
+	seen := make(map[string]bool, len(texts))
+	for _, id := range order {
+		if _, ok := texts[id]; ok && !seen[id] {
+			ids = append(ids, id)
+			seen[id] = true
+		}
+	}
+	if len(ids) < len(texts) {
+		rest := make([]string, 0, len(texts)-len(ids))
+		for id := range texts {
+			if !seen[id] {
+				rest = append(rest, id)
+			}
+		}
+		sort.Strings(rest)
+		ids = append(ids, rest...)
+	}
+	return ids
 }
 
 // ComputeMigrationMap produces old→new SentenceMatches with MatchType set by

@@ -35,12 +35,14 @@ type DatabaseConfig struct {
 	Password string `yaml:"password"`
 }
 
+// AuthConfig — note: sessions are DB-backed random tokens, so there is no
+// session_secret here; a legacy session_secret key in an existing yaml is
+// silently ignored by the parser.
 type AuthConfig struct {
-	SystemToken    string `yaml:"system_token"`
-	SessionSecret  string `yaml:"session_secret"`
-	WebhookSecret  string `yaml:"webhook_secret"`
-	AdminUsername  string `yaml:"admin_username"`
-	AdminPassword  string `yaml:"admin_password"`
+	SystemToken   string `yaml:"system_token"`
+	WebhookSecret string `yaml:"webhook_secret"`
+	AdminUsername string `yaml:"admin_username"`
+	AdminPassword string `yaml:"admin_password"`
 }
 
 type ServerConfig struct {
@@ -59,11 +61,11 @@ type PathsConfig struct {
 }
 
 type LoggingConfig struct {
-	Directory   string `yaml:"directory"`
-	Level       string `yaml:"level"`
-	MaxAgeDays  int    `yaml:"max_age_days"`
-	MaxSizeMB   int    `yaml:"max_size_mb"`
-	Rotate      bool   `yaml:"rotate"`
+	Directory  string `yaml:"directory"`
+	Level      string `yaml:"level"`
+	MaxAgeDays int    `yaml:"max_age_days"`
+	MaxSizeMB  int    `yaml:"max_size_mb"`
+	Rotate     bool   `yaml:"rotate"`
 }
 
 type ManuscriptConfig struct {
@@ -208,7 +210,6 @@ func (c *Config) Validate() error {
 		{"database.password", c.Database.Password},
 		{"auth.admin_password", c.Auth.AdminPassword},
 		{"auth.system_token", c.Auth.SystemToken},
-		{"auth.session_secret", c.Auth.SessionSecret},
 		{"auth.webhook_secret", c.Auth.WebhookSecret},
 	}
 	for _, f := range required {
@@ -251,7 +252,7 @@ func expandPath(path string) string {
 	if path == "" {
 		return path
 	}
-	if path[0] == '~' {
+	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return path

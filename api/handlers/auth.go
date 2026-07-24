@@ -12,10 +12,10 @@ import (
 )
 
 type AuthHandlers struct {
-	DB            *database.DB
-	SessionStore  *auth.SessionStore
-	IsProduction  bool
-	Config        *config.Config
+	DB           *database.DB
+	SessionStore *auth.SessionStore
+	IsProduction bool
+	Config       *config.Config
 }
 
 type LoginRequest struct {
@@ -81,7 +81,11 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, _ := h.SessionStore.Get(token)
+	session, ok := h.SessionStore.Get(token)
+	if !ok {
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
@@ -241,4 +245,3 @@ func (h *AuthHandlers) HandleSetLastManuscript(w http.ResponseWriter, r *http.Re
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-

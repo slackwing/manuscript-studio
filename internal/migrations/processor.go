@@ -54,10 +54,9 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 		slog.String("commit", commitHash),
 	)
 
-	if err := db.MarkMigrationRunning(ctx, migrationID); err != nil {
-		return nil, err
-	}
-
+	// Registered before MarkMigrationRunning: if even that first write fails,
+	// the row must still be flipped to 'error' rather than sitting at
+	// 'pending' forever (callers rely on Run always finishing the row).
 	defer func() {
 		if err != nil {
 			if mErr := db.MarkMigrationError(context.Background(), migrationID, err.Error()); mErr != nil {
@@ -65,6 +64,10 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 			}
 		}
 	}()
+
+	if err := db.MarkMigrationRunning(ctx, migrationID); err != nil {
+		return nil, err
+	}
 
 	newSentences, newSentenceIDs, newSentenceMap := segmentContent(content, commitHash, p.segmenterVersion, migrationID)
 
@@ -121,11 +124,13 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("get old sentences: %w", err)
 	}
 	oldSentenceMap := make(map[string]string, len(oldSentences))
-	for _, s := range oldSentences {
+	oldSentenceIDs := make([]string, len(oldSentences))
+	for i, s := range oldSentences {
 		oldSentenceMap[s.SentenceID] = s.Text
+		oldSentenceIDs[i] = s.SentenceID
 	}
 
-	diff := sentence.ComputeSentenceDiff(oldSentenceMap, newSentenceMap)
+	diff := sentence.ComputeSentenceDiff(oldSentenceMap, newSentenceMap, oldSentenceIDs, newSentenceIDs)
 	plan := planMigration(oldSentences, sentence.ComputeMigrationMap(diff))
 
 	log.Info("migrate: segmented and diffed",
@@ -166,6 +171,16 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 	suggestionsPruned, err := db.PruneNoOpSuggestionsForMigration(ctx, migrationID)
 	if err != nil {
 		return nil, fmt.Errorf("prune no-op suggestions: %w", err)
+	}
+
+	// "Changes" = sentences that were tracked to a successor but whose text
+	// changed (fuzzy/fallback pairings). Exact matches aren't changes, and
+	// deletions are already counted separately.
+	changesCount := 0
+	for _, move := range plan {
+		if move.Confidence < 1.0 {
+			changesCount++
+		}
 	}
 
 	parentID := parent.MigrationID
@@ -248,12 +263,10 @@ type plannedMove struct {
 }
 
 // migrateSuggestions copies suggested_change rows forward only on exact-match
-// pairings. Fuzzy/fallback pairings have changed text, so a stale suggestion
-// would be wrong — leave it on the old sentence.
-// migrateSuggestions copies suggested_change rows forward only on exact-match
-// pairings (Confidence == 1.0). Returns the total number of suggestion rows
-// inserted across all paired sentences — a useful log signal for "did we
-// move anything?".
+// pairings (Confidence == 1.0). Fuzzy/fallback pairings have changed text, so
+// a stale suggestion would be wrong — leave it on the old sentence. Returns
+// the total number of suggestion rows inserted across all paired sentences —
+// a useful log signal for "did we move anything?".
 func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) (int, error) {
 	moved := 0
 	for oldID, move := range plan {
@@ -273,14 +286,18 @@ func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]pl
 // Used by the backfill CLI so historical migrations match fresh ones.
 func RecomputePreviousByNew(oldSentences, newSentences []models.Sentence) map[string]string {
 	oldMap := make(map[string]string, len(oldSentences))
-	for _, s := range oldSentences {
+	oldIDs := make([]string, len(oldSentences))
+	for i, s := range oldSentences {
 		oldMap[s.SentenceID] = s.Text
+		oldIDs[i] = s.SentenceID
 	}
 	newMap := make(map[string]string, len(newSentences))
-	for _, s := range newSentences {
+	newIDs := make([]string, len(newSentences))
+	for i, s := range newSentences {
 		newMap[s.SentenceID] = s.Text
+		newIDs[i] = s.SentenceID
 	}
-	diff := sentence.ComputeSentenceDiff(oldMap, newMap)
+	diff := sentence.ComputeSentenceDiff(oldMap, newMap, oldIDs, newIDs)
 	plan := planMigration(oldSentences, sentence.ComputeMigrationMap(diff))
 	return bestPreviousByNew(plan)
 }

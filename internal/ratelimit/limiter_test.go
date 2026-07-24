@@ -3,7 +3,9 @@ package ratelimit
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func TestLimiter_AllowsBurstThenBlocks(t *testing.T) {
@@ -82,5 +84,48 @@ func TestHashAuthHeader_StableAndNonReversible(t *testing.T) {
 	}
 	if a == "" {
 		t.Fatal("hash should be non-empty for non-empty input")
+	}
+}
+
+func TestHostOnly(t *testing.T) {
+	cases := map[string]string{
+		"1.2.3.4:54321":    "1.2.3.4",
+		"1.2.3.4":          "1.2.3.4", // RealIP middleware output: no port
+		"[::1]:8080":       "::1",
+		"example.com:1234": "example.com",
+	}
+	for in, want := range cases {
+		if got := HostOnly(in); got != want {
+			t.Errorf("HostOnly(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Regression: buckets grew without bound (one per attacker-chosen key,
+// never evicted). Idle buckets must be swept.
+func TestBucketEviction(t *testing.T) {
+	l := New(DefaultConfig())
+	for i := 0; i < 100; i++ {
+		l.Allow("key-" + strconv.Itoa(i))
+	}
+	if got := len(l.buckets); got != 100 {
+		t.Fatalf("expected 100 buckets, got %d", got)
+	}
+	// Age every bucket past the idle TTL and force the next sweep.
+	l.mu.Lock()
+	for _, b := range l.buckets {
+		b.lastSeen = time.Now().Add(-bucketIdleTTL - time.Minute)
+	}
+	l.lastSweep = time.Now().Add(-sweepInterval - time.Second)
+	l.mu.Unlock()
+
+	l.Allow("fresh-key")
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if got := len(l.buckets); got != 1 {
+		t.Fatalf("expected idle buckets evicted (1 remaining), got %d", got)
+	}
+	if _, ok := l.buckets["fresh-key"]; !ok {
+		t.Fatal("fresh key should survive the sweep")
 	}
 }

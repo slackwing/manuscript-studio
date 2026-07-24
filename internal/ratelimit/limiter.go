@@ -10,6 +10,7 @@ package ratelimit
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -32,16 +33,31 @@ func DefaultConfig() Config {
 	}
 }
 
+// bucketIdleTTL: buckets untouched this long are evicted. Keys are
+// attacker-influenced (hashed auth headers, remote IPs), so an unbounded
+// map would be a slow memory-exhaustion vector.
+const bucketIdleTTL = 15 * time.Minute
+
+// sweepInterval: how often Allow scans for idle buckets (amortized; the
+// scan runs inline under the mutex but the map stays small by design).
+const sweepInterval = time.Minute
+
+type bucket struct {
+	lim      *rate.Limiter
+	lastSeen time.Time
+}
+
 type Limiter struct {
-	cfg     Config
-	mu      sync.Mutex
-	buckets map[string]*rate.Limiter
+	cfg       Config
+	mu        sync.Mutex
+	buckets   map[string]*bucket
+	lastSweep time.Time
 }
 
 func New(cfg Config) *Limiter {
 	return &Limiter{
 		cfg:     cfg,
-		buckets: map[string]*rate.Limiter{},
+		buckets: map[string]*bucket{},
 	}
 }
 
@@ -51,7 +67,16 @@ func (l *Limiter) Allow(key string) bool {
 	if l.cfg.PerKeyRequestsPerMinute <= 0 {
 		return true
 	}
+	now := time.Now()
 	l.mu.Lock()
+	if now.Sub(l.lastSweep) >= sweepInterval {
+		for k, b := range l.buckets {
+			if now.Sub(b.lastSeen) > bucketIdleTTL {
+				delete(l.buckets, k)
+			}
+		}
+		l.lastSweep = now
+	}
 	b, ok := l.buckets[key]
 	if !ok {
 		// rate.Every(d) = "one token every d"; convert rpm to interval.
@@ -60,11 +85,12 @@ func (l *Limiter) Allow(key string) bool {
 		if burst <= 0 {
 			burst = 1
 		}
-		b = rate.NewLimiter(rate.Every(interval), burst)
+		b = &bucket{lim: rate.NewLimiter(rate.Every(interval), burst)}
 		l.buckets[key] = b
 	}
+	b.lastSeen = now
 	l.mu.Unlock()
-	return b.Allow()
+	return b.lim.Allow()
 }
 
 // Middleware rejects with 429 + Retry-After when the bucket for keyFn(r) is empty.
@@ -73,7 +99,7 @@ func (l *Limiter) Middleware(keyFn func(*http.Request) string) func(http.Handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := keyFn(r)
 			if key == "" {
-				key = r.RemoteAddr
+				key = HostOnly(r.RemoteAddr)
 			}
 			if !l.Allow(key) {
 				// One-token refill time.
@@ -88,6 +114,20 @@ func (l *Limiter) Middleware(keyFn func(*http.Request) string) func(http.Handler
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// HostOnly strips the port from a RemoteAddr-style "ip:port" string.
+// Without this every TCP connection gets a fresh bucket keyed by its
+// ephemeral port — unauthenticated requests would effectively never be
+// rate-limited, and each one would grow the map. Input without a port
+// (e.g. already reduced to a bare IP by the RealIP middleware) is
+// returned unchanged.
+func HostOnly(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
 }
 
 // HashAuthHeader hashes so the limiter map never retains the plaintext token.

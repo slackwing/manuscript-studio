@@ -141,3 +141,18 @@ func TestValidateCommitRef(t *testing.T) {
 		}
 	}
 }
+
+// Regression: the branch-name alternative accepted refs beginning with '-',
+// which git would parse as an option flag.
+func TestValidateCommitRefRejectsLeadingDash(t *testing.T) {
+	for _, bad := range []string{"-Ox", "--foo", "-", "--upload-pack=evil", "/absolute"} {
+		if err := ValidateCommitRef(bad); err == nil {
+			t.Errorf("ValidateCommitRef(%q) should have been rejected", bad)
+		}
+	}
+	for _, good := range []string{"HEAD", "main", "feature/foo-bar", "v1.2.3", "abc1234", "release-2026.07"} {
+		if err := ValidateCommitRef(good); err != nil {
+			t.Errorf("ValidateCommitRef(%q) unexpectedly rejected: %v", good, err)
+		}
+	}
+}

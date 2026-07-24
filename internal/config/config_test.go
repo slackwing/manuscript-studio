@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,7 +99,7 @@ func baseValidProdConfig() *Config {
 		Auth: AuthConfig{
 			AdminPassword: "real-admin",
 			SystemToken:   "real-system-token",
-			SessionSecret: "real-session-secret",
+
 			WebhookSecret: "real-webhook-secret",
 		},
 		Server: ServerConfig{Env: "production"},
@@ -130,7 +132,7 @@ func TestValidate_RejectsEmptySecret(t *testing.T) {
 		{"empty db password", func(c *Config) { c.Database.Password = "" }, "database.password"},
 		{"empty admin password", func(c *Config) { c.Auth.AdminPassword = "" }, "auth.admin_password"},
 		{"empty system token", func(c *Config) { c.Auth.SystemToken = "" }, "auth.system_token"},
-		{"empty session secret", func(c *Config) { c.Auth.SessionSecret = "" }, "auth.session_secret"},
+
 		{"empty webhook secret", func(c *Config) { c.Auth.WebhookSecret = "" }, "auth.webhook_secret"},
 	}
 	for _, tc := range cases {
@@ -165,5 +167,27 @@ func TestValidate_RejectsPlaceholderInManuscriptToken(t *testing.T) {
 	err := c.Validate()
 	if err == nil || !strings.Contains(err.Error(), "manuscripts[0]") {
 		t.Fatalf("expected manuscript[0] rejection, got: %v", err)
+	}
+}
+
+// Regression: `path[0] == '~'` expanded "~user/x" (and any "~foo") into
+// $HOME/foo — only "~" and "~/..." should expand.
+func TestExpandPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	cases := map[string]string{
+		"~/repos":        filepath.Join(home, "repos"),
+		"~":              home,
+		"~otheruser/x":   "~otheruser/x", // must NOT expand
+		"/absolute/path": "/absolute/path",
+		"relative/path":  "relative/path",
+		"":               "",
+	}
+	for in, want := range cases {
+		if got := expandPath(in); got != want {
+			t.Errorf("expandPath(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

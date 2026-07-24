@@ -13,6 +13,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/slackwing/manuscript-studio/internal/auth"
@@ -32,16 +33,16 @@ type AdminHandlers struct {
 }
 
 type GitHubWebhookPayload struct {
-	Ref        string `json:"ref"`        // refs/heads/main
+	Ref        string `json:"ref"` // refs/heads/main
 	Repository struct {
 		Name     string `json:"name"`
 		FullName string `json:"full_name"`
 		CloneURL string `json:"clone_url"`
 	} `json:"repository"`
 	Commits []struct {
-		ID      string   `json:"id"`
-		Message string   `json:"message"`
-		Added   []string `json:"added"`
+		ID       string   `json:"id"`
+		Message  string   `json:"message"`
+		Added    []string `json:"added"`
 		Modified []string `json:"modified"`
 		Removed  []string `json:"removed"`
 	} `json:"commits"`
@@ -119,6 +120,14 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	if !manuscriptModified {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ignored","reason":"manuscript not modified"}`))
+		return
+	}
+
+	// The ref validator "must run at every API boundary" (git.go) — the
+	// signature check gates who can call us, not what a compromised or
+	// misconfigured sender puts in head_commit.id.
+	if err := migrations.ValidateCommitRef(payload.HeadCommit.ID); err != nil {
+		http.Error(w, "Invalid head_commit id: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -236,8 +245,8 @@ func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
 		"username": req.Username,
 		"role":     req.Role,
@@ -276,8 +285,8 @@ func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
 		"username":        req.Username,
 		"manuscript_name": req.ManuscriptName,
@@ -330,53 +339,123 @@ func (h *AdminHandlers) validateGitHubSignature(payload []byte, signature string
 // (second gets 409). That's intentional — it prevents accidental double-enqueue.
 // For dedupe by resolved SHA, callers must pass an explicit hash.
 func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWriter, m *config.ManuscriptConfig, commitHash string) {
-	cloneURL := m.Repository.CloneURL()
-	if cloneURL == "" {
-		http.Error(w, "manuscript repository has neither slug nor url configured", http.StatusInternalServerError)
-		log.Printf("startMigration: manuscript %q has empty clone URL", m.Name)
-		return
-	}
-	manuscript, err := h.DB.GetManuscript(ctx, cloneURL, m.Repository.Path)
-	if err != nil {
-		http.Error(w, "failed to get manuscript", http.StatusInternalServerError)
-		log.Printf("startMigration: GetManuscript: %v", err)
-		return
-	}
-	if manuscript == nil {
-		manuscript, err = h.DB.CreateManuscript(ctx, cloneURL, m.Repository.Path)
-		if err != nil {
-			http.Error(w, "failed to create manuscript", http.StatusInternalServerError)
-			log.Printf("startMigration: CreateManuscript: %v", err)
-			return
-		}
-	}
-
-	migrationID, err := h.DB.CreatePendingMigration(ctx, manuscript.ManuscriptID, commitHash, h.Processor.SegmenterVersion())
+	migrationID, err := h.enqueueMigration(ctx, m, commitHash)
 	if err != nil {
 		if errors.Is(err, database.ErrMigrationInProgress) {
 			http.Error(w, "migration for this commit is already pending or completed", http.StatusConflict)
 			return
 		}
 		http.Error(w, "failed to start migration", http.StatusInternalServerError)
-		log.Printf("startMigration: CreatePendingMigration: %v", err)
+		log.Printf("startMigration: %v", err)
 		return
 	}
-
-	startedAt := time.Now().UTC()
-	go h.runMigration(migrationID, manuscript.ManuscriptID, m, commitHash)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":       "accepted",
 		"migration_id": migrationID,
-		"started_at":   startedAt,
+		"started_at":   time.Now().UTC(),
 	})
+}
+
+// enqueueMigration upserts the manuscript row, reserves a pending migration
+// keyed by (manuscript_id, commit_hash, segmenter), and launches the worker
+// goroutine. Returns database.ErrMigrationInProgress when an identical
+// migration already exists.
+func (h *AdminHandlers) enqueueMigration(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (int, error) {
+	cloneURL := m.Repository.CloneURL()
+	if cloneURL == "" {
+		return 0, fmt.Errorf("manuscript %q has neither slug nor url configured", m.Name)
+	}
+	manuscript, err := h.DB.GetManuscript(ctx, cloneURL, m.Repository.Path)
+	if err != nil {
+		return 0, fmt.Errorf("GetManuscript: %w", err)
+	}
+	if manuscript == nil {
+		manuscript, err = h.DB.CreateManuscript(ctx, cloneURL, m.Repository.Path)
+		if err != nil {
+			return 0, fmt.Errorf("CreateManuscript: %w", err)
+		}
+	}
+
+	migrationID, err := h.DB.CreatePendingMigration(ctx, manuscript.ManuscriptID, commitHash, h.Processor.SegmenterVersion())
+	if err != nil {
+		if errors.Is(err, database.ErrMigrationInProgress) {
+			return 0, err
+		}
+		return 0, fmt.Errorf("CreatePendingMigration: %w", err)
+	}
+
+	go h.runMigration(migrationID, manuscript.ManuscriptID, m, commitHash)
+	return migrationID, nil
+}
+
+// ResegmentOnSegmenterChange re-enqueues each manuscript's latest done
+// commit when its migration was produced by a different segmenter version
+// than the one this binary carries. Called once at startup so a deploy that
+// bumps the vendored segman re-hashes sentences without waiting for the
+// next push or a manual sync. Errors are logged, never fatal — the server
+// must come up regardless.
+func (h *AdminHandlers) ResegmentOnSegmenterChange(ctx context.Context) {
+	current := h.Processor.SegmenterVersion()
+	for i := range h.Config.Manuscripts {
+		m := &h.Config.Manuscripts[i]
+		cloneURL := m.Repository.CloneURL()
+		if cloneURL == "" {
+			continue
+		}
+		manuscript, err := h.DB.GetManuscript(ctx, cloneURL, m.Repository.Path)
+		if err != nil {
+			log.Printf("resegment check: GetManuscript %q: %v", m.Name, err)
+			continue
+		}
+		if manuscript == nil {
+			continue // never bootstrapped; nothing to re-segment
+		}
+		latest, err := h.DB.GetLatestMigration(ctx, manuscript.ManuscriptID)
+		if err != nil {
+			log.Printf("resegment check: GetLatestMigration %q: %v", m.Name, err)
+			continue
+		}
+		if latest == nil || latest.Segmenter == current {
+			continue
+		}
+		migrationID, err := h.enqueueMigration(ctx, m, latest.CommitHash)
+		if errors.Is(err, database.ErrMigrationInProgress) {
+			log.Printf("resegment %q: migration for %s + %s already exists", m.Name, latest.CommitHash, current)
+			continue
+		}
+		if err != nil {
+			log.Printf("resegment %q: %v", m.Name, err)
+			continue
+		}
+		log.Printf("resegment %q: segmenter %s → %s, re-migrating commit %s (migration %d)",
+			m.Name, latest.Segmenter, current, latest.CommitHash, migrationID)
+	}
+}
+
+// manuscriptMigrationLocks serializes migration goroutines per manuscript.
+// Concurrent runs (webhook push + manual sync for different commits) would
+// otherwise race on the shared git clone (index.lock) and both carry
+// annotations forward from the same parent migration.
+var manuscriptMigrationLocks sync.Map // manuscriptID → *sync.Mutex
+
+func lockManuscriptMigrations(manuscriptID int) (unlock func()) {
+	v, _ := manuscriptMigrationLocks.LoadOrStore(manuscriptID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // runMigration is the goroutine body. Must always leave the pending row at
 // 'done' or 'error', whatever happens.
 func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.ManuscriptConfig, commitHash string) {
+	// Acquire before starting the timeout clock so a queued migration gets
+	// its full budget once it actually starts.
+	unlock := lockManuscriptMigrations(manuscriptID)
+	defer unlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
 	defer cancel()
 

@@ -3,6 +3,7 @@ package sentence
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/slackwing/manuscript-studio/internal/segman"
 )
@@ -64,8 +65,11 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 
 		segStart, segEnd := locateSegment(source, cursor, cleaned)
 		if segStart < 0 {
+			// Couldn't locate the segment — emit it with no marker and leave
+			// cursor where it is so the next segment still searches from a
+			// valid offset. (Assigning segStart here would poison cursor
+			// with -1 and panic the next locateSegment call.)
 			out = append(out, cleaned)
-			cursor = segStart
 			prevHeader = false
 			continue
 		}
@@ -126,6 +130,10 @@ func isHeaderSegment(segment string) bool {
 //
 // Returns (-1, -1) if not found — caller should fall back gracefully.
 func locateSegment(source string, cursor int, seg string) (int, int) {
+	// Defense in depth: a negative cursor must never index source.
+	if cursor < 0 {
+		cursor = 0
+	}
 	for start := cursor; start < len(source); start++ {
 		if isASCIISpace(source[start]) {
 			continue
@@ -190,12 +198,15 @@ func skipSegmentInSource(source string, cursor int, seg string) int {
 }
 
 // cleanSentenceBoundaries strips leading sentence-joining punctuation but
-// preserves opening quotes so quoted sentences ("", '', „) keep their opener.
+// preserves opening quotes so quoted sentences ("", ”, „) keep their opener.
 func cleanSentenceBoundaries(text string) string {
 	trimmed := strings.TrimSpace(text)
 
 	for len(trimmed) > 0 {
-		firstRune := rune(trimmed[0])
+		// Decode a full rune \u2014 taking trimmed[0] as a byte made every
+		// multibyte comparison below dead (an em-dash's first byte is 0xE2,
+		// never '\u2014') and would slice mid-rune when stripping.
+		firstRune, size := utf8.DecodeRuneInString(trimmed)
 		if firstRune == '"' || firstRune == '\'' || firstRune == '\u201c' ||
 			firstRune == '\u201d' || firstRune == '\u2018' || firstRune == '\u2019' ||
 			firstRune == '\u201e' {
@@ -204,7 +215,7 @@ func cleanSentenceBoundaries(text string) string {
 		if firstRune == '.' || firstRune == ',' || firstRune == ';' ||
 			firstRune == ':' || firstRune == '!' || firstRune == '?' ||
 			firstRune == '—' || firstRune == '-' {
-			trimmed = trimmed[1:]
+			trimmed = trimmed[size:]
 			trimmed = strings.TrimLeftFunc(trimmed, unicode.IsSpace)
 		} else {
 			break

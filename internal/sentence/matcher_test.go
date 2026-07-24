@@ -162,11 +162,11 @@ func TestLevenshteinDistance(t *testing.T) {
 
 func TestComputeSentenceDiff(t *testing.T) {
 	tests := []struct {
-		name             string
-		oldSentences     map[string]string
-		newSentences     map[string]string
-		expectedAdded    int
-		expectedDeleted  int
+		name              string
+		oldSentences      map[string]string
+		newSentences      map[string]string
+		expectedAdded     int
+		expectedDeleted   int
 		expectedUnchanged int
 	}{
 		{
@@ -180,8 +180,8 @@ func TestComputeSentenceDiff(t *testing.T) {
 				"id3": "The cat sat.",
 				"id4": "The dog barked.",
 			},
-			expectedAdded:    0,
-			expectedDeleted:  0,
+			expectedAdded:     0,
+			expectedDeleted:   0,
 			expectedUnchanged: 2,
 		},
 		{
@@ -193,8 +193,8 @@ func TestComputeSentenceDiff(t *testing.T) {
 				"id2": "The cat sat.",
 				"id3": "The dog barked.",
 			},
-			expectedAdded:    1,
-			expectedDeleted:  0,
+			expectedAdded:     1,
+			expectedDeleted:   0,
 			expectedUnchanged: 1,
 		},
 		{
@@ -206,8 +206,8 @@ func TestComputeSentenceDiff(t *testing.T) {
 			newSentences: map[string]string{
 				"id3": "The cat sat.",
 			},
-			expectedAdded:    0,
-			expectedDeleted:  1,
+			expectedAdded:     0,
+			expectedDeleted:   1,
 			expectedUnchanged: 1,
 		},
 		{
@@ -218,8 +218,8 @@ func TestComputeSentenceDiff(t *testing.T) {
 			newSentences: map[string]string{
 				"id2": "The cat sat on the rug.",
 			},
-			expectedAdded:    1,
-			expectedDeleted:  1,
+			expectedAdded:     1,
+			expectedDeleted:   1,
 			expectedUnchanged: 0,
 		},
 		{
@@ -234,15 +234,15 @@ func TestComputeSentenceDiff(t *testing.T) {
 				"id5": "Sentence two EDIT.",
 				"id6": "Sentence four.",
 			},
-			expectedAdded:    2,
-			expectedDeleted:  2,
+			expectedAdded:     2,
+			expectedDeleted:   2,
 			expectedUnchanged: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			diff := ComputeSentenceDiff(tt.oldSentences, tt.newSentences)
+			diff := ComputeSentenceDiff(tt.oldSentences, tt.newSentences, nil, nil)
 
 			if len(diff.Added) != tt.expectedAdded {
 				t.Errorf("Expected %d added, got %d: %v",
@@ -344,9 +344,54 @@ func TestComputeMigrationMap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			diff := ComputeSentenceDiff(tt.oldSentences, tt.newSentences)
+			diff := ComputeSentenceDiff(tt.oldSentences, tt.newSentences, nil, nil)
 			matches := ComputeMigrationMap(diff)
 			tt.checkMatch(t, matches)
 		})
+	}
+}
+
+// Regression: duplicate normalized texts must pair by document order, not by
+// map iteration order — otherwise annotations and previous_sentence_id
+// chains hop between identical sentences on every migration.
+func TestComputeSentenceDiffDuplicatePairingIsOrdinal(t *testing.T) {
+	oldTexts := map[string]string{
+		"old-a": "He paused.",
+		"old-b": "He paused.",
+		"old-c": "Something else.",
+	}
+	newTexts := map[string]string{
+		"new-a": "He paused.",
+		"new-b": "He paused.",
+		"new-c": "Something else.",
+	}
+	oldOrder := []string{"old-a", "old-b", "old-c"}
+	newOrder := []string{"new-a", "new-b", "new-c"}
+
+	for i := 0; i < 50; i++ {
+		diff := ComputeSentenceDiff(oldTexts, newTexts, oldOrder, newOrder)
+		if got := diff.Unchanged["old-a"]; got != "new-a" {
+			t.Fatalf("iteration %d: old-a paired with %q, want new-a", i, got)
+		}
+		if got := diff.Unchanged["old-b"]; got != "new-b" {
+			t.Fatalf("iteration %d: old-b paired with %q, want new-b", i, got)
+		}
+	}
+}
+
+// With nil orders the pairing must still be deterministic across runs.
+func TestComputeSentenceDiffNilOrderDeterministic(t *testing.T) {
+	oldTexts := map[string]string{"o1": "Same.", "o2": "Same.", "o3": "Same."}
+	newTexts := map[string]string{"n1": "Same.", "n2": "Same.", "n3": "Same."}
+
+	first := ComputeSentenceDiff(oldTexts, newTexts, nil, nil)
+	for i := 0; i < 50; i++ {
+		again := ComputeSentenceDiff(oldTexts, newTexts, nil, nil)
+		for oldID, newID := range first.Unchanged {
+			if again.Unchanged[oldID] != newID {
+				t.Fatalf("iteration %d: pairing for %s flapped: %s vs %s",
+					i, oldID, newID, again.Unchanged[oldID])
+			}
+		}
 	}
 }

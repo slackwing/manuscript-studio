@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -137,10 +138,10 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":        "stale",
-			"latest_id":    latest.MigrationID,
-			"sentence_id":  sentenceID,
-			"hint":         "manuscript has been updated — please refresh",
+			"error":       "stale",
+			"latest_id":   latest.MigrationID,
+			"sentence_id": sentenceID,
+			"hint":        "manuscript has been updated — please refresh",
 		})
 		return
 	}
@@ -167,7 +168,8 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 
 	saved, err := h.DB.UpsertSuggestion(ctx, sentenceID, session.Username, req.Text)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to save suggestion: %v", err), http.StatusInternalServerError)
+		log.Printf("suggestions: upsert for sentence %s: %v", sentenceID, err)
+		http.Error(w, "Failed to save suggestion", http.StatusInternalServerError)
 		return
 	}
 
@@ -208,12 +210,12 @@ func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *ht
 }
 
 type pushSuggestionsResponse struct {
-	Branch     string                            `json:"branch"`
-	CompareURL string                            `json:"compare_url"`
-	CommitSHA  string                            `json:"commit_sha"`
-	Applied    int                               `json:"applied"`
-	Skipped    int                               `json:"skipped"`
-	Results    []sentence.SuggestionApplyResult  `json:"results"`
+	Branch     string                           `json:"branch"`
+	CompareURL string                           `json:"compare_url"`
+	CommitSHA  string                           `json:"commit_sha"`
+	Applied    int                              `json:"applied"`
+	Skipped    int                              `json:"skipped"`
+	Results    []sentence.SuggestionApplyResult `json:"results"`
 }
 
 // Branch component sanitizer: the username appears in a ref name, so anything
@@ -282,7 +284,8 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 	}
 	exists, err := gitRepo.LocalBranchExists(ctx, branch)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to check branch: %v", err), http.StatusInternalServerError)
+		log.Printf("suggestions: check branch %s: %v", branch, err)
+		http.Error(w, "Failed to check branch", http.StatusInternalServerError)
 		return
 	}
 
@@ -352,10 +355,10 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]string{
-			"error":          "stale",
-			"latest_id":      strconv.Itoa(latest.MigrationID),
-			"requested_id":   strconv.Itoa(migrationID),
-			"hint":           "manuscript has been updated — please refresh",
+			"error":        "stale",
+			"latest_id":    strconv.Itoa(latest.MigrationID),
+			"requested_id": strconv.Itoa(migrationID),
+			"hint":         "manuscript has been updated — please refresh",
 		})
 		return
 	}
@@ -433,7 +436,8 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	segmanPath := segmanSiblingPath(mc.Repository.Path)
 	hasSegman, err := gitRepo.PathExistsAtCommit(ctx, latest.CommitHash, segmanPath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to probe segman sibling: %v", err), http.StatusInternalServerError)
+		log.Printf("suggestions: probe segman sibling %s: %v", segmanPath, err)
+		http.Error(w, "Failed to probe segman sibling", http.StatusInternalServerError)
 		return
 	}
 	if hasSegman {
@@ -458,7 +462,8 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	// we own it.
 	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, branch, files, message, true, session.Username, authorEmail)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to push branch: %v", err), http.StatusInternalServerError)
+		log.Printf("suggestions: push branch %s: %v", branch, err)
+		http.Error(w, "Failed to push branch", http.StatusInternalServerError)
 		return
 	}
 
@@ -497,4 +502,3 @@ func (h *SuggestionHandlers) findManuscriptConfig(repoURL, filePath string) *con
 	}
 	return nil
 }
-

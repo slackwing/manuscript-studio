@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/slackwing/manuscript-studio/internal/fractional"
 	"github.com/slackwing/manuscript-studio/internal/models"
@@ -90,11 +91,11 @@ const migrationSelectColumns = `migration_id, manuscript_id, commit_hash, segmen
 
 func scanMigration(row pgx.Row, m *models.Migration) error {
 	var (
-		branchName        *string
-		sentenceCount     *int
-		additionsCount    *int
-		deletionsCount    *int
-		changesCount      *int
+		branchName          *string
+		sentenceCount       *int
+		additionsCount      *int
+		deletionsCount      *int
+		changesCount        *int
 		sentenceIDArrayJSON []byte
 	)
 	err := row.Scan(
@@ -313,8 +314,8 @@ func (db *DB) RecoverInterruptedMigrations(ctx context.Context) (int, error) {
 // GetSentenceTextsByIDs batches text + previous_sentence_id lookups for the
 // history-chain walk. Returns a map keyed by sentence_id.
 func (db *DB) GetSentenceTextsByIDs(ctx context.Context, sentenceIDs []string) (map[string]struct {
-	Text             string
-	PreviousID       *string
+	Text       string
+	PreviousID *string
 }, error) {
 	out := make(map[string]struct {
 		Text       string
@@ -681,9 +682,18 @@ func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, versio
 	}
 
 	var history []string
-	json.Unmarshal(historyJSON, &history)
+	if len(historyJSON) > 0 {
+		// A corrupt history row must surface, not be silently replaced by a
+		// fresh one-element chain — that would destroy the audit trail.
+		if err := json.Unmarshal(historyJSON, &history); err != nil {
+			return nil, fmt.Errorf("corrupt sentence_id_history for annotation %d version %d: %w", annotationID, version, err)
+		}
+	}
 	history = append(history, newSentenceID)
-	newHistoryJSON, _ := json.Marshal(history)
+	newHistoryJSON, err := json.Marshal(history)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal sentence history: %w", err)
+	}
 	return newHistoryJSON, nil
 }
 
@@ -770,28 +780,36 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 	return annotations, nil
 }
 
+// createAnnotationMu serializes position assignment across concurrent
+// creates: MAX(position) + increment is not atomic, and the schema has no
+// unique constraint on (sentence_id, position) to catch a duplicate.
+// Single-instance server, so a process-level mutex is sufficient.
+var createAnnotationMu sync.Mutex
+
 // CreateAnnotation writes the annotation and its first version row.
 func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotation, version *models.AnnotationVersion) error {
+	createAnnotationMu.Lock()
+	defer createAnnotationMu.Unlock()
+
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	// Append-only "a0000" counter for create; ReorderAnnotation uses fractional indexing.
+	// Append after the current max via the fractional indexer —
+	// ReorderAnnotation writes extended-precision / carried-prefix positions
+	// (e.g. "a00015", "b0000") that a fixed "a%04d" parse would misread and
+	// collide with.
 	var maxPosition string
-	queryMaxPos := `SELECT COALESCE(MAX(position), 'a') FROM annotation WHERE sentence_id = $1`
+	queryMaxPos := `SELECT COALESCE(MAX(position), '') FROM annotation WHERE sentence_id = $1`
 	if err := tx.QueryRow(ctx, queryMaxPos, annotation.SentenceID).Scan(&maxPosition); err != nil {
 		return fmt.Errorf("failed to get max position: %w", err)
 	}
 
-	var nextPosition string
-	if maxPosition == "a" {
-		nextPosition = "a0000"
-	} else {
-		var num int
-		fmt.Sscanf(maxPosition, "a%d", &num)
-		nextPosition = fmt.Sprintf("a%04d", num+1)
+	nextPosition, err := fractional.GeneratePositionBetween(maxPosition, "")
+	if err != nil {
+		return fmt.Errorf("failed to compute next position after %q: %w", maxPosition, err)
 	}
 
 	query1 := `
@@ -948,11 +966,11 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	for _, item := range items {
 		// Read latest version first so copied-forward fields + history are authoritative.
 		var (
-			color       string
-			note        *string
-			priority    string
-			flagged     bool
-			maxVersion  int
+			color      string
+			note       *string
+			priority   string
+			flagged    bool
+			maxVersion int
 		)
 		if err := tx.QueryRow(ctx, `
 			SELECT color, note, priority, flagged, version
@@ -1129,6 +1147,13 @@ func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID st
 			return nil, fmt.Errorf("failed to scan annotation: %w", err)
 		}
 		annotations = append(annotations, a)
+	}
+
+	// A connection drop mid-iteration would otherwise return a PARTIAL list
+	// as success — the migration processor would silently strand the missing
+	// annotations on old sentences.
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating annotations: %w", err)
 	}
 
 	return annotations, nil

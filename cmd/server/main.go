@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +56,12 @@ func main() {
 
 	server := api.NewServer(cfg, db)
 
+	// A deploy that changed the vendored segman version must re-segment: the
+	// segmenter string is part of every sentence ID, so until a new migration
+	// runs the app would keep serving the old segmentation. Async — the
+	// migration itself runs in its own goroutine and must not block startup.
+	go server.ResegmentOnSegmenterChange(context.Background())
+
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:      server.Router(),
@@ -86,7 +93,10 @@ func main() {
 	log.Println("Server shutdown complete")
 }
 
-// slogWriter adapts the io.Writer used by stdlib `log` into slog records at INFO.
+// slogWriter adapts the io.Writer used by stdlib `log` into slog records.
+// stdlib log carries no level, so level-based alerting in production would
+// otherwise never see a log.Fatalf; map the conventional message prefixes
+// to matching levels and default the rest to INFO.
 type slogWriter struct{}
 
 func (slogWriter) Write(p []byte) (int, error) {
@@ -94,6 +104,15 @@ func (slogWriter) Write(p []byte) (int, error) {
 	if n := len(msg); n > 0 && msg[n-1] == '\n' {
 		msg = msg[:n-1]
 	}
-	slog.Info(msg)
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.HasPrefix(lower, "error") || strings.HasPrefix(lower, "failed") ||
+		strings.HasPrefix(lower, "fatal") || strings.HasPrefix(lower, "server forced to shutdown"):
+		slog.Error(msg)
+	case strings.HasPrefix(lower, "warning") || strings.HasPrefix(lower, "warn"):
+		slog.Warn(msg)
+	default:
+		slog.Info(msg)
+	}
 	return len(p), nil
 }

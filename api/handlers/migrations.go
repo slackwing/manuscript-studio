@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -129,7 +129,8 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	}
 	annotations, err := h.DB.GetAnnotationsByCommit(ctx, migration.CommitHash, session.Username)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get annotations: %v", err), http.StatusInternalServerError)
+		log.Printf("migrations: get annotations for commit %s: %v", migration.CommitHash, err)
+		http.Error(w, "Failed to get annotations", http.StatusInternalServerError)
 		return
 	}
 	if annotations == nil {
@@ -238,4 +239,3 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 		"sentences": out,
 	})
 }
-

@@ -3,6 +3,9 @@ package database
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/slackwing/manuscript-studio/internal/config"
@@ -17,13 +20,14 @@ func (db *DB) Close() {
 }
 
 func Connect(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
-	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-		cfg.User,
-		cfg.Password,
-		cfg.Host,
-		cfg.Port,
-		cfg.Name,
-	)
+	// Built via net/url so credentials with reserved characters (@ / # ? %)
+	// are escaped instead of silently re-shaping the DSN.
+	dbURL := (&url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.User, cfg.Password),
+		Host:   net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Path:   "/" + cfg.Name,
+	}).String()
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
