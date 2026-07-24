@@ -76,6 +76,38 @@ const WriteSysCommand = {
   validSlug(slug) {
     return this.SLUG_RE.test(slug);
   },
+
+  // structuralForm describes how a stored sentence renders as a heading-like
+  // element, or null if it's ordinary content. Unifies Markdown headers and
+  // block &-commands so the renderer and the suggestion-preview path agree on
+  // one shape: { tag, cls, visible }.
+  //   # H / ## H / ### H        -> { h1|h2|h3.., 'md-header', 'H' }
+  //   &title{n}                 -> { h1, 'cmd-title',   'n' }
+  //   &part#s{label}{desc?}     -> { h2, 'cmd-part',    'label desc' }
+  //   &chapter#s{label}{desc?}  -> { h3, 'cmd-chapter', 'label desc' }
+  //   &anchor#s{desc?}          -> { div,'cmd-anchor',  'desc' }
+  structuralForm(text) {
+    const t = String(text);
+    const hm = t.match(/^(#+)\s+(.*)$/);
+    if (hm) {
+      const level = Math.min(hm[1].length, 6);
+      return { tag: 'h' + level, cls: 'md-header', visible: hm[2] };
+    }
+    const cmd = this.parse(t.trim());
+    if (!cmd || !this.BLOCK[cmd.kind] || cmd.raw !== t.trim()) return null;
+    switch (cmd.kind) {
+      case 'title':
+        return { tag: 'h1', cls: 'cmd-title', visible: cmd.args[0] || '' };
+      case 'part':
+        return { tag: 'h2', cls: 'cmd-part', visible: [cmd.args[0], cmd.args[1]].filter(Boolean).join(' ') };
+      case 'chapter':
+        return { tag: 'h3', cls: 'cmd-chapter', visible: [cmd.args[0], cmd.args[1]].filter(Boolean).join(' ') };
+      case 'anchor':
+        return { tag: 'div', cls: 'cmd-anchor', visible: cmd.args[0] || '' };
+      default:
+        return null;
+    }
+  },
 };
 
 if (typeof window !== 'undefined') {

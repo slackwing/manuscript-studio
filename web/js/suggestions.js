@@ -52,22 +52,59 @@ const WriteSysSuggestions = {
       let original = (map[id] !== undefined) ? map[id] : span.textContent;
       let suggestionText = suggestion;
 
-      // Heading sentences are stored with their "# " marker but rendered
-      // without it (renderSentencesToHTML strips it and emits <h*>). Diff
-      // display-form against display-form: strip the identical marker from
-      // BOTH sides so the literal "# " never renders inside the heading.
-      // Display-only — bySentenceId keeps the full saved suggestion text.
-      // If the suggestion changes/removes the marker, leave both sides
-      // untouched so the structural edit stays visible in the diff.
-      const headingMarker = original.match(/^#+\s+/);
-      if (headingMarker && suggestionText.startsWith(headingMarker[0])) {
-        original = original.slice(headingMarker[0].length);
-        suggestionText = suggestionText.slice(headingMarker[0].length);
+      // Structural preview: if the original and/or the suggestion is a
+      // structural sentence (Markdown header or block &-command), render the
+      // preview in the SUGGESTION's resulting structure (e.g. &part -> an
+      // <h2> Part heading) with the word-level diff of the VISIBLE text shown
+      // inside it — so a suggested "## Chapter 1" -> "&part{Part 1}{...}"
+      // previews as a real Part heading, not raw &part{...} diff text.
+      const cmd = window.WriteSysCommand;
+      const origForm = cmd ? cmd.structuralForm(original) : null;
+      const sugForm = cmd ? cmd.structuralForm(suggestionText) : null;
+      if (sugForm || origForm) {
+        this.applyStructuralSuggestion(span, id, origForm, sugForm, original, suggestionText, dmp);
+        return;
       }
 
       span.classList.add('has-suggestion');
       span.innerHTML = renderDiffHTML(original, suggestionText, dmp);
     });
+  },
+
+  // applyStructuralSuggestion renders a suggestion whose result is structural
+  // (a heading or block command). It diffs the visible forms of both sides and
+  // re-wraps the sentence's block container into the suggestion's target
+  // element (h1/h2/h3/div + cmd-* class), so the preview looks like the
+  // resulting heading while still showing what changed.
+  applyStructuralSuggestion(span, id, origForm, sugForm, original, suggestionText, dmp) {
+    // Visible text to diff: the structural "visible" field when a side is
+    // structural, else the raw text (a suggestion turning a command back into
+    // prose diffs against the prose).
+    const oldVisible = origForm ? origForm.visible : original;
+    const newVisible = sugForm ? sugForm.visible : suggestionText;
+
+    // Target structure is the suggestion's form if it has one (that's what the
+    // edit produces); otherwise the sentence becomes ordinary content.
+    const target = sugForm || origForm;
+
+    span.classList.add('has-suggestion', 'has-structural-suggestion');
+    span.innerHTML = renderDiffHTML(oldVisible, newVisible, dmp);
+
+    // Re-parent: replace the containing block element (<p>/<h*>/<div>) with the
+    // target tag + class, keeping this span inside. Guard against acting twice
+    // on the same already-transformed container.
+    const block = span.closest('p, h1, h2, h3, h4, h5, h6, div.cmd-anchor');
+    if (!block || !target) return;
+    const desiredTag = target.tag.toUpperCase();
+    const desiredCls = target.cls;
+    if (block.tagName === desiredTag && block.classList.contains(desiredCls)) return;
+
+    const replacement = document.createElement(target.tag);
+    replacement.className = desiredCls + ' suggested-structural';
+    // Move the span (and only the span — a structural sentence is one span)
+    // into the replacement.
+    replacement.appendChild(span);
+    block.replaceWith(replacement);
   },
 
   openModal(sentenceId) {

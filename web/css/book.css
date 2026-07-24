@@ -480,6 +480,21 @@ h3 {
 /* &-command headings reuse the h1/h2/h3 styles above (cmd-title / cmd-part /
    cmd-chapter render as those tags). A block anchor has no heading weight —
    it's a quiet, centered marker line showing its description (if any). */
+
+/* Title and Part each open a new page (like a book's title page and part
+   dividers). cmd-title is an <h1>, which already breaks before; make it
+   explicit and add cmd-part. */
+.cmd-title,
+.cmd-part {
+  page-break-before: always;
+  break-before: page;
+}
+/* The very first structural element shouldn't force a leading blank page. */
+.cmd-title:first-of-type {
+  page-break-before: auto;
+  break-before: auto;
+}
+
 .cmd-anchor {
   text-align: center;
   font-style: italic;

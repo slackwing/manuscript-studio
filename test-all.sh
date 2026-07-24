@@ -40,6 +40,7 @@ FAST_TESTS=(
   test-trash-deletion
   test-suggestion-stale-guard
   test-suggestion-modal-fixes
+  test-structural-suggestion
   test-annotation-note-fixes
 )
 
