@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "1.2.0"
+const Version = "2.0.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -571,31 +571,9 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 		}
 	}
 
-	// RULE 8: Markdown headers (lines starting with #)
-	for i := 0; i < len(runes); i++ {
-		if runes[i] == '#' {
-			// Check if this # is at the start of a line (after newline or at position 0)
-			atLineStart := i == 0 || runes[i-1] == '\n'
-
-			if atLineStart {
-				// Create boundary before the header (unless at start of text)
-				if i > 0 {
-					boundaries = append(boundaries, boundaryMark{pos: i, reason: "before markdown header"})
-				}
-
-				// Find the end of the header line
-				j := i
-				for j < len(runes) && runes[j] != '\n' {
-					j++
-				}
-
-				// Create boundary after the header (at the newline)
-				if j < len(runes) {
-					boundaries = append(boundaries, boundaryMark{pos: j, reason: "after markdown header"})
-				}
-			}
-		}
-	}
+	// RULE 8 (Markdown headers) was REMOVED in v2.0.0. A line starting with
+	// '#' is now ordinary prose; structure is expressed with &-commands
+	// (RULE 9). This is the breaking change that motivates the major bump.
 
 	// RULE 9: &-commands. A recognized command token (&title/&part/&chapter
 	// always, &anchor when it is the sole non-whitespace content of its line)
