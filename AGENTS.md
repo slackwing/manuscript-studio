@@ -89,6 +89,18 @@ segman.Version` in `internal/migrations/processor.go`. Re-vendoring
 against a new segman tag automatically updates the version stamped
 onto new migration rows — no hand-edit required.
 
+**Vendor-drift trap (READ THIS):** bumping segman's version tag and
+re-vendoring it here are TWO separate steps. Tagging segman does NOTHING
+for this app until you run `scripts/vendor-segman.sh --ref=vX.Y.Z` and
+commit `internal/segman/`. This actually bit prod: segman was tagged 1.1.x
+but never re-vendored, so `main` (and every deploy) shipped the old
+vendored 1.0.0 for months. `internal/segman/vendor_test.go` now guards
+this: it fails if `UPSTREAM`'s ref disagrees with the vendored code's
+`Version` (always), and if the vendored ref isn't segman's latest tag
+(when `~/src/segman` is reachable; set `SEGMAN_DIR` to point elsewhere).
+So: bump segman → re-vendor here → `go test ./internal/segman/` → commit
+→ THEN deploy.
+
 ### N9 — Render order in renderer.js is load-bearing
 
 In `web/js/renderer.js renderManuscript()` the order MUST be:
