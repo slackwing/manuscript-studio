@@ -35,6 +35,7 @@ TeX's `[]{}`). Args are `{…}`. A command is recognized when, and only when,
 | `&chapter#slug{label}{desc?}` | optional `#slug`, label, optional description | Block. Sluggable. |
 | `&anchor#slug{desc?}` | optional `#slug`, optional description | **No label.** Block *or* inline (see §2). |
 | `&reference#slug{notes?}` | `#slug` (target), optional notes | **Inline only.** Points at another slug. |
+| `&meta{property}{value}` | property, value | Book-wide **setting** (see §5.5). Block; renders **nothing**. |
 
 `label` is what the author wants shown as the heading text — they type the
 number themselves (`I.`, `1.`, `1.a`); **we do no auto-numbering**. Two
@@ -177,6 +178,75 @@ from the block commands in ordinal order:
   fixed here).
 - Server-side chosen over client-side so the slug index is queryable for
   reference autocomplete and dangling-reference detection.
+
+---
+
+## 5.5 `&meta` — book-wide settings
+
+`&meta{property}{value}` declares a **setting** for the whole document. It is
+a first-class sentence (segman boundaries it as a block command, it migrates,
+it has a sentence ID) but it **renders as nothing** — its only effect is to
+change how other things render. This keeps *presentation policy* out of the
+individual content commands: instead of `&chapter[center]{I}` on all 40
+chapters (styling smeared across content), you write one
+`&meta{chapter-align}{center}` and every chapter obeys it.
+
+Why a command and not a config file: the manuscript in git is the source of
+truth (Principle 1). Settings are versioned *with* the text — git history
+shows when the font changed — and there is no out-of-band state. Consistency
+is the point: `&meta` adds no new *kind* of thing, it's the command system
+pointed at configuration.
+
+**Title is NOT meta.** `&title` is *content* (the name of the work; a reader
+sees it on the page). `&meta` is *configuration* (never rendered; changes how
+other things render). They feel similar (both singular, both at the top) but
+are different categories — one is shown, one is obeyed. Title stays its own
+command.
+
+### Fixed, known property vocabulary
+
+Properties are a **closed set** — each maps to a specific render/CSS effect.
+An unknown property is ignored (and surfaced as a migration warning, like a
+dangling reference), never silently applied. Start small; expand as needed:
+
+| Property | Values | Effect |
+|---|---|---|
+| `chapter-align` | `left` \| `center` | Horizontal alignment of chapter headings. |
+| `part-align` | `left` \| `center` | Alignment of the part-divider label/subtitle. |
+| `title-align` | `left` \| `center` | Alignment of the title page. |
+| *(later)* `font` | a family name | Body font. |
+| *(later)* `title-size`, `part-size` | a size | Divider type scale. |
+| *(later)* `divider-folios` | `on` \| `off` | Page numbers on title/part pages. |
+
+(The "remove page numbers on divider pages" and "title/part font size" tweaks
+fold in here as settings rather than one-off CSS — that's why they were
+deferred to this design.)
+
+### How it's read
+
+1. Renderer collects **all** `&meta` sentences (scan the whole document —
+   they may appear anywhere; **last-one-wins** for a repeated property).
+2. Build a validated `{property: value}` map (drop/warn unknowns and
+   out-of-range values).
+3. Apply: whole-page settings (font) become CSS custom properties on the
+   manuscript container; per-element settings (`chapter-align`) become a
+   class or attribute the CSS keys on. **No arbitrary CSS from the
+   manuscript** — every property maps to a predefined, safe render behavior.
+
+### Parsing / segman
+
+`&meta` is added to the command keyword list: segman boundaries it as a block
+(→ segman minor bump, re-vendor), and the MS/JS parsers (already generic over
+the keyword list) gain `meta`. `&meta` takes exactly two `{...}` args
+(property, value); a block-command-shaped sentence, single-line, no marker.
+It has no `#slug` (settings aren't reference targets).
+
+### Phase
+
+Ships as its own focused piece (a new command + a settings-collection pass +
+CSS wiring for the initial properties). The title/part page treatment
+(alignment, folios, size) is implemented *through* `&meta` rather than
+hard-coded, so it's configurable from the start.
 
 ---
 
