@@ -11,6 +11,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 type MigrationHandlers struct {
@@ -238,4 +239,40 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"sentences": out,
 	})
+}
+
+// HandleGetOutline returns the document outline (Part -> Chapter -> Anchor
+// tree) derived from the migration's block commands, for the left-margin
+// navigator. See TEX_COMMANDS_PLAN.md §5.
+func (h *MigrationHandlers) HandleGetOutline(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	migrationIDStr := chi.URLParam(r, "migration_id")
+	migrationID, err := strconv.Atoi(migrationIDStr)
+	if err != nil {
+		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
+		return
+	}
+
+	sentences, err := h.DB.GetSentencesByMigration(ctx, migrationID)
+	if err != nil {
+		log.Printf("outline: get sentences for migration %d: %v", migrationID, err)
+		http.Error(w, "Failed to load sentences", http.StatusInternalServerError)
+		return
+	}
+
+	ids := make([]string, len(sentences))
+	textByID := make(map[string]string, len(sentences))
+	for i, s := range sentences {
+		ids[i] = s.SentenceID
+		textByID[s.SentenceID] = s.Text
+	}
+
+	outline := sentence.BuildOutline(ids, textByID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(outline)
 }

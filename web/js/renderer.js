@@ -21,6 +21,7 @@ const WriteSysRenderer = {
     // Picker is independent of the manuscript being loadable: always init it
     // so the user can switch even from an empty/no-access state.
     if (window.WriteSysPicker) await window.WriteSysPicker.init();
+    if (window.WriteSysOutline) window.WriteSysOutline.init();
 
     if (!this.manuscriptId) {
       console.log('No manuscript_id in URL; showing empty state.');
@@ -151,12 +152,16 @@ const WriteSysRenderer = {
     try {
       this.showStatus('Loading manuscript...');
 
-      // Parallel-fetch suggestions so an outage there never blocks the render.
+      // Parallel-fetch suggestions + outline so an outage there never blocks
+      // the render.
       const url = `${this.apiBaseUrl}/migrations/${migrationID}/manuscript`;
       const [data] = await Promise.all([
         fetchJSON(url, {}, false),
         window.WriteSysSuggestions
           ? window.WriteSysSuggestions.loadForMigration(migrationID).catch(() => {})
+          : Promise.resolve(),
+        window.WriteSysOutline
+          ? window.WriteSysOutline.loadForMigration(migrationID).catch(() => {})
           : Promise.resolve(),
       ]);
       this.currentSentences = data.sentences;
@@ -680,6 +685,16 @@ const WriteSysRenderer = {
         this.scrollToAndHighlightAnnotation(annotationId);
       }, 300);
     }
+  },
+
+  // Scroll a sentence into view (used by the outline navigator). Briefly
+  // flashes it so the reader sees where they landed.
+  scrollToSentence(sentenceId) {
+    const target = document.querySelector(`.sentence[data-sentence-id="${sentenceId}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('flash-highlight');
+    setTimeout(() => target.classList.remove('flash-highlight'), 1200);
   },
 
   scrollToAndHighlightAnnotation(annotationId) {

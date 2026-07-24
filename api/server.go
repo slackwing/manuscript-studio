@@ -155,6 +155,7 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/{migration_id}/manuscript", s.migrationHandlers.HandleGetManuscriptByMigration)
 			r.Get("/migrations/{migration_id}/history", s.migrationHandlers.HandleGetSentenceHistory)
 			r.Get("/migrations/{migration_id}/suggestions", s.suggestionHandlers.HandleGetSuggestionsForMigration)
+			r.Get("/migrations/{migration_id}/outline", s.migrationHandlers.HandleGetOutline)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)

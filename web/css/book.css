@@ -633,6 +633,63 @@ p.section-break {
   overflow: visible;
 }
 
+/* Left-margin document outline navigator. Mirrors the right annotation
+   margin: fixed in the left grey gutter, only shown when there's structure. */
+#outline-margin {
+  position: fixed;
+  top: 90px;
+  left: 0;
+  width: 210px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  z-index: 100;
+  padding: 0 12px 12px 16px;
+  display: none;
+}
+#outline-margin.has-outline {
+  display: block;
+}
+.outline-nav {
+  font-family: Georgia, serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.outline-item {
+  display: block;
+  color: #555;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 1px 0;
+}
+.outline-item:hover {
+  color: #000;
+  text-decoration: underline;
+}
+.outline-title {
+  font-style: italic;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.4em;
+}
+.outline-part {
+  font-weight: 600;
+  color: #333;
+  margin-top: 0.6em;
+}
+.outline-chapter {
+  padding-left: 10px;
+}
+.outline-anchor {
+  padding-left: 22px;
+  font-size: 11px;
+  color: #999;
+  font-style: italic;
+}
+/* Hide the outline on narrow screens where the gutter collapses. */
+@media (max-width: 1100px) {
+  #outline-margin { display: none !important; }
+}
+
 .annotation-margin-inner {
   position: relative;
   width: var(--annotation-width);
