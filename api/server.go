@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"html"
 	"net/http"
 	"os"
@@ -21,16 +22,16 @@ import (
 )
 
 type Server struct {
-	config              *config.Config
-	db                  *pgxpool.Pool
-	dbWrapper           *database.DB
-	router              chi.Router
-	sessionStore        *auth.SessionStore
-	authHandlers        *handlers.AuthHandlers
-	migrationHandlers   *handlers.MigrationHandlers
-	annotationHandlers  *handlers.AnnotationHandlers
-	suggestionHandlers  *handlers.SuggestionHandlers
-	adminHandlers       *handlers.AdminHandlers
+	config             *config.Config
+	db                 *pgxpool.Pool
+	dbWrapper          *database.DB
+	router             chi.Router
+	sessionStore       *auth.SessionStore
+	authHandlers       *handlers.AuthHandlers
+	migrationHandlers  *handlers.MigrationHandlers
+	annotationHandlers *handlers.AnnotationHandlers
+	suggestionHandlers *handlers.SuggestionHandlers
+	adminHandlers      *handlers.AdminHandlers
 }
 
 func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
@@ -74,6 +75,13 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 
 func (s *Server) Router() http.Handler {
 	return s.router
+}
+
+// ResegmentOnSegmenterChange re-migrates manuscripts whose latest migration
+// was produced by an older segmenter. Run once at startup, after the DB is
+// reachable.
+func (s *Server) ResegmentOnSegmenterChange(ctx context.Context) {
+	s.adminHandlers.ResegmentOnSegmenterChange(ctx)
 }
 
 func (s *Server) setupRouter() {
@@ -179,7 +187,9 @@ func (s *Server) setupRouter() {
 			if h := r.Header.Get("Authorization"); h != "" {
 				return ratelimit.HashAuthHeader(h)
 			}
-			return r.RemoteAddr
+			// Port stripped: with the raw "ip:port" every connection would
+			// get its own fresh bucket.
+			return ratelimit.HostOnly(r.RemoteAddr)
 		}
 
 		r.Route("/admin", func(r chi.Router) {
@@ -197,10 +207,19 @@ func (s *Server) setupRouter() {
 	// <base href="/"> breaks 3rd-party libs like Paged.js.
 	r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
 		path := req.URL.Path
+		// http.ServeFile rejects ".." segments itself, but the ReadFile
+		// branch below has no such guard — filepath.Join would happily
+		// resolve "/../x.html" above the web root. Reject here so both
+		// branches are covered, and root-clean the path before joining as
+		// defense-in-depth.
+		if containsDotDot(path) {
+			http.Error(w, "invalid URL path", http.StatusBadRequest)
+			return
+		}
 		if path == "/" {
 			path = "/index.html"
 		}
-		filePath := filepath.Join("web", path)
+		filePath := filepath.Join("web", filepath.Clean("/"+path))
 
 		// HTML must always revalidate so updated ?v= cache-busters on JS/CSS
 		// actually take effect. Without this, browsers heuristically cache
@@ -233,6 +252,17 @@ func (s *Server) setupRouter() {
 	s.router = r
 }
 
+// containsDotDot reports whether any slash-separated segment of the URL
+// path is "..". Mirrors the unexported guard inside http.ServeFile.
+func containsDotDot(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 // Liveness probe: process is up. Does not probe downstreams.
 func (s *Server) livezHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -261,4 +291,3 @@ func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Write([]byte(`{"status":"healthy","database":"connected","repos":"ok"}`))
 }
-

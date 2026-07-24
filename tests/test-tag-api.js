@@ -38,6 +38,9 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } 
     // Grab authenticated cookies from the Playwright context for API calls
     const cookies = await page.context().cookies();
     const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    // Mutating tag endpoints require the CSRF token (same-origin the app
+    // reads from sessionStorage). Fetch it once and send it on writes.
+    const csrfToken = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
 
     // Get the annotation ID via the API
     const apiUrl = 'http://localhost:5001';
@@ -64,7 +67,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } 
     // Test 1: Add a tag
     const addTagResp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader },
+      headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader, 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ tag_name: 'test-tag', migration_id: migrationId })
     });
     if (addTagResp.ok) {
@@ -89,7 +92,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } 
     // Test 3: Add another tag
     const addTag2Resp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader },
+      headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader, 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ tag_name: 'second-tag', migration_id: migrationId })
     });
     if (addTag2Resp.ok) {
@@ -107,7 +110,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } 
     const tagId = getTagsData.tags[0].tag_id;
     const removeTagResp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags/${tagId}`, {
       method: 'DELETE',
-      headers: { 'Cookie': cookieHeader }
+      headers: { 'Cookie': cookieHeader, 'X-CSRF-Token': csrfToken }
     });
     if (removeTagResp.status === 204) {
       console.log('✓ Tag removed successfully');

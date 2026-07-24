@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/slackwing/manuscript-studio/internal/auth"
@@ -107,22 +106,4 @@ func requireManuscriptAccessForSentence(w http.ResponseWriter, r *http.Request,
 	}
 	_, ok := requireManuscriptAccessForMigration(w, r, db, cfg, migrationID)
 	return ok
-}
-
-// requireManuscriptAccessForAnnotation is the same check, starting from an
-// annotation_id. Annotations belong to sentences belong to migrations belong
-// to manuscripts.
-func requireManuscriptAccessForAnnotation(w http.ResponseWriter, r *http.Request,
-	db *database.DB, cfg *config.Config, annotationID int,
-) bool {
-	a, err := db.GetAnnotationByID(r.Context(), annotationID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to load annotation: %v", err), http.StatusInternalServerError)
-		return false
-	}
-	if a == nil {
-		http.Error(w, "Annotation not found", http.StatusNotFound)
-		return false
-	}
-	return requireManuscriptAccessForSentence(w, r, db, cfg, a.SentenceID)
 }
