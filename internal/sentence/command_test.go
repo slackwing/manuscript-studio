@@ -145,3 +145,29 @@ func TestCommandRoundTrip(t *testing.T) {
 		t.Errorf("re-tokenize drifted:\n first %v\n after %v", sentences, re)
 	}
 }
+
+func TestExtractStaticSlugs(t *testing.T) {
+	ids := []string{"s0", "s1", "s2", "s3", "s4", "s5"}
+	textByID := map[string]string{
+		"s0": "&title{The Wildfire}",                // no slug -> skipped
+		"s1": "&part#p1{I.}{The Gathering}",         // static slug p1
+		"s2": "&chapter#p1c1{1.}{Smoke}",            // static slug p1c1
+		"s3": "The fire began. &anchor#x{} spread.", // inline -> not a block sentence -> skipped
+		"s4": "&anchor#origin{here}",                // block anchor, slug origin
+		"s5": "Plain prose sentence.",               // not a command
+	}
+	got := ExtractStaticSlugs(ids, textByID)
+	want := []StaticSlug{
+		{Slug: "p1", SentenceID: "s1", Kind: CmdPart},
+		{Slug: "p1c1", SentenceID: "s2", Kind: CmdChapter},
+		{Slug: "origin", SentenceID: "s4", Kind: CmdAnchor},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d slugs, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("slug[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}

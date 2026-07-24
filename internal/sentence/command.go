@@ -74,6 +74,40 @@ func IsBlockCommandText(text string) bool {
 	return blockCommandKinds[cmd.Kind] && cmd.Raw == strings.TrimSpace(text)
 }
 
+// StaticSlug is a slug the author wrote (#slug) on a block command, paired
+// with the sentence that carries it and the command kind. Extracted at
+// migration time into the slug index (TEX_COMMANDS_PLAN.md §3).
+type StaticSlug struct {
+	Slug       string
+	SentenceID string
+	Kind       CommandKind
+}
+
+// ExtractStaticSlugs walks (sentenceID -> text) block-command sentences and
+// returns each author-written static #slug with its sentence and kind. Only
+// static slugs are returned — a command with no #slug contributes nothing
+// (its auto-slug is computed on read, never stored). Invalid slugs are
+// skipped (they'd have failed validation upstream). Order follows the
+// provided ids slice so results are deterministic.
+func ExtractStaticSlugs(ids []string, textByID map[string]string) []StaticSlug {
+	var out []StaticSlug
+	for _, id := range ids {
+		text, ok := textByID[id]
+		if !ok {
+			continue
+		}
+		cmd, ok := ParseCommand(strings.TrimSpace(text))
+		if !ok || !blockCommandKinds[cmd.Kind] || cmd.Raw != strings.TrimSpace(text) {
+			continue
+		}
+		if cmd.Slug == "" || !ValidSlug(cmd.Slug) {
+			continue
+		}
+		out = append(out, StaticSlug{Slug: cmd.Slug, SentenceID: id, Kind: cmd.Kind})
+	}
+	return out
+}
+
 // ParseCommand parses a single command token at the START of s. It returns the
 // command and true if s begins with a recognized command; trailing content
 // after the command is ignored by the parse (cmd.Raw delimits what matched).

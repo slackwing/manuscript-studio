@@ -15,5 +15,6 @@
     <include file="changelog/006-suggested-change.xml"/>
     <include file="changelog/007-drop-sentence-word-count.xml"/>
     <include file="changelog/008-session-loses-manuscript.xml"/>
+    <include file="changelog/009-command-slug.xml"/>
 
 </databaseChangeLog>

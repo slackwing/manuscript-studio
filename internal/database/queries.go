@@ -537,6 +537,90 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	return nil
 }
 
+// StoreCommandSlugs writes the static-slug index for a migration. Each
+// migration derives its own slug set (from the #slugs in its block-command
+// sentences), so this is an insert of that migration's rows — re-migration
+// naturally re-points a slug to the new sentence because the new migration
+// writes fresh rows keyed by its own migration_id. Idempotent per migration:
+// clears any existing rows for the migration first.
+func (db *DB) StoreCommandSlugs(ctx context.Context, migrationID int, slugs []sentence.StaticSlug) error {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM command_slug WHERE migration_id = $1`, migrationID); err != nil {
+		return fmt.Errorf("failed to clear command_slug for migration %d: %w", migrationID, err)
+	}
+
+	const q = `
+		INSERT INTO command_slug (migration_id, slug, sentence_id, kind)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (migration_id, slug) DO NOTHING
+	`
+	for _, s := range slugs {
+		if _, err := tx.Exec(ctx, q, migrationID, s.Slug, s.SentenceID, string(s.Kind)); err != nil {
+			return fmt.Errorf("failed to insert slug %q for migration %d: %w", s.Slug, migrationID, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit command_slug: %w", err)
+	}
+	return nil
+}
+
+// CommandSlug is a row of the slug index, joined with its sentence for reads.
+type CommandSlug struct {
+	Slug       string `json:"slug"`
+	SentenceID string `json:"sentence_id"`
+	Kind       string `json:"kind"`
+}
+
+// GetSlugsForMigration returns the static-slug index for a migration.
+func (db *DB) GetSlugsForMigration(ctx context.Context, migrationID int) ([]CommandSlug, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT slug, sentence_id, kind
+		FROM command_slug
+		WHERE migration_id = $1
+		ORDER BY slug
+	`, migrationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query command_slug: %w", err)
+	}
+	defer rows.Close()
+
+	slugs := []CommandSlug{}
+	for rows.Next() {
+		var s CommandSlug
+		if err := rows.Scan(&s.Slug, &s.SentenceID, &s.Kind); err != nil {
+			return nil, fmt.Errorf("failed to scan command_slug: %w", err)
+		}
+		slugs = append(slugs, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating command_slug: %w", err)
+	}
+	return slugs, nil
+}
+
+// ResolveSlug returns the sentence_id a slug points at within a migration, or
+// "" if the slug is not found (a dangling reference).
+func (db *DB) ResolveSlug(ctx context.Context, migrationID int, slug string) (string, error) {
+	var sentenceID string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT sentence_id FROM command_slug WHERE migration_id = $1 AND slug = $2
+	`, migrationID, slug).Scan(&sentenceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve slug %q: %w", slug, err)
+	}
+	return sentenceID, nil
+}
+
 // GetMigrationByID returns (nil, nil) if the row is missing or pre-'done'.
 func (db *DB) GetMigrationByID(ctx context.Context, migrationID int) (*models.Migration, error) {
 	query := `

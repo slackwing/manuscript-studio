@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Static-slug index for &-commands (TEX_COMMANDS_PLAN.md §3).
+         Maps an author-written #slug to the sentence that carries it, per
+         migration. Re-derived each migration and re-pointed to the new
+         sentence_id via the old->new pairing so references survive edits.
+         Auto-slugs are NOT stored (computed on read); only static #slugs. -->
+    <changeSet id="009-command-slug" author="claude">
+
+        <createTable tableName="command_slug">
+            <column name="slug_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="migration_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_command_slug_migration"
+                             references="migration(migration_id)"/>
+            </column>
+            <column name="slug" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sentence_id" type="VARCHAR(100)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_command_slug_sentence"
+                             references="sentence(sentence_id)"/>
+            </column>
+            <!-- The command kind (part/chapter/anchor/title) — lets the outline
+                 query the slug index without re-parsing sentence text. -->
+            <column name="kind" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- A slug is unique within a migration (the author owns it; the
+             hash-suffixed sentence_id keeps things distinct if they collide,
+             but the slug index itself is one row per (migration, slug)). -->
+        <addUniqueConstraint
+            tableName="command_slug"
+            columnNames="migration_id, slug"
+            constraintName="uq_command_slug_migration_slug"/>
+
+        <sql>
+            CREATE INDEX idx_command_slug_migration ON command_slug(migration_id);
+            CREATE INDEX idx_command_slug_sentence ON command_slug(sentence_id);
+        </sql>
+
+    </changeSet>
+
+</databaseChangeLog>

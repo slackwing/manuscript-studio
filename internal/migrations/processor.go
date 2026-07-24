@@ -94,6 +94,10 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 		return nil, fmt.Errorf("store sentences: %w", err)
 	}
 
+	if err := storeSlugs(ctx, db, migrationID, newSentences); err != nil {
+		return nil, fmt.Errorf("store slugs: %w", err)
+	}
+
 	if err := db.MarkMigrationDone(ctx, &models.Migration{
 		MigrationID:     migrationID,
 		ManuscriptID:    manuscriptID,
@@ -154,6 +158,10 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 
 	if err := db.CreateSentences(ctx, newSentences); err != nil {
 		return nil, fmt.Errorf("store new sentences: %w", err)
+	}
+
+	if err := storeSlugs(ctx, db, migrationID, newSentences); err != nil {
+		return nil, fmt.Errorf("store slugs: %w", err)
 	}
 
 	// Must run before MarkMigrationDone: on failure, deferred MarkMigrationError
@@ -355,6 +363,21 @@ func planMigration(oldSentences []models.Sentence, matches []sentence.SentenceMa
 		}
 	}
 	return plan
+}
+
+// storeSlugs extracts each block command's static #slug from the migration's
+// sentences and writes the slug index. Auto-slugs (no #slug) are not stored.
+// Each migration derives its own set, so re-migration re-points a slug to the
+// new sentence automatically.
+func storeSlugs(ctx context.Context, db *database.DB, migrationID int, sentences []models.Sentence) error {
+	ids := make([]string, len(sentences))
+	textByID := make(map[string]string, len(sentences))
+	for i, s := range sentences {
+		ids[i] = s.SentenceID
+		textByID[s.SentenceID] = s.Text
+	}
+	slugs := sentence.ExtractStaticSlugs(ids, textByID)
+	return db.StoreCommandSlugs(ctx, migrationID, slugs)
 }
 
 // segmentContent returns sentences ready for db.CreateSentences, the id slice
