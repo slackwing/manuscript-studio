@@ -21,11 +21,34 @@ var headerPattern = regexp.MustCompile(`^#+\s\S`)
 //   - "\n\tIndented content."              (new paragraph)
 //   - "\n\nNew section content."           (new section, no header)
 //   - "# Heading text"                     (header, any depth)
+//   - "&chapter#slug{I.}{Smoke}"           (block &-command)
 //
-// No trailing whitespace, no embedded newlines, no markers on headers.
+// No trailing whitespace, no embedded newlines, no markers on headers or
+// block commands. Inline commands (&reference, a shared-line &anchor) are not
+// their own sentence — they live inside a content sentence's text and are not
+// separately validated here.
 func ValidateSentenceText(text string) error {
 	if text == "" {
 		return fmt.Errorf("sentence text is empty")
+	}
+
+	// Block &-commands: their whole text is one command token, single-line,
+	// no leading marker. Validate the slug charset when a #slug is present.
+	if strings.HasPrefix(text, "&") {
+		cmd, ok := ParseCommand(text)
+		if !ok || cmd.Raw != text {
+			return fmt.Errorf("command sentence is not a well-formed &-command: %q", truncate(text))
+		}
+		if !blockCommandKinds[cmd.Kind] {
+			return fmt.Errorf("only block commands (title/part/chapter/anchor) may be their own sentence, got &%s: %q", cmd.Kind, truncate(text))
+		}
+		if strings.ContainsAny(text, "\n\t") {
+			return fmt.Errorf("command sentence must not contain \\n or \\t: %q", truncate(text))
+		}
+		if cmd.Slug != "" && !ValidSlug(cmd.Slug) {
+			return fmt.Errorf("command slug must match [a-z0-9-]+, got %q: %q", cmd.Slug, truncate(text))
+		}
+		return nil
 	}
 
 	// Headers: # / ## / ### plus space plus content. Single-line.

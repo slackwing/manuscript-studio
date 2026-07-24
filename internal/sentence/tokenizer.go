@@ -53,7 +53,7 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 
 	out := make([]string, 0, len(rawSegments))
 	cursor := 0
-	prevHeader := false
+	prevStructural := false
 
 	for _, seg := range rawSegments {
 		cleaned := cleanSentenceBoundaries(seg)
@@ -70,19 +70,23 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 			// valid offset. (Assigning segStart here would poison cursor
 			// with -1 and panic the next locateSegment call.)
 			out = append(out, cleaned)
-			prevHeader = false
+			prevStructural = false
 			continue
 		}
 
 		leading := source[cursor:segStart]
-		marker := classifyMarker(leading, len(out) == 0, prevHeader)
+		marker := classifyMarker(leading, len(out) == 0, prevStructural)
 
-		if isHeaderSegment(cleaned) {
+		// Structural sentences (Markdown headers and block &-commands) stand
+		// on their own line with no leading marker; the blank-line gap around
+		// them carries the structure. Everything else gets a paragraph/section
+		// marker per the surrounding whitespace.
+		if isStructuralSegment(cleaned) {
 			out = append(out, cleaned)
-			prevHeader = true
+			prevStructural = true
 		} else {
 			out = append(out, marker+cleaned)
-			prevHeader = false
+			prevStructural = false
 		}
 		cursor = segEnd
 	}
@@ -94,12 +98,12 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 // "", "\n\t", "\n\n".
 //
 //   - atStart=true: first emitted sentence (manuscript start, marker implicit).
-//   - prevHeader=true: previous emitted sentence was a header. The header's
-//     surrounding blank-line gap already provides structure, so a section
-//     marker would be redundant. Only emit a paragraph marker when the
-//     source explicitly indents (a tab). This is the "writing convention:
+//   - prevStructural=true: previous emitted sentence was a header or block
+//     command. Its surrounding blank-line gap already provides structure, so
+//     a section marker would be redundant. Only emit a paragraph marker when
+//     the source explicitly indents (a tab). This is the "writing convention:
 //     first sentence of a section has no \t" rule.
-func classifyMarker(whitespace string, atStart, prevHeader bool) string {
+func classifyMarker(whitespace string, atStart, prevStructural bool) string {
 	if atStart {
 		return ""
 	}
@@ -108,7 +112,7 @@ func classifyMarker(whitespace string, atStart, prevHeader bool) string {
 	if hasTab && hasNewline {
 		return MarkerParagraph
 	}
-	if prevHeader {
+	if prevStructural {
 		return ""
 	}
 	if strings.Count(whitespace, "\n") >= 2 {
@@ -120,6 +124,12 @@ func classifyMarker(whitespace string, atStart, prevHeader bool) string {
 // isHeaderSegment recognises segman segments that are markdown headers.
 func isHeaderSegment(segment string) bool {
 	return strings.HasPrefix(segment, "#") && headerPattern.MatchString(segment)
+}
+
+// isStructuralSegment recognises segments that stand on their own line with
+// no leading marker: Markdown headers and block &-commands.
+func isStructuralSegment(segment string) bool {
+	return isHeaderSegment(segment) || IsBlockCommandText(segment)
 }
 
 // locateSegment finds where `seg` (whitespace-collapsed by segman) appears

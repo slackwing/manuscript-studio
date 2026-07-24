@@ -10,6 +10,13 @@ func IsHeaderText(text string) bool {
 	return strings.HasPrefix(text, "#") && headerPattern.MatchString(text)
 }
 
+// IsStructuralText reports whether a sentence stands on its own line with no
+// leading marker: a Markdown header or a block &-command. These reconstruct
+// with a blank-line gap before and after, like headers.
+func IsStructuralText(text string) bool {
+	return IsHeaderText(text) || IsBlockCommandText(text)
+}
+
 // Reconstruct rebuilds the original .manuscript bytes from a sentence list.
 // Inverse of TokenizeWithMarkers (in tokenizer.go). The round-trip
 // (parse → reconstruct) must be byte-equal for any well-formed source.
@@ -27,26 +34,28 @@ func IsHeaderText(text string) bool {
 //   - The output ends with a trailing newline (matches typical source files).
 func Reconstruct(sentences []string) string {
 	var b strings.Builder
-	prevWasHeader := false
-	prevWasContent := false // last emit was a content sentence (vs. header or nothing)
+	prevWasStructural := false // last emit was a header or block &-command
+	prevWasContent := false    // last emit was a content sentence (vs. structural or nothing)
 
 	for _, s := range sentences {
-		if IsHeaderText(s) {
+		// Headers and block &-commands both stand on their own line with a
+		// blank-line gap before and after.
+		if IsStructuralText(s) {
 			if b.Len() > 0 {
 				ensureTrailingBlankLine(&b)
 			}
 			b.WriteString(s)
 			b.WriteByte('\n')
-			prevWasHeader = true
+			prevWasStructural = true
 			prevWasContent = false
 			continue
 		}
 
 		switch {
 		case strings.HasPrefix(s, MarkerSection):
-			if prevWasHeader {
-				// Header already ended with "\n"; one more newline gives the
-				// blank-line gap, then the body sans marker.
+			if prevWasStructural {
+				// Structural line already ended with "\n"; one more newline
+				// gives the blank-line gap, then the body sans marker.
 				b.WriteByte('\n')
 				b.WriteString(s[len(MarkerSection):])
 			} else {
@@ -55,7 +64,7 @@ func Reconstruct(sentences []string) string {
 		case strings.HasPrefix(s, MarkerParagraph):
 			b.WriteString(s)
 		default:
-			if prevWasHeader {
+			if prevWasStructural {
 				b.WriteByte('\n')
 				b.WriteString(s)
 			} else if prevWasContent {
@@ -66,7 +75,7 @@ func Reconstruct(sentences []string) string {
 				b.WriteString(s)
 			}
 		}
-		prevWasHeader = false
+		prevWasStructural = false
 		prevWasContent = true
 	}
 
