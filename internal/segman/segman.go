@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "1.1.1"
+const Version = "1.2.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -597,7 +597,147 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 		}
 	}
 
+	// RULE 9: &-commands. A recognized command token (&title/&part/&chapter
+	// always, &anchor when it is the sole non-whitespace content of its line)
+	// is its own segment, boundaried before and after like a header. &anchor
+	// sharing its line with other content, and &reference always, stay inline
+	// (no boundary). Recognition and inline/block are decided here (boundaries
+	// only); the consuming application parses the command's fields.
+	for i := 0; i < len(runes); i++ {
+		if runes[i] != '&' {
+			continue
+		}
+		if !isBlockCommandAt(runes, i) {
+			continue
+		}
+		// Boundary before the command (unless at start of text). The command's
+		// line may be indented, so boundary at the first non-whitespace char.
+		if i > 0 {
+			boundaries = append(boundaries, boundaryMark{pos: i, reason: "before &command"})
+		}
+		// Boundary after the command line (at its terminating newline).
+		j := i
+		for j < len(runes) && runes[j] != '\n' {
+			j++
+		}
+		if j < len(runes) {
+			boundaries = append(boundaries, boundaryMark{pos: j, reason: "after &command"})
+		}
+	}
+
 	return boundaries
+}
+
+// commandKeywords are the recognized &-command names. A '&' begins a command
+// only when immediately followed by one of these and then '#' or '{'.
+var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference"}
+
+// isBlockCommandAt reports whether the '&' at index i begins a *block* command
+// — one that is its own segment. title/part/chapter are always block; anchor
+// is block only when it is the sole non-whitespace content of its physical
+// line; reference is never block (always inline). A non-command '&' (literal
+// ampersand in prose) returns false.
+func isBlockCommandAt(runes []rune, i int) bool {
+	kw := commandKeywordAt(runes, i)
+	if kw == "" {
+		return false
+	}
+	switch kw {
+	case "reference":
+		return false
+	case "anchor":
+		return commandIsSoleLineContent(runes, i)
+	default: // title, part, chapter
+		return true
+	}
+}
+
+// commandKeywordAt returns the command keyword the '&' at index i introduces,
+// or "" if this is not a command. A command is '&' + exact keyword + ('#' or
+// '{'); anything else (e.g. "Smith & Sons", "R&D") is literal.
+func commandKeywordAt(runes []rune, i int) string {
+	for _, kw := range commandKeywords {
+		end := i + 1 + len(kw)
+		if end >= len(runes) {
+			continue
+		}
+		if string(runes[i+1:end]) != kw {
+			continue
+		}
+		if runes[end] == '#' || runes[end] == '{' {
+			return kw
+		}
+	}
+	return ""
+}
+
+// commandIsSoleLineContent reports whether the command token starting at index
+// i is the only non-whitespace content of its physical line (leading indent
+// and trailing spaces ignored). Used to decide whether an &anchor is block.
+func commandIsSoleLineContent(runes []rune, i int) bool {
+	// Everything from the line start up to i must be whitespace.
+	for k := i - 1; k >= 0 && runes[k] != '\n'; k-- {
+		if runes[k] != ' ' && runes[k] != '\t' && runes[k] != '\r' {
+			return false
+		}
+	}
+	// Find the matching close of the final {...} arg, then require only
+	// whitespace to the end of the line.
+	end := commandTokenEnd(runes, i)
+	if end < 0 {
+		return false
+	}
+	for k := end; k < len(runes) && runes[k] != '\n'; k++ {
+		if runes[k] != ' ' && runes[k] != '\t' && runes[k] != '\r' {
+			return false
+		}
+	}
+	return true
+}
+
+// commandTokenEnd returns the index just past the command token starting at i
+// (past its last '}'), or -1 if the braces are unbalanced. It scans the
+// optional #slug and one or more {...} arg groups, tracking brace depth.
+func commandTokenEnd(runes []rune, i int) int {
+	k := i + 1
+	// keyword
+	for k < len(runes) && runes[k] != '#' && runes[k] != '{' {
+		k++
+	}
+	// optional #slug
+	if k < len(runes) && runes[k] == '#' {
+		k++
+		for k < len(runes) && runes[k] != '{' && runes[k] != '\n' {
+			k++
+		}
+	}
+	// one or more {...} groups, back to back
+	sawGroup := false
+	for k < len(runes) && runes[k] == '{' {
+		depth := 0
+		for k < len(runes) {
+			if runes[k] == '{' {
+				depth++
+			} else if runes[k] == '}' {
+				depth--
+				if depth == 0 {
+					k++
+					break
+				}
+			} else if runes[k] == '\n' {
+				return -1 // unterminated group
+			}
+			k++
+		}
+		if depth != 0 {
+			return -1
+		}
+		sawGroup = true
+	}
+	if !sawGroup {
+		return -1
+	}
+	return k
 }
 
 // splitAtBoundaries splits the text at marked boundaries
