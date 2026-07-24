@@ -82,28 +82,32 @@ const WriteSysCommand = {
   // block &-commands so the renderer and the suggestion-preview path agree on
   // one shape: { tag, cls, visible }.
   //   # H / ## H / ### H        -> { h1|h2|h3.., 'md-header', 'H' }
-  //   &title{n}                 -> { h1, 'cmd-title',   'n' }
-  //   &part#s{label}{desc?}     -> { h2, 'cmd-part',    'label desc' }
-  //   &chapter#s{label}{desc?}  -> { h3, 'cmd-chapter', 'label desc' }
-  //   &anchor#s{desc?}          -> { div,'cmd-anchor',  'desc' }
+  // The on-page heading shows ONLY the label — the description is metadata
+  // for the outline (see TEX_COMMANDS_PLAN.md §5), never concatenated into the
+  // heading. `visible` is what renders on the page; `description` is carried
+  // for later use (outline) but not shown here.
+  //   &title{name}              -> { h1, 'cmd-title',   name }
+  //   &part#s{label}{desc?}     -> { h2, 'cmd-part',    label }
+  //   &chapter#s{label}{desc?}  -> { h3, 'cmd-chapter', label }
+  //   &anchor#s{desc?}          -> { div,'cmd-anchor',  desc }   (no label)
   structuralForm(text) {
     const t = String(text);
     const hm = t.match(/^(#+)\s+(.*)$/);
     if (hm) {
       const level = Math.min(hm[1].length, 6);
-      return { tag: 'h' + level, cls: 'md-header', visible: hm[2] };
+      return { tag: 'h' + level, cls: 'md-header', visible: hm[2], description: '' };
     }
     const cmd = this.parse(t.trim());
     if (!cmd || !this.BLOCK[cmd.kind] || cmd.raw !== t.trim()) return null;
     switch (cmd.kind) {
       case 'title':
-        return { tag: 'h1', cls: 'cmd-title', visible: cmd.args[0] || '' };
+        return { tag: 'h1', cls: 'cmd-title', visible: cmd.args[0] || '', description: '' };
       case 'part':
-        return { tag: 'h2', cls: 'cmd-part', visible: [cmd.args[0], cmd.args[1]].filter(Boolean).join(' ') };
+        return { tag: 'h2', cls: 'cmd-part', visible: cmd.args[0] || '', description: cmd.args[1] || '' };
       case 'chapter':
-        return { tag: 'h3', cls: 'cmd-chapter', visible: [cmd.args[0], cmd.args[1]].filter(Boolean).join(' ') };
+        return { tag: 'h3', cls: 'cmd-chapter', visible: cmd.args[0] || '', description: cmd.args[1] || '' };
       case 'anchor':
-        return { tag: 'div', cls: 'cmd-anchor', visible: cmd.args[0] || '' };
+        return { tag: 'div', cls: 'cmd-anchor', visible: cmd.args[0] || '', description: '' };
       default:
         return null;
     }

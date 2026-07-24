@@ -407,46 +407,23 @@ const WriteSysRenderer = {
   },
 
   // renderBlockCommand renders a block &-command sentence as a heading
-  // element, or returns null if `text` is not a block command. The visible
-  // text is derived from the command's fields (label + optional description);
-  // the .sentence span is kept so the sentence stays hoverable/annotatable.
-  //   &title{name}                 -> <h1 class="cmd-title">
-  //   &part#slug{label}{desc?}     -> <h2 class="cmd-part">   "label desc"
-  //   &chapter#slug{label}{desc?}  -> <h3 class="cmd-chapter"> "label desc"
-  //   &anchor#slug{desc?}          -> <div class="cmd-anchor"> "desc" (or empty)
+  // element, or returns null if `text` is not a block command. Uses
+  // WriteSysCommand.structuralForm as the single source of truth for tag /
+  // class / visible text (the heading shows the LABEL only — the description
+  // is outline metadata, not rendered on the page). The .sentence span is
+  // kept so the sentence stays hoverable/annotatable, and the slug is exposed
+  // on data-slug for later phases.
   renderBlockCommand(text, id) {
-    if (!window.WriteSysCommand) return null;
-    const cmd = window.WriteSysCommand.parse(text.trim());
-    if (!cmd || !window.WriteSysCommand.BLOCK[cmd.kind] || cmd.raw !== text.trim()) {
-      return null;
-    }
+    const cmd = window.WriteSysCommand;
+    if (!cmd) return null;
+    const parsed = cmd.parse(text.trim());
+    if (!parsed || !cmd.BLOCK[parsed.kind] || parsed.raw !== text.trim()) return null;
+    const form = cmd.structuralForm(text);
+    if (!form) return null;
 
-    let tag, cls, visible;
-    switch (cmd.kind) {
-      case 'title':
-        tag = 'h1'; cls = 'cmd-title';
-        visible = cmd.args[0] || '';
-        break;
-      case 'part':
-        tag = 'h2'; cls = 'cmd-part';
-        visible = [cmd.args[0], cmd.args[1]].filter(Boolean).join(' ');
-        break;
-      case 'chapter':
-        tag = 'h3'; cls = 'cmd-chapter';
-        visible = [cmd.args[0], cmd.args[1]].filter(Boolean).join(' ');
-        break;
-      case 'anchor':
-        // A block anchor has no label; show its description if any.
-        tag = 'div'; cls = 'cmd-anchor';
-        visible = cmd.args[0] || '';
-        break;
-      default:
-        return null;
-    }
-
-    const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
-    const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(visible)}</span>`;
-    return `<${tag} class="${cls}"${slugAttr}>${inner}</${tag}>`;
+    const slugAttr = parsed.slug ? ` data-slug="${this.escapeHtml(parsed.slug)}"` : '';
+    const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
+    return `<${form.tag} class="${form.cls}"${slugAttr}>${inner}</${form.tag}>`;
   },
 
 

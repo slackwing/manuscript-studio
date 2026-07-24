@@ -93,6 +93,10 @@ async function syncManuscript() {
     check('diff shows deletion (old label struck)', preview.hasDel === true);
     check('diff shows insertion (new label)', preview.hasIns === true);
     check('new label text present', /Part 1/.test(preview.text || ''), preview.text);
+    // The heading shows the LABEL only — the description must NOT be rendered
+    // on the page (it's outline metadata). Regression guard for the "label +
+    // desc glued together" bug.
+    check('description NOT shown in heading', !/A new part now/.test(preview.text || ''), preview.text);
 
     // Page break: &title / &part should break before. (The canonical
     // manuscript has # headers, not commands, so check the CSS rule applies to
