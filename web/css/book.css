@@ -481,15 +481,50 @@ h3 {
    cmd-chapter render as those tags). A block anchor has no heading weight —
    it's a quiet, centered marker line showing its description (if any). */
 
-/* Title and Part each open a new page (like a book's title page and part
-   dividers). cmd-title is an <h1>, which already breaks before; make it
-   explicit and add cmd-part. */
+/* Title page and Part-divider page, book style: the heading is the ONLY
+   thing on its page (break before AND after so following content is pushed
+   to the next page), and it sits centered on an otherwise-blank page. The
+   element is made to fill the page body height and flex-center its contents
+   — paged.js gives each page body a fixed height, so 100% works here. */
 .cmd-title,
 .cmd-part {
   page-break-before: always;
   break-before: page;
+  page-break-after: always;
+  break-after: page;
+  /* fill the page and center */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  text-align: center;
+  margin: 0;
 }
-/* The very first structural element shouldn't force a leading blank page. */
+
+/* Title: large, upper-centered like a title page. */
+.cmd-title {
+  font-size: 26pt;
+  font-style: italic;
+  /* nudge toward the classic upper third rather than dead center */
+  justify-content: flex-start;
+  padding-top: 30%;
+}
+
+/* Part divider: the label (e.g. "I.") large and centered, with the
+   description below as a subtitle. */
+.cmd-part {
+  font-size: 24pt;
+}
+.cmd-part .cmd-part-desc {
+  display: block;
+  margin-top: 0.8em;
+  font-size: 15pt;
+  font-style: italic;
+  color: #333;
+}
+
+/* The very first title shouldn't force a leading blank page. */
 .cmd-title:first-of-type {
   page-break-before: auto;
   break-before: auto;

@@ -423,7 +423,15 @@ const WriteSysRenderer = {
 
     const slugAttr = parsed.slug ? ` data-slug="${this.escapeHtml(parsed.slug)}"` : '';
     const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
-    return `<${form.tag} class="${form.cls}"${slugAttr}>${inner}</${form.tag}>`;
+    // Part dividers carry the description as a subtitle on their own page
+    // (like a book's part-title page: "Part I" / "The Gathering"). The label
+    // stays in the .sentence span (hoverable/annotatable); the subtitle is
+    // presentational.
+    let extra = '';
+    if (parsed.kind === 'part' && form.description) {
+      extra = `<span class="cmd-part-desc">${this.applyInlineFormatting(form.description)}</span>`;
+    }
+    return `<${form.tag} class="${form.cls}"${slugAttr}>${inner}${extra}</${form.tag}>`;
   },
 
 
