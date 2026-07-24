@@ -24,6 +24,7 @@ FAST_TESTS=(
   test-session-expiry-redirect
   test-never-mind-focus
   test-tag-api
+  test-tag-authz
   test-xss-annotation
   alignment-test
   comprehensive-test
@@ -38,6 +39,8 @@ FAST_TESTS=(
   test-priority-flag
   test-trash-deletion
   test-suggestion-stale-guard
+  test-suggestion-modal-fixes
+  test-annotation-note-fixes
 )
 
 SLOW_TESTS=(
@@ -61,6 +64,7 @@ SLOW_TESTS=(
   test-rainbow-deletion
   test-inline-tag-input
   trash-icon-test
+  test-heading-suggestion-display
 )
 
 mode="${1:-all}"

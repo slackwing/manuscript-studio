@@ -346,21 +346,30 @@ const WriteSysRenderer = {
       // Strip the leading marker — it was structural, doesn't appear in
       // the visible text. The marker only chooses which <p> we live in.
       let body = text;
-      let cls = '';
-      if (body.startsWith('\n\n')) {
-        flush();
+      if (body.startsWith('\n\n') || body.startsWith('\n\t')) {
         body = body.slice(2);
-        cls = 'section-break';
-      } else if (body.startsWith('\n\t')) {
-        flush();
-        body = body.slice(2);
-        cls = 'indented';
       }
+
+      // Paragraph grouping previews the SUGGESTION's leading marker when
+      // one exists, so structural edits render as they'd look after
+      // commit: a suggestion that deletes the leading break merges this
+      // sentence into the open paragraph (the inline diff still shows
+      // the struck-through ¶/§ at the join), one that adds a break
+      // starts a real paragraph, and one that changes the break type
+      // gets the suggested paragraph class.
+      const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId)
+        ? window.WriteSysSuggestions.bySentenceId[id]
+        : undefined;
+      const structural = (sug !== undefined) ? sug : text;
+      let cls = null;
+      if (structural.startsWith('\n\n')) cls = 'section-break';
+      else if (structural.startsWith('\n\t')) cls = 'indented';
+      if (cls !== null) flush();
 
       const span = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(body)}</span>`;
 
       if (openP === null) {
-        openP = { cls, spans: [span] };
+        openP = { cls: cls || '', spans: [span] };
       } else {
         openP.spans.push(span);
       }
@@ -638,9 +647,6 @@ const WriteSysRenderer = {
     const noteElement = document.querySelector(`.sticky-note[data-annotation-id="${annotationId}"]`);
     if (!noteElement) {
       console.warn(`Note element not found for annotation ${annotationId}`);
-      const allNotes = document.querySelectorAll('.sticky-note');
-      console.log(`Available notes (${allNotes.length}):`,
-        Array.from(allNotes).map(n => n.dataset.annotationId));
       return;
     }
 

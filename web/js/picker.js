@@ -116,6 +116,17 @@ const WriteSysPicker = {
   },
 
   async _persistLastOpened(name) {
+    // On a fresh tab this can run before the inline checkAuth() in
+    // index.html has stored csrf_token in sessionStorage; the POST would
+    // then silently 403. Wait briefly and retry once; if the token still
+    // isn't there, skip — persistence is a nicety, warn-only (caller
+    // catches and console.warns).
+    if (!sessionStorage.getItem('csrf_token')) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!sessionStorage.getItem('csrf_token')) {
+        throw new Error('no csrf_token in sessionStorage yet; skipping');
+      }
+    }
     await authenticatedFetch(`${this.apiBaseUrl}/session/last-manuscript`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,13 +135,6 @@ const WriteSysPicker = {
   },
 };
 
-function escapeHTML(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escapeHTML comes from text-markers.js (shared definition; loads first).
 
 window.WriteSysPicker = WriteSysPicker;

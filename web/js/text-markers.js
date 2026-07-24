@@ -33,3 +33,16 @@ function fromGlyphs(text) {
 }
 
 window.WriteSysTextMarkers = { toGlyphs, fromGlyphs, SECTION_GLYPH, PARAGRAPH_GLYPH };
+
+// Shared HTML-escaper. Lives here because text-markers.js is the first
+// application script in index.html's load order, so every later script
+// (picker.js, info-tooltip.js, suggestions.js) can use it. Do not
+// re-declare per-file copies.
+function escapeHTML(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

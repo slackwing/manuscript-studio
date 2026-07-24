@@ -84,14 +84,7 @@ const WriteSysInfoTooltip = {
   },
 };
 
-function escapeHTML(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escapeHTML comes from text-markers.js (shared definition; loads first).
 
 window.WriteSysInfoTooltip = WriteSysInfoTooltip;
 document.addEventListener('DOMContentLoaded', () => WriteSysInfoTooltip.init());

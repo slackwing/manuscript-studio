@@ -601,7 +601,15 @@ const WriteSysAnnotations = {
       this.commitPendingNote(annotation.annotation_id);
 
       clearTimeout(saveTimeout);
-      this.saveNoteText(annotation.annotation_id, textarea.value);
+      // Skip the PUT when nothing changed: the server appends an
+      // annotation_version row on EVERY save, so a bare focus+blur would
+      // bloat history. Compare in normalized form — saveNoteText stores
+      // `value.trim() || null`, and annotation.note is kept in sync the
+      // same way.
+      const normalized = textarea.value.trim() || null;
+      if (normalized !== (annotation.note || null)) {
+        this.saveNoteText(annotation.annotation_id, textarea.value);
+      }
     });
 
     note.querySelectorAll('.priority-chip').forEach(chip => {
@@ -723,14 +731,18 @@ const WriteSysAnnotations = {
   },
 
   async handleAddNewNote(color, initialNote = null, sourceTextarea = null) {
-    if (!this.currentSentenceId) return;
+    // Capture NOW: the user can click another sentence during the POST
+    // round-trip below, repointing this.currentSentenceId — which used to
+    // attach the local annotation object to the wrong sentence.
+    const sentenceId = this.currentSentenceId;
+    if (!sentenceId) return;
 
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/annotations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sentence_id: this.currentSentenceId,
+          sentence_id: sentenceId,
           color: color,
           note: initialNote,
           priority: 'none',
@@ -753,7 +765,7 @@ const WriteSysAnnotations = {
 
       const newAnnotation = {
         annotation_id: apiResponse.annotation_id,
-        sentence_id: this.currentSentenceId,
+        sentence_id: sentenceId,
         color: color,
         note: liveText,
         priority: 'none',
@@ -761,23 +773,32 @@ const WriteSysAnnotations = {
         tags: []
       };
 
-      this.annotations.push(newAnnotation);
       this._cacheAdd(newAnnotation);
-      this.renderStickyNotes();
 
-      // Move in-flight text into the new real-note textarea and persist any
-      // characters typed past what we already POSTed.
-      const newTextarea = document.querySelector(
-        `.sticky-note[data-annotation-id="${apiResponse.annotation_id}"] .note-input`
-      );
-      if (newTextarea) {
-        newTextarea.value = liveText || '';
-        this.autoResizeTextarea(newTextarea);
-        newTextarea.focus();
-        const end = newTextarea.value.length;
-        newTextarea.setSelectionRange(end, end);
-        if (sourceTextarea && (liveText || '') !== (initialNote || '')) {
-          this.saveNoteText(apiResponse.annotation_id, liveText);
+      // Only touch the side-panel when the user is still on the sentence
+      // this note belongs to. If they clicked another sentence mid-flight,
+      // this.annotations already holds THAT sentence's notes — pushing here
+      // (or re-rendering / stealing focus) would show the new note under
+      // the wrong sentence. The cache add above is enough: re-selecting
+      // the original sentence re-filters from the cache and shows it.
+      if (this.currentSentenceId === sentenceId) {
+        this.annotations.push(newAnnotation);
+        this.renderStickyNotes();
+
+        // Move in-flight text into the new real-note textarea and persist any
+        // characters typed past what we already POSTed.
+        const newTextarea = document.querySelector(
+          `.sticky-note[data-annotation-id="${apiResponse.annotation_id}"] .note-input`
+        );
+        if (newTextarea) {
+          newTextarea.value = liveText || '';
+          this.autoResizeTextarea(newTextarea);
+          newTextarea.focus();
+          const end = newTextarea.value.length;
+          newTextarea.setSelectionRange(end, end);
+          if (sourceTextarea && (liveText || '') !== (initialNote || '')) {
+            this.saveNoteText(apiResponse.annotation_id, liveText);
+          }
         }
       }
 

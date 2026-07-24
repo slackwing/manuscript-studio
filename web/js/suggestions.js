@@ -49,9 +49,24 @@ const WriteSysSuggestions = {
       // instead of an INS that would render a duplicate paragraph break in
       // the preview.
       const map = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap) || {};
-      const original = (map[id] !== undefined) ? map[id] : span.textContent;
+      let original = (map[id] !== undefined) ? map[id] : span.textContent;
+      let suggestionText = suggestion;
+
+      // Heading sentences are stored with their "# " marker but rendered
+      // without it (renderSentencesToHTML strips it and emits <h*>). Diff
+      // display-form against display-form: strip the identical marker from
+      // BOTH sides so the literal "# " never renders inside the heading.
+      // Display-only — bySentenceId keeps the full saved suggestion text.
+      // If the suggestion changes/removes the marker, leave both sides
+      // untouched so the structural edit stays visible in the diff.
+      const headingMarker = original.match(/^#+\s+/);
+      if (headingMarker && suggestionText.startsWith(headingMarker[0])) {
+        original = original.slice(headingMarker[0].length);
+        suggestionText = suggestionText.slice(headingMarker[0].length);
+      }
+
       span.classList.add('has-suggestion');
-      span.innerHTML = renderDiffHTML(original, suggestion, dmp);
+      span.innerHTML = renderDiffHTML(original, suggestionText, dmp);
     });
   },
 
@@ -100,14 +115,15 @@ const WriteSysSuggestions = {
         // Skip if no newlines — saves the round-trip on most keystrokes.
         if (!/\n/.test(before)) return;
         const caret = textarea.selectionStart;
-        // Count newline characters before the caret so we can adjust.
-        const newlinesBefore = (before.slice(0, caret).match(/\n/g) || []).length;
+        // Only \n\n → § changes the length (2 chars collapse to a 1-char
+        // glyph); a lone \n → ¶ is a 1:1 swap. So the caret shifts left by
+        // the number of \n\n PAIRS strictly before it — counted with the
+        // same non-overlapping /\n\n/g scan the replace below uses.
+        const pairsBefore = (before.slice(0, caret).match(/\n\n/g) || []).length;
         const after = before.replace(/\n\n/g, tm.SECTION_GLYPH).replace(/\n/g, tm.PARAGRAPH_GLYPH);
         if (after === before) return;
         textarea.value = after;
-        // Each \n collapses to a 1-char glyph, so subtract the count
-        // of newlines that were strictly before the caret.
-        const newCaret = caret - newlinesBefore;
+        const newCaret = Math.max(0, Math.min(after.length, caret - pairsBefore));
         textarea.setSelectionRange(newCaret, newCaret);
       });
     }
@@ -117,26 +133,43 @@ const WriteSysSuggestions = {
       modal.remove();
     };
 
+    let saving = false;
     const save = async () => {
+      if (saving) return;
       // Convert UI form (glyphs OR escape literals OR raw chars) → storage form.
       const newText = tm ? tm.fromGlyphs(textarea.value) : textarea.value;
-      close();
-      if (newText === current) return;
+      if (newText === current) {
+        close();
+        return;
+      }
 
+      // Don't close until the PUT succeeds — a failed save (500, 409-stale,
+      // network drop) must leave the modal open with the user's text intact.
+      saving = true;
       try {
         const resp = await authenticatedFetch(`${this.apiBaseUrl}/sentences/${sentenceId}/suggestion`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: newText }),
         });
-        if (!resp.ok && resp.status !== 204) {
-          throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) {
+          console.error('save suggestion failed: HTTP', resp.status);
+          // 409 = stale migration (see the stale banner / poll in
+          // renderer.js): reloading is the only way forward, but the user
+          // must get a chance to copy their text out first.
+          alert(resp.status === 409
+            ? 'Failed to save: the manuscript was updated. Copy your text somewhere safe, then reload the page.'
+            : 'Failed to save suggestion');
+          return;
         }
       } catch (err) {
         console.error('save suggestion failed:', err);
         alert('Failed to save suggestion');
         return;
+      } finally {
+        saving = false;
       }
+      close();
 
       // Server collapses "text == original" into a delete; reflect locally.
       if (newText === original) {
@@ -240,7 +273,7 @@ function renderDiffHTML(oldText, newText, dmp) {
       segs.splice(i, 1);
       // Append to last del-block before, prepend to first ins-block after.
       // Fall back to creating a new segment if the corresponding side is
-      // missing (shouldn't happen given neighborsHaveChange, but safe).
+      // missing (shouldn't happen given isInterChange, but safe).
       let delIdx = -1;
       for (let j = i - 1; j >= 0 && segs[j][0] !== 0; j--) {
         if (segs[j][0] === -1) { delIdx = j; break; }
@@ -297,8 +330,12 @@ function renderStructuralMarkers(html) {
   //     pre-edit; the surrounding <p> shows it; a glyph would just be
   //     noise the user didn't add or change.
   //   * Leading INS or DEL marker: emit the glyph (so the user sees
-  //     they added/removed it) but no <br>+indent (the <p> handles the
-  //     visual break). DEL gets the strikethrough via parent <del>.
+  //     they added/removed it) but no <br>+indent — the renderer's
+  //     paragraph grouping already previews the suggested structure
+  //     (renderSentencesToHTML follows the suggestion's leading marker),
+  //     so an added break gets a real <p> and a removed one merges the
+  //     sentence into the previous <p>, with the struck-through glyph
+  //     (via parent <del>) marking the join.
   //   * Mid-content marker: full preview — glyph + <br> + 2em indent —
   //     except inside <del> where we skip the break (it's being removed).
   let out = '';
@@ -428,14 +465,7 @@ function applyInlineFormatting(text) {
   };
 })();
 
-function escapeHTML(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escapeHTML comes from text-markers.js (shared definition; loads first).
 
 // On a fresh page load, restore scroll position from ?scroll_to=. The
 // renderer fires renderManuscript() during init; we need to wait until

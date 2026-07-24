@@ -5,7 +5,7 @@
  * (current vs. 1-ago); lane 3 = oldest (2-ago vs. 3-ago).
  *
  * Color encodes alphanumeric char-count delta vs. older:
- *   newly inserted or ≥25% more → green; ≥25% fewer → red; otherwise yellow;
+ *   newly inserted or ≥25% more → green; ≥25% fewer → red; otherwise blue;
  *   identical text → no bar in that lane.
  *
  * Hover any bar to open a popup of all versions, oldest-on-top.
