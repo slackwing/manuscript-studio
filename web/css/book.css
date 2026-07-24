@@ -477,6 +477,20 @@ h3 {
   font-style: italic;
 }
 
+/* &-command headings reuse the h1/h2/h3 styles above (cmd-title / cmd-part /
+   cmd-chapter render as those tags). A block anchor has no heading weight —
+   it's a quiet, centered marker line showing its description (if any). */
+.cmd-anchor {
+  text-align: center;
+  font-style: italic;
+  font-size: 11pt;
+  color: #888;
+  margin: 1em 0;
+}
+.cmd-anchor:empty {
+  display: none;
+}
+
 p {
   text-align: justify;
   text-indent: 0;
