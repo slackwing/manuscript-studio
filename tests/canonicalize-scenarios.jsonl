@@ -1,0 +1,27 @@
+{"name": "empty", "in": "", "out": ""}
+{"name": "plain prose untouched", "in": "The fire began at dawn.", "out": "The fire began at dawn."}
+{"name": "trailing spaces stripped", "in": "The fire began.   ", "out": "The fire began."}
+{"name": "leading spaces stripped", "in": "   The fire began.", "out": "The fire began."}
+{"name": "inner spacing preserved", "in": "The  fire   began.", "out": "The  fire   began."}
+{"name": "section marker preserved", "in": "\n\nNew section prose.", "out": "\n\nNew section prose."}
+{"name": "paragraph marker preserved", "in": "\n\tIndented paragraph.", "out": "\n\tIndented paragraph."}
+{"name": "section marker + trailing space", "in": "\n\nNew section.  ", "out": "\n\nNew section."}
+{"name": "paragraph marker + leading spaces on body", "in": "\n\t   Indented.", "out": "\n\tIndented."}
+{"name": "whole-block title", "in": "&title{The Wildfire}", "out": "&title{The Wildfire}"}
+{"name": "whole-block title with surrounding spaces", "in": "  &title{The Wildfire}  ", "out": "&title{The Wildfire}"}
+{"name": "whole-block part", "in": "&part#p1{I.}{The Gathering}", "out": "&part#p1{I.}{The Gathering}"}
+{"name": "whole-block chapter", "in": "&chapter#p1c1{1.}{Smoke}", "out": "&chapter#p1c1{1.}{Smoke}"}
+{"name": "whole-block meta", "in": "&meta{chapter-align}{center}", "out": "&meta{chapter-align}{center}"}
+{"name": "whole-block anchor no prose", "in": "&anchor{The salvia night.}", "out": "&anchor{The salvia night.}"}
+{"name": "whole-block anchor with slug", "in": "&anchor#salvia{The salvia night.}", "out": "&anchor#salvia{The salvia night.}"}
+{"name": "leading anchor splits from prose", "in": "&anchor{The salvia night.} We probably recounted tales.", "out": "&anchor{The salvia night.}\nWe probably recounted tales."}
+{"name": "leading anchor with slug splits", "in": "&anchor#salvia{The salvia night.} We probably recounted.", "out": "&anchor#salvia{The salvia night.}\nWe probably recounted."}
+{"name": "leading anchor extra space before prose", "in": "&anchor{x}    prose here", "out": "&anchor{x}\nprose here"}
+{"name": "leading anchor with paragraph marker", "in": "\n\t&anchor{x} prose here", "out": "\n\t&anchor{x}\nprose here"}
+{"name": "leading anchor with section marker", "in": "\n\n&anchor{x} prose here", "out": "\n\n&anchor{x}\nprose here"}
+{"name": "inline anchor mid-sentence untouched", "in": "The fire &anchor#firemark{} spread.", "out": "The fire &anchor#firemark{} spread."}
+{"name": "inline reference untouched", "in": "See &reference#origin{the opening} here.", "out": "See &reference#origin{the opening} here."}
+{"name": "literal ampersand untouched", "in": "Smith & Sons rebuilt it.", "out": "Smith & Sons rebuilt it."}
+{"name": "unknown command is prose", "in": "&bogus{x} is not a command", "out": "&bogus{x} is not a command"}
+{"name": "hash header is literal prose now", "in": "# Old markdown header", "out": "# Old markdown header"}
+{"name": "hash header trailing space stripped", "in": "## Chapter 1   ", "out": "## Chapter 1"}
