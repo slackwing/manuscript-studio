@@ -2,10 +2,23 @@
  * Test utilities for Manuscript Studio integration tests.
  *
  * The single bootstrap surface for tests:
- *   - TEST_MANUSCRIPT_ID / TEST_MANUSCRIPT_NAME / TEST_URL — the test manuscript.
- *   - cleanupTestAnnotations() — wipes test data + re-bootstraps the manuscript.
- *   - loginAsTestUser(page) — logs in (no manuscript dropdown anymore; the
- *     test page navigates directly to TEST_URL).
+ *   - TEST_MANUSCRIPT_ID / TEST_MANUSCRIPT_NAME / TEST_URL — this WORKER's
+ *     fixture. Parallel suite runs (test-all.sh) set MS_TEST_WORKER=1..K;
+ *     worker 1 keeps the historical test/test-manuscripts pair, worker N
+ *     uses testN/test-manuscripts-wN (provisioned by provision-workers.sh),
+ *     so workers never touch each other's sentences, annotations,
+ *     suggestions, or scratchpads.
+ *   - loginAsTestUser(page) — API login (fast; the login FORM has its own
+ *     dedicated e2e test using loginViaForm).
+ *   - cleanupTestAnnotations() — FAST wipe of per-user layers (annotations,
+ *     suggestions, tags, scratchpads). Does NOT touch sentences/migrations.
+ *   - resetTestManuscript() — the nuclear option: wipes sentences +
+ *     migrations and re-syncs (full re-segmentation). test-all.sh runs it
+ *     once per worker at suite start; individual tests only need it if they
+ *     corrupt the migration itself.
+ *   - waitForPagination(page) / waitForRepagination(page, prev) — condition
+ *     waits on the pagedjs-config afterRendered counter
+ *     (document.body.dataset.paginated) instead of timing guesses.
  *
  * If something here changes shape, every test inherits the change. Resist
  * the urge to do bespoke login flows in individual tests — fold any new
@@ -14,9 +27,12 @@
 
 const { execSync } = require('child_process');
 
-const TEST_MANUSCRIPT_ID = 1; // test-manuscripts (only manuscript in dev)
-const TEST_MANUSCRIPT_NAME = 'test-manuscripts';
-const TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
+const WORKER = parseInt(process.env.MS_TEST_WORKER || '1', 10);
+
+const TEST_MANUSCRIPT_NAME = WORKER === 1 ? 'test-manuscripts' : `test-manuscripts-w${WORKER}`;
+const TEST_USERNAME = WORKER === 1 ? 'test' : `test${WORKER}`;
+const TEST_PASSWORD = 'test';
+
 const API_BASE_URL = 'http://localhost:5001/api';
 
 const DB_HOST = 'localhost';
@@ -25,9 +41,6 @@ const DB_NAME = 'manuscript_studio_dev';
 const DB_USER = 'manuscript_dev';
 const DB_PASSWORD = 'manuscript_dev';
 const SYSTEM_TOKEN = 'dev-system-token-not-for-production';
-
-const TEST_USERNAME = 'test';
-const TEST_PASSWORD = 'test';
 
 // Run SQL against the dev Postgres. Tries host psql first (fast path);
 // falls back to `docker exec` into the dev container if psql isn't installed.
@@ -50,18 +63,28 @@ function psql(sql) {
   }
 }
 
+// The manuscript_id is per-worker and assigned by the DB at bootstrap, so
+// it's resolved from repo_path (unique per fixture) instead of hardcoded.
+function resolveManuscriptId() {
+  try {
+    const out = psql(`SELECT manuscript_id FROM manuscript WHERE repo_path LIKE '%repos/${TEST_MANUSCRIPT_NAME}' ORDER BY manuscript_id LIMIT 1;`);
+    const m = out.match(/^\s*(\d+)\s*$/m);
+    if (m) return parseInt(m[1], 10);
+  } catch (e) { /* fresh DB — resetTestManuscript will create it */ }
+  return WORKER === 1 ? 1 : 0;
+}
+
+let TEST_MANUSCRIPT_ID = resolveManuscriptId();
+let TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
+
 /**
- * Clean up all test annotation data and re-bootstrap the test manuscript.
- * Should be called before each test run.
- *
- * Wipes all annotation/sentence/migration data for manuscript_id=TEST_MANUSCRIPT_ID,
- * then calls /api/admin/sync to re-bootstrap from the test repo. Faster than
- * dropping the whole schema.
+ * FAST cleanup: wipes the per-user data layers for THIS worker's fixture —
+ * annotations (+tags/versions), suggestions, tags, and the worker user's
+ * scratchpads/images. Sentences and migrations stay (they only change when
+ * the manuscript itself changes; see resetTestManuscript).
  */
 async function cleanupTestAnnotations() {
   try {
-    // Wipe annotations + sentences + migrations for the test manuscript.
-    // Leaves user/access rows intact.
     psql(`
       DELETE FROM annotation_tag WHERE annotation_id IN (
         SELECT annotation_id FROM annotation WHERE sentence_id IN (
@@ -90,14 +113,39 @@ async function cleanupTestAnnotations() {
       DELETE FROM tag WHERE migration_id IN (
         SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
       );
-      DELETE FROM sentence WHERE migration_id IN (
-        SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
+      DELETE FROM scratchpad_block WHERE scratchpad_id IN (
+        SELECT scratchpad_id FROM scratchpad WHERE user_id = '${TEST_USERNAME}'
       );
-      DELETE FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID};
+      DELETE FROM scratchpad_revision WHERE scratchpad_id IN (
+        SELECT scratchpad_id FROM scratchpad WHERE user_id = '${TEST_USERNAME}'
+      );
+      DELETE FROM scratchpad WHERE user_id = '${TEST_USERNAME}';
+      DELETE FROM scratchpad_image WHERE user_id = '${TEST_USERNAME}';
     `);
+    console.log(`[CLEANUP] fast wipe done (worker ${WORKER}, manuscript_id=${TEST_MANUSCRIPT_ID})`);
+  } catch (error) {
+    console.warn('[CLEANUP] Warning:', error.message);
+  }
+}
 
-    // Re-bootstrap via the admin sync endpoint. The server already has the
-    // manuscript row; sync creates a new migration from the local test repo.
+/**
+ * NUCLEAR reset: wipe sentences + migrations too, then /admin/sync to
+ * re-bootstrap from the fixture repo (full re-segmentation server-side).
+ * test-all.sh runs this once per worker before the roster; tests only call
+ * it themselves if they corrupt the migration.
+ */
+async function resetTestManuscript() {
+  try {
+    await cleanupTestAnnotations();
+    if (TEST_MANUSCRIPT_ID > 0) {
+      psql(`
+        DELETE FROM sentence WHERE migration_id IN (
+          SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
+        );
+        DELETE FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID};
+      `);
+    }
+
     const response = await fetch(`${API_BASE_URL}/admin/sync`, {
       method: 'POST',
       headers: {
@@ -110,48 +158,73 @@ async function cleanupTestAnnotations() {
       throw new Error(`admin/sync returned ${response.status}: ${await response.text()}`);
     }
 
-    // Sync runs async in a goroutine. Poll for a *completed* migration —
-    // status='done' means sentences/annotations are queryable.
+    // Sync runs async in a goroutine; poll for a completed migration.
+    TEST_MANUSCRIPT_ID = resolveManuscriptId();
     for (let i = 0; i < 80; i++) {
-      const out = psql(`SELECT COUNT(*) FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID} AND status = 'done';`);
-      if (/\b[1-9]\d*\b/.test(out)) break;
+      if (TEST_MANUSCRIPT_ID > 0) {
+        const out = psql(`SELECT COUNT(*) FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID} AND status = 'done';`);
+        if (/\b[1-9]\d*\b/.test(out)) break;
+      } else {
+        TEST_MANUSCRIPT_ID = resolveManuscriptId();
+      }
       await new Promise(r => setTimeout(r, 250));
     }
-
-    console.log('[CLEANUP] Test manuscript cleaned and re-bootstrapped (manuscript_id=' + TEST_MANUSCRIPT_ID + ')');
+    TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
+    console.log(`[RESET] manuscript re-bootstrapped (worker ${WORKER}, manuscript_id=${TEST_MANUSCRIPT_ID})`);
   } catch (error) {
-    // Cleanup errors are not fatal, just warn
-    console.warn('[CLEANUP] Warning:', error.message);
+    console.warn('[RESET] Warning:', error.message);
   }
 }
 
 /**
- * Login to the application with test credentials. Manuscripts are no
- * longer chosen at login time — the post-login redirect goes to the user's
- * last-opened manuscript, falling back to the first accessible. For tests
- * we want the SAME manuscript every run; we follow the redirect (whatever
- * it is), then the test calls page.goto(TEST_URL) explicitly to land on
- * TEST_MANUSCRIPT_ID. That `goto` also covers the "no last-opened yet"
- * path on a fresh DB.
- *
- * @param {Page} page - Playwright page object
+ * Login via the API — installs the session cookie into the page's context
+ * without driving the login form (the form has its own e2e test:
+ * test-login-form.js, which uses loginViaForm below).
  */
 async function loginAsTestUser(page) {
-  const loginUrl = 'http://localhost:5001/login.html';
+  const resp = await page.request.post('http://localhost:5001/api/login', {
+    data: { username: TEST_USERNAME, password: TEST_PASSWORD },
+  });
+  if (!resp.ok()) {
+    throw new Error(`API login failed (${resp.status()}): ${(await resp.text()).slice(0, 200)}`);
+  }
+}
 
-  await page.goto(loginUrl, { waitUntil: 'networkidle' });
-  await page.waitForLoadState('domcontentloaded');
-
+/**
+ * Login by driving the login page UI — the e2e coverage of the form itself.
+ */
+async function loginViaForm(page) {
+  await page.goto('http://localhost:5001/login.html', { waitUntil: 'domcontentloaded' });
   await page.fill('#username', TEST_USERNAME);
   await page.fill('#password', TEST_PASSWORD);
   await page.click('#login-btn');
+  // Post-login lands on home.html (HOME_PLAN.md).
+  await page.waitForURL(/localhost:5001\/home\.html.*$/, { timeout: 5000, waitUntil: 'commit' });
+}
 
-  // Wait for the post-login redirect to land somewhere on the app — since
-  // HOME_PLAN.md that's always home.html (kept tolerant of the old root
-  // URL too). Don't wait for `load`; URL match alone is sufficient: the
-  // test explicitly waits for whatever DOM it needs after returning.
-  await page.waitForURL(/localhost:5001\/(home\.html.*|(\?.*)?)$/, { timeout: 5000, waitUntil: 'commit' });
-  await page.waitForTimeout(500);
+/**
+ * Wait until paged.js has completed a pagination pass and sentences exist.
+ * Replaces "goto + sleep and hope" (the afterRendered hook in
+ * pagedjs-config.js bumps document.body.dataset.paginated).
+ */
+async function waitForPagination(page, timeout = 30000) {
+  await page.waitForFunction(
+    () => document.body.dataset.paginated && document.querySelector('.pagedjs_pages .sentence'),
+    null, { timeout }
+  );
+}
+
+/** Snapshot the pagination counter (pair with waitForRepagination). */
+async function paginationStamp(page) {
+  return page.evaluate(() => document.body.dataset.paginated || '0');
+}
+
+/** Wait for a NEW pagination pass after `prev = await paginationStamp()`. */
+async function waitForRepagination(page, prev, timeout = 30000) {
+  await page.waitForFunction(
+    (p) => (document.body.dataset.paginated || '0') !== p,
+    prev, { timeout }
+  );
 }
 
 /**
@@ -160,22 +233,27 @@ async function loginAsTestUser(page) {
  */
 async function cleanupTestSessions() {
   try {
-    psql(`DELETE FROM session WHERE username = '${TEST_USERNAME}';
-          UPDATE "user" SET last_manuscript_name = NULL WHERE username = '${TEST_USERNAME}';`);
+    psql(`DELETE FROM session WHERE username = '${TEST_USERNAME}';`);
   } catch (err) {
     console.warn('[CLEANUP] session cleanup warning:', err.message);
   }
 }
 
 module.exports = {
-  TEST_MANUSCRIPT_ID,
+  get TEST_MANUSCRIPT_ID() { return TEST_MANUSCRIPT_ID; },
   TEST_MANUSCRIPT_NAME,
-  TEST_URL,
+  get TEST_URL() { return TEST_URL; },
   API_BASE_URL,
   TEST_USERNAME,
   TEST_PASSWORD,
   SYSTEM_TOKEN,
+  WORKER,
   cleanupTestAnnotations,
+  resetTestManuscript,
   cleanupTestSessions,
   loginAsTestUser,
+  loginViaForm,
+  waitForPagination,
+  paginationStamp,
+  waitForRepagination,
 };

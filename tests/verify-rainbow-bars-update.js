@@ -5,7 +5,9 @@
  */
 
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   await cleanupTestAnnotations();
@@ -23,7 +25,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForLoadState('networkidle');
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     const sentenceId = await page.evaluate(() => {
       return document.querySelector('.sentence').dataset.sentenceId;
@@ -45,7 +47,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       await uncreated.locator('.sticky-note-color-circle').first().hover();
       await page.waitForTimeout(300);
       await uncreated.locator(`.color-circle[data-color="${color}"]`).first().click();
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(500);
     }
 
     console.log('3. Creating yellow annotation...');
@@ -82,7 +84,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       await page.waitForTimeout(400);
       console.log('7. Clicking trash (2nd click: delete)...');
       await trash.click();
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(500);
 
       const barsAfter = await page.locator('.rainbow-bar').count();
       console.log(`8. Rainbow bars AFTER deletion: ${barsAfter}`);

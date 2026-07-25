@@ -5,7 +5,9 @@
 
 const { chromium } = require('playwright');
 const { exit } = require('process');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 async function runTests() {
   // Clean up any existing annotations before test
@@ -35,7 +37,7 @@ async function runTests() {
   await loginAsTestUser(page);
 
     await page.goto(TEST_URL);
-    await page.waitForTimeout(8000); // Wait for auto-load to complete
+    await waitForPagination(page);
 
     // Test 1: Controls visible on page load
     const controlsVisibleBefore = await page.locator('#controls').isVisible();
@@ -213,7 +215,7 @@ async function runTests() {
 
     // Type in the uncreated note to create an annotation (default color: yellow)
     await page.locator('.uncreated-note .note-input').first().type('Test note');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     // Sentence backgrounds aren't tinted by annotation presence anymore.
     // The annotation surfaces as a rainbow side-bar of the matching color.
@@ -223,7 +225,7 @@ async function runTests() {
     await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note:not(.uncreated-note) .color-circle[data-color="green"]').first().click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     const greenBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="green"]`).count();
     assert(greenBar > 0, 'Green rainbow bar present after switching to green');
@@ -231,7 +233,7 @@ async function runTests() {
     await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note:not(.uncreated-note) .color-circle[data-color="blue"]').first().click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     const blueBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="blue"]`).count();
     const greenGone = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="green"]`).count();
@@ -243,7 +245,7 @@ async function runTests() {
     // annotations so rainbow bars render on initial load. Regression for
     // "annotations: []" hardcoded in the manuscript response.
     await page.reload();
-    await page.waitForTimeout(8000);
+    await waitForPagination(page);
 
     const persistedBlueBar = await page.locator(`.rainbow-bar[data-sentence-id="${testSentenceId}"][data-color="blue"]`).count();
     assert(persistedBlueBar > 0,

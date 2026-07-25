@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   console.log('=== Tag API Test ===\n');
@@ -18,7 +20,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } 
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     // Click a sentence and create an annotation via the UI (real per-note flow)
     const firstSentence = await page.locator('.sentence').first();
@@ -33,7 +35,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser } 
     const uncreatedInput = page.locator('.sticky-note.uncreated-note .note-input').first();
     await uncreatedInput.type('Test note for tag', { delay: 5 });
     await page.waitForSelector('.sticky-note:not(.uncreated-note)', { timeout: 5000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     // Grab authenticated cookies from the Playwright context for API calls
     const cookies = await page.context().cookies();

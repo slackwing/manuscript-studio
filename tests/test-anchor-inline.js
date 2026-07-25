@@ -4,7 +4,9 @@
  * a synthetic sentence; nothing persisted).
  */
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch();
@@ -17,7 +19,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
   await loginAsTestUser(page);
   await page.goto(TEST_URL);
-  await page.waitForTimeout(3000);
+  await waitForPagination(page);
 
   const render = (sentences, sug) => page.evaluate(({ sentences, sug }) => {
     const R = window.WriteSysRenderer;

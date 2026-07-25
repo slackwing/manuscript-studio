@@ -40,7 +40,7 @@ const { chromium } = require('playwright');
     await sentence.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     await sentence.click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     // TEST 1: Check that rainbow bars exist and are clickable
     console.log('\n=== TEST 1: Rainbow Bars Are Clickable ===');
@@ -162,7 +162,7 @@ const { chromium } = require('playwright');
 
     // TEST 6: Click sentence and verify first note gets animation
     console.log('\n=== TEST 6: Clicking Sentence Animates First Note ===');
-    await page.waitForTimeout(1000); // Clear any existing animations
+    await page.waitForTimeout(500);
 
     await sentence.click();
     await page.waitForTimeout(400); // Wait for animation to apply
@@ -180,7 +180,7 @@ const { chromium } = require('playwright');
     console.log('  6. Sentence clicks also animate first note\n');
 
     console.log('Keeping browser open for 10 seconds for manual inspection...');
-    await page.waitForTimeout(10000);
+    await page.waitForTimeout(500);
 
   } catch (error) {
     console.error('Error:', error);

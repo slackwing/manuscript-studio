@@ -8,6 +8,7 @@ const { chromium } = require('playwright');
 const {
   TEST_URL,
   cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination, paginationStamp, waitForRepagination,
 } = require('./test-utils');
 
 const HOME_URL = new URL('home.html', TEST_URL).href;
@@ -98,11 +99,11 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     await page.check('input[name="im-block"]');
     await page.fill('#im-slug', SLUG);
     await page.fill('#im-label', 'Keg Party');
+    const stamp = await paginationStamp(page);
     await page.click('#im-go');
     await page.waitForSelector('#import-modal', { state: 'detached', timeout: 20000 });
     check('canonize modal completed', true);
-    await page.waitForTimeout(2500); // re-render settles
-
+    await waitForRepagination(page, stamp); // suggestion re-render completed
     const book = await page.evaluate((slug) => {
       const anchor = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${slug}"], .pagedjs_pages .inline-anchor[data-slug="${slug}"]`);
       const end = document.querySelector(`.pagedjs_pages .cmd-end[data-slug="${slug}"]`);

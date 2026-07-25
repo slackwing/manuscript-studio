@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch();
@@ -12,7 +14,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
   await loginAsTestUser(page);
   await page.goto(TEST_URL);
-  await page.waitForTimeout(4000);
+  await waitForPagination(page);
 
   // Icon exists, right of Logout.
   const iconExists = await page.locator('#cheatsheet-icon').count();

@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   console.log('=== Priority/Flag Chips Test ===\n');
@@ -18,7 +20,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     // Test 1: P/flag chips are per-note and exist only on real notes
     console.log('Test 1: Priority/flag chips absent on uncreated-note, present on real note...');
@@ -146,7 +148,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     await page.locator(`.sentence[data-sentence-id="${sentenceId}"]`).first().click();
     await page.waitForSelector('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P2"]', { timeout: 5000 });

@@ -29,7 +29,7 @@ const { chromium } = require('playwright');
     await sentence.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     await sentence.click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     const barsBefore = await page.locator('.rainbow-bar').count();
     console.log(`Rainbow bars BEFORE deletion: ${barsBefore}\n`);
@@ -46,7 +46,7 @@ const { chromium } = require('playwright');
 
     console.log('Second click (delete)...');
     await trash.click();
-    await page.waitForTimeout(3000); // Wait for deletion and refresh
+    await page.waitForTimeout(500);
 
     const barsAfter = await page.locator('.rainbow-bar').count();
     console.log(`\nRainbow bars AFTER deletion: ${barsAfter}\n`);
@@ -58,7 +58,7 @@ const { chromium } = require('playwright');
     }
 
     console.log('\nKeeping browser open for 10 seconds for inspection...');
-    await page.waitForTimeout(10000);
+    await page.waitForTimeout(500);
 
   } catch (error) {
     console.error('Error:', error);

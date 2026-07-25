@@ -48,6 +48,33 @@ manuscripts:
       path: "test.manuscript"
       auth_token: ""
 
+  - name: "test-manuscripts-w2"
+    repository:
+      # Parallel-test fixture (tests/provision-workers.sh copies the repo).
+      url: "~/.config/manuscript-studio-dev/repos/test-manuscripts-w2"
+      slug: "dev/test-manuscripts-w2"
+      branch: "main"
+      path: "test.manuscript"
+      auth_token: ""
+
+  - name: "test-manuscripts-w3"
+    repository:
+      # Parallel-test fixture (tests/provision-workers.sh copies the repo).
+      url: "~/.config/manuscript-studio-dev/repos/test-manuscripts-w3"
+      slug: "dev/test-manuscripts-w3"
+      branch: "main"
+      path: "test.manuscript"
+      auth_token: ""
+
+  - name: "test-manuscripts-w4"
+    repository:
+      # Parallel-test fixture (tests/provision-workers.sh copies the repo).
+      url: "~/.config/manuscript-studio-dev/repos/test-manuscripts-w4"
+      slug: "dev/test-manuscripts-w4"
+      branch: "main"
+      path: "test.manuscript"
+      auth_token: ""
+
 # ============================================================
 # Auth
 # ============================================================

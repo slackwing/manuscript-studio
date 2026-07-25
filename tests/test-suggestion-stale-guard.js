@@ -25,6 +25,7 @@ const {
   cleanupTestAnnotations,
   loginAsTestUser,
   TEST_MANUSCRIPT_ID,
+  waitForPagination, TEST_USERNAME,
 } = require('./test-utils');
 
 function psql(sql) {
@@ -56,7 +57,7 @@ function psql(sql) {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.sentence', { timeout: 15000 });
-    await page.waitForTimeout(1000);
+    await waitForPagination(page);
 
     const csrfToken = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
     assert(!!csrfToken, 'Got CSRF token after login');
@@ -110,7 +111,7 @@ function psql(sql) {
     assert(put.parsed && put.parsed.hint && put.parsed.hint.includes('refresh'),
       `Body carries a refresh hint`);
 
-    const stored = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${target.id}' AND user_id='test'`);
+    const stored = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${target.id}' AND user_id='${TEST_USERNAME}'`);
     assert(stored === '0', `No suggested_change row created (count: ${stored})`);
 
   } catch (e) {

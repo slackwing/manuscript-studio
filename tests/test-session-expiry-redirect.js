@@ -8,7 +8,9 @@
  */
 
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   console.log('=== Session Expiry → Login Redirect ===\n');
@@ -31,7 +33,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // Invalidate the session cookie in place.
     const cookies = await context.cookies();

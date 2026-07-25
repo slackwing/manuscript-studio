@@ -26,7 +26,7 @@ const {
   TEST_URL,
   cleanupTestAnnotations,
   loginAsTestUser,
-  TEST_USERNAME,
+  TEST_USERNAME, TEST_MANUSCRIPT_NAME,
 } = require('./test-utils');
 
 function psql(sql) {
@@ -36,7 +36,7 @@ function psql(sql) {
   ).trim();
 }
 
-const REPO_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos/test-manuscripts');
+const REPO_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', TEST_MANUSCRIPT_NAME);
 
 function git(args, cwd) {
   return execSync(`git -C "${cwd || REPO_DIR}" ${args}`, { encoding: 'utf-8' }).trim();

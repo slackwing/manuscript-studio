@@ -29,7 +29,7 @@ const { chromium } = require('playwright');
     await sentence.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     await sentence.click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     const barsBefore = await page.locator('.rainbow-bar').count();
     console.log(`\nRainbow bars BEFORE deletion: ${barsBefore}`);
@@ -47,7 +47,7 @@ const { chromium } = require('playwright');
 
     console.log('Second click (delete)...');
     await trash.click();
-    await page.waitForTimeout(3000); // Wait for deletion and refresh
+    await page.waitForTimeout(500);
 
     const barsAfterDelete = await page.locator('.rainbow-bar').count();
     console.log(`Rainbow bars AFTER deletion: ${barsAfterDelete}`);
@@ -70,12 +70,12 @@ const { chromium } = require('playwright');
     // Click the + button to add new note
     const addBtn = await page.locator('.add-note-btn').first();
     await addBtn.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     // Select a color (e.g., yellow)
     const yellowCircle = await page.locator('.sticky-note-color-circle.color-yellow').last();
     await yellowCircle.click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(500);
 
     const barsAfterAdd = await page.locator('.rainbow-bar').count();
     console.log(`Rainbow bars AFTER new annotation: ${barsAfterAdd}`);
@@ -100,7 +100,7 @@ const { chromium } = require('playwright');
     // Select a different color (e.g., red)
     const redCircle = await page.locator('.color-picker-circle.color-red').first();
     await redCircle.click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(500);
 
     const barsAfterChange = await page.locator('.rainbow-bar').count();
     console.log(`Rainbow bars AFTER color change: ${barsAfterChange}`);
@@ -110,7 +110,7 @@ const { chromium } = require('playwright');
     console.log('The count should reflect the distribution of colors across sentences.\n');
 
     console.log('Keeping browser open for 30 seconds for manual inspection...');
-    await page.waitForTimeout(30000);
+    await page.waitForTimeout(500);
 
   } catch (error) {
     console.error('Error:', error);

@@ -29,7 +29,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await sentence.scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
     await sentence.click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     const barsBefore = await page.locator('.rainbow-bar').count();
     console.log(`Rainbow bars BEFORE: ${barsBefore}\n`);
@@ -46,7 +46,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
 
     console.log('=== SECOND CLICK (delete) ===');
     await trash.click();
-    await page.waitForTimeout(3000); // Wait for deletion and refresh
+    await page.waitForTimeout(500);
 
     const barsAfter = await page.locator('.rainbow-bar').count();
     console.log(`\nRainbow bars AFTER: ${barsAfter}`);
@@ -58,7 +58,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     }
 
     console.log('\nKeeping browser open for 30 seconds...');
-    await page.waitForTimeout(30000);
+    await page.waitForTimeout(500);
 
   } catch (error) {
     console.error('Error:', error);

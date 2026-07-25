@@ -4,7 +4,9 @@
  * persisted to the dev DB).
  */
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch();
@@ -17,7 +19,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
   await loginAsTestUser(page);
   await page.goto(TEST_URL);
-  await page.waitForTimeout(4000);
+  await waitForPagination(page);
 
   // Open the suggestion modal for the first rendered sentence.
   const opened = await page.evaluate(() => {

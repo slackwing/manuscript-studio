@@ -208,9 +208,30 @@ When you discover a bug:
 
 | Command | Wall time | Use when |
 |---------|-----------|----------|
-| `make test-fast` | ~2.5 min | Inner dev loop |
-| `make test-slow` | ~7 min | Before committing UI-heavy changes |
-| `make test` | ~10 min | Before pushing |
+| `make test-fast` | ~1 min | Inner dev loop |
+| `make test-slow` | ~1.5 min | Before committing UI-heavy changes |
+| `make test` | ~2 min | Before pushing |
+
+The JS roster runs on **4 parallel workers** (override: `MS_TEST_WORKERS=N`),
+each with its own fixture manuscript + user (worker 1 = `test`/
+`test-manuscripts`; worker N = `testN`/`test-manuscripts-wN`, provisioned by
+`tests/provision-workers.sh`), sharing ONE Chromium via `tests/pw-server.js`
+(tests transparently connect through the `tests/pw-shared.js` preload).
+Rules that keep it fast and parallel-safe:
+
+- **Never hardcode** `manuscript_id=1`, user `'test'`, or fixture repo
+  paths — always `TEST_URL` / `TEST_USERNAME` / `TEST_MANUSCRIPT_NAME` from
+  test-utils.
+- **No `waitForTimeout(>=1000)`** — wait on a condition
+  (`waitForPagination`, `waitForRepagination`, `waitForSelector`,
+  `waitForFunction`). test-all.sh FAILS on new offenders; grandfathered
+  files live in `tests/.sleep-allowlist` (shrink it, never grow it).
+- `cleanupTestAnnotations()` is now a FAST wipe (annotations/suggestions/
+  tags/scratchpads only). `resetTestManuscript()` is the nuclear
+  re-migration — test-all.sh runs it once per worker; only call it in a
+  test if the test corrupts the migration itself.
+- Login via `loginAsTestUser` is an API login; the login FORM is covered
+  once by `test-login-form.js` (`loginViaForm`).
 
 When you add a test file, **classify it** in `FAST_TESTS` or `SLOW_TESTS`
 in `test-all.sh` (see N10).

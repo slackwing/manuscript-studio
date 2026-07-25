@@ -9,6 +9,7 @@ const { chromium } = require('playwright');
 const {
   TEST_URL,
   cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
 } = require('./test-utils');
 
 (async () => {
@@ -33,7 +34,7 @@ const {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // Three distinct prose sentences to suggest on (document order: the
     // chapter must precede the block placeholder so the placeholder's
@@ -84,7 +85,7 @@ const {
 
     await page.reload();
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(2500);
+    await waitForPagination(page);
 
     // --- inline form ---
     const inline = await page.evaluate((id) => {

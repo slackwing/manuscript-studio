@@ -4,7 +4,9 @@
  */
 
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   console.log('=== Auto-focus on sentence-select ===\n');
@@ -26,7 +28,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // First click: sentence with no annotations → grey uncreated-note focused.
     await page.locator('.sentence').first().click();

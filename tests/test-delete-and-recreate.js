@@ -5,7 +5,9 @@
  */
 
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 async function addNoteByColor(page, color) {
   const uncreated = page.locator('.sticky-note.uncreated-note').first();
@@ -14,7 +16,7 @@ async function addNoteByColor(page, color) {
   await uncreated.locator('.sticky-note-color-circle').first().hover();
   await page.waitForTimeout(300);
   await uncreated.locator(`.color-circle[data-color="${color}"]`).first().click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(500);
 }
 
 async function deleteFirstRealNote(page) {
@@ -26,7 +28,7 @@ async function deleteFirstRealNote(page) {
   await trash.click();
   await page.waitForTimeout(400);
   await trash.click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(500);
 }
 
 (async () => {
@@ -51,7 +53,7 @@ async function deleteFirstRealNote(page) {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(4000);
+    await waitForPagination(page);
 
     console.log('=== Test: Delete annotation and create new one ===\n');
 

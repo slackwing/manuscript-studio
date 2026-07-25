@@ -13,6 +13,12 @@
       }
 
       afterRendered(pages) {
+        // Pagination-pass counter: condition-waitable signal for tests (and
+        // anything else) that a paged.js render just completed — replaces
+        // "sleep N ms and hope" (see tests/test-utils.js waitForPagination).
+        document.body.dataset.paginated =
+          String((parseInt(document.body.dataset.paginated || '0', 10) || 0) + 1);
+
         if (typeof smartquotes !== 'undefined') {
           smartquotes();
         }

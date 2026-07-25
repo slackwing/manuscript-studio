@@ -45,6 +45,7 @@ FAST_TESTS=(
   test-placeholder
   test-region-resolver
   test-home
+  test-login-form
   test-anchor-glyph
   test-anchor-inline
   test-break-buttons
@@ -90,8 +91,13 @@ case "$mode" in
     ;;
 esac
 
+# Parallel workers (per-worker fixture manuscripts + users — see
+# tests/test-utils.js and tests/provision-workers.sh). MS_TEST_WORKERS=1
+# gives the old sequential behavior.
+WORKERS="${MS_TEST_WORKERS:-4}"
+
 echo "========================================"
-echo "Manuscript Studio Test Suite ($mode)"
+echo "Manuscript Studio Test Suite ($mode, ${WORKERS} workers)"
 echo "========================================"
 echo ""
 
@@ -117,50 +123,126 @@ for name in "${js_tests[@]}"; do
   fi
 done
 
-# Sanity check: every tests/*.js (other than test-utils) is classified.
+# Sanity check: every tests/*.js (other than shared infra) is classified.
 declare -A classified
 for name in "${FAST_TESTS[@]}" "${SLOW_TESTS[@]}"; do classified[$name]=1; done
 for f in tests/*.js; do
   name=$(basename "$f" .js)
-  [ "$name" = "test-utils" ] && continue
+  case "$name" in test-utils|pw-server|pw-shared|reset-fixture) continue ;; esac
   if [ -z "${classified[$name]:-}" ]; then
     echo "❌ tests/${name}.js is not classified as fast or slow in test-all.sh"
     exit 1
   fi
 done
 
-echo "2. Running JS test scripts (${#js_tests[@]} files)..."
+# Sanity check: no new second-plus unconditional sleeps — wait on a
+# condition instead (test-utils.waitForPagination & friends). Grandfathered
+# offenders live in tests/.sleep-allowlist (one "file:count" per line).
+sleep_fail=0
+while IFS= read -r f; do
+  n=$(grep -cE "waitForTimeout\(\s*[0-9]{4,}" "$f" || true)
+  [ "$n" -eq 0 ] && continue
+  allowed=$(grep -E "^$(basename "$f"):" tests/.sleep-allowlist 2>/dev/null | cut -d: -f2)
+  if [ -z "$allowed" ] || [ "$n" -gt "$allowed" ]; then
+    echo "❌ $(basename "$f") has $n waitForTimeout(>=1000ms) calls (allowlisted: ${allowed:-0})."
+    echo "   Wait on a condition instead (waitForPagination / waitForSelector / waitForFunction)."
+    sleep_fail=1
+  fi
+done < <(ls tests/*.js | grep -v test-utils)
+[ "$sleep_fail" -eq 1 ] && exit 1
+
+echo "2. Preparing fixtures + shared browser..."
 echo "-----------------------------"
+bash tests/provision-workers.sh "$WORKERS"
+
+WS_FILE=$(mktemp)
+node tests/pw-server.js > "$WS_FILE" &
+PW_PID=$!
+trap 'kill $PW_PID 2>/dev/null' EXIT
+for i in $(seq 1 50); do
+  grep -q "^ws" "$WS_FILE" && break
+  sleep 0.2
+done
+export MS_TEST_WS=$(head -1 "$WS_FILE")
+export NODE_OPTIONS="--require $PWD/tests/pw-shared.js${NODE_OPTIONS:+ $NODE_OPTIONS}"
+if [ -z "$MS_TEST_WS" ]; then
+  echo "❌ shared browser failed to start"; exit 1
+fi
+
+# Nuclear reset once per worker, in parallel.
+reset_pids=()
+for w in $(seq 1 "$WORKERS"); do
+  MS_TEST_WORKER=$w node tests/reset-fixture.js > /dev/null 2>&1 &
+  reset_pids+=($!)
+done
+for p in "${reset_pids[@]}"; do wait "$p" || { echo "❌ fixture reset failed (worker)"; exit 1; }; done
+echo "  fixtures reset (${WORKERS} workers)"
+echo ""
+
+echo "3. Running JS test scripts (${#js_tests[@]} files, ${WORKERS} workers)..."
+echo "-----------------------------"
+
+RUNDIR=$(mktemp -d)
+suite_start=$(date +%s)
+
+run_worker() {
+  local w=$1; shift
+  local names=("$@")
+  for name in "${names[@]}"; do
+    local start end status
+    start=$(date +%s)
+    if MS_TEST_WORKER=$w timeout 180 node "tests/${name}.js" > "$RUNDIR/${name}.log" 2>&1; then
+      status=pass
+    else
+      status=fail
+    fi
+    end=$(date +%s)
+    echo "${name}|${status}|$((end-start))|${w}" >> "$RUNDIR/results"
+    echo "  [w${w}] ${status}: ${name} ($((end-start))s)"
+  done
+}
+
+# Round-robin distribution keeps each worker's mix of fast/slow balanced.
+declare -a bucket
+for i in "${!js_tests[@]}"; do
+  w=$(( (i % WORKERS) + 1 ))
+  bucket[$w]="${bucket[$w]:-} ${js_tests[$i]}"
+done
+
+worker_pids=()
+for w in $(seq 1 "$WORKERS"); do
+  # shellcheck disable=SC2086
+  run_worker "$w" ${bucket[$w]:-} &
+  worker_pids+=($!)
+done
+for p in "${worker_pids[@]}"; do wait "$p"; done
+
+suite_end=$(date +%s)
 
 passed=()
 failed=()
-suite_start=$(date +%s)
-
 for name in "${js_tests[@]}"; do
-  echo ""
-  echo "▶ $name"
-  start=$(date +%s)
-  if timeout 120 node "tests/${name}.js"; then
-    end=$(date +%s)
+  line=$(grep "^${name}|" "$RUNDIR/results" || true)
+  if [ -z "$line" ]; then failed+=("$name"); continue; fi
+  if [ "$(echo "$line" | cut -d'|' -f2)" = "pass" ]; then
     passed+=("$name")
-    printf "✓ %s (%ds)\n" "$name" "$((end-start))"
   else
-    end=$(date +%s)
     failed+=("$name")
-    printf "✗ %s (%ds)\n" "$name" "$((end-start))"
   fi
 done
 
-suite_end=$(date +%s)
 echo ""
 echo "========================================"
-echo "Summary: ${#passed[@]} passed, ${#failed[@]} failed ($((suite_end-suite_start))s total)"
+echo "Summary: ${#passed[@]} passed, ${#failed[@]} failed ($((suite_end-suite_start))s total, ${WORKERS} workers)"
 echo "========================================"
 
 if [ ${#failed[@]} -gt 0 ]; then
   echo ""
   echo "Failed tests:"
-  for n in "${failed[@]}"; do echo "  - $n"; done
+  for n in "${failed[@]}"; do
+    echo "  - $n"
+    tail -12 "$RUNDIR/${n}.log" 2>/dev/null | sed 's/^/      /'
+  done
   exit 1
 fi
 

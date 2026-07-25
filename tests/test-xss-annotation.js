@@ -13,7 +13,7 @@ const {
   TEST_URL,
   TEST_MANUSCRIPT_ID,
   cleanupTestAnnotations,
-  loginAsTestUser,
+  loginAsTestUser, TEST_USERNAME,
 } = require('./test-utils');
 const { execSync } = require('child_process');
 
@@ -66,7 +66,7 @@ function psql(sql) {
     const payload = '<img src=x onerror="window.__xss_fired=true">';
     psql(`
       INSERT INTO annotation (sentence_id, user_id, color, note, priority, flagged, position)
-      VALUES ('${sentenceId}', 'test', 'yellow', '${payload}', 'none', false, 0);
+      VALUES ('${sentenceId}', '${TEST_USERNAME}', 'yellow', '${payload}', 'none', false, 0);
     `);
 
     // Reload the page so the renderer fetches the new annotation.

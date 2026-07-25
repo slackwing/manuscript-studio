@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   console.log('=== Sticky Note Features Test ===\n');
@@ -17,7 +19,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     // Test 1: Default/uncreated note appears with rainbow/grey styling
     console.log('Test 1: Checking first-uncreated note default appearance...');
@@ -50,7 +52,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await rainbowCircle.hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note.uncreated-note.first-uncreated .sticky-note-palette .color-circle[data-color="yellow"]').first().click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     const realNoteYellow = await page.locator('.sticky-note:not(.uncreated-note).color-yellow').count();
     if (realNoteYellow >= 1) {
@@ -88,7 +90,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     console.log('\nTest 4: Adding tags...');
     page.on('dialog', async d => { try { await d.dismiss(); } catch (e) {} });
     // Wait for any pending auto-save from prior typing to complete
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
     const firstSentenceId = await firstSentence.getAttribute('data-sentence-id');
     for (const tagName of ['character-development', 'foreshadowing', 'theme']) {
       const newTag = page.locator('.sticky-note:not(.uncreated-note) .tag-chip.new-tag').first();
@@ -104,7 +106,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.locator('.sentence').nth(2).click();
     await page.waitForTimeout(500);
     await page.locator(`.sentence[data-sentence-id="${firstSentenceId}"]`).first().click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
     const tagNames = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip[data-tag-name]').evaluateAll(
       els => els.map(el => el.dataset.tagName)
     );

@@ -15,7 +15,7 @@ const {
   TEST_URL,
   cleanupTestAnnotations,
   loginAsTestUser,
-  TEST_MANUSCRIPT_ID,
+  TEST_MANUSCRIPT_ID, TEST_USERNAME,
 } = require('./test-utils');
 
 function psql(sql) {
@@ -119,7 +119,7 @@ function psql(sql) {
     assert(sentenceState.strongCount > 0,
       `Diff includes inserted text in <strong> (got ${sentenceState.strongCount})`);
 
-    const dbRow = psql(`SELECT text FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='test'`);
+    const dbRow = psql(`SELECT text FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
     // psql trims leading/trailing whitespace, so a leading \n\n/\n\t marker is
     // stripped in dbRow — compare marker-stripped content, which is what
     // matters for "the edit was stored".
@@ -147,7 +147,7 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(2000);
 
-    const dbRowAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='test'`);
+    const dbRowAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
     assert(dbRowAfterRevert === '0', `Reverting to original deletes the suggestion (count: ${dbRowAfterRevert})`);
 
     // Apostrophe regression: smartquotes turns ' into ' in the DOM. If the
@@ -212,7 +212,7 @@ function psql(sql) {
     await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
-    const dbAfterEsc = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='test'`);
+    const dbAfterEsc = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
     assert(dbAfterEsc === '0', `Esc discards changes (count still 0)`);
 
   } catch (e) {

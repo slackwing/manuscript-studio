@@ -8,6 +8,7 @@ const { chromium } = require('playwright');
 const {
   TEST_URL, TEST_MANUSCRIPT_ID, SYSTEM_TOKEN,
   cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
 } = require('./test-utils');
 
 const API = 'http://localhost:5001/api';
@@ -44,7 +45,7 @@ async function syncManuscript() {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // The canonical manuscript's "## Chapter 1" now renders as literal prose
     // (Markdown # is deprecated). Suggest turning that sentence into a &part
@@ -70,7 +71,7 @@ async function syncManuscript() {
 
     await page.reload();
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     const preview = await page.evaluate((id) => {
       const span = document.querySelector(`.sentence[data-sentence-id="${id}"]`);

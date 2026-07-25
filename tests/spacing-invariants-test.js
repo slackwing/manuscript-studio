@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
-const { loginAsTestUser } = require('./test-utils');
+const { loginAsTestUser, TEST_URL,
+} = require('./test-utils');
 
 /**
  * SPACING INVARIANTS TEST
@@ -25,7 +26,7 @@ async function testSpacing(windowWidth, windowHeight, testName) {
   // Login first
   await loginAsTestUser(page);
 
-  await page.goto('http://localhost:5001?manuscript_id=1', { waitUntil: 'networkidle' });
+  await page.goto(TEST_URL, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
 
   // Wait for pages to render, then stabilize layout

@@ -20,6 +20,7 @@ const {
   TEST_URL,
   cleanupTestAnnotations,
   loginAsTestUser,
+  waitForPagination, TEST_USERNAME,
 } = require('./test-utils');
 
 function psql(sql) {
@@ -60,7 +61,7 @@ function psql(sql) {
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     const first = await page.evaluate(() => {
       const els = Array.from(document.querySelectorAll('.sentence[data-sentence-id]'));
@@ -137,7 +138,7 @@ function psql(sql) {
     const survivorText = 'edited text that must survive a failed save';
     await page.locator('.suggestion-modal-textarea').fill(survivorText);
     await page.locator('.suggestion-modal-textarea').press('Enter');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     const modalStillOpen = await page.locator('#suggestion-modal').count();
     assert(modalStillOpen === 1, 'Modal stays open after a 500 on PUT');
@@ -155,7 +156,7 @@ function psql(sql) {
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     }
 
-    const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='test'`);
+    const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
     assert(rows === '0', `No suggestion row was stored by the failed save (count: ${rows})`);
 
     // ---- newText === current still closes immediately, without a PUT ----

@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   console.log('=== Tags UI Test ===\n');
@@ -32,7 +34,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.locator('.sentence').nth(5).click();
     await page.waitForTimeout(400);
     await page.locator(`.sentence[data-sentence-id="${sentenceId}"]`).first().click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
   }
 
   try {
@@ -40,7 +42,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     console.log('✓ Page loaded');
 
@@ -74,7 +76,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     const uncreatedInput = page.locator('.sticky-note.uncreated-note .note-input').first();
     await uncreatedInput.type('Test note for tags', { delay: 5 });
     await page.waitForSelector('.sticky-note:not(.uncreated-note)', { timeout: 5000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
     console.log('✓ Annotation created');
 
     // Test 4: Add a tag "test-tag" via UI
@@ -114,7 +116,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     await page.locator(`.sentence[data-sentence-id="${sentenceId}"]`).first().click({ force: true });
     await page.waitForSelector('.sticky-note:not(.uncreated-note)', { timeout: 10000 });

@@ -4,7 +4,9 @@
 
 const { chromium } = require('playwright');
 const { exit } = require('process');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 async function runTests() {
   await cleanupTestAnnotations();
@@ -33,7 +35,7 @@ async function runTests() {
   await loginAsTestUser(page);
 
     await page.goto(TEST_URL);
-    await page.waitForTimeout(8000);
+    await waitForPagination(page);
 
     // Click a sentence to show sticky notes panel
     await page.locator('.sentence').first().click();
@@ -45,7 +47,7 @@ async function runTests() {
     for (let i = 0; i < 8; i++) {
       // Type in the uncreated note to create it
       await page.locator('.uncreated-note .note-input').first().type(longText);
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
 
       // Click the subsequent + to add another note
       if (i < 7) {

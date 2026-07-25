@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch();
@@ -11,7 +13,7 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
   await page.goto(TEST_URL);
   
   // Wait for commits to load and page to render
-  await page.waitForTimeout(8000);
+  await waitForPagination(page);
 
   // The header no longer carries a visible "migration info" line — that data
   // moved to the ⓘ-icon tooltip. Check the tooltip got populated by hovering.

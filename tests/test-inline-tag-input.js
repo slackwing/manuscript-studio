@@ -25,7 +25,9 @@
  */
 
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 async function createAnnotationOnSentence(page, sentenceLocator, color) {
   await sentenceLocator.click();
@@ -37,7 +39,7 @@ async function createAnnotationOnSentence(page, sentenceLocator, color) {
   await uncreated.locator('.sticky-note-color-circle').first().hover();
   await page.waitForTimeout(300);
   await uncreated.locator(`.color-circle[data-color="${color}"]`).first().click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(500);
 }
 
 async function openTagInputOnRealNote(page) {
@@ -83,7 +85,7 @@ async function openTagInputOnRealNote(page) {
     await page.goto(TEST_URL);
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
     await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(4000);
+    await waitForPagination(page);
 
     async function expectChipAndPost(action, key) {
       // Editable chip should appear right after clicking +tag.
@@ -94,7 +96,7 @@ async function openTagInputOnRealNote(page) {
       clearPosts();
       await action();
       // Allow time for the POST request to fly + dialog to dismiss.
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(500);
 
       // Editable chip is removed before the POST, regardless of response.
       if ((await page.locator('.editable-tag').count()) > 0) {

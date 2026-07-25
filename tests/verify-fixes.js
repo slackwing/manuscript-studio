@@ -5,7 +5,9 @@
  */
 
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,
+} = require('./test-utils');
 
 (async () => {
   await cleanupTestAnnotations();
@@ -24,7 +26,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.goto(TEST_URL);
     await page.waitForLoadState('networkidle');
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     const sentenceId = await page.evaluate(() => {
       return document.querySelector('.sentence').dataset.sentenceId;
@@ -43,7 +45,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await page.locator('.sticky-note.uncreated-note .sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await page.locator('.sticky-note.uncreated-note .color-circle[data-color="yellow"]').first().click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     const realNote = page.locator('.sticky-note:not(.uncreated-note)').first();
     const realNoteExists = await realNote.count();
@@ -90,7 +92,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     await uncreated.locator('.sticky-note-color-circle').first().hover();
     await page.waitForTimeout(300);
     await uncreated.locator('.color-circle[data-color="green"]').first().click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(500);
 
     const barsAfter = await page.locator('.rainbow-bar').count();
     console.log(`9. Rainbow bars after adding: ${barsAfter}`);
