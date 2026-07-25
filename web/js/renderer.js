@@ -379,11 +379,15 @@ const WriteSysRenderer = {
       const loneProse = frags.length === 1 && frags[0].kind === 'prose';
 
       for (const f of frags) {
+        // A structural fragment (command/header) that came from a suggestion
+        // is a change we DON'T word-diff — mark it blue ("cmd-suggested") so
+        // the author knows to click it to see the change.
+        const changed = suggestion !== undefined;
         if (f.kind === 'command') {
           // Block command fragment → render its result, no diff. &meta renders
           // nothing. All share this sentence's id.
           flush();
-          const html = this.renderBlockCommandFrag(f.cmd, id);
+          const html = this.renderBlockCommandFrag(f.cmd, id, changed);
           if (html) out.push(html);
           continue;
         }
@@ -391,7 +395,8 @@ const WriteSysRenderer = {
           // Legacy Markdown header fragment → render as <h*>, result only (a
           // structural block, like a command). Transition support.
           flush();
-          out.push(`<h${f.level}><span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(f.text)}</span></h${f.level}>`);
+          const chCls = changed ? ' cmd-suggested' : '';
+          out.push(`<h${f.level} class="md-header${chCls}"><span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(f.text)}</span></h${f.level}>`);
           continue;
         }
         // Prose fragment.
@@ -403,6 +408,11 @@ const WriteSysRenderer = {
           // render any inline &reference/&anchor tokens that survived the diff
           // as links/markers (they're escaped as &amp;… in the diff HTML).
           inner = this.renderInlineCommandsInHtml(renderDiffHTML(origProse, body, this._dmp()));
+          // Glyph diff: if this lone prose's leading structural break was
+          // added or removed by the suggestion, show a §/¶ glyph (green added,
+          // struck removed) so the break change is reviewable.
+          const glyph = this.markerGlyphDiff(this.leadingMarker(committed), f.marker);
+          if (glyph) inner = glyph + inner;
         } else {
           inner = this.applyInlineFormatting(body);
         }
@@ -424,6 +434,34 @@ const WriteSysRenderer = {
     return t;
   },
 
+  // leadingMarker returns the leading structural marker of a text ('\n\n',
+  // '\n\t', or '').
+  leadingMarker(text) {
+    const t = String(text == null ? '' : text);
+    if (t.startsWith('\n\n')) return '\n\n';
+    if (t.startsWith('\n\t')) return '\n\t';
+    return '';
+  },
+
+  // markerGlyphDiff returns a glyph indicator when a suggestion changed a
+  // sentence's leading structural break: green §/¶ if a break was added,
+  // struck-through §/¶ if removed. Returns '' when unchanged. § = section
+  // (\n\n), ¶ = paragraph (\n\t).
+  markerGlyphDiff(committedMarker, effectiveMarker) {
+    if (committedMarker === effectiveMarker) return '';
+    const glyph = (m) => (m === '\n\n' ? '§' : (m === '\n\t' ? '¶' : ''));
+    if (!committedMarker && effectiveMarker) {
+      // Break added.
+      return `<span class="marker-added">${glyph(effectiveMarker)}</span>`;
+    }
+    if (committedMarker && !effectiveMarker) {
+      // Break removed.
+      return `<span class="marker-removed">${glyph(committedMarker)}</span>`;
+    }
+    // Break type changed (\n\n <-> \n\t): show old struck + new green.
+    return `<span class="marker-removed">${glyph(committedMarker)}</span><span class="marker-added">${glyph(effectiveMarker)}</span>`;
+  },
+
   _dmp() {
     if (this.__dmp === undefined) {
       this.__dmp = (typeof diff_match_patch !== 'undefined') ? new diff_match_patch() : null;
@@ -435,19 +473,23 @@ const WriteSysRenderer = {
   // element (heading / part page / anchor marker), or nothing for &meta. The
   // .sentence span carries the given id so the fragment is hoverable/
   // annotatable and shares identity with the rest of the sentence.
-  renderBlockCommandFrag(cmd, id) {
+  renderBlockCommandFrag(cmd, id, changed) {
     if (cmd.kind === 'meta') {
+      // A changed &meta renders as a small blue marker (it's otherwise
+      // invisible) so the author can find and click it; unchanged is hidden.
+      if (changed) {
+        return `<div class="cmd-meta cmd-suggested"><span class="sentence" data-sentence-id="${this.escapeHtml(id)}" title="changed setting — click to view">⚙</span></div>`;
+      }
       return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
     }
     const form = window.WriteSysCommand && window.WriteSysCommand.structuralForm(cmd.raw);
     if (!form) return null;
     const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+    const chCls = changed ? ' cmd-suggested' : '';
+    // Heading shows the LABEL only. The description is outline metadata and is
+    // never rendered in the book (it appears in the left-margin outline nav).
     const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
-    let extra = '';
-    if (cmd.kind === 'part' && form.description) {
-      extra = `<span class="cmd-part-desc">${this.applyInlineFormatting(form.description)}</span>`;
-    }
-    return `<${form.tag} class="${form.cls}"${slugAttr}>${inner}${extra}</${form.tag}>`;
+    return `<${form.tag} class="${form.cls}${chCls}"${slugAttr}>${inner}</${form.tag}>`;
   },
 
   // Escape first, then substitute *x* → <em> — otherwise the escape pass
@@ -564,40 +606,6 @@ const WriteSysRenderer = {
       document.documentElement.style.removeProperty('--book-font');
     }
   },
-
-  // renderBlockCommand renders a block &-command sentence as a heading
-  // element, or returns null if `text` is not a block command. Uses
-  // WriteSysCommand.structuralForm as the single source of truth for tag /
-  // class / visible text (the heading shows the LABEL only — the description
-  // is outline metadata, not rendered on the page). The .sentence span is
-  // kept so the sentence stays hoverable/annotatable, and the slug is exposed
-  // on data-slug for later phases.
-  renderBlockCommand(text, id) {
-    const cmd = window.WriteSysCommand;
-    if (!cmd) return null;
-    const parsed = cmd.parse(text.trim());
-    if (!parsed || !cmd.BLOCK[parsed.kind] || parsed.raw !== text.trim()) return null;
-    // &meta renders as nothing (it's a setting), but stays in the DOM as a
-    // hidden, still-annotatable sentence span so it can be edited/suggested on.
-    if (parsed.kind === 'meta') {
-      return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
-    }
-    const form = cmd.structuralForm(text);
-    if (!form) return null;
-
-    const slugAttr = parsed.slug ? ` data-slug="${this.escapeHtml(parsed.slug)}"` : '';
-    const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
-    // Part dividers carry the description as a subtitle on their own page
-    // (like a book's part-title page: "Part I" / "The Gathering"). The label
-    // stays in the .sentence span (hoverable/annotatable); the subtitle is
-    // presentational.
-    let extra = '';
-    if (parsed.kind === 'part' && form.description) {
-      extra = `<span class="cmd-part-desc">${this.applyInlineFormatting(form.description)}</span>`;
-    }
-    return `<${form.tag} class="${form.cls}"${slugAttr}>${inner}${extra}</${form.tag}>`;
-  },
-
 
   // A sentence may be split across page fragments; hover/click events propagate
   // to every fragment with the same data-sentence-id.

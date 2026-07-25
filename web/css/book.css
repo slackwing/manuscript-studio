@@ -519,12 +519,19 @@ h3 {
   font-size: 34pt;
   line-height: 1.15;
 }
-.cmd-part .cmd-part-desc {
+/* A structural element (command / header) changed by a suggestion is not
+   word-diffed — it renders in blue so the author knows to click it to see the
+   change (opens the suggestion modal). */
+.cmd-suggested,
+.cmd-suggested .sentence {
+  color: #2a6fb0;
+  cursor: pointer;
+}
+.cmd-meta.cmd-suggested {
   display: block;
-  margin-top: 0.9em;
-  font-size: 19pt;
-  font-style: italic;
-  color: #333;
+  text-align: center;
+  font-size: 12pt;
+  margin: 0.5em 0;
 }
 
 /* The very first title shouldn't force a leading blank page. */
@@ -1828,6 +1835,45 @@ p.section-break {
 .suggestion-modal-textarea:focus {
   outline: none;
   border-color: #2a7bb0;
+}
+
+/* Read-only original above the edit box — same monospace metrics so it lines
+   up char-for-char with the edit textarea; muted so the edit box is primary. */
+.suggestion-modal-original {
+  width: 100%;
+  font-family: "Monaco", "Menlo", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  resize: vertical;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+  background: #f7f7f7;
+  color: #555;
+  margin-bottom: 10px;
+}
+.suggestion-modal-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin: 0 0 3px 2px;
+}
+
+/* Structural-break glyph diff in a suggested prose fragment: green § / ¶ for
+   an added break, struck-through for a removed one. */
+.marker-added {
+  color: #2e7d32;
+  font-weight: bold;
+  margin-right: 0.15em;
+}
+.marker-removed {
+  color: #c0392b;
+  text-decoration: line-through;
+  margin-right: 0.15em;
 }
 
 .suggestion-modal-actions {

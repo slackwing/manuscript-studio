@@ -119,10 +119,14 @@ const WriteSysSuggestions = {
     const overlay = document.createElement('div');
     overlay.id = 'suggestion-modal-overlay';
 
+    const tm = window.WriteSysTextMarkers;
     const modal = document.createElement('div');
     modal.id = 'suggestion-modal';
     modal.innerHTML = `
       <div class="suggestion-modal-title">Suggest edit</div>
+      <label class="suggestion-modal-label">Original</label>
+      <textarea class="suggestion-modal-original" rows="4" readonly spellcheck="false"></textarea>
+      <label class="suggestion-modal-label">Your edit</label>
       <textarea class="suggestion-modal-textarea" rows="6" spellcheck="false"></textarea>
       <div class="suggestion-modal-actions">
         <button type="button" class="suggestion-modal-cancel">Cancel</button>
@@ -133,9 +137,13 @@ const WriteSysSuggestions = {
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
 
+    // Read-only original for reference — a real (monospace) textarea so it's
+    // char-for-char vertically aligned with the edit box and easy to copy.
+    const originalArea = modal.querySelector('.suggestion-modal-original');
+    originalArea.value = tm ? tm.toGlyphs(original) : original;
+
     // Show glyphs in the textarea so the user sees and edits paragraph
     // markers visually instead of literal whitespace.
-    const tm = window.WriteSysTextMarkers;
     const textarea = modal.querySelector('.suggestion-modal-textarea');
     textarea.value = tm ? tm.toGlyphs(current) : current;
     textarea.focus();
