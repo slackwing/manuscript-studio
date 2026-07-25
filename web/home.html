@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manuscript Studio</title>
+  <link rel="stylesheet" href="css/book.css?v=107">
+  <link rel="stylesheet" href="css/chrome.css?v=1">
+  <link rel="stylesheet" href="css/home.css?v=1">
+</head>
+<body class="home-page">
+
+  <div id="controls" class="pagedjs_ignore">
+    <div class="control-group control-group-left">
+      <a id="home-link" href="home.html" title="Home" aria-label="Home">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
+          <path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/>
+        </svg>
+      </a>
+      <a id="brand" href="home.html">manuscript studio</a>
+      <div id="global-search">
+        <input id="gs-input" type="text" placeholder="Search manuscripts and scratchpads…" autocomplete="off">
+        <div id="gs-dropdown" hidden></div>
+      </div>
+    </div>
+    <div class="control-group control-group-right">
+      <button id="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <main class="home-main" id="home-root">
+    <!-- rendered by home.js -->
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/smartquotes/2.3.2/smartquotes.min.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    (async function() {
+      const session = await checkAuth();
+      if (!session) return;
+      window.currentSession = session;
+      if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
+      if (window.WriteSysHome) window.WriteSysHome.init();
+    })();
+  </script>
+
+  <!-- Book-render pipeline: needed by the scratchpad modal's book-content
+       widgets (same set the old scratchpad page loaded). -->
+  <script src="js/command.js?v=14"></script>
+  <script src="js/canonicalize.js?v=1"></script>
+  <script src="js/placeholder.js?v=1"></script>
+  <script src="js/renderer.js?v=90"></script>
+  <script src="scratchpad/region.js?v=1"></script>
+  <script src="scratchpad/scratch-render.js?v=1"></script>
+
+  <script src="js/global-search.js?v=1"></script>
+  <script src="js/scratchpad-modal.js?v=1"></script>
+  <script src="js/home.js?v=1"></script>
+</body>
+</html>

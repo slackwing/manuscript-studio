@@ -146,11 +146,11 @@ async function loginAsTestUser(page) {
   await page.fill('#password', TEST_PASSWORD);
   await page.click('#login-btn');
 
-  // Wait for the post-login redirect to land somewhere on the app. Don't
-  // wait for `load` — Paged.js pagination can keep the load event pending
-  // for tens of seconds. URL match alone is sufficient: the test will
-  // explicitly wait for whatever DOM it needs after returning.
-  await page.waitForURL(/localhost:5001\/(\?.*)?$/, { timeout: 5000, waitUntil: 'commit' });
+  // Wait for the post-login redirect to land somewhere on the app — since
+  // HOME_PLAN.md that's always home.html (kept tolerant of the old root
+  // URL too). Don't wait for `load`; URL match alone is sufficient: the
+  // test explicitly waits for whatever DOM it needs after returning.
+  await page.waitForURL(/localhost:5001\/(home\.html.*|(\?.*)?)$/, { timeout: 5000, waitUntil: 'commit' });
   await page.waitForTimeout(500);
 }
 

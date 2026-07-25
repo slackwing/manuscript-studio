@@ -207,19 +207,9 @@
 
         // Pick landing manuscript: last opened (if still accessible),
         // else the first accessible, else open the empty app.
-        const accessible = data.manuscripts || [];
-        let landing = null;
-        if (data.last_manuscript_name) {
-          landing = accessible.find(m => m.name === data.last_manuscript_name) || null;
-        }
-        if (!landing && accessible.length > 0) {
-          landing = accessible[0];
-        }
-        if (landing) {
-          window.location.href = `./?manuscript_id=${landing.manuscript_id}`;
-        } else {
-          window.location.href = './';
-        }
+        // Login always lands on the home page (HOME_PLAN.md) — it IS the
+        // resume surface: recents are right there, one click deep.
+        window.location.href = 'home.html';
       } catch (error) {
         showError(error.message);
         loginBtn.disabled = false;

@@ -10,7 +10,7 @@ const {
   cleanupTestAnnotations, loginAsTestUser,
 } = require('./test-utils');
 
-const SCRATCH_URL = new URL('scratchpad.html', TEST_URL).href;
+const HOME_URL = new URL('home.html', TEST_URL).href;
 
 (async () => {
   console.log('=== scratchpad + canonize e2e ===\n');
@@ -37,20 +37,21 @@ const SCRATCH_URL = new URL('scratchpad.html', TEST_URL).href;
   try {
     await loginAsTestUser(page);
 
-    // --- scratchpad: create, add a book-content block, autosave ---
-    await page.goto(SCRATCH_URL);
-    await page.waitForSelector('#new-pad', { timeout: 20000 });
-    await page.click('#new-pad');
-    await page.waitForSelector('.ProseMirror', { timeout: 20000 });
-    padId = parseInt(new URL(page.url()).searchParams.get('scratchpad_id'), 10);
-    check('scratchpad created + editor loaded', Number.isInteger(padId), `id ${padId}`);
+    // --- home page: create a pad (opens THE modal), add a block, autosave ---
+    await page.goto(HOME_URL);
+    await page.waitForSelector('#home-new-pad', { timeout: 20000 });
+    await page.click('#home-new-pad');
+    await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
+    const hash = await page.evaluate(() => window.location.hash);
+    padId = parseInt((hash.match(/scratchpad=(\d+)/) || [])[1], 10);
+    check('pad created + modal editor loaded (hash carries id)', Number.isInteger(padId), `id ${padId}`);
 
-    await page.fill('#pad-title', 'E2E pad');
+    await page.fill('#spm-title', 'E2E pad');
     await page.evaluate(() => window.WriteSysScratchpad.insertBookContent());
     await page.waitForSelector('.bc-widget .bc-text', { timeout: 5000 });
     await page.fill('.bc-widget .bc-text', BLOCK_TEXT);
     await page.locator('.bc-widget .bc-text').blur();
-    await page.waitForFunction(() => document.querySelector('#save-status').textContent === 'Saved', null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
     check('block text autosaved', true);
 
     // Preview tab renders through the book pipeline (shadow root).
@@ -76,7 +77,7 @@ const SCRATCH_URL = new URL('scratchpad.html', TEST_URL).href;
     check('table inserted', await page.locator('.ProseMirror table').count() === 1);
     // 1x1 transparent PNG.
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
-    await page.setInputFiles('#image-input', { name: 'dot.png', mimeType: 'image/png', buffer: png });
+    await page.setInputFiles('#spm-image-input', { name: 'dot.png', mimeType: 'image/png', buffer: png });
     await page.waitForSelector('.ProseMirror img.scratch-image', { timeout: 10000 });
     const imgOk = await page.evaluate(async () => {
       const img = document.querySelector('.ProseMirror img.scratch-image');
@@ -84,7 +85,7 @@ const SCRATCH_URL = new URL('scratchpad.html', TEST_URL).href;
       return r.ok && (r.headers.get('content-type') || '').startsWith('image/');
     });
     check('image uploaded and served', imgOk === true);
-    await page.waitForFunction(() => document.querySelector('#save-status').textContent === 'Saved', null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
 
     // --- book view: canonize via the + affordance ---
     await page.goto(TEST_URL);
@@ -129,9 +130,9 @@ const SCRATCH_URL = new URL('scratchpad.html', TEST_URL).href;
     boundaryId = boundary;
     check('one suggestion carries the region (anchor shares boundary sentence id)', !!boundaryId, boundaryId);
 
-    // --- scratchpad widget: canonized state, Live + snapshot tabs ---
-    await page.goto(`${SCRATCH_URL}?scratchpad_id=${padId}`);
-    await page.waitForSelector('.bc-widget', { timeout: 20000 });
+    // --- widget via URL hash restore: canonized state, Live + snapshot ---
+    await page.goto(`${HOME_URL}#scratchpad=${padId}`);
+    await page.waitForSelector('.spm-overlay .bc-widget', { timeout: 20000 });
     await page.waitForFunction(() => {
       const el = document.querySelector('.bc-widget .bc-status');
       return el && /canonized|#/.test(el.textContent) && el.classList.contains('bc-canonized');

@@ -1,26 +1,25 @@
 /**
- * Scratchpad editor (SCRATCHPAD_PLAN.md §6).
+ * Scratchpad editor CORE (HOME_PLAN.md): the embeddable component. The old
+ * scratchpad page died; the singleton modal (modal.mjs) is the only host.
  *
- * ProseMirror (vendored single-file bundle — scripts/vendor-prosemirror.sh)
- * drives the SCRATCHPAD surface only: rich text, lists, tables, images, and
- * the book_content atom. Book content itself is NEVER edited with PM — the
- * node's text is plain .manuscript source edited in a monospace textarea
- * (same muscle memory as suggested edits), previewed/lived through the real
- * book render pipeline (scratch-render.js → renderer.js, shadow + book.css).
+ * ProseMirror (vendored bundle — scripts/vendor-prosemirror.sh) drives the
+ * SCRATCHPAD surface only. Book content is NEVER edited with PM — the
+ * book_content node's text is plain .manuscript source in a monospace
+ * textarea, previewed/lived through the real book pipeline
+ * (scratch-render.js → renderer.js in a shadow root with book.css).
  */
 import {
   Schema, Node as PMNode,
-  EditorState, Plugin, NodeSelection, TextSelection, Selection,
+  EditorState, NodeSelection, TextSelection, Selection,
   EditorView,
   keymap, history, undo, redo,
-  baseKeymap, toggleMark, setBlockType, wrapIn, chainCommands, lift,
+  baseKeymap, toggleMark, setBlockType, wrapIn, chainCommands,
   addListNodes, wrapInList, splitListItem, liftListItem, sinkListItem,
   dropCursor, gapCursor,
   tableNodes, tableEditing, goToNextCell,
 } from './vendor/prosemirror.mjs';
 
 const csrf = () => sessionStorage.getItem('csrf_token') || '';
-const $ = (sel) => document.querySelector(sel);
 
 // ---------------------------------------------------------------- schema
 
@@ -62,8 +61,8 @@ const coreNodes = {
       class: 'scratch-image',
     }],
   },
-  // The bridge into the book (plan §2/§3). Atom: PM never looks inside; the
-  // NodeView owns everything.
+  // The bridge into the book (SCRATCHPAD_PLAN.md §2/§3). Atom: PM never
+  // looks inside; the NodeView owns everything.
   book_content: {
     group: 'block', atom: true, selectable: true,
     attrs: {
@@ -88,14 +87,8 @@ const coreNodes = {
 };
 
 const marks = {
-  strong: {
-    parseDOM: [{ tag: 'strong' }, { tag: 'b' }],
-    toDOM: () => ['strong', 0],
-  },
-  em: {
-    parseDOM: [{ tag: 'em' }, { tag: 'i' }],
-    toDOM: () => ['em', 0],
-  },
+  strong: { parseDOM: [{ tag: 'strong' }, { tag: 'b' }], toDOM: () => ['strong', 0] },
+  em: { parseDOM: [{ tag: 'em' }, { tag: 'i' }], toDOM: () => ['em', 0] },
 };
 
 const base = new Schema({ nodes: coreNodes, marks });
@@ -109,9 +102,9 @@ export const schema = new Schema({ nodes: withTables, marks: base.spec.marks });
 
 // ------------------------------------------------- manuscript data cache
 
-// Per-target-manuscript effective data for Live views. One fetch set per
-// manuscript per page load; the widget refresh button forces a reload.
-const bookData = {
+// Per-target-manuscript effective data for Live views; module-level so
+// several blocks targeting one book share fetches within a page.
+export const bookData = {
   cache: {},
   async load(manuscriptId, force = false) {
     if (!force && this.cache[manuscriptId]) return this.cache[manuscriptId];
@@ -240,7 +233,7 @@ class BookContentView {
       const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
       const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, a.refSlug, window.WriteSysCommand, canon);
       if (res.status !== 'ok') {
-        // Strictness (decision 6): broken region → error + snapshot fallback.
+        // Strictness (SCRATCHPAD_PLAN decision 6): broken → snapshot fallback.
         this.body.querySelector('.bc-note').innerHTML =
           `<span class="bc-error">Region #${esc(a.refSlug)} ${res.status === 'missing-anchor'
             ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the snapshot.</span>`;
@@ -274,7 +267,6 @@ class BookContentView {
     const was = this.node.attrs;
     this.node = node;
     if (!!was.refSlug !== !!node.attrs.refSlug) {
-      // Draft → canonized: rebuild the whole widget into Live mode.
       this.mode = node.attrs.refSlug ? 'live' : 'edit';
       this.build();
       return true;
@@ -304,46 +296,9 @@ async function uploadImage(file) {
   return (await r.json()).image_id;
 }
 
-// ----------------------------------------------------------------- editor
+// ---------------------------------------------------------------- helpers
 
-let view = null;
-let currentId = null;
-let saveTimer = null;
-let saveState = 'saved';
-
-function setSaveState(s) {
-  saveState = s;
-  const el = $('#save-status');
-  if (el) el.textContent = s === 'saved' ? 'Saved' : (s === 'saving' ? 'Saving…' : 'Unsaved');
-}
-
-async function saveNow() {
-  if (!view || currentId == null) return;
-  clearTimeout(saveTimer);
-  setSaveState('saving');
-  try {
-    const r = await fetch(`api/scratchpads/${currentId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-      body: JSON.stringify({ title: $('#pad-title').value, doc: view.state.doc.toJSON() }),
-    });
-    if (!r.ok) throw new Error(String(r.status));
-    setSaveState('saved');
-  } catch (e) {
-    console.error('autosave failed', e);
-    setSaveState('unsaved');
-  }
-}
-
-function scheduleSave() {
-  setSaveState('unsaved');
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveNow, 1200);
-}
-
-// Insert a block node WITHOUT destroying a node-selected atom: replacing a
-// text selection is what the user means, but "replace the widget I happen to
-// have selected" never is — insert after it instead.
+// Insert a block node WITHOUT destroying a node-selected atom.
 function insertBlockSafely(state, dispatch, node) {
   if (!node) return false;
   if (dispatch) {
@@ -374,7 +329,53 @@ function markActive(state, type) {
   return state.doc.rangeHasMark(from, to, type);
 }
 
-function buildToolbar(container) {
+// ----------------------------------------------------------- the instance
+
+/**
+ * createScratchpadEditor(els, scratchpadId): loads the pad, mounts PM, and
+ * returns the instance. els = {titleInput, statusEl, toolbarEl, editorEl,
+ * imageInput}. destroy() flushes any unsaved changes.
+ */
+export async function createScratchpadEditor(els, scratchpadId) {
+  const data = await fetchJSON(`api/scratchpads/${scratchpadId}`, {}, false);
+  const pad = data.scratchpad;
+  els.titleInput.value = pad.title;
+
+  let view = null;
+  let saveTimer = null;
+  let saveState = 'saved';
+  let destroyed = false;
+
+  const setSaveState = (s) => {
+    saveState = s;
+    els.statusEl.textContent = s === 'saved' ? 'Saved' : (s === 'saving' ? 'Saving…' : 'Unsaved');
+  };
+
+  const saveNow = async () => {
+    if (!view) return;
+    clearTimeout(saveTimer);
+    setSaveState('saving');
+    try {
+      const r = await fetch(`api/scratchpads/${scratchpadId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        body: JSON.stringify({ title: els.titleInput.value, doc: view.state.doc.toJSON() }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      setSaveState('saved');
+    } catch (e) {
+      console.error('autosave failed', e);
+      setSaveState('unsaved');
+    }
+  };
+
+  const scheduleSave = () => {
+    setSaveState('unsaved');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 1200);
+  };
+
+  // ---- toolbar ----
   const items = [
     { label: 'B', title: 'Bold (Ctrl-B)', run: toggleMark(schema.marks.strong), active: s => markActive(s, schema.marks.strong) },
     { label: 'I', title: 'Italic (Ctrl-I)', cls: 'i', run: toggleMark(schema.marks.em), active: s => markActive(s, schema.marks.em) },
@@ -389,19 +390,19 @@ function buildToolbar(container) {
     { label: '—', title: 'Horizontal rule', run: (s, d) => insertBlockSafely(s, d, schema.nodes.horizontal_rule.create()) },
     { sep: true },
     { label: 'Table', title: 'Insert 3×3 table', run: cmdInsertTable },
-    { label: 'Image', title: 'Insert image', run: () => { $('#image-input').click(); return true; } },
+    { label: 'Image', title: 'Insert image', run: () => { els.imageInput.click(); return true; } },
     { label: '⧉ Book content', title: 'Insert a book-content block (monospace .manuscript text; canonize it from the book view)', cls: 'bc-btn', run: cmdInsertBookContent },
     { sep: true },
     { label: '↶', title: 'Undo', run: undo },
     { label: '↷', title: 'Redo', run: redo },
   ];
-  container.innerHTML = '';
+  els.toolbarEl.innerHTML = '';
   const btns = [];
   for (const it of items) {
     if (it.sep) {
       const sep = document.createElement('span');
       sep.className = 'tb-sep';
-      container.appendChild(sep);
+      els.toolbarEl.appendChild(sep);
       continue;
     }
     const b = document.createElement('button');
@@ -415,18 +416,17 @@ function buildToolbar(container) {
       view.focus();
     });
     b._item = it;
-    container.appendChild(b);
+    els.toolbarEl.appendChild(b);
     btns.push(b);
   }
-  return () => btns.forEach(b => {
+  const updateToolbar = () => btns.forEach(b => {
     if (b._item.active) b.classList.toggle('active', b._item.active(view.state));
   });
-}
 
-function buildEditor(docJSON) {
+  // ---- editor ----
   const li = schema.nodes.list_item;
   const state = EditorState.create({
-    doc: PMNode.fromJSON(schema, docJSON),
+    doc: PMNode.fromJSON(schema, pad.doc),
     plugins: [
       history(),
       keymap({
@@ -444,14 +444,13 @@ function buildEditor(docJSON) {
     ],
   });
 
-  const updateToolbar = buildToolbar($('#toolbar'));
-
-  view = new EditorView($('#editor'), {
+  view = new EditorView(els.editorEl, {
     state,
     nodeViews: {
       book_content: (node, v, getPos) => new BookContentView(node, v, getPos),
     },
     dispatchTransaction(tr) {
+      if (destroyed) return;
       const newState = view.state.apply(tr);
       view.updateState(newState);
       if (tr.docChanged) scheduleSave();
@@ -459,62 +458,11 @@ function buildEditor(docJSON) {
     },
   });
   updateToolbar();
-  return view;
-}
+  setSaveState('saved');
 
-// ------------------------------------------------------------- page shell
-
-async function loadList() {
-  const listEl = $('#pad-list');
-  const data = await fetchJSON('api/scratchpads', {}, false);
-  const pads = data.scratchpads || [];
-  listEl.innerHTML = '';
-  for (const p of pads) {
-    const a = document.createElement('a');
-    a.className = 'pad-item' + (p.scratchpad_id === currentId ? ' active' : '');
-    a.href = `scratchpad.html?scratchpad_id=${p.scratchpad_id}`;
-    const when = new Date(p.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    a.innerHTML = `<span class="pad-item-title">${esc(p.title)}</span><span class="pad-item-when">${when}</span>`;
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'pad-item-del';
-    del.title = 'Delete scratchpad';
-    del.textContent = '×';
-    del.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!window.confirm(`Delete scratchpad "${p.title}"? (Soft-deleted — recoverable from the database.)`)) return;
-      await fetch(`api/scratchpads/${p.scratchpad_id}`, { method: 'DELETE', headers: { 'X-CSRF-Token': csrf() } });
-      if (p.scratchpad_id === currentId) { window.location.href = 'scratchpad.html'; return; }
-      loadList();
-    });
-    a.appendChild(del);
-    listEl.appendChild(a);
-  }
-  if (pads.length === 0) {
-    listEl.innerHTML = '<div class="pad-empty">No scratchpads yet.</div>';
-  }
-}
-
-async function init() {
-  // Session + CSRF bootstrap: sessionStorage is per-tab, so a scratchpad
-  // opened in a fresh tab must refill the token from /api/session.
-  const session = await checkAuth();
-  if (!session) return;
-  if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
-
-  $('#new-pad').addEventListener('click', async () => {
-    const r = await fetch('api/scratchpads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-      body: JSON.stringify({ title: 'Untitled' }),
-    });
-    if (!r.ok) return;
-    const pad = await r.json();
-    window.location.href = `scratchpad.html?scratchpad_id=${pad.scratchpad_id}`;
-  });
-
-  $('#image-input').addEventListener('change', async (e) => {
+  const onTitleInput = () => scheduleSave();
+  els.titleInput.addEventListener('input', onTitleInput);
+  const onImage = async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file || !view) return;
@@ -526,43 +474,26 @@ async function init() {
     } catch (err) {
       alert('Image upload failed: ' + err.message);
     }
-  });
+  };
+  els.imageInput.addEventListener('change', onImage);
 
-  const params = new URLSearchParams(window.location.search);
-  currentId = params.get('scratchpad_id') ? parseInt(params.get('scratchpad_id'), 10) : null;
-
-  await loadList();
-
-  if (currentId == null) {
-    $('#editor-shell').hidden = true;
-    $('#empty-state').hidden = false;
-    return;
-  }
-
-  const data = await fetchJSON(`api/scratchpads/${currentId}`, {}, false);
-  const pad = data.scratchpad;
-  document.title = `${pad.title} — Scratchpad`;
-  $('#pad-title').value = pad.title;
-  $('#pad-title').addEventListener('input', scheduleSave);
-  buildEditor(pad.doc);
-
-  window.addEventListener('beforeunload', () => {
-    if (saveState !== 'saved') saveNow();
-  });
-
-  // Test / power-user hook.
-  window.WriteSysScratchpad = {
-    get view() { return view; },
+  return {
+    scratchpadId,
     schema,
+    bookData,
+    get view() { return view; },
     saveNow,
     insertBookContent: () => { cmdInsertBookContent(view.state, view.dispatch); },
-    bookData,
     pm: { Selection, TextSelection, NodeSelection },
+    isDirty: () => saveState !== 'saved',
+    async destroy() {
+      destroyed = true;
+      clearTimeout(saveTimer);
+      els.titleInput.removeEventListener('input', onTitleInput);
+      els.imageInput.removeEventListener('change', onImage);
+      if (saveState !== 'saved') await saveNow();
+      view.destroy();
+      view = null;
+    },
   };
 }
-
-init().catch(e => {
-  console.error('scratchpad init failed', e);
-  const el = $('#editor');
-  if (el) el.innerHTML = `<p style="color:#b33b3a">Failed to load: ${esc(e.message)}</p>`;
-});

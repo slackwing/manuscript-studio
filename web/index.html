@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Book-style CSS -->
-  <link rel="stylesheet" href="css/book.css?v=106">
+  <link rel="stylesheet" href="css/book.css?v=107">
 
   <!-- Paged.js for book pagination - loaded but not auto-run -->
   <script>
@@ -28,18 +28,18 @@
   <!-- Top bar (not paginated) -->
   <div id="controls" class="pagedjs_ignore">
     <div class="control-group control-group-left">
-      <span id="brand">manuscript studio</span>
+      <a id="home-link" href="home.html" title="Home" aria-label="Home">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
+          <path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/>
+        </svg>
+      </a>
+      <a id="brand" href="home.html">manuscript studio</a>
+      <div id="global-search">
+        <input id="gs-input" type="text" placeholder="Search manuscripts and scratchpads…" autocomplete="off">
+        <div id="gs-dropdown" hidden></div>
+      </div>
     </div>
     <div class="control-group control-group-right">
-      <span id="manuscript-updated" class="manuscript-updated" aria-live="polite"></span>
-      <span id="info-icon" tabindex="0" aria-label="Manuscript info">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-          <path fill="currentColor" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm6.5-.25A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75zM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
-        </svg>
-      </span>
-      <span id="manuscript-picker" class="manuscript-picker"></span>
-      <a id="scratchpads-link" href="scratchpad.html" title="Scratchpads">Scratchpads</a>
-      <span id="push-button-container" class="push-button-container"></span>
       <button id="logout-btn" onclick="logout()">Logout</button>
       <span id="cheatsheet-icon" tabindex="0" role="button" aria-label="Syntax cheatsheet" aria-expanded="false" title="Syntax cheatsheet">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -64,6 +64,21 @@
         <!-- Multiple sticky notes will be rendered here -->
       </div>
     </div>
+  </div>
+
+  <!-- Manuscript chrome (HOME_PLAN.md): manuscript-specific info + actions
+       moved out of the global top bar, above the outline in the left margin. -->
+  <div id="manuscript-chrome" class="pagedjs_ignore">
+    <div class="mc-row">
+      <span id="mc-name"></span>
+      <span id="info-icon" tabindex="0" aria-label="Manuscript info">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm6.5-.25A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75zM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+        </svg>
+      </span>
+    </div>
+    <span id="manuscript-updated" class="manuscript-updated" aria-live="polite"></span>
+    <span id="push-button-container" class="push-button-container"></span>
   </div>
 
   <!-- Left-margin document outline (floating in left grey margin) -->
@@ -106,9 +121,8 @@
   <script src="js/command.js?v=14"></script>
   <script src="js/canonicalize.js?v=1"></script>
   <script src="js/placeholder.js?v=1"></script>
-  <script src="js/picker.js?v=3"></script>
   <script src="js/info-tooltip.js?v=3"></script>
-  <script src="js/renderer.js?v=89"></script>
+  <script src="js/renderer.js?v=90"></script>
   <script src="js/annotations.js?v=52"></script>
   <script src="js/vendor/diff-match-patch.js"></script>
   <script src="js/history.js?v=8"></script>
@@ -116,7 +130,9 @@
   <script src="js/push.js?v=6"></script>
   <script src="js/outline.js?v=10"></script>
   <script src="scratchpad/region.js?v=1"></script>
-  <script src="js/import-scratchpad.js?v=3"></script>
+  <script src="js/import-scratchpad.js?v=4"></script>
+  <script src="js/global-search.js?v=1"></script>
+  <script src="js/scratchpad-modal.js?v=1"></script>
   <script src="js/cheatsheet.js?v=2"></script>
 </body>
 </html>

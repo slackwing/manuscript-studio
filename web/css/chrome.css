@@ -1,0 +1,94 @@
+/* Global chrome shared by the landing page and the manuscript view
+   (HOME_PLAN.md): top bar (home + wordmark + search + extras + logout) and
+   the search dropdown. Sleek/modern: quiet neutrals, one blue accent. */
+
+#controls .control-group-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+#home-link {
+  display: inline-flex;
+  align-items: center;
+  color: #666;
+  text-decoration: none;
+  padding: 4px;
+  border-radius: 6px;
+}
+#home-link:hover { color: #222; background: #f0ece4; }
+
+a#brand {
+  text-decoration: none;
+  color: inherit;
+}
+a#brand:hover { color: #000; }
+
+/* ---- global search ---- */
+#global-search {
+  position: relative;
+  width: min(380px, 40vw);
+}
+#gs-input {
+  width: 100%;
+  font: 13px "Helvetica", sans-serif;
+  padding: 7px 12px 7px 30px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f7f6f3 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'%3E%3Cpath fill='%23999' d='M11.7 10.3a6.5 6.5 0 1 0-1.4 1.4l3.5 3.5 1.4-1.4-3.5-3.5zM7 11.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'/%3E%3C/svg%3E") no-repeat 9px center;
+  outline: none;
+  color: #222;
+}
+#gs-input:focus { border-color: #2a6fb0; background-color: #fff; }
+
+#gs-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(480px, 70vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  box-shadow: 0 16px 40px -16px rgba(20, 16, 8, 0.35);
+  z-index: 10001;
+  padding: 6px;
+}
+#gs-dropdown[hidden] { display: none; }
+.gs-group {
+  font: 600 10px "Helvetica", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #999;
+  padding: 8px 10px 4px;
+}
+.gs-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: 13px "Helvetica", sans-serif;
+  color: #222;
+}
+.gs-item:hover, .gs-item.active { background: #eef4fa; }
+.gs-item .gs-kind {
+  font-size: 10px;
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex: none;
+}
+.gs-kind-manuscript { background: #57503f; }
+.gs-kind-scratchpad { background: #2a6fb0; }
+.gs-item .gs-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-item .gs-meta { font-size: 11px; color: #999; flex: none; }
+.gs-empty { padding: 10px; font: 12px "Helvetica", sans-serif; color: #999; }

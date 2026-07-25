@@ -129,7 +129,7 @@ const WriteSysImportScratchpad = {
       const sel = document.getElementById('im-pad');
       sel.innerHTML = '<option value="">— choose —</option>' + pads.map(p =>
         `<option value="${p.scratchpad_id}">${this.esc(p.title)}</option>`).join('');
-      if (pads.length === 0) this.showError('No scratchpads yet — create one from the Scratchpads page.');
+      if (pads.length === 0) this.showError('No scratchpads yet — create one from the home page.');
     } catch (e) {
       this.showError('Failed to list scratchpads: ' + e.message);
     }

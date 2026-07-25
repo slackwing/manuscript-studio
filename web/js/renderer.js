@@ -9,6 +9,10 @@ const WriteSysRenderer = {
   currentSelectedSentenceId: null,
 
   async init() {
+    // Other pages (home) load this file purely for renderSentencesToHTML —
+    // only the book page (which has the manuscript container) boots the app.
+    if (!document.getElementById('manuscript-content')) return;
+
     console.log('WriteSys Renderer initialized');
 
     // Bind once at init, not per-render — saves trigger re-renders.
@@ -18,9 +22,6 @@ const WriteSysRenderer = {
     const idStr = urlParams.get('manuscript_id');
     this.manuscriptId = idStr ? parseInt(idStr, 10) : null;
 
-    // Picker is independent of the manuscript being loadable: always init it
-    // so the user can switch even from an empty/no-access state.
-    if (window.WriteSysPicker) await window.WriteSysPicker.init();
     if (window.WriteSysOutline) window.WriteSysOutline.init();
 
     // Delegated click for inline references: scroll to the target sentence.
@@ -34,17 +35,9 @@ const WriteSysRenderer = {
     });
 
     if (!this.manuscriptId) {
-      console.log('No manuscript_id in URL; showing empty state.');
-      return;
-    }
-
-    // Defense in depth: the picker only listed accessible manuscripts, but a
-    // hand-typed URL could point at one the user can't open. Treat that the
-    // same as "not loaded".
-    const accessible = (window.WriteSysPicker && window.WriteSysPicker.accessible) || [];
-    if (accessible.length > 0 && !accessible.find(m => m.manuscript_id === this.manuscriptId)) {
-      console.log(`manuscript_id ${this.manuscriptId} not in accessible list; showing empty state.`);
-      this.manuscriptId = null;
+      // The book page without a manuscript is nothing — the landing page is
+      // where you pick one (HOME_PLAN.md).
+      window.location.replace('home.html');
       return;
     }
 
@@ -64,8 +57,17 @@ const WriteSysRenderer = {
       const processedAt = new Date(migration.processed_at);
       const date = processedAt.toLocaleDateString();
       const session = window.currentSession || {};
-      const picker = window.WriteSysPicker;
-      const manuscriptName = (picker && picker.currentName) || '';
+      const accessibleList = (window.currentSession && window.currentSession.accessible_manuscripts) || [];
+      const me = accessibleList.find(m => m.manuscript_id === this.manuscriptId);
+      const manuscriptName = (me && me.name) || '';
+      const nameEl = document.getElementById('mc-name');
+      if (nameEl) nameEl.textContent = manuscriptName;
+
+      // Stamp per-user recency for the landing page (fire-and-forget).
+      fetch(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/opened`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
+      }).catch(() => {});
       if (window.WriteSysInfoTooltip) {
         window.WriteSysInfoTooltip.set([
           manuscriptName ? ['Manuscript', manuscriptName] : null,

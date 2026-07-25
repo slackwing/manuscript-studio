@@ -722,10 +722,10 @@ p.section-break {
    margin: fixed in the left grey gutter, only shown when there's structure. */
 #outline-margin {
   position: fixed;
-  top: 90px;
+  top: 148px; /* below #manuscript-chrome (HOME_PLAN.md) */
   left: 0;
   width: 290px;
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 168px);
   overflow-y: auto;
   z-index: 100;
   padding: 0 12px 12px 16px;
@@ -2573,3 +2573,38 @@ p.section-break {
 }
 .im-actions #im-go { background: #2a6fb0; border-color: #2a6fb0; color: #fff; }
 .im-actions #im-go:disabled { opacity: 0.5; cursor: default; }
+
+/* ============================================================
+   Manuscript chrome strip (HOME_PLAN.md): manuscript-specific info +
+   actions, moved out of the global top bar into the left margin above
+   the outline. The global bar itself is styled by chrome.css.
+   ============================================================ */
+#manuscript-chrome {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  width: 290px;
+  z-index: 100;
+  padding: 10px 12px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+#manuscript-chrome .mc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+#mc-name {
+  font: 700 13px "Helvetica", sans-serif;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#manuscript-chrome .manuscript-updated {
+  font-size: 10px;
+  color: #999;
+}

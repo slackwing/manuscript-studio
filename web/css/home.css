@@ -1,0 +1,148 @@
+/* Landing page (HOME_PLAN.md): Evernote-style recents — quiet, modern,
+   card-forward. Chrome (top bar/search) comes from chrome.css. */
+
+* { box-sizing: border-box; }
+
+body.home-page {
+  margin: 0;
+  font-family: "Helvetica", sans-serif;
+  background: #f3f1ec;
+  color: #222;
+}
+
+.home-main {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 76px 28px 80px;
+}
+
+.home-section { margin-bottom: 36px; }
+.home-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0 0 14px;
+}
+.home-section-head h2 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+.home-count { font-size: 12px; color: #999; }
+.home-spacer { flex: 1; }
+.home-seeall {
+  font-size: 12px;
+  color: #2a6fb0;
+  text-decoration: none;
+}
+.home-seeall:hover { text-decoration: underline; }
+.home-new {
+  font: 600 12px "Helvetica", sans-serif;
+  color: #fff;
+  background: #2a6fb0;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.home-new:hover { background: #245e95; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  position: relative;
+  display: block;
+  background: #fff;
+  border: 1px solid #e4e1d8;
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-height: 118px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+  overflow: hidden;
+}
+.card:hover {
+  box-shadow: 0 10px 28px -14px rgba(30, 26, 18, 0.35);
+  transform: translateY(-1px);
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-manuscript .card-title { font-family: Georgia, serif; font-weight: 400; font-size: 16px; }
+.card-snippet {
+  font: 12px/1.5 Georgia, serif;
+  color: #666;
+  margin: 0 0 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.8em;
+}
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #999;
+}
+.card-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2a6fb0;
+  background: #eef4fa;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.card-kindbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+.card-manuscript .card-kindbar { background: #57503f; }
+.card-scratchpad .card-kindbar { background: #2a6fb0; }
+.card-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: none;
+  color: #ccc;
+  font-size: 14px;
+  cursor: pointer;
+  visibility: hidden;
+  padding: 2px 6px;
+}
+.card:hover .card-del { visibility: visible; }
+.card-del:hover { color: #b33b3a; }
+
+.home-empty {
+  color: #999;
+  font-size: 13px;
+  padding: 18px;
+  background: #faf8f4;
+  border: 1px dashed #ddd8cc;
+  border-radius: 10px;
+}
+.home-back {
+  display: inline-block;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: #2a6fb0;
+  text-decoration: none;
+}
+.home-back:hover { text-decoration: underline; }
