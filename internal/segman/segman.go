@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.1.0"
+const Version = "2.2.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -576,11 +576,12 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 	// (RULE 9). This is the breaking change that motivates the major bump.
 
 	// RULE 9: &-commands. A recognized command token (&title/&part/&chapter
-	// always, &anchor when it is the sole non-whitespace content of its line)
-	// is its own segment, boundaried before and after like a header. &anchor
-	// sharing its line with other content, and &reference always, stay inline
-	// (no boundary). Recognition and inline/block are decided here (boundaries
-	// only); the consuming application parses the command's fields.
+	// always, &anchor/&placeholder when it is the sole non-whitespace content
+	// of its line) is its own segment, boundaried before and after like a
+	// header. &anchor/&placeholder sharing its line with other content, and
+	// &reference always, stay inline (no boundary). Recognition and
+	// inline/block are decided here (boundaries only); the consuming
+	// application parses the command's fields.
 	for i := 0; i < len(runes); i++ {
 		if runes[i] != '&' {
 			continue
@@ -603,18 +604,51 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 		}
 	}
 
+	// RULE 10: a recognized &-command token is atomic — no boundary may land
+	// strictly inside it. Punctuation inside an arg (a &placeholder's details,
+	// a &reference's notes) must not split the token across sentences. RULE
+	// 9's own boundaries are unaffected: "before" sits AT the token start and
+	// "after" sits at the newline past its final '}', both outside (start,
+	// end) exclusive.
+	var protected [][2]int
+	for i := 0; i < len(runes); i++ {
+		if runes[i] != '&' || commandKeywordAt(runes, i) == "" {
+			continue
+		}
+		if end := commandTokenEnd(runes, i); end > 0 {
+			protected = append(protected, [2]int{i, end})
+			i = end - 1
+		}
+	}
+	if len(protected) > 0 {
+		kept := boundaries[:0]
+		for _, b := range boundaries {
+			inside := false
+			for _, pr := range protected {
+				if b.pos > pr[0] && b.pos < pr[1] {
+					inside = true
+					break
+				}
+			}
+			if !inside {
+				kept = append(kept, b)
+			}
+		}
+		boundaries = kept
+	}
+
 	return boundaries
 }
 
 // commandKeywords are the recognized &-command names. A '&' begins a command
 // only when immediately followed by one of these and then '#' or '{'.
-var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta"}
+var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta", "placeholder"}
 
 // isBlockCommandAt reports whether the '&' at index i begins a *block* command
 // — one that is its own segment. title/part/chapter are always block; anchor
-// is block only when it is the sole non-whitespace content of its physical
-// line; reference is never block (always inline). A non-command '&' (literal
-// ampersand in prose) returns false.
+// and placeholder are block only when they are the sole non-whitespace content
+// of their physical line; reference is never block (always inline). A
+// non-command '&' (literal ampersand in prose) returns false.
 func isBlockCommandAt(runes []rune, i int) bool {
 	kw := commandKeywordAt(runes, i)
 	if kw == "" {
@@ -623,7 +657,7 @@ func isBlockCommandAt(runes []rune, i int) bool {
 	switch kw {
 	case "reference":
 		return false
-	case "anchor":
+	case "anchor", "placeholder":
 		return commandIsSoleLineContent(runes, i)
 	default: // title, part, chapter
 		return true
