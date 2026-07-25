@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Book-style CSS -->
-  <link rel="stylesheet" href="css/book.css?v=100">
+  <link rel="stylesheet" href="css/book.css?v=101">
 
   <!-- Paged.js for book pagination - loaded but not auto-run -->
   <script>
@@ -40,8 +40,17 @@
       <span id="manuscript-picker" class="manuscript-picker"></span>
       <span id="push-button-container" class="push-button-container"></span>
       <button id="logout-btn" onclick="logout()">Logout</button>
+      <span id="cheatsheet-icon" tabindex="0" role="button" aria-label="Syntax cheatsheet" aria-expanded="false" title="Syntax cheatsheet">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M2 2.75A1.75 1.75 0 0 1 3.75 1h6.5A1.75 1.75 0 0 1 12 2.75v10.5A1.75 1.75 0 0 1 10.25 15h-6.5A1.75 1.75 0 0 1 2 13.25V2.75zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h6.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25h-6.5zM4.5 4.75A.75.75 0 0 1 5.25 4h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1-.75-.75zm0 3A.75.75 0 0 1 5.25 7h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1-.75-.75zm0 3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1-.75-.75z"/>
+        </svg>
+      </span>
     </div>
   </div>
+
+  <!-- Syntax cheatsheet: slide-in right panel toggled by #cheatsheet-icon -->
+  <div id="cheatsheet-panel" class="pagedjs_ignore" aria-hidden="true"></div>
+  <div id="cheatsheet-backdrop" class="pagedjs_ignore" hidden></div>
 
   <!-- Annotation margin container (floating in right grey margin) -->
   <div id="annotation-margin" class="pagedjs_ignore">
@@ -104,5 +113,6 @@
   <script src="js/suggestions.js?v=13"></script>
   <script src="js/push.js?v=6"></script>
   <script src="js/outline.js?v=9"></script>
+  <script src="js/cheatsheet.js?v=1"></script>
 </body>
 </html>
