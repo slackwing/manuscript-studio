@@ -564,15 +564,23 @@ h3 {
   height: 0;
 }
 
+/* A block anchor is a quiet ⚓ marker line (no label text — the label lives in
+   the outline and shows on hover). Sits at the start of the paragraph it
+   marks; tight vertical margins keep it hugging the following prose. */
 .cmd-anchor {
-  text-align: center;
-  font-style: italic;
-  font-size: 11pt;
-  color: #888;
-  margin: 1em 0;
+  margin: 0.4em 0 0;
+  line-height: 1;
 }
 .cmd-anchor:empty {
   display: none;
+}
+.cmd-anchor-glyph {
+  color: #b3b8bd;
+  font-size: 0.8em;
+  cursor: help;
+}
+.cmd-anchor-glyph:hover {
+  color: #8c959f;
 }
 
 /* &meta settings (TEX_COMMANDS_PLAN.md §5.5). Book-wide toggles applied as

@@ -240,7 +240,9 @@ const WriteSysCommand = {
       case 'chapter':
         return { tag: 'h3', cls: 'cmd-chapter', visible: cmd.args[0] || '', description: cmd.args[1] || '' };
       case 'anchor':
-        return { tag: 'div', cls: 'cmd-anchor', visible: cmd.args[0] || '', description: '' };
+        // A block anchor renders as a glyph (⚓), NOT its label text. The label
+        // is outline metadata and shows on hover (title) + in the outline nav.
+        return { tag: 'div', cls: 'cmd-anchor', visible: '', description: '', glyph: true, label: cmd.args[0] || '' };
       default:
         return null;
     }

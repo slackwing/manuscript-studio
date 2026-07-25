@@ -503,6 +503,13 @@ const WriteSysRenderer = {
     if (!form) return null;
     const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
     const chCls = changed ? ' cmd-suggested' : '';
+    // A block anchor renders as a ⚓ glyph marker (grey; hover reveals its
+    // label). The label itself is outline metadata, never shown as book text.
+    if (form.glyph) {
+      const titleAttr = form.label ? ` title="${this.escapeHtml(form.label)}"` : '';
+      const inner = `<span class="sentence cmd-anchor-glyph" data-sentence-id="${this.escapeHtml(id)}"${titleAttr} aria-label="anchor">⚓</span>`;
+      return `<${form.tag} class="${form.cls}${chCls}"${slugAttr}>${inner}</${form.tag}>`;
+    }
     // Heading shows the LABEL only. The description is outline metadata and is
     // never rendered in the book (it appears in the left-margin outline nav).
     const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
