@@ -1,6 +1,6 @@
 # SCRATCHPAD_PLAN — scratchpads + Canonize
 
-**Status: implementing (2026-07-25).** Design agreed in conversation; the
+**Status: implemented (2026-07-25).** Design agreed in conversation; the
 DECISIONS below are the author's calls and must not drift. Implementation
 notes marked *(impl)* are engineering choices under those decisions.
 

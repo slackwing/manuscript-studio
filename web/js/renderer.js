@@ -277,8 +277,10 @@ const WriteSysRenderer = {
 
       // Placeholder hatch geometry (row-bridge padding + phase nudge) is
       // DOM-position-derived, so it re-runs on the fresh pages — same
-      // reasoning as the insertSpacesBetweenSentences re-run above.
+      // reasoning as the insertSpacesBetweenSentences re-run above. The
+      // scratchpad-import affordances are position-derived too.
       if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
+      if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
 
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {

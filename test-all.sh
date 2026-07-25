@@ -44,9 +44,11 @@ FAST_TESTS=(
   test-annotation-note-fixes
   test-placeholder-parse
   test-placeholder
+  test-region-resolver
 )
 
 SLOW_TESTS=(
+  test-scratchpad-canonize
   test-history-bars
   test-suggested-edits
   test-suggestion-scroll

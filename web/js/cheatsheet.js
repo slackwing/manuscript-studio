@@ -56,6 +56,8 @@ const WriteSysCheatsheet = {
         { code: '&part#p1{I.}{The Gathering}', desc: 'Part — its own page. {label} shows in the book; {description} shows only in the outline.' },
         { code: '&chapter#p1c1{1.}{Smoke on the ridge}', desc: 'Chapter heading. {label} in book, {description} in outline.' },
         { code: '&anchor#origin{Where it begins}', desc: 'A named waypoint. {label} shows in the outline (no book text).' },
+        { code: '&placeholder#reunion{paragraphs}{m}{Reunion}{What happens here}', desc: 'Hatched space for unwritten prose. {unit} sentences|paragraphs; sizes xs–xxxl (default m); {label} in outline; {details} on hover/overlay. Lists like an anchor.' },
+        { code: '&end#reunion', desc: 'Ends the region opened by the slug’s anchor/placeholder (Canonize writes these). Renders as nothing.' },
         { code: '&meta{chapter-align}{center}', desc: 'A setting. Renders as nothing. See settings below.' },
       ],
     },
@@ -65,6 +67,7 @@ const WriteSysCheatsheet = {
       rows: [
         { code: 'See &reference#origin{the opening}.', desc: 'A cross-reference link to a #slug defined elsewhere.' },
         { code: 'The fire &anchor#firemark{} spread.', desc: 'An inline anchor — a marker mid-sentence, not an outline entry.' },
+        { code: 'She waited. &placeholder{sentences}{l}', desc: 'An inline placeholder — hatched space flowing with the paragraph.' },
       ],
     },
     {

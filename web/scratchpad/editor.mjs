@@ -10,7 +10,7 @@
  */
 import {
   Schema, Node as PMNode,
-  EditorState, Plugin, NodeSelection,
+  EditorState, Plugin, NodeSelection, TextSelection, Selection,
   EditorView,
   keymap, history, undo, redo,
   baseKeymap, toggleMark, setBlockType, wrapIn, chainCommands, lift,
@@ -341,21 +341,31 @@ function scheduleSave() {
   saveTimer = setTimeout(saveNow, 1200);
 }
 
-function cmdInsertBookContent(state, dispatch) {
-  const node = schema.nodes.book_content.createAndFill({
-    blockId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
-  });
+// Insert a block node WITHOUT destroying a node-selected atom: replacing a
+// text selection is what the user means, but "replace the widget I happen to
+// have selected" never is — insert after it instead.
+function insertBlockSafely(state, dispatch, node) {
   if (!node) return false;
-  if (dispatch) dispatch(state.tr.replaceSelectionWith(node).scrollIntoView());
+  if (dispatch) {
+    const tr = (state.selection instanceof NodeSelection)
+      ? state.tr.insert(state.selection.to, node)
+      : state.tr.replaceSelectionWith(node);
+    dispatch(tr.scrollIntoView());
+  }
   return true;
+}
+
+function cmdInsertBookContent(state, dispatch) {
+  return insertBlockSafely(state, dispatch, schema.nodes.book_content.createAndFill({
+    blockId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+  }));
 }
 
 function cmdInsertTable(state, dispatch) {
   const { table, table_row, table_cell } = schema.nodes;
   const cell = () => table_cell.createAndFill();
   const rows = [0, 1, 2].map(() => table_row.create(null, [cell(), cell(), cell()]));
-  if (dispatch) dispatch(state.tr.replaceSelectionWith(table.create(null, rows)).scrollIntoView());
-  return true;
+  return insertBlockSafely(state, dispatch, table.create(null, rows));
 }
 
 function markActive(state, type) {
@@ -376,7 +386,7 @@ function buildToolbar(container) {
     { label: '• List', title: 'Bullet list', run: wrapInList(schema.nodes.bullet_list) },
     { label: '1. List', title: 'Ordered list', run: wrapInList(schema.nodes.ordered_list) },
     { label: '❝', title: 'Blockquote', run: wrapIn(schema.nodes.blockquote) },
-    { label: '—', title: 'Horizontal rule', run: (s, d) => { if (d) d(s.tr.replaceSelectionWith(schema.nodes.horizontal_rule.create()).scrollIntoView()); return true; } },
+    { label: '—', title: 'Horizontal rule', run: (s, d) => insertBlockSafely(s, d, schema.nodes.horizontal_rule.create()) },
     { sep: true },
     { label: 'Table', title: 'Insert 3×3 table', run: cmdInsertTable },
     { label: 'Image', title: 'Insert image', run: () => { $('#image-input').click(); return true; } },
@@ -511,7 +521,7 @@ async function init() {
     try {
       const imageId = await uploadImage(file);
       const node = schema.nodes.image.create({ imageId, alt: file.name || '' });
-      view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+      insertBlockSafely(view.state, view.dispatch, node);
       view.focus();
     } catch (err) {
       alert('Image upload failed: ' + err.message);
@@ -547,6 +557,7 @@ async function init() {
     saveNow,
     insertBookContent: () => { cmdInsertBookContent(view.state, view.dispatch); },
     bookData,
+    pm: { Selection, TextSelection, NodeSelection },
   };
 }
 
