@@ -78,6 +78,52 @@ const WriteSysCommand = {
     return this.SLUG_RE.test(slug);
   },
 
+  // metaProperties: the fixed &meta vocabulary (mirror of Go's
+  // metaProperties). A property mapped to an array of allowed values is
+  // validated against it; a property mapped to null accepts any non-empty
+  // value (e.g. a font name).
+  META_PROPERTIES: {
+    'chapter-align': ['left', 'center'],
+    'part-align': ['left', 'center'],
+    'title-align': ['left', 'center'],
+    'divider-folios': ['on', 'off'],
+    'font': null,
+  },
+
+  // extractSettings walks (id -> effectiveText) sentences, reads &meta
+  // commands, and returns the validated {property: value} map. Last-wins for
+  // a repeated property; unknown properties and out-of-range values dropped.
+  // "Effective text" means the suggestion if one exists, else committed — so
+  // a suggested &meta applies live and a suggested removal drops it.
+  //
+  // A sentence's effective text may be multi-block (a suggestion like
+  // "&meta{...}\n\n&title{...}"), so we scan each \n\n / \n\t-separated block
+  // for a whole-block &meta, not just whole-sentence meta.
+  extractSettings(ids, effectiveTextById) {
+    const values = {};
+    const consume = (blockText) => {
+      const t = String(blockText).trim();
+      if (!t.startsWith('&meta')) return;
+      const cmd = this.parse(t);
+      if (!cmd || cmd.kind !== 'meta' || cmd.raw !== t) return;
+      if (cmd.args.length < 2) return;
+      const prop = (cmd.args[0] || '').trim();
+      const val = (cmd.args[1] || '').trim();
+      if (!(prop in this.META_PROPERTIES)) return;
+      const allowed = this.META_PROPERTIES[prop];
+      if (allowed && !allowed.includes(val)) return;
+      if (!val) return;
+      values[prop] = val; // last-wins
+    };
+    for (const id of ids) {
+      const text = effectiveTextById[id];
+      if (text == null) continue;
+      // Split into blocks on \n\n or \n\t (the structural boundaries).
+      String(text).split(/\n\n|\n\t/).forEach(consume);
+    }
+    return values;
+  },
+
   // findInline scans a string for inline &reference / &anchor commands (those
   // not spanning the whole string) and returns [{kind, slug, notes, start,
   // end}] in order. Used to render references as links and anchors as markers

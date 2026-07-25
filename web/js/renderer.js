@@ -176,12 +176,16 @@ const WriteSysRenderer = {
       ]);
       this.currentSentences = data.sentences;
       this.currentAnnotations = data.annotations;
-      this.applySettings(data.settings || {});
+      // data.settings is the committed-only baseline; applyEffectiveSettings
+      // overlays suggestions so a suggested &meta takes effect in preview.
+      this.committedSettings = data.settings || {};
 
       this.sentenceMap = {};
       this.currentSentences.forEach(s => {
         this.sentenceMap[s.id] = s.text;
       });
+
+      this.applyEffectiveSettings();
 
       console.log(`Loaded ${this.currentSentences.length} sentences from migration ${migrationID}`);
 
@@ -208,6 +212,10 @@ const WriteSysRenderer = {
   async renderManuscript(opts = {}) {
     const container = document.getElementById('manuscript-content');
     const { anchorSentenceId, selectSentenceId } = opts;
+
+    // Re-apply settings each render so a suggestion that adds/removes a &meta
+    // (saved via the modal, which triggers a re-render) takes effect live.
+    this.applyEffectiveSettings();
 
     // Capture the anchor's viewport offset BEFORE we touch the DOM. We'll
     // re-locate the same sentence after re-render and adjust scroll so the
@@ -458,6 +466,26 @@ const WriteSysRenderer = {
       return `<a class="inline-ref" data-ref-target="${this.escapeHtml(targetId)}" title="${this.escapeHtml(c.slug)}">${notes}</a>`;
     }
     return `<span class="inline-ref broken" title="unresolved reference: ${this.escapeHtml(c.slug || '')}">${notes}</span>`;
+  },
+
+  // applyEffectiveSettings computes book-wide settings from the EFFECTIVE text
+  // of each sentence — the suggestion if one exists, else committed — so a
+  // suggested &meta applies live and a suggested removal drops it. Falls back
+  // to the committed-only baseline from the server if the command layer isn't
+  // present. Call after loading and whenever suggestions change.
+  applyEffectiveSettings() {
+    let settings = this.committedSettings || {};
+    if (window.WriteSysCommand && this.currentSentences) {
+      const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+      const ids = [];
+      const effective = {};
+      this.currentSentences.forEach(s => {
+        ids.push(s.id);
+        effective[s.id] = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
+      });
+      settings = window.WriteSysCommand.extractSettings(ids, effective);
+    }
+    this.applySettings(settings);
   },
 
   // applySettings maps &meta settings onto the document: per-element settings
