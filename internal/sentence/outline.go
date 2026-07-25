@@ -95,8 +95,18 @@ func BuildOutline(ids []string, textByID map[string]string) *Outline {
 				curChapter = len(o.TopChapters) - 1
 			}
 
-		case CmdAnchor:
-			// A block anchor's description is its first arg.
+		case CmdAnchor, CmdPlaceholder:
+			// A block anchor's outline text is its {label} (first arg). A
+			// placeholder lists exactly like an anchor — indistinguishable in
+			// the outline — using its own {label} field; a mis-syntaxed
+			// placeholder renders as prose and stays out of the outline.
+			if cmd.Kind == CmdPlaceholder {
+				spec := ParsePlaceholder(cmd)
+				if !spec.Valid {
+					continue
+				}
+				label = spec.Label
+			}
 			a := OutlineAnchor{Description: label, Slug: cmd.Slug, SentenceID: id}
 			switch {
 			case curPart >= 0 && curChapter >= 0:

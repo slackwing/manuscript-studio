@@ -214,3 +214,81 @@ func TestFindReferences_dangling(t *testing.T) {
 		t.Fatalf("want 2 references, got %d: %+v", len(refs), refs)
 	}
 }
+
+func TestParsePlaceholder(t *testing.T) {
+	parse := func(s string) Command {
+		cmd, ok := ParseCommand(s)
+		if !ok {
+			t.Fatalf("ParseCommand(%q) failed to parse", s)
+		}
+		return cmd
+	}
+	cases := []struct {
+		in   string
+		want PlaceholderSpec
+	}{
+		// Size defaults to m.
+		{"&placeholder{sentences}", PlaceholderSpec{Unit: "sentences", Size: "m", Count: 3, Valid: true}},
+		{"&placeholder#x{paragraphs}", PlaceholderSpec{Unit: "paragraphs", Size: "m", Count: 3, Valid: true}},
+		// Explicit sizes resolve to the two deliberate scales.
+		{"&placeholder{sentences}{xxxl}", PlaceholderSpec{Unit: "sentences", Size: "xxxl", Count: 40, Valid: true}},
+		{"&placeholder{paragraphs}{xxxl}", PlaceholderSpec{Unit: "paragraphs", Size: "xxxl", Count: 21, Valid: true}},
+		{"&placeholder{paragraphs}{xl}", PlaceholderSpec{Unit: "paragraphs", Size: "xl", Count: 8, Valid: true}},
+		// Size-enum sniffing: a non-size second arg is the label.
+		{"&placeholder{sentences}{Reunion beat}", PlaceholderSpec{Unit: "sentences", Size: "m", Count: 3, Label: "Reunion beat", Valid: true}},
+		// A label that IS a size keyword: write the size explicitly.
+		{"&placeholder{sentences}{m}{s}", PlaceholderSpec{Unit: "sentences", Size: "m", Count: 3, Label: "s", Valid: true}},
+		// Full signature.
+		{"&placeholder#r{sentences}{l}{Reunion}{They meet. Wordless.}",
+			PlaceholderSpec{Unit: "sentences", Size: "l", Count: 5, Label: "Reunion", Details: "They meet. Wordless.", Valid: true}},
+		// Label + details without size.
+		{"&placeholder{paragraphs}{The argument}{Three beats, escalating}",
+			PlaceholderSpec{Unit: "paragraphs", Size: "m", Count: 3, Label: "The argument", Details: "Three beats, escalating", Valid: true}},
+		// Mis-syntax: bad unit, or too many args for the signature.
+		{"&placeholder{words}{m}", PlaceholderSpec{Size: "m", Unit: "words"}},
+		{"&placeholder{sentences}{a}{b}{c}{d}", PlaceholderSpec{Size: "m"}},
+	}
+	for _, c := range cases {
+		got := ParsePlaceholder(parse(c.in))
+		if got != c.want {
+			t.Errorf("ParsePlaceholder(%q) = %+v, want %+v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestBuildOutline_Placeholder(t *testing.T) {
+	ids := []string{"s1", "s2", "s3", "s4"}
+	texts := map[string]string{
+		"s1": "&chapter#c1{1.}{Openings}",
+		"s2": "&placeholder#reunion{sentences}{l}{Reunion beat}{wordless}",
+		"s3": "&anchor#mark{a still moment}",
+		"s4": "&placeholder{paragraphs}{bogus-size-is-label}",
+	}
+	o := BuildOutline(ids, texts)
+	if len(o.TopChapters) != 1 {
+		t.Fatalf("expected 1 top chapter, got %d", len(o.TopChapters))
+	}
+	anchors := o.TopChapters[0].Anchors
+	if len(anchors) != 3 {
+		t.Fatalf("expected 3 anchor-style entries (placeholder+anchor+placeholder), got %d: %+v", len(anchors), anchors)
+	}
+	// Placeholders are indistinguishable from anchors: label in Description.
+	if anchors[0].Description != "Reunion beat" || anchors[0].Slug != "reunion" || anchors[0].SentenceID != "s2" {
+		t.Errorf("placeholder outline entry wrong: %+v", anchors[0])
+	}
+	if anchors[1].Description != "a still moment" {
+		t.Errorf("anchor outline entry wrong: %+v", anchors[1])
+	}
+	if anchors[2].Description != "bogus-size-is-label" {
+		t.Errorf("sniffed-label placeholder entry wrong: %+v", anchors[2])
+	}
+}
+
+func TestBuildOutline_InvalidPlaceholderExcluded(t *testing.T) {
+	ids := []string{"s1"}
+	texts := map[string]string{"s1": "&placeholder{words}{m}"}
+	o := BuildOutline(ids, texts)
+	if len(o.TopAnchors) != 0 {
+		t.Errorf("invalid placeholder must not reach the outline, got %+v", o.TopAnchors)
+	}
+}

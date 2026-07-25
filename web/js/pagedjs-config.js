@@ -29,6 +29,7 @@
 
           window.WriteSysRenderer.setupSentenceHover();
           window.WriteSysRenderer.addRainbowBars();
+          if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
           if (window.WriteSysHistory && window.WriteSysRenderer.currentMigrationID) {
             window.WriteSysHistory.loadHistory(window.WriteSysRenderer.currentMigrationID);
           }

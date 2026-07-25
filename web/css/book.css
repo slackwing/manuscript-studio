@@ -2132,3 +2132,100 @@ p.section-break {
     background-color: transparent;
   }
 }
+
+/* ============================================================
+   &placeholder (PLACEHOLDER_PLAN.md)
+
+   Invisible lorem filler painted with a diagonal hatch that merges into one
+   silhouette across lines. Phase alignment is by construction:
+     - 6.4px SVG tile; book line-height 12pt*1.6 = 25.6px = 4 tiles
+     - p.indented text-indent 2em = 32px = 5 tiles
+     - --ph-pad (row-bridge padding) measured at runtime by
+       WriteSysPlaceholder.tunePad() from the rendered font's real metrics
+     - inline mid-line starts phase-nudged onto a tile boundary by
+       WriteSysPlaceholder.nudge()
+   Don't change the book's font-size/line-height/indent without keeping them
+   on tile multiples, or the hatch rows will visibly jog.
+   ============================================================ */
+.ph {
+  color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: var(--ph-pad, 3.7px) 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6.4' height='6.4'%3E%3Cpath d='M-1.6,1.6 L1.6,-1.6 M-1.6,8 L8,-1.6 M4.8,8 L8,4.8' stroke='%23ccc5b6' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 6.4px 6.4px;
+  position: relative;
+  cursor: default;
+}
+
+/* Details chip: small sans, suppressed until hover on inline placeholders.
+   Anchored to the placeholder's first line fragment. */
+.ph .ph-chip {
+  position: absolute;
+  bottom: calc(100% + 0.4em);
+  left: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: 24em;
+  font-family: "Helvetica", sans-serif;
+  font-size: 10px;
+  line-height: 1.45;
+  text-align: left;
+  text-indent: 0;
+  color: #57503f;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #c9c2b2;
+  padding: 5px 7px;
+  box-shadow: 0 3px 10px -4px rgba(20, 16, 8, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.ph:hover .ph-chip {
+  opacity: 1;
+  visibility: visible;
+}
+.ph-chip-head {
+  display: block;
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+
+/* Block (paragraphs-unit) placeholder: overlay chip shown persistently,
+   centered over the region. If paged.js splits the block across pages the
+   overlay rides the fragment that contains it (DOM order: last). */
+.cmd-placeholder {
+  position: relative;
+}
+.cmd-placeholder .ph-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+.cmd-placeholder .ph-chip-block {
+  font-family: "Helvetica", sans-serif;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+  color: #57503f;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #c9c2b2;
+  padding: 6px 10px;
+  max-width: 22em;
+}
+
+/* The phase-nudge spacer must never paint anything of its own. */
+.ph-nudge {
+  display: inline;
+  padding: 0;
+}

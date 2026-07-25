@@ -275,6 +275,11 @@ const WriteSysRenderer = {
       const newPages = document.querySelector('.pagedjs_pages');
       if (newPages) this.insertSpacesBetweenSentences(newPages);
 
+      // Placeholder hatch geometry (row-bridge padding + phase nudge) is
+      // DOM-position-derived, so it re-runs on the fresh pages — same
+      // reasoning as the insertSpacesBetweenSentences re-run above.
+      if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
+
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {
         originalContent.style.display = 'none';
@@ -471,6 +476,21 @@ const WriteSysRenderer = {
   // .sentence span carries the given id so the fragment is hoverable/
   // annotatable and shares identity with the rest of the sentence.
   renderBlockCommandFrag(cmd, id, changed) {
+    if (cmd.kind === 'placeholder') {
+      const lib = window.WriteSysPlaceholder;
+      const spec = window.WriteSysCommand.placeholderSpec(cmd.args);
+      const sugClass = changed ? ' has-suggestion' : '';
+      if (!lib || !spec.valid) {
+        // Mis-syntaxed placeholder prints as literal prose (PLACEHOLDER_PLAN.md).
+        return `<p><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${this.escapeHtml(cmd.raw)}</span></p>`;
+      }
+      if (spec.unit === 'paragraphs') {
+        return lib.blockHTML(spec, cmd.slug, id, changed, this.escapeHtml.bind(this));
+      }
+      // A sentences-unit placeholder alone on its line: a one-run paragraph.
+      const chCls = changed ? ' cmd-suggested' : '';
+      return `<p class="ph-line${chCls}"><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${lib.inlineHTML(spec, cmd.slug)}</span></p>`;
+    }
     if (cmd.kind === 'meta') {
       // A changed &meta renders as a small blue marker (it's otherwise
       // invisible) so the author can find and click it; unchanged is hidden.
@@ -528,6 +548,16 @@ const WriteSysRenderer = {
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
+    if (c.kind === 'placeholder') {
+      const lib = window.WriteSysPlaceholder;
+      const spec = window.WriteSysCommand && window.WriteSysCommand.placeholderSpec(c.args || []);
+      if (!lib || !spec || !spec.valid || spec.unit !== 'sentences') {
+        // Mis-syntax — including a paragraphs-form riding mid-line, which
+        // must be alone on its line — prints as literal prose.
+        return this.escapeHtml(c.raw || '');
+      }
+      return lib.inlineHTML(spec, c.slug);
+    }
     if (c.kind === 'anchor') {
       const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
       // Invisible marker (zero-width) — the host sentence is the scroll target.
@@ -549,17 +579,21 @@ const WriteSysRenderer = {
   // reference in edited prose still renders as a link. Tokens that straddle a
   // <del>/<strong> boundary are left as-is (rare; they read as diff text).
   renderInlineCommandsInHtml(html) {
-    // Match an escaped command token: &amp;(keyword)(#slug)?{notes?}
-    // Notes are plain (no nested braces in the escaped stream we care about).
-    const re = /&amp;(reference|anchor)(#[a-z0-9-]+)?\{([^{}]*)\}/g;
-    return html.replace(re, (m, kw, hashSlug, notes) => {
+    // Match an escaped command token: &amp;(keyword)(#slug)?{...}{...}...
+    // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
+    // Args are plain (no nested braces in the escaped stream we care about).
+    const re = /&amp;(reference|anchor|placeholder)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})/g;
+    const unescape = (s) => String(s)
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+    return html.replace(re, (m, kw, hashSlug, groups) => {
       const slug = hashSlug ? hashSlug.slice(1) : '';
-      // notes here is already HTML-escaped (we're in escaped output); unescape
-      // just for the parse, renderInlineCommand re-escapes.
-      const rawNotes = String(notes)
-        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-      return this.renderInlineCommand({ kind: kw, slug, notes: rawNotes });
+      // args here are already HTML-escaped (we're in escaped output);
+      // unescape just for the parse, renderInlineCommand re-escapes.
+      const args = [];
+      groups.replace(/\{([^{}]*)\}/g, (_, g) => { args.push(unescape(g)); return ''; });
+      const raw = '&' + kw + (hashSlug || '') + args.map(a => '{' + a + '}').join('');
+      return this.renderInlineCommand({ kind: kw, slug, notes: args[0] || '', args, raw });
     });
   },
 

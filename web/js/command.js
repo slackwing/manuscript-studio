@@ -6,19 +6,30 @@
  * by an exact keyword and then '#' or '{' — so "Smith & Sons", "R&D", and
  * "A &chapter of accidents" are literal prose, not commands.
  *
- * Grammar (see TEX_COMMANDS_PLAN.md):
- *   &title{name}
- *   &part#slug{label}{desc?}
- *   &chapter#slug{label}{desc?}
- *   &anchor#slug{desc?}          // no label
- *   &reference#slug{notes?}       // inline only
+ * Grammar (see TEX_COMMANDS_PLAN.md and PLACEHOLDER_PLAN.md):
+ *   &title{text}
+ *   &part#slug{text}{label?}
+ *   &chapter#slug{text}{label?}
+ *   &anchor#slug{label?}{details?}                    // details reserved, unrendered
+ *   &reference#slug{notes?}                           // inline only
+ *   &placeholder#slug{unit}{size?}{label?}{details?}  // see placeholderSpec
+ *
+ * Argument vocabulary: {text} renders in the book, {label} shows in the
+ * outline, {details} is auxiliary metadata (a placeholder's details overlay;
+ * an anchor's details are parsed but unrendered for now).
  */
 
 const WriteSysCommand = {
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta'],
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder'],
   // Block commands stand alone as their own sentence when on their own line.
-  // &meta is block but renders as nothing (it carries a setting).
-  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true },
+  // &meta is block but renders as nothing (it carries a setting). anchor and
+  // placeholder are block only when sole line content (segman's call).
+  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true },
+
+  // Placeholder t-shirt sizes. Sentences double-ish; paragraphs are
+  // Fibonacci. The asymmetry is deliberate (PLACEHOLDER_PLAN.md).
+  PLACEHOLDER_SENTENCES: { xs: 1, s: 2, m: 3, l: 5, xl: 10, xxl: 20, xxxl: 40 },
+  PLACEHOLDER_PARAGRAPHS: { xs: 1, s: 2, m: 3, l: 5, xl: 8, xxl: 13, xxxl: 21 },
 
   SLUG_RE: /^[a-z0-9-]+$/,
 
@@ -76,6 +87,32 @@ const WriteSysCommand = {
 
   validSlug(slug) {
     return this.SLUG_RE.test(slug);
+  },
+
+  // placeholderSpec interprets a &placeholder arg list {unit}{size?}{label?}
+  // {details?}. The size arg is positional but detected by value: an arg that
+  // exactly matches a size keyword is the size, anything else is the label (a
+  // label that IS literally a size keyword can force the default by writing
+  // the size explicitly). valid=false means mis-syntax → render as literal
+  // prose. Mirrors Go ParsePlaceholder — keep in lockstep.
+  placeholderSpec(args) {
+    const spec = { unit: '', size: 'm', count: 0, label: '', details: '', valid: false };
+    if (!args || args.length === 0 || args.length > 4) return spec;
+    spec.unit = String(args[0]).trim();
+    const counts = spec.unit === 'sentences' ? this.PLACEHOLDER_SENTENCES
+      : (spec.unit === 'paragraphs' ? this.PLACEHOLDER_PARAGRAPHS : null);
+    if (!counts) return spec;
+    let rest = args.slice(1);
+    if (rest.length > 0 && Object.prototype.hasOwnProperty.call(counts, String(rest[0]).trim())) {
+      spec.size = String(rest[0]).trim();
+      rest = rest.slice(1);
+    }
+    if (rest.length > 0) { spec.label = rest[0]; rest = rest.slice(1); }
+    if (rest.length > 0) { spec.details = rest[0]; rest = rest.slice(1); }
+    if (rest.length > 0) return { unit: '', size: 'm', count: 0, label: '', details: '', valid: false };
+    spec.count = counts[spec.size];
+    spec.valid = true;
+    return spec;
   },
 
   // segmentFragments splits a sentence's effective text into an ordered list
@@ -158,10 +195,11 @@ const WriteSysCommand = {
     return values;
   },
 
-  // findInline scans a string for inline &reference / &anchor commands (those
-  // not spanning the whole string) and returns [{kind, slug, notes, start,
-  // end}] in order. Used to render references as links and anchors as markers
-  // within a sentence's visible text.
+  // findInline scans a string for inline &reference / &anchor / &placeholder
+  // commands (those not spanning the whole string) and returns [{kind, slug,
+  // notes, args, raw, start, end}] in order. Used to render references as
+  // links, anchors as markers, and placeholders as hatch regions within a
+  // sentence's visible text.
   findInline(text) {
     const chars = Array.from(text);
     const out = [];
@@ -173,8 +211,8 @@ const WriteSysCommand = {
       const cmd = this.parse(chars.slice(i).join(''));
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
-      if (cmd.kind === 'reference' || cmd.kind === 'anchor') {
-        out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', start: i, end });
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder') {
+        out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end });
       }
       i = end;
     }

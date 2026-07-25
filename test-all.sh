@@ -42,6 +42,8 @@ FAST_TESTS=(
   test-suggestion-modal-fixes
   test-structural-suggestion
   test-annotation-note-fixes
+  test-placeholder-parse
+  test-placeholder
 )
 
 SLOW_TESTS=(

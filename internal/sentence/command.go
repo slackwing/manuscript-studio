@@ -10,13 +10,18 @@ import (
 // sentence. This file owns *meaning*: recognizing a stored sentence as a
 // command and parsing its fields (keyword, optional #slug, {...} args).
 //
-// Grammar (see TEX_COMMANDS_PLAN.md):
+// Grammar (see TEX_COMMANDS_PLAN.md and PLACEHOLDER_PLAN.md):
 //
-//	&title{name}
-//	&part#slug{label}{desc?}
-//	&chapter#slug{label}{desc?}
-//	&anchor#slug{desc?}          // no label
-//	&reference#slug{notes?}       // inline only
+//	&title{text}
+//	&part#slug{text}{label?}
+//	&chapter#slug{text}{label?}
+//	&anchor#slug{label?}{details?}                       // details reserved, unrendered
+//	&reference#slug{notes?}                              // inline only
+//	&placeholder#slug{unit}{size?}{label?}{details?}     // see ParsePlaceholder
+//
+// Argument vocabulary: {text} renders in the book, {label} shows in the
+// outline, {details} is auxiliary metadata (a placeholder's details overlay;
+// an anchor's details are parsed but unrendered for now).
 //
 // A '&' begins a command only when immediately followed by an exact keyword
 // and then '#' or '{'. #slug is [a-z0-9-]+. Block vs inline is a segmentation
@@ -26,12 +31,13 @@ import (
 type CommandKind string
 
 const (
-	CmdTitle     CommandKind = "title"
-	CmdPart      CommandKind = "part"
-	CmdChapter   CommandKind = "chapter"
-	CmdAnchor    CommandKind = "anchor"
-	CmdReference CommandKind = "reference"
-	CmdMeta      CommandKind = "meta"
+	CmdTitle       CommandKind = "title"
+	CmdPart        CommandKind = "part"
+	CmdChapter     CommandKind = "chapter"
+	CmdAnchor      CommandKind = "anchor"
+	CmdReference   CommandKind = "reference"
+	CmdMeta        CommandKind = "meta"
+	CmdPlaceholder CommandKind = "placeholder"
 )
 
 // blockCommandKinds are the commands that stand alone as their own sentence
@@ -40,11 +46,12 @@ const (
 // is recognized here like any other block command.) &meta is block but
 // renders as nothing — it carries a book-wide setting.
 var blockCommandKinds = map[CommandKind]bool{
-	CmdTitle:   true,
-	CmdPart:    true,
-	CmdChapter: true,
-	CmdAnchor:  true,
-	CmdMeta:    true,
+	CmdTitle:       true,
+	CmdPart:        true,
+	CmdChapter:     true,
+	CmdAnchor:      true,
+	CmdMeta:        true,
+	CmdPlaceholder: true, // block iff sole line content, same as anchor (segman's call)
 }
 
 // Command is a parsed &-command. Slug is the author's static #slug ("" if the
@@ -61,8 +68,71 @@ var (
 	// slugPattern: a static slug is lowercase letters, digits, and dashes.
 	slugPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 	// commandNames matched at the start of a token.
-	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta}
+	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder}
 )
+
+// PlaceholderSpec is the interpreted argument list of a &placeholder command:
+// {unit}{size?}{label?}{details?}. The size arg is positional but detected by
+// value: an arg that exactly matches a size keyword is the size, anything
+// else is the label (a label that IS literally a size keyword can force the
+// default by writing the size explicitly). Valid=false means the command is
+// mis-syntaxed and renders as literal prose.
+type PlaceholderSpec struct {
+	Unit    string // "sentences" or "paragraphs"
+	Size    string // canonical size keyword; "m" when omitted
+	Count   int    // resolved count of Unit
+	Label   string // outline text (placeholder lists exactly like an anchor)
+	Details string // overlaid on the rendered placeholder region
+	Valid   bool
+}
+
+// Placeholder t-shirt sizes. Sentences double-ish; paragraphs are Fibonacci.
+// The asymmetry is deliberate (PLACEHOLDER_PLAN.md).
+var placeholderSentenceCounts = map[string]int{
+	"xs": 1, "s": 2, "m": 3, "l": 5, "xl": 10, "xxl": 20, "xxxl": 40,
+}
+var placeholderParagraphCounts = map[string]int{
+	"xs": 1, "s": 2, "m": 3, "l": 5, "xl": 8, "xxl": 13, "xxxl": 21,
+}
+
+// ParsePlaceholder interprets a parsed &placeholder command's args. Mirrors
+// web/js/command.js placeholderSpec — keep in lockstep.
+func ParsePlaceholder(cmd Command) PlaceholderSpec {
+	spec := PlaceholderSpec{Size: "m"}
+	if cmd.Kind != CmdPlaceholder || len(cmd.Args) == 0 || len(cmd.Args) > 4 {
+		return spec
+	}
+	spec.Unit = strings.TrimSpace(cmd.Args[0])
+	counts, ok := map[string]map[string]int{
+		"sentences":  placeholderSentenceCounts,
+		"paragraphs": placeholderParagraphCounts,
+	}[spec.Unit]
+	if !ok {
+		return spec
+	}
+	rest := cmd.Args[1:]
+	if len(rest) > 0 {
+		if _, isSize := counts[strings.TrimSpace(rest[0])]; isSize {
+			spec.Size = strings.TrimSpace(rest[0])
+			rest = rest[1:]
+		}
+	}
+	if len(rest) > 0 {
+		spec.Label = rest[0]
+		rest = rest[1:]
+	}
+	if len(rest) > 0 {
+		spec.Details = rest[0]
+		rest = rest[1:]
+	}
+	if len(rest) > 0 {
+		// More args than {unit}{size}{label}{details} can absorb.
+		return PlaceholderSpec{Size: "m"}
+	}
+	spec.Count = counts[spec.Size]
+	spec.Valid = true
+	return spec
+}
 
 // IsBlockCommandText reports whether a stored sentence is a block &-command
 // (its whole text is one command token). Used to route block-command
