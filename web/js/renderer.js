@@ -399,8 +399,10 @@ const WriteSysRenderer = {
         const body = this.stripLeadingMarker(f.text);
         let inner;
         if (suggestion !== undefined && loneProse) {
-          // A pure prose edit → word-level diff vs. the committed prose.
-          inner = renderDiffHTML(origProse, body, this._dmp());
+          // A pure prose edit → word-level diff vs. the committed prose, then
+          // render any inline &reference/&anchor tokens that survived the diff
+          // as links/markers (they're escaped as &amp;… in the diff HTML).
+          inner = this.renderInlineCommandsInHtml(renderDiffHTML(origProse, body, this._dmp()));
         } else {
           inner = this.applyInlineFormatting(body);
         }
@@ -500,6 +502,26 @@ const WriteSysRenderer = {
       return `<a class="inline-ref" data-ref-target="${this.escapeHtml(targetId)}" title="${this.escapeHtml(c.slug)}">${notes}</a>`;
     }
     return `<span class="inline-ref broken" title="unresolved reference: ${this.escapeHtml(c.slug || '')}">${notes}</span>`;
+  },
+
+  // renderInlineCommandsInHtml post-processes diff HTML (already escaped, so
+  // '&' is '&amp;') to turn any surviving inline &reference/&anchor tokens
+  // into links/markers. Used on a suggested prose fragment's diff output so a
+  // reference in edited prose still renders as a link. Tokens that straddle a
+  // <del>/<strong> boundary are left as-is (rare; they read as diff text).
+  renderInlineCommandsInHtml(html) {
+    // Match an escaped command token: &amp;(keyword)(#slug)?{notes?}
+    // Notes are plain (no nested braces in the escaped stream we care about).
+    const re = /&amp;(reference|anchor)(#[a-z0-9-]+)?\{([^{}]*)\}/g;
+    return html.replace(re, (m, kw, hashSlug, notes) => {
+      const slug = hashSlug ? hashSlug.slice(1) : '';
+      // notes here is already HTML-escaped (we're in escaped output); unescape
+      // just for the parse, renderInlineCommand re-escapes.
+      const rawNotes = String(notes)
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+      return this.renderInlineCommand({ kind: kw, slug, notes: rawNotes });
+    });
   },
 
   // applyEffectiveSettings computes book-wide settings from the EFFECTIVE text
