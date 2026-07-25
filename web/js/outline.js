@@ -108,8 +108,13 @@ const WriteSysOutline = {
       return;
     }
 
-    this.el.innerHTML = `<nav class="outline-nav">${items.join('')}</nav>`;
+    // One caret element that glides to the active row (positioned absolutely
+    // within the nav; moved via translateY with a CSS transition).
+    this.el.innerHTML = `<nav class="outline-nav">` +
+      `<span class="outline-caret" aria-hidden="true">◂</span>` +
+      items.join('') + `</nav>`;
     this.el.classList.add('has-outline');
+    this.caretEl = this.el.querySelector('.outline-caret');
 
     this.itemNodes = Array.from(this.el.querySelectorAll('.outline-item'));
     this.itemNodes.forEach(node => {
@@ -165,17 +170,29 @@ const WriteSysOutline = {
       }
       const span = Math.max(1, nextStart - start);
       const info = this.itemNodes[i].querySelector('.outline-pageinfo');
-      if (info) {
-        info.textContent = start ? (span > 1 ? `${start} (${span})` : `${start}`) : '';
+      // Page number / count are shown for CHAPTERS only — title and part are
+      // dividers, not page-addressable content sections.
+      const isChapter = this.itemNodes[i].classList.contains('outline-chapter');
+      if (info && isChapter) {
+        // Two columns: page number (dark), then a page-count column ("Npp",
+        // light) only when the section spans more than one page.
+        const pageCol = start ? `<span class="outline-page">${start}</span>` : '';
+        const countCol = (start && span > 1) ? `<span class="outline-count">${span}pp</span>` : '';
+        info.innerHTML = pageCol + countCol;
         info.title = start ? `starts on page ${start}, spans ${span} page${span > 1 ? 's' : ''}` : '';
+      } else if (info) {
+        info.innerHTML = '';
+        info.title = '';
       }
     }
     this.itemStarts = starts;
     this.updateCaret();
   },
 
-  // attachScrollTracking wires a single scroll/resize listener (once) that
-  // moves the reading-position caret to the section at the viewport center.
+  // attachScrollTracking wires scroll/resize listeners (once) that move the
+  // reading-position caret to the section at the viewport center. Listens on
+  // window AND document (capture) so it catches scrolling regardless of which
+  // element the scroll originates on.
   attachScrollTracking() {
     if (this._scrollBound) return;
     this._scrollBound = true;
@@ -184,15 +201,19 @@ const WriteSysOutline = {
       this._rafPending = true;
       requestAnimationFrame(() => { this._rafPending = false; this.updateCaret(); });
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
     window.addEventListener('resize', () => { this.schedulePageInfo(); }, { passive: true });
+    // Run once now (in case content is already scrolled or short).
+    this.updateCaret();
   },
 
-  // updateCaret marks the outline item whose section contains the page at the
-  // viewport center as active (the caret points at it). Smooth motion comes
-  // from a CSS transition on the caret's position between items.
+  // updateCaret glides the single caret element to the row whose section
+  // contains the page at the viewport center. The caret moves via translateY
+  // (with a CSS transition) so it physically slides between rows rather than
+  // fading out and in.
   updateCaret() {
-    if (!this.itemNodes || this.itemNodes.length === 0) return;
+    if (!this.itemNodes || this.itemNodes.length === 0 || !this.caretEl) return;
     const pages = Array.from(document.querySelectorAll('.pagedjs_page'));
     if (pages.length === 0) return;
     // Which page is at the vertical center of the viewport?
@@ -205,13 +226,22 @@ const WriteSysOutline = {
       centerPageIdx = i;
     }
     const centerPage = centerPageIdx + 1;
-    // The active item is the last one whose start page <= centerPage.
+    // The active row is the last item whose start page <= centerPage.
     const starts = this.itemStarts || [];
     let activeIdx = -1;
     for (let i = 0; i < starts.length; i++) {
       if (starts[i] > 0 && starts[i] <= centerPage) activeIdx = i;
     }
     this.itemNodes.forEach((n, i) => n.classList.toggle('active', i === activeIdx));
+
+    if (activeIdx < 0) { this.caretEl.style.opacity = '0'; return; }
+    // Glide the caret to vertically center on the active row (both measured
+    // relative to the nav so translateY is nav-local).
+    const navTop = this.el.querySelector('.outline-nav').getBoundingClientRect().top;
+    const rowRect = this.itemNodes[activeIdx].getBoundingClientRect();
+    const y = (rowRect.top + rowRect.height / 2) - navTop;
+    this.caretEl.style.opacity = '1';
+    this.caretEl.style.transform = `translateY(${y}px)`;
   },
 
   pushChapter(items, c) {
@@ -226,10 +256,9 @@ const WriteSysOutline = {
   },
 
   item(cls, text, sentenceId) {
-    // caret: the reading-position pointer (▸), shown on the active item.
-    // page-info: right-aligned "page (count)" filled in post-render.
+    // Columns: text | page# | page-count. The reading-position caret is a
+    // single element in the nav (not per-item) that glides to the active row.
     return `<a class="outline-item ${cls}" data-sentence-id="${escapeHTML(sentenceId)}">` +
-      `<span class="outline-caret" aria-hidden="true">▸</span>` +
       `<span class="outline-text">${escapeHTML(text)}</span>` +
       `<span class="outline-pageinfo"></span>` +
       `</a>`;

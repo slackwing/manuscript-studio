@@ -704,6 +704,9 @@ p.section-break {
   font-size: 12px;
   line-height: 1.5;
 }
+.outline-nav {
+  position: relative; /* caret positions against this */
+}
 .outline-item {
   display: flex;
   align-items: baseline;
@@ -711,25 +714,12 @@ p.section-break {
   cursor: pointer;
   text-decoration: none;
   padding: 1px 0;
+  /* Room on the right for the caret column so text never sits under it. */
+  padding-right: 14px;
 }
 .outline-item:hover .outline-text {
   color: #000;
   text-decoration: underline;
-}
-/* Reading-position caret: a sideways ▸ that only shows on the active item.
-   It reserves its width always so text never shifts as it moves. The smooth
-   "glide" is the fade/slide transition as active-ness moves between items. */
-.outline-caret {
-  flex: 0 0 auto;
-  width: 10px;
-  color: #2a6fb0;
-  opacity: 0;
-  transform: translateX(-2px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-.outline-item.active .outline-caret {
-  opacity: 1;
-  transform: translateX(0);
 }
 .outline-item.active .outline-text {
   color: #000;
@@ -741,14 +731,42 @@ p.section-break {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Right-aligned "page (count)" column. */
+/* Two right columns: page number (dark, like chapters) then count (light). */
 .outline-pageinfo {
   flex: 0 0 auto;
   margin-left: 8px;
-  color: #aaa;
-  font-size: 10px;
+  display: flex;
+  gap: 6px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.outline-page {
+  color: #333;      /* dark grey — same weight as chapter text */
+  font-size: 10px;
+  min-width: 1.5em;
+  text-align: right;
+}
+.outline-count {
+  color: #bbb;      /* light grey */
+  font-size: 10px;
+  min-width: 2.4em;
+  text-align: right;
+}
+/* Single reading-position caret that GLIDES (translateY transition) to the
+   active row. Sits in the caret column at the far right of the nav, pointing
+   left (◂) at the row. Its vertical position is set in JS. */
+.outline-caret {
+  position: absolute;
+  right: 0;
+  top: 0;
+  color: #2a6fb0;
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(0);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  pointer-events: none;
+  /* nudge up so the glyph baseline centers on the row's center */
+  margin-top: -0.5em;
 }
 .outline-title {
   font-style: italic;
