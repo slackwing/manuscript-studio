@@ -583,6 +583,25 @@ h3 {
   color: #8c959f;
 }
 
+/* Leading block anchor: its ⚓ is pulled into the LEFT MARGIN, aligned with the
+   top of the paragraph it marks, so the prose keeps its normal indent (flush
+   for a first/section paragraph, 2em for a \n\t paragraph) — the glyph never
+   shifts the text. It sits over the left-margin history/diff-hint bars; a hair
+   of white halo keeps it legible against them. */
+p.has-anchor-margin {
+  position: relative;
+}
+.cmd-anchor-margin {
+  position: absolute;
+  left: -1.6em;
+  top: 0;
+  font-size: 0.9em;
+  line-height: inherit;
+  /* legible over the history bars without a hard box */
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+  z-index: 11;
+}
+
 /* &meta settings (TEX_COMMANDS_PLAN.md §5.5). Book-wide toggles applied as
    body[data-*] attributes by the renderer. */
 body[data-chapter-align="center"] .cmd-chapter {

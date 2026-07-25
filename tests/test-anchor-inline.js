@@ -1,8 +1,7 @@
 /**
- * Leading-anchor inline glyph (read-only, no DB writes). Calls
- * renderSentencesToHTML directly in the browser with a synthetic sentence
- * whose suggestion is "&anchor{x} prose" — asserting the ⚓ rides INLINE at the
- * start of the prose paragraph, not as a standalone block line.
+ * Leading block anchor → ⚓ in the LEFT MARGIN, aligned to its paragraph, with
+ * the paragraph keeping its normal indent (read-only: renderSentencesToHTML on
+ * a synthetic sentence; nothing persisted).
  */
 const { chromium } = require('playwright');
 const { TEST_URL, loginAsTestUser } = require('./test-utils');
@@ -20,30 +19,45 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
   await page.goto(TEST_URL);
   await page.waitForTimeout(3000);
 
-  const result = await page.evaluate(() => {
+  const render = (sentences, sug) => page.evaluate(({ sentences, sug }) => {
     const R = window.WriteSysRenderer;
-    // Synthetic sentence + a suggestion overlaying it (nothing persisted).
-    const id = 'synthetic-anchor-1';
-    const sentences = [{ id, text: 'We probably recounted tales of that night.' }];
-    const prevSug = window.WriteSysSuggestions.bySentenceId;
-    window.WriteSysSuggestions.bySentenceId = { [id]: '&anchor{The salvia night} We probably recounted tales of that night.' };
+    const prev = window.WriteSysSuggestions.bySentenceId;
+    window.WriteSysSuggestions.bySentenceId = sug;
     const html = R.renderSentencesToHTML(sentences);
-    window.WriteSysSuggestions.bySentenceId = prevSug; // restore
+    window.WriteSysSuggestions.bySentenceId = prev;
     return html;
-  });
+  }, { sentences, sug });
 
-  // Parse the produced HTML string.
-  const hasGlyph = /cmd-anchor-glyph/.test(result);
-  check('⚓ glyph present', hasGlyph);
-  // The glyph must be INSIDE a <p> (inline), not a standalone .cmd-anchor div.
-  const inParagraph = /<p[^>]*>[^]*cmd-anchor-glyph[^]*We probably recounted/.test(result);
-  check('glyph is inline at start of the paragraph', inParagraph, result.slice(0, 240).replace(/\n/g, ' '));
-  // No standalone .cmd-anchor block for this case.
-  const noStandalone = !/<div class="cmd-anchor[ "]/.test(result);
-  check('no standalone anchor block line', noStandalone);
-  // Glyph precedes the prose text, with a space.
-  const glyphThenSpaceThenText = /⚓<\/span> We probably recounted/.test(result);
-  check('⚓ then space then first word', glyphThenSpaceThenText, result.match(/⚓[^]{0,40}/)?.[0]);
+  // Case 1: flush leading anchor (no preceding paragraph marker).
+  {
+    const id = 'syn-flush';
+    const html = await render([{ id, text: 'We probably recounted tales.' }],
+      { [id]: '&anchor{The salvia night} We probably recounted tales.' });
+    check('flush: ⚓ present in margin', /cmd-anchor-margin/.test(html));
+    check('flush: paragraph has has-anchor-margin', /<p class="[^"]*has-anchor-margin[^"]*"/.test(html));
+    check('flush: not indented', !/<p class="[^"]*\bindented\b[^"]*has-anchor-margin|has-anchor-margin[^"]*\bindented\b/.test(html), html.match(/<p class="[^"]*"/)?.[0]);
+    check('flush: no inline "⚓ " prefix before text (glyph is a margin span)', /cmd-anchor-margin[^>]*>⚓<\/span><span/.test(html));
+  }
+
+  // Case 2: paragraph after a placeholder (\n\t marker) → indented AND margin.
+  {
+    const id = 'syn-indent';
+    const html = await render([{ id, text: 'We probably recounted tales.' }],
+      { [id]: '\n\t&anchor{The salvia night} We probably recounted tales.' });
+    check('indented: ⚓ in margin', /cmd-anchor-margin/.test(html));
+    check('indented: paragraph is BOTH indented and has-anchor-margin',
+      /<p class="[^"]*indented[^"]*has-anchor-margin|<p class="[^"]*has-anchor-margin[^"]*indented/.test(html),
+      html.match(/<p class="[^"]*"/)?.[0]);
+  }
+
+  // Case 3: standalone anchor, no following prose → own quiet line (not margin).
+  {
+    const id = 'syn-standalone';
+    const html = await render([{ id, text: 'placeholder' }],
+      { [id]: '&anchor{Waypoint}' });
+    check('standalone: renders a .cmd-anchor line', /<div class="cmd-anchor[ "]/.test(html));
+    check('standalone: NOT a margin glyph', !/cmd-anchor-margin/.test(html));
+  }
 
   await browser.close();
   process.exit(failed ? 1 : 0);

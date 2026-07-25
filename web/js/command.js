@@ -153,14 +153,19 @@ const WriteSysCommand = {
       // canonicalize joins a block anchor to its paragraph with a single \n,
       // and segman splits it into its own sentence. Mirror that split here so
       // the render preview matches the pushed/segmented result: emit the anchor
-      // as a command fragment (carrying this block's marker), then the trailing
-      // prose as a same-paragraph prose fragment (no marker of its own).
+      // as a command fragment, then the trailing prose as its paragraph.
+      //
+      // The block's leading marker (\n\n / \n\t) belongs to the PARAGRAPH, so it
+      // rides on the PROSE fragment — that's what drives indent/section behavior
+      // (e.g. a paragraph after a placeholder keeps its \n\t indent). The anchor
+      // glyph is just a left-margin decoration on that paragraph and carries no
+      // marker of its own.
       if (cmd && cmd.kind === 'anchor') {
         const after = trimmed.slice(cmd.raw.length);
         if (after.startsWith('\n')) {
           const prose = after.slice(1);
-          frags.push({ kind: 'command', cmd, marker });
-          if (prose.trim() !== '') frags.push({ kind: 'prose', text: prose, marker: '' });
+          frags.push({ kind: 'command', cmd, marker: '' });
+          if (prose.trim() !== '') frags.push({ kind: 'prose', text: prose, marker });
           marker = '';
           continue;
         }

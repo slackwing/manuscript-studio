@@ -1,0 +1,246 @@
+/* Scratchpad page (SCRATCHPAD_PLAN.md §6). App chrome is Helvetica like the
+   rest of the UI; the writing surface is Georgia — a scratchpad is prose,
+   not source. Book content inside widgets renders in a shadow root with
+   book.css, so book styles never leak out here (and vice versa). */
+
+* { box-sizing: border-box; }
+
+body.scratchpad-page {
+  margin: 0;
+  font-family: "Helvetica", sans-serif;
+  background: #f5f5f5;
+  color: #222;
+}
+
+/* ---- header ---- */
+.sp-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+}
+.sp-back { color: #666; text-decoration: none; font-size: 13px; }
+.sp-back:hover { color: #222; }
+.sp-app { font-weight: bold; font-size: 14px; }
+.sp-spacer { flex: 1; }
+.sp-save { font-size: 12px; color: #8a8378; }
+
+/* ---- layout ---- */
+.sp-main {
+  display: flex;
+  height: calc(100vh - 41px);
+}
+.sp-sidebar {
+  width: 260px;
+  flex: none;
+  border-right: 1px solid #ddd;
+  background: #fafafa;
+  overflow-y: auto;
+  padding: 10px;
+}
+.sp-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 24px;
+}
+
+/* ---- sidebar ---- */
+.sp-new {
+  width: 100%;
+  padding: 8px;
+  font: 600 13px "Helvetica", sans-serif;
+  background: #35312a;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.sp-new:hover { background: #4a453c; }
+.sp-list { display: flex; flex-direction: column; gap: 2px; }
+.pad-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  text-decoration: none;
+  color: #222;
+  font-size: 13px;
+  border-radius: 3px;
+}
+.pad-item:hover { background: #eee9e0; }
+.pad-item.active { background: #e6dfd2; }
+.pad-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pad-item-when { font-size: 11px; color: #999; }
+.pad-item-del {
+  border: none; background: none; color: #bbb; cursor: pointer;
+  font-size: 14px; padding: 0 2px; visibility: hidden;
+}
+.pad-item:hover .pad-item-del { visibility: visible; }
+.pad-item-del:hover { color: #b33b3a; }
+.pad-empty { color: #999; font-size: 13px; padding: 8px; }
+
+/* ---- editor shell ---- */
+.sp-empty { max-width: 32em; margin: 60px auto; color: #666; text-align: center; }
+.sp-empty-hint { font-size: 12px; color: #999; line-height: 1.6; }
+.sp-title {
+  width: 100%;
+  max-width: 46em;
+  display: block;
+  margin: 0 auto 10px;
+  font: 700 22px Georgia, serif;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 4px 2px;
+}
+.sp-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  max-width: 46em;
+  margin: 0 auto 14px;
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 5px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+.sp-toolbar button {
+  font: 12px/1 "Helvetica", sans-serif;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: #333;
+}
+.sp-toolbar button.i { font-style: italic; }
+.sp-toolbar button:hover { background: #f0ece4; }
+.sp-toolbar button.active { background: #e6dfd2; border-color: #d0c8b8; }
+.sp-toolbar button.bc-btn { color: #2a6fb0; font-weight: 600; }
+.tb-sep { width: 1px; height: 18px; background: #ddd; margin: 0 4px; }
+
+/* ---- ProseMirror surface ---- */
+.sp-editor {
+  max-width: 46em;
+  margin: 0 auto 80px;
+}
+.ProseMirror {
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 28px 34px;
+  min-height: 55vh;
+  font: 15px/1.65 Georgia, serif;
+  color: #1a1a1a;
+}
+.ProseMirror p { margin: 0 0 0.8em; }
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 {
+  font-family: "Helvetica", sans-serif;
+  line-height: 1.3;
+  margin: 1.2em 0 0.4em;
+}
+.ProseMirror h1 { font-size: 22px; }
+.ProseMirror h2 { font-size: 18px; }
+.ProseMirror h3 { font-size: 15px; }
+.ProseMirror blockquote {
+  border-left: 3px solid #d0c8b8;
+  margin: 0 0 0.8em;
+  padding-left: 12px;
+  color: #555;
+}
+.ProseMirror hr { border: none; border-top: 1px solid #ddd; margin: 1.2em 0; }
+.ProseMirror ul, .ProseMirror ol { padding-left: 1.6em; margin: 0 0 0.8em; }
+.ProseMirror img.scratch-image {
+  max-width: 100%;
+  display: block;
+  margin: 0.6em 0;
+}
+.ProseMirror img.scratch-image.ProseMirror-selectednode,
+.ProseMirror .bc-widget.ProseMirror-selectednode,
+.ProseMirror-selectednode {
+  outline: 2px solid #2a6fb0;
+}
+.ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.ProseMirror-gapcursor:after {
+  content: ""; display: block; position: absolute;
+  top: -2px; width: 20px; border-top: 1px solid #222;
+  animation: pm-cursor-blink 1.1s steps(2, start) infinite;
+}
+@keyframes pm-cursor-blink { to { visibility: hidden; } }
+.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+
+/* tables (prosemirror-tables) */
+.ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0 0 0.8em;
+}
+.ProseMirror td, .ProseMirror th {
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  vertical-align: top;
+  position: relative;
+}
+.ProseMirror th { background: #f5f2ec; font-weight: 600; }
+.ProseMirror .selectedCell:after {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(42, 111, 176, 0.12); pointer-events: none;
+}
+
+/* ---- book_content widget ---- */
+.bc-widget {
+  border: 1px solid #c9c2b2;
+  background: #fbfaf7;
+  margin: 0 0 0.9em;
+}
+.bc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #e4ded1;
+  background: #f3efe6;
+  font: 11px "Helvetica", sans-serif;
+  color: #57503f;
+}
+.bc-status { flex: 1; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+.bc-status.bc-canonized { color: #2a6fb0; }
+.bc-tabs button, .bc-actions button {
+  font: 11px "Helvetica", sans-serif;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 3px 7px;
+  cursor: pointer;
+  color: #57503f;
+}
+.bc-tabs button.active { background: #fff; border-color: #d0c8b8; }
+.bc-actions button:hover { color: #222; }
+.bc-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
+.bc-open:hover { text-decoration: underline; }
+.bc-body { padding: 0; }
+.bc-text {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: vertical;
+  padding: 10px 12px;
+  font: 12px/1.55 "Monaco", monospace;
+  background: #fff;
+  color: #222;
+  min-height: 90px;
+}
+.bc-note {
+  font: 11px "Helvetica", sans-serif;
+  color: #8a8378;
+  padding: 5px 10px;
+}
+.bc-error { color: #b33b3a; }
+.bc-render { background: #fff; }
