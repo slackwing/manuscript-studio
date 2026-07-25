@@ -127,6 +127,10 @@ const WriteSysSuggestions = {
       <label class="suggestion-modal-label">Original</label>
       <textarea class="suggestion-modal-original" rows="4" readonly spellcheck="false"></textarea>
       <label class="suggestion-modal-label">Your edit</label>
+      <div class="suggestion-modal-breaks">
+        <button type="button" class="suggestion-modal-break" data-break="section" title="Insert a section break (blank line)">§ section</button>
+        <button type="button" class="suggestion-modal-break" data-break="paragraph" title="Insert a paragraph break (new indented paragraph)">¶ paragraph</button>
+      </div>
       <textarea class="suggestion-modal-textarea" rows="6" spellcheck="false"></textarea>
       <div class="suggestion-modal-actions">
         <button type="button" class="suggestion-modal-cancel">Cancel</button>
@@ -148,6 +152,28 @@ const WriteSysSuggestions = {
     textarea.value = tm ? tm.toGlyphs(current) : current;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    // Break-insert buttons: a real newline can't be typed here, so these drop a
+    // § (section, \n\n) or ¶ (paragraph, \n\t) glyph at the caret. On save,
+    // fromGlyphs turns them back into real breaks; canonicalize then owns all
+    // structural reshaping (block-command spacing, anchor blocking) — the modal
+    // itself never decides structure. No-op gracefully if text-markers absent.
+    if (tm) {
+      const insertGlyph = (glyph) => {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const v = textarea.value;
+        textarea.value = v.slice(0, start) + glyph + v.slice(end);
+        const caret = start + glyph.length;
+        textarea.setSelectionRange(caret, caret);
+        textarea.focus();
+      };
+      modal.querySelectorAll('.suggestion-modal-break').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          insertGlyph(btn.dataset.break === 'section' ? tm.SECTION_GLYPH : tm.PARAGRAPH_GLYPH);
+        });
+      });
+    }
 
     // Live conversion: a real newline pressed in the textarea is the
     // user's natural way of expressing a paragraph break. Map \n\n → §

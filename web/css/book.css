@@ -1933,6 +1933,27 @@ p.section-break {
   margin-right: 0.15em;
 }
 
+/* Break-insert buttons above the edit textarea. Drop a § (section, \n\n) or
+   ¶ (paragraph, \n\t) glyph at the caret. */
+.suggestion-modal-breaks {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 6px 2px;
+}
+.suggestion-modal-break {
+  font-size: 12px;
+  padding: 3px 9px;
+  color: #57606a;
+  background: #f6f8fa;
+  border: 1px solid #d8dee4;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.suggestion-modal-break:hover {
+  background: #eaeef2;
+  color: #1f2328;
+}
+
 .suggestion-modal-actions {
   display: flex;
   justify-content: flex-end;
