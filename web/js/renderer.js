@@ -308,6 +308,11 @@ const WriteSysRenderer = {
       });
       this.currentSelectedSentenceId = selectSentenceId;
     }
+
+    // Pagination is now COMPLETE (paged.preview resolved above), so page
+    // numbers/counts and the caret are accurate for ALL pages — not a subset
+    // that happened to exist when a fixed timer fired. Recompute now.
+    if (window.WriteSysOutline) window.WriteSysOutline.updatePageInfo();
   },
 
   applyResponsiveScaling() {
