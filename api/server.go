@@ -31,6 +31,7 @@ type Server struct {
 	migrationHandlers  *handlers.MigrationHandlers
 	annotationHandlers *handlers.AnnotationHandlers
 	suggestionHandlers *handlers.SuggestionHandlers
+	scratchpadHandlers *handlers.ScratchpadHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
 
@@ -59,6 +60,11 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config:       cfg,
 		},
 		suggestionHandlers: &handlers.SuggestionHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+			Config:       cfg,
+		},
+		scratchpadHandlers: &handlers.ScratchpadHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
@@ -160,6 +166,18 @@ func (s *Server) setupRouter() {
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
 			r.Get("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state", s.suggestionHandlers.HandleGetPushState)
+
+			// Scratchpads (SCRATCHPAD_PLAN.md): user-owned, not
+			// manuscript-scoped. Canonize step 2 lives here; step 1 is the
+			// ordinary suggestion PUT.
+			r.Get("/scratchpads", s.scratchpadHandlers.HandleList)
+			r.Post("/scratchpads", s.scratchpadHandlers.HandleCreate)
+			r.Get("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleGet)
+			r.Put("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleUpdate)
+			r.Delete("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleDelete)
+			r.Post("/scratchpads/{scratchpad_id}/blocks/{block_id}/canonize", s.scratchpadHandlers.HandleCanonizeBlock)
+			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
+			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)
 
 			r.Get("/annotations/{commit_hash}", s.annotationHandlers.HandleGetAnnotationsByCommit)
 			r.Get("/annotations/sentence/{sentence_id}", s.annotationHandlers.HandleGetAnnotationsBySentence)

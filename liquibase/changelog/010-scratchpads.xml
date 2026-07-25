@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Scratchpads (SCRATCHPAD_PLAN.md). DB-only, USER-owned working
+         material — deliberately outside the "markdown in git" source of
+         truth. `doc` is the standard ProseMirror doc.toJSON(). -->
+    <changeSet id="010-scratchpads" author="claude">
+
+        <createTable tableName="scratchpad">
+            <column name="scratchpad_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(255)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_scratchpad_user"
+                             references="&quot;user&quot;(username)"/>
+            </column>
+            <column name="title" type="VARCHAR(500)" defaultValue="Untitled">
+                <constraints nullable="false"/>
+            </column>
+            <column name="doc" type="JSONB">
+                <constraints nullable="false"/>
+            </column>
+            <column name="schema_version" type="INTEGER" defaultValueNumeric="1">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Soft delete (house pattern: never hard-delete). -->
+            <column name="deleted_at" type="TIMESTAMPTZ"/>
+        </createTable>
+
+        <!-- Append-only autosave history (house pattern). -->
+        <createTable tableName="scratchpad_revision">
+            <column name="revision_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="scratchpad_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_scratchpad_revision_scratchpad"
+                             references="scratchpad(scratchpad_id)"/>
+            </column>
+            <column name="doc" type="JSONB">
+                <constraints nullable="false"/>
+            </column>
+            <column name="saved_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- DERIVED index of CANONIZED book-content blocks, re-extracted from
+             `doc` on every save; the doc JSON stays the source of truth.
+             Answers "which scratchpads feed this manuscript/anchor" in SQL.
+             No FK to manuscript: a scratchpad may reference a manuscript the
+             DB later loses/renumbers — the block degrades gracefully. -->
+        <createTable tableName="scratchpad_block">
+            <column name="block_id" type="VARCHAR(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="scratchpad_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_scratchpad_block_scratchpad"
+                             references="scratchpad(scratchpad_id)"/>
+            </column>
+            <column name="manuscript_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ref_slug" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="label" type="VARCHAR(500)"/>
+            <column name="snapshot_text" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="canonized_migration_id" type="INTEGER"/>
+            <column name="canonized_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Image bytes live in Postgres: no Docker volume changes, survives
+             redeploys, fine at personal scale (10MB cap enforced in the
+             handler). Scratchpad-only — the book format has no images. -->
+        <createTable tableName="scratchpad_image">
+            <column name="image_id" type="VARCHAR(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(255)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_scratchpad_image_user"
+                             references="&quot;user&quot;(username)"/>
+            </column>
+            <column name="content_type" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="data" type="BYTEA">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            CREATE INDEX idx_scratchpad_user ON scratchpad(user_id) WHERE deleted_at IS NULL;
+            CREATE INDEX idx_scratchpad_revision_pad ON scratchpad_revision(scratchpad_id);
+            CREATE INDEX idx_scratchpad_block_pad ON scratchpad_block(scratchpad_id);
+            CREATE INDEX idx_scratchpad_block_target ON scratchpad_block(manuscript_id, ref_slug);
+        </sql>
+
+    </changeSet>
+
+</databaseChangeLog>

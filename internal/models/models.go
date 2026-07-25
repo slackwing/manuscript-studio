@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -116,4 +117,29 @@ type AnnotationVersion struct {
 	OriginCommitHash    string    `json:"origin_commit_hash"`
 	CreatedAt           time.Time `json:"created_at"`
 	CreatedBy           string    `json:"created_by"`
+}
+
+// Scratchpad (SCRATCHPAD_PLAN.md): DB-only, user-owned working material.
+// Doc is the standard ProseMirror doc.toJSON().
+type Scratchpad struct {
+	ScratchpadID  int             `json:"scratchpad_id"`
+	UserID        string          `json:"user_id"`
+	Title         string          `json:"title"`
+	Doc           json.RawMessage `json:"doc,omitempty"`
+	SchemaVersion int             `json:"schema_version"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+// ScratchpadBlockRow is the derived index row for a CANONIZED book-content
+// block (re-extracted from the doc on every save).
+type ScratchpadBlockRow struct {
+	BlockID              string    `json:"block_id"`
+	ScratchpadID         int       `json:"scratchpad_id"`
+	ManuscriptID         int       `json:"manuscript_id"`
+	RefSlug              string    `json:"ref_slug"`
+	Label                string    `json:"label"`
+	SnapshotText         string    `json:"snapshot_text"`
+	CanonizedMigrationID int       `json:"canonized_migration_id"`
+	CanonizedAt          time.Time `json:"canonized_at"`
 }
