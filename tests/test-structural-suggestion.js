@@ -89,9 +89,12 @@ async function syncManuscript() {
 
     check('preview renders in an <h2>', preview.blockTag === 'H2', `got ${preview.blockTag}`);
     check('preview has cmd-part class', /cmd-part/.test(preview.blockCls || ''), preview.blockCls);
-    check('span marked structural-suggestion', preview.structuralClass === true);
-    check('diff shows deletion (old label struck)', preview.hasDel === true);
-    check('diff shows insertion (new label)', preview.hasIns === true);
+    // NEW (fragment model, SUGGESTION_RENDER_PLAN.md): a suggested block
+    // command renders its RESULT with NO word-diff — a Chapter->Part label
+    // change is reviewed by seeing the new heading, not <del>/<ins> of the
+    // label. So no strikethrough/insertion markup, just the result.
+    check('no word-diff on command (result only)', preview.hasDel === false && preview.hasIns === false,
+      `hasDel=${preview.hasDel} hasIns=${preview.hasIns}`);
     check('new label text present', /Part 1/.test(preview.text || ''), preview.text);
     // The heading shows the LABEL only — the description must NOT be rendered
     // on the page (it's outline metadata). Regression guard for the "label +

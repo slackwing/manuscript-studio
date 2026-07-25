@@ -74,11 +74,11 @@ function psql(sql) {
     await page.locator('.suggestion-modal-textarea').press('Enter');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
 
-    // Wait for the Paged.js re-render to settle with the diff applied.
+    // Wait for the Paged.js re-render to settle with the edited heading shown.
     await page.waitForFunction(
       (sid) => {
         const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
-        return el && el.classList.contains('has-suggestion');
+        return el && el.textContent.includes('EDITEDWORD');
       },
       heading.id,
       { timeout: 20000 }
@@ -96,15 +96,16 @@ function psql(sql) {
       };
     }, heading.id);
 
+    // NEW (fragment model): a suggested header edit renders its RESULT in an
+    // <h*> — no word-diff (a structural block shows the result, per
+    // SUGGESTION_RENDER_PLAN.md), no literal "#" marker.
     assert(state && state.inHeading, 'Suggested sentence still renders inside an <h*>');
     assert(state && !/^\s*#/.test(state.headingText),
       `No literal "#" marker rendered in the heading (got "${state.headingText}")`);
     assert(state && state.headingText.includes('EDITEDWORD'),
-      'Inserted word appears in the heading diff');
-    assert(state && state.strongCount > 0,
-      `Diff shows the insertion as <strong> (got ${state.strongCount})`);
-    assert(state && state.delCount === 0,
-      `Marker stripping produces no spurious <del> (got ${state.delCount})`);
+      'Edited word appears in the rendered heading');
+    assert(state && state.strongCount === 0 && state.delCount === 0,
+      `No word-diff markup on a header (result only) (strong=${state.strongCount} del=${state.delCount})`);
 
     // The SAVED suggestion must keep its marker — stripping is display-only.
     const stored = psql(`SELECT text FROM suggested_change WHERE sentence_id='${heading.id}' AND user_id='test'`);

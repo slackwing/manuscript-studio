@@ -78,6 +78,43 @@ const WriteSysCommand = {
     return this.SLUG_RE.test(slug);
   },
 
+  // segmentFragments splits a sentence's effective text into an ordered list
+  // of render fragments (SUGGESTION_RENDER_PLAN.md). Each fragment is one of:
+  //   { kind:'command', cmd }              a block command (title/part/chapter/
+  //                                        anchor/meta) on its own line
+  //   { kind:'prose', text, marker }       a prose run; marker is '' | '\n\n'
+  //                                        | '\n\t' (its leading structural
+  //                                        break, for the paragraph grouping)
+  // Blocks are separated by \n\n or \n\t. A block whose whole content is a
+  // block command becomes a command fragment; everything else is prose.
+  segmentFragments(text) {
+    const frags = [];
+    const s = String(text == null ? '' : text);
+    // Split keeping the delimiters so we know each block's leading marker.
+    // Tokens alternate: [block, delim, block, delim, ...].
+    const parts = s.split(/(\n\n|\n\t)/);
+    let marker = '';
+    for (let i = 0; i < parts.length; i++) {
+      const piece = parts[i];
+      if (piece === '\n\n' || piece === '\n\t') { marker = piece; continue; }
+      if (piece === '') continue; // empty block (e.g. leading delimiter)
+      const trimmed = piece.trim();
+      const cmd = this.parse(trimmed);
+      const headerMatch = trimmed.match(/^(#+)\s+(.*)$/);
+      if (cmd && this.BLOCK[cmd.kind] && cmd.raw === trimmed) {
+        frags.push({ kind: 'command', cmd, marker });
+      } else if (headerMatch) {
+        // Legacy Markdown header (transition support): a block fragment that
+        // renders as <h*>, no diff, like a command.
+        frags.push({ kind: 'header', level: Math.min(headerMatch[1].length, 6), text: headerMatch[2], marker });
+      } else {
+        frags.push({ kind: 'prose', text: piece, marker });
+      }
+      marker = '';
+    }
+    return frags;
+  },
+
   // metaProperties: the fixed &meta vocabulary (mirror of Go's
   // metaProperties). A property mapped to an array of allowed values is
   // validated against it; a property mapped to null accepts any non-empty

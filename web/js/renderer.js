@@ -239,9 +239,9 @@ const WriteSysRenderer = {
     // that note's textarea has the typing caret. Side-bars (rainbow)
     // still convey the annotation set at a glance — see addRainbowBars().
 
-    if (window.WriteSysSuggestions && window.WriteSysSuggestions.applyToSpans) {
-      window.WriteSysSuggestions.applyToSpans(tempContainer);
-    }
+    // Suggestions are now rendered inline by renderSentencesToHTML (the
+    // fragment model — SUGGESTION_RENDER_PLAN.md), so the old applyToSpans
+    // overlay is no longer needed here.
 
     if (typeof smartquotes !== 'undefined') {
       smartquotes.element(tempContainer);
@@ -342,7 +342,7 @@ const WriteSysRenderer = {
     if (!sentences || sentences.length === 0) return '';
 
     const out = [];
-    let openP = null; // current <p> or <p class="indented"> contents
+    let openP = null; // { cls, spans } — current open paragraph
 
     const flush = () => {
       if (openP !== null) {
@@ -352,66 +352,98 @@ const WriteSysRenderer = {
         openP = null;
       }
     };
+    const pushProse = (cls, span) => {
+      if (cls) flush();
+      if (openP === null) openP = { cls: cls || '', spans: [span] };
+      else openP.spans.push(span);
+    };
+
+    const cmdLib = window.WriteSysCommand;
+    const sugMap = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
 
     for (const s of sentences) {
-      const text = s.text;
       const id = s.id;
+      const committed = s.text;
+      const suggestion = sugMap[id]; // undefined if none
+      const effective = (suggestion !== undefined) ? suggestion : committed;
 
-      // Header sentence (# / ## / ### + space + content). Renders as <h*>.
-      const headerMatch = text.match(/^(#+)\s+(.*)$/);
-      if (headerMatch) {
-        flush();
-        const level = headerMatch[1].length;
-        const headingText = headerMatch[2];
-        out.push(`<h${level}><span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(headingText)}</span></h${level}>`);
-        continue;
-      }
+      // Segment the effective text into fragments, all sharing this
+      // sentence's real ID (SUGGESTION_RENDER_PLAN.md). Each renders by kind.
+      const frags = cmdLib ? cmdLib.segmentFragments(effective) : [{ kind: 'prose', text: effective, marker: '' }];
+      // The original prose (committed, marker-stripped) to diff a single-prose
+      // suggestion against. Multi-fragment suggestions show the result of each
+      // fragment; only a lone prose fragment gets a word-diff vs. the original.
+      const origProse = this.stripLeadingMarker(committed);
+      const loneProse = frags.length === 1 && frags[0].kind === 'prose';
 
-      // Block &-command sentence (&title/&part/&chapter/&anchor on its own
-      // line). Renders as a heading element; the .sentence span is preserved
-      // so hover/click/annotation still work. Inline commands are left in the
-      // content span for now (references/outline arrive in later phases).
-      const cmdHTML = this.renderBlockCommand(text, id);
-      if (cmdHTML !== null) {
-        flush();
-        out.push(cmdHTML);
-        continue;
-      }
-
-      // Strip the leading marker — it was structural, doesn't appear in
-      // the visible text. The marker only chooses which <p> we live in.
-      let body = text;
-      if (body.startsWith('\n\n') || body.startsWith('\n\t')) {
-        body = body.slice(2);
-      }
-
-      // Paragraph grouping previews the SUGGESTION's leading marker when
-      // one exists, so structural edits render as they'd look after
-      // commit: a suggestion that deletes the leading break merges this
-      // sentence into the open paragraph (the inline diff still shows
-      // the struck-through ¶/§ at the join), one that adds a break
-      // starts a real paragraph, and one that changes the break type
-      // gets the suggested paragraph class.
-      const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId)
-        ? window.WriteSysSuggestions.bySentenceId[id]
-        : undefined;
-      const structural = (sug !== undefined) ? sug : text;
-      let cls = null;
-      if (structural.startsWith('\n\n')) cls = 'section-break';
-      else if (structural.startsWith('\n\t')) cls = 'indented';
-      if (cls !== null) flush();
-
-      const span = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(body)}</span>`;
-
-      if (openP === null) {
-        openP = { cls: cls || '', spans: [span] };
-      } else {
-        openP.spans.push(span);
+      for (const f of frags) {
+        if (f.kind === 'command') {
+          // Block command fragment → render its result, no diff. &meta renders
+          // nothing. All share this sentence's id.
+          flush();
+          const html = this.renderBlockCommandFrag(f.cmd, id);
+          if (html) out.push(html);
+          continue;
+        }
+        if (f.kind === 'header') {
+          // Legacy Markdown header fragment → render as <h*>, result only (a
+          // structural block, like a command). Transition support.
+          flush();
+          out.push(`<h${f.level}><span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(f.text)}</span></h${f.level}>`);
+          continue;
+        }
+        // Prose fragment.
+        const cls = f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : '');
+        const body = this.stripLeadingMarker(f.text);
+        let inner;
+        if (suggestion !== undefined && loneProse) {
+          // A pure prose edit → word-level diff vs. the committed prose.
+          inner = renderDiffHTML(origProse, body, this._dmp());
+        } else {
+          inner = this.applyInlineFormatting(body);
+        }
+        const sugClass = (suggestion !== undefined) ? ' has-suggestion' : '';
+        const span = `<span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${inner}</span>`;
+        pushProse(cls, span);
       }
     }
 
     flush();
     return out.join('\n');
+  },
+
+  // stripLeadingMarker removes a single leading \n\n or \n\t (structural) so
+  // it doesn't appear in visible text — the marker only chooses the block.
+  stripLeadingMarker(text) {
+    const t = String(text == null ? '' : text);
+    if (t.startsWith('\n\n') || t.startsWith('\n\t')) return t.slice(2);
+    return t;
+  },
+
+  _dmp() {
+    if (this.__dmp === undefined) {
+      this.__dmp = (typeof diff_match_patch !== 'undefined') ? new diff_match_patch() : null;
+    }
+    return this.__dmp;
+  },
+
+  // renderBlockCommandFrag renders a parsed block command as its structural
+  // element (heading / part page / anchor marker), or nothing for &meta. The
+  // .sentence span carries the given id so the fragment is hoverable/
+  // annotatable and shares identity with the rest of the sentence.
+  renderBlockCommandFrag(cmd, id) {
+    if (cmd.kind === 'meta') {
+      return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
+    }
+    const form = window.WriteSysCommand && window.WriteSysCommand.structuralForm(cmd.raw);
+    if (!form) return null;
+    const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+    const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
+    let extra = '';
+    if (cmd.kind === 'part' && form.description) {
+      extra = `<span class="cmd-part-desc">${this.applyInlineFormatting(form.description)}</span>`;
+    }
+    return `<${form.tag} class="${form.cls}"${slugAttr}>${inner}${extra}</${form.tag}>`;
   },
 
   // Escape first, then substitute *x* → <em> — otherwise the escape pass
