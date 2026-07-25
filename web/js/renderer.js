@@ -170,9 +170,8 @@ const WriteSysRenderer = {
         window.WriteSysSuggestions
           ? window.WriteSysSuggestions.loadForMigration(migrationID).catch(() => {})
           : Promise.resolve(),
-        window.WriteSysOutline
-          ? window.WriteSysOutline.loadForMigration(migrationID).catch(() => {})
-          : Promise.resolve(),
+        // Outline is built client-side from effective fragments during
+        // renderManuscript (WriteSysOutline.refresh), so nothing to fetch here.
       ]);
       this.currentSentences = data.sentences;
       this.currentAnnotations = data.annotations;
@@ -216,6 +215,9 @@ const WriteSysRenderer = {
     // Re-apply settings each render so a suggestion that adds/removes a &meta
     // (saved via the modal, which triggers a re-render) takes effect live.
     this.applyEffectiveSettings();
+    // Rebuild the outline from effective fragments so suggested structure
+    // (a suggested &part/&chapter) shows in the nav.
+    if (window.WriteSysOutline) window.WriteSysOutline.refresh();
 
     // Capture the anchor's viewport offset BEFORE we touch the DOM. We'll
     // re-locate the same sentence after re-render and adjust scroll so the

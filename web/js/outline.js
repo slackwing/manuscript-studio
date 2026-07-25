@@ -15,20 +15,62 @@ const WriteSysOutline = {
     this.el = document.getElementById('outline-margin');
   },
 
-  // Load and render the outline for a migration. Safe to call on every
-  // manuscript (re)render; hides itself when there's nothing structural.
+  // Load the outline for a migration. Kept for the initial load path, but the
+  // outline is now built CLIENT-SIDE from the effective (suggested-or-
+  // committed) sentence fragments so suggested structure previews in the nav.
+  // The server endpoint remains available for committed-only consumers.
   async loadForMigration(migrationID) {
-    if (!this.el || !migrationID) return;
-    let outline;
-    try {
-      outline = await fetchJSON(`${this.apiBaseUrl}/migrations/${migrationID}/outline`, {}, true);
-    } catch (err) {
-      console.warn('outline endpoint failed (ignored):', err.message || err);
-      this.el.innerHTML = '';
-      this.el.classList.remove('has-outline');
+    this.refresh();
+  },
+
+  // refresh rebuilds the outline from the renderer's current sentences with
+  // suggestions overlaid — reusing the same fragment segmentation the renderer
+  // uses, so the nav matches what's on the page. Call on load and re-render.
+  refresh() {
+    if (!this.el) return;
+    const r = window.WriteSysRenderer;
+    const cmd = window.WriteSysCommand;
+    if (!r || !r.currentSentences || !cmd) {
+      this.render({ parts: [], top_chapters: [], top_anchors: [] });
       return;
     }
-    this.render(outline);
+    const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+    this.render(this.buildOutline(r.currentSentences, sug, cmd));
+  },
+
+  // buildOutline mirrors the Go BuildOutline, but over EFFECTIVE fragments:
+  // for each sentence use its suggestion if present, segment into fragments,
+  // and place title/part/chapter/anchor blocks into the tree. All fragments of
+  // a sentence share its id (used as the scroll target).
+  buildOutline(sentences, sug, cmd) {
+    const o = { title: null, parts: [], top_chapters: [], top_anchors: [] };
+    let curPart = -1, curChapter = -1;
+    for (const s of sentences) {
+      const eff = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
+      for (const f of cmd.segmentFragments(eff)) {
+        if (f.kind !== 'command') continue;
+        const c = f.cmd;
+        const label = c.args[0] || '';
+        const desc = c.args[1] || '';
+        if (c.kind === 'title') {
+          o.title = { name: label, slug: c.slug, sentence_id: s.id };
+        } else if (c.kind === 'part') {
+          o.parts.push({ label, description: desc, slug: c.slug, sentence_id: s.id, chapters: [], anchors: [] });
+          curPart = o.parts.length - 1; curChapter = -1;
+        } else if (c.kind === 'chapter') {
+          const ch = { label, description: desc, slug: c.slug, sentence_id: s.id, anchors: [] };
+          if (curPart >= 0) { o.parts[curPart].chapters.push(ch); curChapter = o.parts[curPart].chapters.length - 1; }
+          else { o.top_chapters.push(ch); curChapter = o.top_chapters.length - 1; }
+        } else if (c.kind === 'anchor') {
+          const a = { description: label, slug: c.slug, sentence_id: s.id };
+          if (curPart >= 0 && curChapter >= 0) o.parts[curPart].chapters[curChapter].anchors.push(a);
+          else if (curPart >= 0) o.parts[curPart].anchors.push(a);
+          else if (curChapter >= 0) o.top_chapters[curChapter].anchors.push(a);
+          else o.top_anchors.push(a);
+        }
+      }
+    }
+    return o;
   },
 
   render(outline) {
