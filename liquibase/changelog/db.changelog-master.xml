@@ -17,5 +17,6 @@
     <include file="changelog/008-session-loses-manuscript.xml"/>
     <include file="changelog/009-command-slug.xml"/>
     <include file="changelog/010-scratchpads.xml"/>
+    <include file="changelog/011-manuscript-opened.xml"/>
 
 </databaseChangeLog>

@@ -123,18 +123,23 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 // the manuscript hasn't been bootstrapped yet) are skipped — the picker only
 // shows manuscripts the user can actually open right now.
 func (h *AuthHandlers) userManuscriptOptions(ctx context.Context, username string) ([]ManuscriptOption, error) {
-	access, err := h.DB.GetManuscriptAccessForUser(ctx, username)
+	return userManuscriptOptions(ctx, h.DB, h.Config, username)
+}
+
+// userManuscriptOptions is shared with the home page handler (HOME_PLAN.md).
+func userManuscriptOptions(ctx context.Context, db *database.DB, cfg *config.Config, username string) ([]ManuscriptOption, error) {
+	access, err := db.GetManuscriptAccessForUser(ctx, username)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ManuscriptOption, 0, len(access))
 	for _, ma := range access {
-		mc, err := h.Config.GetManuscript(ma.ManuscriptName)
+		mc, err := cfg.GetManuscript(ma.ManuscriptName)
 		if err != nil {
 			// Config entry was removed; skip silently.
 			continue
 		}
-		m, err := h.DB.GetManuscript(ctx, mc.Repository.CloneURL(), mc.Repository.Path)
+		m, err := db.GetManuscript(ctx, mc.Repository.CloneURL(), mc.Repository.Path)
 		if err != nil || m == nil {
 			// Not bootstrapped yet — skip.
 			continue

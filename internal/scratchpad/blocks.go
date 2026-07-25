@@ -142,3 +142,38 @@ func Canonize(doc json.RawMessage, blockID string, manuscriptID int, refSlug, la
 	}
 	return updated, *found, nil
 }
+
+// Summary derives a card-friendly view of a doc (HOME_PLAN.md): a plain-text
+// snippet of the first n runes of prose (paragraph/heading text, skipping
+// book_content — that's book prose, not scratch prose), plus block counts.
+func Summary(doc json.RawMessage, n int) (snippet string, blocks, canonized int, err error) {
+	var root map[string]interface{}
+	if err = json.Unmarshal(doc, &root); err != nil {
+		return "", 0, 0, fmt.Errorf("parse doc: %w", err)
+	}
+	var runes []rune
+	walk(root, func(node pmNode) {
+		if t, _ := node["type"].(string); t == "book_content" {
+			blocks++
+			if attrs, _ := node["attrs"].(map[string]interface{}); attrs != nil && attrStr(attrs, "refSlug") != "" {
+				canonized++
+			}
+			return
+		}
+		if t, _ := node["type"].(string); t == "text" {
+			if len(runes) >= n {
+				return
+			}
+			if txt, _ := node["text"].(string); txt != "" {
+				if len(runes) > 0 {
+					runes = append(runes, ' ')
+				}
+				runes = append(runes, []rune(txt)...)
+			}
+		}
+	})
+	if len(runes) > n {
+		runes = append(runes[:n], '…')
+	}
+	return string(runes), blocks, canonized, nil
+}

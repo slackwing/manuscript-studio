@@ -32,6 +32,7 @@ type Server struct {
 	annotationHandlers *handlers.AnnotationHandlers
 	suggestionHandlers *handlers.SuggestionHandlers
 	scratchpadHandlers *handlers.ScratchpadHandlers
+	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
 
@@ -65,6 +66,11 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config:       cfg,
 		},
 		scratchpadHandlers: &handlers.ScratchpadHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+			Config:       cfg,
+		},
+		homeHandlers: &handlers.HomeHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
@@ -166,6 +172,10 @@ func (s *Server) setupRouter() {
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
 			r.Get("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state", s.suggestionHandlers.HandleGetPushState)
+
+			// Landing page data + per-user manuscript recency (HOME_PLAN.md).
+			r.Get("/home", s.homeHandlers.HandleHome)
+			r.Post("/manuscripts/{manuscript_id}/opened", s.homeHandlers.HandleManuscriptOpened)
 
 			// Scratchpads (SCRATCHPAD_PLAN.md): user-owned, not
 			// manuscript-scoped. Canonize step 2 lives here; step 1 is the

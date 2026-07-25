@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Per-user manuscript recency (HOME_PLAN.md): stamped when a user
+         opens a manuscript; drives the landing page's "recent" ordering.
+         One row per (user, manuscript), upserted. -->
+    <changeSet id="011-manuscript-opened" author="claude">
+
+        <createTable tableName="manuscript_opened">
+            <column name="user_id" type="VARCHAR(255)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_manuscript_opened_user"
+                             references="&quot;user&quot;(username)"/>
+            </column>
+            <column name="manuscript_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_manuscript_opened_manuscript"
+                             references="manuscript(manuscript_id)"/>
+            </column>
+            <column name="last_opened_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="manuscript_opened"
+                       columnNames="user_id, manuscript_id"
+                       constraintName="pk_manuscript_opened"/>
+
+    </changeSet>
+
+</databaseChangeLog>

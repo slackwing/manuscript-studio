@@ -228,3 +228,60 @@ func (db *DB) GetScratchpadImage(ctx context.Context, imageID string) (userID, c
 	}
 	return
 }
+
+// ListScratchpadsWithDocs returns the user's non-deleted scratchpads WITH
+// their docs (home cards need snippets/counts derived from the doc).
+func (db *DB) ListScratchpadsWithDocs(ctx context.Context, userID string) ([]models.Scratchpad, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT scratchpad_id, user_id, title, doc, schema_version, created_at, updated_at
+		FROM scratchpad
+		WHERE user_id = $1 AND deleted_at IS NULL
+		ORDER BY updated_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list scratchpads with docs: %w", err)
+	}
+	defer rows.Close()
+	var out []models.Scratchpad
+	for rows.Next() {
+		var s models.Scratchpad
+		var doc []byte
+		if err := rows.Scan(&s.ScratchpadID, &s.UserID, &s.Title, &doc, &s.SchemaVersion, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		s.Doc = json.RawMessage(doc)
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// UpsertManuscriptOpened stamps per-user manuscript recency (HOME_PLAN.md).
+func (db *DB) UpsertManuscriptOpened(ctx context.Context, userID string, manuscriptID int) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO manuscript_opened (user_id, manuscript_id, last_opened_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (user_id, manuscript_id) DO UPDATE SET last_opened_at = NOW()
+	`, userID, manuscriptID)
+	return err
+}
+
+// GetManuscriptOpenedMap returns manuscript_id → last_opened_at for a user.
+func (db *DB) GetManuscriptOpenedMap(ctx context.Context, userID string) (map[int]time.Time, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT manuscript_id, last_opened_at FROM manuscript_opened WHERE user_id = $1
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get manuscript opened: %w", err)
+	}
+	defer rows.Close()
+	out := map[int]time.Time{}
+	for rows.Next() {
+		var id int
+		var t time.Time
+		if err := rows.Scan(&id, &t); err != nil {
+			return nil, err
+		}
+		out[id] = t
+	}
+	return out, rows.Err()
+}

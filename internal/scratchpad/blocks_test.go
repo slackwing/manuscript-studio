@@ -61,3 +61,16 @@ func TestCanonize(t *testing.T) {
 		t.Error("unknown block must fail")
 	}
 }
+
+func TestSummary(t *testing.T) {
+	snippet, blocks, canonized, err := Summary(json.RawMessage(testDoc), 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snippet == "" || len([]rune(snippet)) > 21 {
+		t.Errorf("snippet wrong: %q", snippet)
+	}
+	if blocks != 2 || canonized != 1 {
+		t.Errorf("counts wrong: blocks=%d canonized=%d", blocks, canonized)
+	}
+}
