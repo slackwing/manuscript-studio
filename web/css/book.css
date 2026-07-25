@@ -705,15 +705,50 @@ p.section-break {
   line-height: 1.5;
 }
 .outline-item {
-  display: block;
+  display: flex;
+  align-items: baseline;
   color: #555;
   cursor: pointer;
   text-decoration: none;
   padding: 1px 0;
 }
-.outline-item:hover {
+.outline-item:hover .outline-text {
   color: #000;
   text-decoration: underline;
+}
+/* Reading-position caret: a sideways ▸ that only shows on the active item.
+   It reserves its width always so text never shifts as it moves. The smooth
+   "glide" is the fade/slide transition as active-ness moves between items. */
+.outline-caret {
+  flex: 0 0 auto;
+  width: 10px;
+  color: #2a6fb0;
+  opacity: 0;
+  transform: translateX(-2px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.outline-item.active .outline-caret {
+  opacity: 1;
+  transform: translateX(0);
+}
+.outline-item.active .outline-text {
+  color: #000;
+}
+.outline-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Right-aligned "page (count)" column. */
+.outline-pageinfo {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  color: #aaa;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .outline-title {
   font-style: italic;
@@ -726,10 +761,10 @@ p.section-break {
   color: #333;
   margin-top: 0.6em;
 }
-.outline-chapter {
+.outline-chapter .outline-text {
   padding-left: 10px;
 }
-.outline-anchor {
+.outline-anchor .outline-text {
   padding-left: 22px;
   font-size: 11px;
   color: #999;

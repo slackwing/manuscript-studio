@@ -111,7 +111,8 @@ const WriteSysOutline = {
     this.el.innerHTML = `<nav class="outline-nav">${items.join('')}</nav>`;
     this.el.classList.add('has-outline');
 
-    this.el.querySelectorAll('[data-sentence-id]').forEach(node => {
+    this.itemNodes = Array.from(this.el.querySelectorAll('.outline-item'));
+    this.itemNodes.forEach(node => {
       node.addEventListener('click', () => {
         const id = node.dataset.sentenceId;
         if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
@@ -122,6 +123,95 @@ const WriteSysOutline = {
         }
       });
     });
+
+    // Page numbers / counts are DOM-position-derived, so compute them after
+    // paged.js has laid the pages out. A short delay lets pagination settle;
+    // also re-run on window resize (re-pagination changes page numbers).
+    this.schedulePageInfo();
+    this.attachScrollTracking();
+  },
+
+  // pageOfSentence returns the 1-based page number of a sentence id (its
+  // .pagedjs_page's DOM index + 1), or 0 if not found/paginated yet.
+  pageOfSentence(id) {
+    const el = document.querySelector(`.sentence[data-sentence-id="${id}"]`);
+    if (!el) return 0;
+    const page = el.closest('.pagedjs_page');
+    if (!page) return 0;
+    const pages = Array.from(document.querySelectorAll('.pagedjs_page'));
+    const idx = pages.indexOf(page);
+    return idx < 0 ? 0 : idx + 1;
+  },
+
+  schedulePageInfo() {
+    clearTimeout(this._pageInfoTimer);
+    this._pageInfoTimer = setTimeout(() => this.updatePageInfo(), 250);
+  },
+
+  // updatePageInfo fills each item's right column with its start page and the
+  // number of pages that section spans (start of the next item minus this
+  // one). The last item spans through the final page.
+  updatePageInfo() {
+    if (!this.itemNodes || this.itemNodes.length === 0) return;
+    const totalPages = document.querySelectorAll('.pagedjs_page').length;
+    if (totalPages === 0) return;
+    const starts = this.itemNodes.map(n => this.pageOfSentence(n.dataset.sentenceId) || 0);
+    for (let i = 0; i < this.itemNodes.length; i++) {
+      const start = starts[i];
+      // Next item with a known start page determines where this section ends.
+      let nextStart = totalPages + 1;
+      for (let j = i + 1; j < starts.length; j++) {
+        if (starts[j] > 0) { nextStart = starts[j]; break; }
+      }
+      const span = Math.max(1, nextStart - start);
+      const info = this.itemNodes[i].querySelector('.outline-pageinfo');
+      if (info) {
+        info.textContent = start ? (span > 1 ? `${start} (${span})` : `${start}`) : '';
+        info.title = start ? `starts on page ${start}, spans ${span} page${span > 1 ? 's' : ''}` : '';
+      }
+    }
+    this.itemStarts = starts;
+    this.updateCaret();
+  },
+
+  // attachScrollTracking wires a single scroll/resize listener (once) that
+  // moves the reading-position caret to the section at the viewport center.
+  attachScrollTracking() {
+    if (this._scrollBound) return;
+    this._scrollBound = true;
+    const onScroll = () => {
+      if (this._rafPending) return;
+      this._rafPending = true;
+      requestAnimationFrame(() => { this._rafPending = false; this.updateCaret(); });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', () => { this.schedulePageInfo(); }, { passive: true });
+  },
+
+  // updateCaret marks the outline item whose section contains the page at the
+  // viewport center as active (the caret points at it). Smooth motion comes
+  // from a CSS transition on the caret's position between items.
+  updateCaret() {
+    if (!this.itemNodes || this.itemNodes.length === 0) return;
+    const pages = Array.from(document.querySelectorAll('.pagedjs_page'));
+    if (pages.length === 0) return;
+    // Which page is at the vertical center of the viewport?
+    const centerY = window.innerHeight / 2;
+    let centerPageIdx = 0;
+    for (let i = 0; i < pages.length; i++) {
+      const r = pages[i].getBoundingClientRect();
+      if (r.top <= centerY && r.bottom >= centerY) { centerPageIdx = i; break; }
+      if (r.top > centerY) { centerPageIdx = Math.max(0, i - 1); break; }
+      centerPageIdx = i;
+    }
+    const centerPage = centerPageIdx + 1;
+    // The active item is the last one whose start page <= centerPage.
+    const starts = this.itemStarts || [];
+    let activeIdx = -1;
+    for (let i = 0; i < starts.length; i++) {
+      if (starts[i] > 0 && starts[i] <= centerPage) activeIdx = i;
+    }
+    this.itemNodes.forEach((n, i) => n.classList.toggle('active', i === activeIdx));
   },
 
   pushChapter(items, c) {
@@ -136,7 +226,13 @@ const WriteSysOutline = {
   },
 
   item(cls, text, sentenceId) {
-    return `<a class="outline-item ${cls}" data-sentence-id="${escapeHTML(sentenceId)}">${escapeHTML(text)}</a>`;
+    // caret: the reading-position pointer (▸), shown on the active item.
+    // page-info: right-aligned "page (count)" filled in post-render.
+    return `<a class="outline-item ${cls}" data-sentence-id="${escapeHTML(sentenceId)}">` +
+      `<span class="outline-caret" aria-hidden="true">▸</span>` +
+      `<span class="outline-text">${escapeHTML(text)}</span>` +
+      `<span class="outline-pageinfo"></span>` +
+      `</a>`;
   },
 };
 
