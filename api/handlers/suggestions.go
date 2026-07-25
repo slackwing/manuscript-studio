@@ -383,19 +383,52 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		http.Error(w, "No suggestions to push", http.StatusBadRequest)
 		return
 	}
-	sentenceIDs := make([]string, len(suggestions))
-	for i, s := range suggestions {
-		sentenceIDs[i] = s.SentenceID
-	}
-	sentenceRows, err := h.DB.GetSentenceTextsByIDs(ctx, sentenceIDs)
+	// Rebuild the WHOLE manuscript in canonical form from the migration's
+	// sentences overlaid with this user's suggestions — the same per-sentence
+	// Canonicalize the client render loop runs, so "what you see is what you
+	// push". This replaces the old substring-replace (ApplySuggestions); the
+	// pushed file is now canonical, so the FIRST push reformats the whole file
+	// (by design — CANONICALIZE_PLAN.md).
+	allSentences, err := h.DB.GetSentencesByMigration(ctx, migrationID)
 	if err != nil {
-		http.Error(w, "Failed to load sentence originals", http.StatusInternalServerError)
+		http.Error(w, "Failed to load migration sentences", http.StatusInternalServerError)
 		return
 	}
-	originals := make(map[string]string, len(sentenceRows))
-	for id, row := range sentenceRows {
-		originals[id] = row.Text
+	orderedIDs := make([]string, 0, len(allSentences))
+	committedByID := make(map[string]string, len(allSentences))
+	for _, s := range allSentences {
+		orderedIDs = append(orderedIDs, s.SentenceID)
+		committedByID[s.SentenceID] = s.Text
 	}
+
+	suggestionByID := make(map[string]string, len(suggestions))
+	for _, s := range suggestions {
+		suggestionByID[s.SentenceID] = s.Text
+	}
+
+	// applied = suggestions that overlay a sentence still present in the
+	// migration; skipped = suggestions whose sentence vanished (defensive —
+	// the stale guard above makes this rare). results mirrors the old shape.
+	applied, skipped := 0, 0
+	results := make([]sentence.SuggestionApplyResult, 0, len(suggestions))
+	for _, s := range suggestions {
+		if _, ok := committedByID[s.SentenceID]; ok {
+			applied++
+			results = append(results, sentence.SuggestionApplyResult{SentenceID: s.SentenceID, Applied: true})
+		} else {
+			skipped++
+			results = append(results, sentence.SuggestionApplyResult{
+				SentenceID: s.SentenceID, Applied: false,
+				Reason: "sentence not present in latest migration",
+			})
+		}
+	}
+	if applied == 0 {
+		http.Error(w, "No suggestions applied (none target a current sentence)", http.StatusConflict)
+		return
+	}
+
+	newContent := []byte(sentence.RebuildManuscript(orderedIDs, committedByID, suggestionByID))
 
 	gitRepo := &migrations.GitRepository{
 		Path:      h.Config.RepoPath(mc.Name),
@@ -403,25 +436,6 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		RemoteURL: mc.Repository.CloneURL(),
 		FilePath:  mc.Repository.Path,
 		AuthToken: mc.Repository.AuthToken,
-	}
-	srcStr, err := gitRepo.GetFileContent(ctx, latest.CommitHash)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to read manuscript at %s: %v", latest.CommitHash, err), http.StatusInternalServerError)
-		return
-	}
-
-	newContent, results := sentence.ApplySuggestions([]byte(srcStr), suggestions, originals)
-	applied, skipped := 0, 0
-	for _, r := range results {
-		if r.Applied {
-			applied++
-		} else {
-			skipped++
-		}
-	}
-	if applied == 0 {
-		http.Error(w, "No suggestions applied (all originals missing from source)", http.StatusConflict)
-		return
 	}
 
 	files := map[string][]byte{

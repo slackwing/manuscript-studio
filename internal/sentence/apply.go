@@ -16,6 +16,12 @@ type SuggestionApplyResult struct {
 	Reason     string // populated when Applied == false
 }
 
+// DEPRECATED: the push path now uses RebuildManuscript (whole-document
+// canonical rebuild) instead of substring replacement, so ApplySuggestions is
+// no longer called by production code. Retained (with its tests) as a pure,
+// minimal-diff alternative in case a future non-canonicalizing consumer wants
+// it. See CANONICALIZE_PLAN.md for why push switched to a whole-file rebuild.
+//
 // ApplySuggestions edits `source` (the raw .manuscript bytes) by replacing
 // each suggestion's original sentence text with its proposed replacement.
 // Originals come from the {sentenceID → originalText} map; replacements
