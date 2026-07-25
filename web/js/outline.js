@@ -45,8 +45,12 @@ const WriteSysOutline = {
   buildOutline(sentences, sug, cmd) {
     const o = { title: null, parts: [], top_chapters: [], top_anchors: [] };
     let curPart = -1, curChapter = -1;
+    const canon = (window.WriteSysCanonicalize && window.WriteSysCanonicalize.canonicalize)
+      ? window.WriteSysCanonicalize.canonicalize
+      : (t) => t;
     for (const s of sentences) {
-      const eff = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
+      const rawEff = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
+      const eff = canon(rawEff);
       for (const f of cmd.segmentFragments(eff)) {
         if (f.kind !== 'command') continue;
         const c = f.cmd;

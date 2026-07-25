@@ -139,11 +139,28 @@ const WriteSysCommand = {
       const cmd = this.parse(trimmed);
       if (cmd && this.BLOCK[cmd.kind] && cmd.raw === trimmed) {
         frags.push({ kind: 'command', cmd, marker });
-      } else {
-        // Markdown # headers are deprecated and no longer rendered specially —
-        // a '#' line is ordinary prose (convert to an &-command for a heading).
-        frags.push({ kind: 'prose', text: piece, marker });
+        marker = '';
+        continue;
       }
+      // Leading-anchor block form (canonicalize output): "&anchor{...}\nprose".
+      // canonicalize joins a block anchor to its paragraph with a single \n,
+      // and segman splits it into its own sentence. Mirror that split here so
+      // the render preview matches the pushed/segmented result: emit the anchor
+      // as a command fragment (carrying this block's marker), then the trailing
+      // prose as a same-paragraph prose fragment (no marker of its own).
+      if (cmd && cmd.kind === 'anchor') {
+        const after = trimmed.slice(cmd.raw.length);
+        if (after.startsWith('\n')) {
+          const prose = after.slice(1);
+          frags.push({ kind: 'command', cmd, marker });
+          if (prose.trim() !== '') frags.push({ kind: 'prose', text: prose, marker: '' });
+          marker = '';
+          continue;
+        }
+      }
+      // Markdown # headers are deprecated and no longer rendered specially —
+      // a '#' line is ordinary prose (convert to an &-command for a heading).
+      frags.push({ kind: 'prose', text: piece, marker });
       marker = '';
     }
     return frags;

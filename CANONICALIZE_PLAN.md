@@ -102,10 +102,13 @@ accumulate:
    set `effective = canonicalize(effective)` before `segmentFragments`.
 2. Outline (`outline.js buildOutline`) and settings (`extractSettings`) do the
    SAME per-sentence `canonicalize(effective)` so they agree with the page.
-3. As each sentence is canonicalized in the render loop, accumulate the
-   canonical text into `WriteSysRenderer.pushSource` (in document/ordinal
-   order), joined the same way `Reconstruct` would join them. That accumulated
-   string is exactly what push will commit.
+3. Push source is authoritative from the SERVER (step 4): Go rebuilds it via
+   `Reconstruct(Canonicalize(each sentence))`. We deliberately do NOT port
+   `Reconstruct` to JS just to accumulate a client `pushSource` — that would
+   duplicate non-trivial join logic and invite drift. If a client-side push
+   PREVIEW/diff is wanted, expose a server dry-run endpoint instead. Render's
+   job is only to make the on-screen preview truthful (canonicalize per
+   sentence before segmenting); it does not build the pushed bytes.
 
 Sentence IDs: fragments still carry their real sentence ID for hover/annotate.
 A canon-induced split (leading anchor) is WITHIN one sentence's text, so the

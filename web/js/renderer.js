@@ -377,15 +377,24 @@ const WriteSysRenderer = {
       const id = s.id;
       const committed = s.text;
       const suggestion = sugMap[id]; // undefined if none
-      const effective = (suggestion !== undefined) ? suggestion : committed;
+      const rawEffective = (suggestion !== undefined) ? suggestion : committed;
+      // Canonicalize per sentence BEFORE segmenting so the preview is truthful:
+      // a leading anchor blocks out (⚓ + outline entry), an inline-typed
+      // command gains its block form, whitespace tidies. Same canonicalize the
+      // server runs at push time, so what you see is what you push.
+      const canon = (window.WriteSysCanonicalize && window.WriteSysCanonicalize.canonicalize)
+        ? window.WriteSysCanonicalize.canonicalize
+        : (t) => t;
+      const effective = canon(rawEffective);
 
       // Segment the effective text into fragments, all sharing this
       // sentence's real ID (SUGGESTION_RENDER_PLAN.md). Each renders by kind.
       const frags = cmdLib ? cmdLib.segmentFragments(effective) : [{ kind: 'prose', text: effective, marker: '' }];
       // The original prose (committed, marker-stripped) to diff a single-prose
-      // suggestion against. Multi-fragment suggestions show the result of each
-      // fragment; only a lone prose fragment gets a word-diff vs. the original.
-      const origProse = this.stripLeadingMarker(committed);
+      // suggestion against. Canonicalize the committed baseline too so a
+      // word-diff reflects real content edits, not whitespace canonicalization.
+      const canonCommitted = canon(committed);
+      const origProse = this.stripLeadingMarker(canonCommitted);
       const loneProse = frags.length === 1 && frags[0].kind === 'prose';
 
       for (const f of frags) {
@@ -413,7 +422,7 @@ const WriteSysRenderer = {
           // Glyph diff: if this lone prose's leading structural break was
           // added or removed by the suggestion, show a §/¶ glyph (green added,
           // struck removed) so the break change is reviewable.
-          const glyph = this.markerGlyphDiff(this.leadingMarker(committed), f.marker);
+          const glyph = this.markerGlyphDiff(this.leadingMarker(canonCommitted), f.marker);
           if (glyph) inner = glyph + inner;
         } else {
           inner = this.applyInlineFormatting(body);
@@ -613,11 +622,15 @@ const WriteSysRenderer = {
     let settings = this.committedSettings || {};
     if (window.WriteSysCommand && this.currentSentences) {
       const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+      const canon = (window.WriteSysCanonicalize && window.WriteSysCanonicalize.canonicalize)
+        ? window.WriteSysCanonicalize.canonicalize
+        : (t) => t;
       const ids = [];
       const effective = {};
       this.currentSentences.forEach(s => {
         ids.push(s.id);
-        effective[s.id] = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
+        const raw = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
+        effective[s.id] = canon(raw);
       });
       settings = window.WriteSysCommand.extractSettings(ids, effective);
     }
