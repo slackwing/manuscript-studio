@@ -397,14 +397,29 @@ const WriteSysRenderer = {
       const origProse = this.stripLeadingMarker(canonCommitted);
       const loneProse = frags.length === 1 && frags[0].kind === 'prose';
 
-      for (const f of frags) {
+      // A block anchor that leads a paragraph (canonicalize's "&anchor{x}\n
+      // prose" form → [command:anchor, prose] with no marker on the prose) is
+      // NOT a standalone line — its ⚓ glyph rides inline at the START of the
+      // following paragraph: "⚓ First word...". We hold the glyph here and
+      // prepend it to the next prose fragment instead of emitting a block.
+      let pendingAnchorGlyph = '';
+      for (let fi = 0; fi < frags.length; fi++) {
+        const f = frags[fi];
         // A structural fragment (command/header) that came from a suggestion
         // is a change we DON'T word-diff — mark it blue ("cmd-suggested") so
         // the author knows to click it to see the change.
         const changed = suggestion !== undefined;
         if (f.kind === 'command') {
-          // Block command fragment → render its result, no diff. &meta renders
-          // nothing. All share this sentence's id.
+          // Leading-anchor-before-prose: defer the glyph to the next prose
+          // fragment (same paragraph). Recognized by an anchor immediately
+          // followed by a marker-less prose fragment.
+          const next = frags[fi + 1];
+          if (f.cmd.kind === 'anchor' && next && next.kind === 'prose' && !next.marker) {
+            pendingAnchorGlyph = this.anchorGlyphHTML(f.cmd, id, changed);
+            continue;
+          }
+          // Otherwise a block command fragment → render its result, no diff.
+          // &meta renders nothing. All share this sentence's id.
           flush();
           const html = this.renderBlockCommandFrag(f.cmd, id, changed);
           if (html) out.push(html);
@@ -427,9 +442,21 @@ const WriteSysRenderer = {
         } else {
           inner = this.applyInlineFormatting(body);
         }
+        // Prepend a pending leading-anchor ⚓ glyph inline, then a space, so the
+        // paragraph reads "⚓ First word...".
+        if (pendingAnchorGlyph) {
+          inner = pendingAnchorGlyph + ' ' + inner;
+          pendingAnchorGlyph = '';
+        }
         const sugClass = (suggestion !== undefined) ? ' has-suggestion' : '';
         const span = `<span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${inner}</span>`;
         pushProse(cls, span);
+      }
+      // A trailing pending glyph (anchor with no following prose in this
+      // sentence) still needs to render — fall back to the block form.
+      if (pendingAnchorGlyph) {
+        flush();
+        out.push(`<div class="cmd-anchor">${pendingAnchorGlyph}</div>`);
       }
     }
 
@@ -514,15 +541,28 @@ const WriteSysRenderer = {
     const chCls = changed ? ' cmd-suggested' : '';
     // A block anchor renders as a ⚓ glyph marker (grey; hover reveals its
     // label). The label itself is outline metadata, never shown as book text.
+    // (Normally the ⚓ rides inline at the start of the following paragraph —
+    // see the render loop; this block form is the fallback when an anchor has
+    // no following prose in its sentence.)
     if (form.glyph) {
-      const titleAttr = form.label ? ` title="${this.escapeHtml(form.label)}"` : '';
-      const inner = `<span class="sentence cmd-anchor-glyph" data-sentence-id="${this.escapeHtml(id)}"${titleAttr} aria-label="anchor">⚓</span>`;
-      return `<${form.tag} class="${form.cls}${chCls}"${slugAttr}>${inner}</${form.tag}>`;
+      return `<${form.tag} class="${form.cls}${chCls}"${slugAttr}>${this.anchorGlyphHTML(cmd, id, changed)}</${form.tag}>`;
     }
     // Heading shows the LABEL only. The description is outline metadata and is
     // never rendered in the book (it appears in the left-margin outline nav).
     const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
     return `<${form.tag} class="${form.cls}${chCls}"${slugAttr}>${inner}</${form.tag}>`;
+  },
+
+  // anchorGlyphHTML renders the ⚓ marker span for a block anchor: grey, hover
+  // reveals the label (outline metadata, never book text). Shared by the
+  // inline leading-anchor path (prefixed to the next paragraph) and the block
+  // fallback in renderBlockCommandFrag. The span carries the sentence id so the
+  // anchor is hoverable/annotatable like any fragment.
+  anchorGlyphHTML(cmd, id, changed) {
+    const label = (cmd.args && cmd.args[0]) || '';
+    const titleAttr = label ? ` title="${this.escapeHtml(label)}"` : '';
+    const chCls = changed ? ' cmd-suggested' : '';
+    return `<span class="sentence cmd-anchor-glyph${chCls}" data-sentence-id="${this.escapeHtml(id)}"${titleAttr} aria-label="anchor">⚓</span>`;
   },
 
   // Escape first, then substitute *x* → <em> — otherwise the escape pass
