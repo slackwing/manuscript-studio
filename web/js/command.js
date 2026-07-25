@@ -13,6 +13,7 @@
  *   &anchor#slug{label?}{details?}                    // details reserved, unrendered
  *   &reference#slug{notes?}                           // inline only
  *   &placeholder#slug{unit}{size?}{label?}{details?}  // see placeholderSpec
+ *   &end#slug                                         // region terminator (SCRATCHPAD_PLAN.md)
  *
  * Argument vocabulary: {text} renders in the book, {label} shows in the
  * outline, {details} is auxiliary metadata (a placeholder's details overlay;
@@ -20,11 +21,11 @@
  */
 
 const WriteSysCommand = {
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder'],
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'end'],
   // Block commands stand alone as their own sentence when on their own line.
-  // &meta is block but renders as nothing (it carries a setting). anchor and
-  // placeholder are block only when sole line content (segman's call).
-  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true },
+  // &meta is block but renders as nothing (it carries a setting). anchor,
+  // placeholder, and end are block only when sole line content (segman).
+  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, end: true },
 
   // Placeholder t-shirt sizes. Sentences double-ish; paragraphs are
   // Fibonacci. The asymmetry is deliberate (PLACEHOLDER_PLAN.md).
@@ -53,7 +54,13 @@ const WriteSysCommand = {
     if (i < chars.length && chars[i] === '#') {
       i++;
       const start = i;
-      while (i < chars.length && chars[i] !== '{') i++;
+      if (kind === 'end') {
+        // 'end' may be a bare #slug token with no {...} groups, so its slug
+        // self-terminates on the slug charset [a-z0-9-].
+        while (i < chars.length && /[a-z0-9-]/.test(chars[i])) i++;
+      } else {
+        while (i < chars.length && chars[i] !== '{') i++;
+      }
       slug = chars.slice(start, i).join('');
     }
 
@@ -72,7 +79,7 @@ const WriteSysCommand = {
       }
       if (!closed) return null; // unterminated group
     }
-    if (args.length === 0) return null;
+    if (args.length === 0 && !(kind === 'end' && slug)) return null;
 
     return { kind, slug, args, raw: chars.slice(0, i).join('') };
   },
@@ -228,7 +235,7 @@ const WriteSysCommand = {
       const cmd = this.parse(chars.slice(i).join(''));
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
-      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder') {
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'end') {
         out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end });
       }
       i = end;

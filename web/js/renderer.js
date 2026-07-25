@@ -535,6 +535,15 @@ const WriteSysRenderer = {
       }
       return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
     }
+    if (cmd.kind === 'end') {
+      // Invisible region terminator (SCRATCHPAD_PLAN.md). Same affordance
+      // rules as &meta: visible blue marker only while it's a suggestion.
+      const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+      if (changed) {
+        return `<div class="cmd-end cmd-suggested"${slugAttr}><span class="sentence" data-sentence-id="${this.escapeHtml(id)}" title="region end — click to view">∎</span></div>`;
+      }
+      return `<div class="cmd-end"${slugAttr} hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
+    }
     const form = window.WriteSysCommand && window.WriteSysCommand.structuralForm(cmd.raw);
     if (!form) return null;
     const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
@@ -604,6 +613,11 @@ const WriteSysRenderer = {
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
+    if (c.kind === 'end') {
+      // Invisible region terminator, same treatment as an inline anchor.
+      const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
+      return `<span class="inline-end"${slug} aria-hidden="true"></span>`;
+    }
     if (c.kind === 'placeholder') {
       const lib = window.WriteSysPlaceholder;
       const spec = window.WriteSysCommand && window.WriteSysCommand.placeholderSpec(c.args || []);
@@ -638,11 +652,14 @@ const WriteSysRenderer = {
     // Match an escaped command token: &amp;(keyword)(#slug)?{...}{...}...
     // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
     // Args are plain (no nested braces in the escaped stream we care about).
-    const re = /&amp;(reference|anchor|placeholder)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})/g;
+    const re = /&amp;(reference|anchor|placeholder)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-    return html.replace(re, (m, kw, hashSlug, groups) => {
+    return html.replace(re, (m, kw, hashSlug, groups, endKw, endSlug) => {
+      if (endKw) {
+        return this.renderInlineCommand({ kind: 'end', slug: endSlug.slice(1), notes: '', args: [], raw: m.replace('&amp;', '&') });
+      }
       const slug = hashSlug ? hashSlug.slice(1) : '';
       // args here are already HTML-escaped (we're in escaped output);
       // unescape just for the parse, renderInlineCommand re-escapes.

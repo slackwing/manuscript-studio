@@ -34,7 +34,7 @@ func ValidateSentenceText(text string) error {
 		cmd, ok := ParseCommand(text)
 		if ok && cmd.Raw == text {
 			if !blockCommandKinds[cmd.Kind] {
-				return fmt.Errorf("only block commands (title/part/chapter/anchor/meta/placeholder) may be their own sentence, got &%s: %q", cmd.Kind, truncate(text))
+				return fmt.Errorf("only block commands (title/part/chapter/anchor/meta/placeholder/end) may be their own sentence, got &%s: %q", cmd.Kind, truncate(text))
 			}
 			if strings.ContainsAny(text, "\n\t") {
 				return fmt.Errorf("command sentence must not contain \\n or \\t: %q", truncate(text))

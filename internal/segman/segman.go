@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.2.0"
+const Version = "2.3.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -642,7 +642,12 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 
 // commandKeywords are the recognized &-command names. A '&' begins a command
 // only when immediately followed by one of these and then '#' or '{'.
-var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta", "placeholder"}
+var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta", "placeholder", "end"}
+
+// isSlugChar reports whether r is in the #slug charset [a-z0-9-].
+func isSlugChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
+}
 
 // isBlockCommandAt reports whether the '&' at index i begins a *block* command
 // — one that is its own segment. title/part/chapter are always block; anchor
@@ -657,7 +662,7 @@ func isBlockCommandAt(runes []rune, i int) bool {
 	switch kw {
 	case "reference":
 		return false
-	case "anchor", "placeholder":
+	case "anchor", "placeholder", "end":
 		return commandIsSoleLineContent(runes, i)
 	default: // title, part, chapter
 		return true
@@ -716,15 +721,31 @@ func commandTokenEnd(runes []rune, i int) int {
 	for k < len(runes) && runes[k] != '#' && runes[k] != '{' {
 		k++
 	}
+	kw := string(runes[i+1 : k])
+	// 'end' is the one keyword whose token is complete with a bare #slug and
+	// no {...} groups (&end#slug). Its slug self-terminates on the slug
+	// charset [a-z0-9-] since no brace delimiter need follow.
+	bareSlugToken := false
 	// optional #slug
 	if k < len(runes) && runes[k] == '#' {
 		k++
-		for k < len(runes) && runes[k] != '{' && runes[k] != '\n' {
-			k++
+		if kw == "end" {
+			start := k
+			for k < len(runes) && isSlugChar(runes[k]) {
+				k++
+			}
+			if k == start {
+				return -1 // '&end#' with no slug is not a token
+			}
+			bareSlugToken = true
+		} else {
+			for k < len(runes) && runes[k] != '{' && runes[k] != '\n' {
+				k++
+			}
 		}
 	}
 	// one or more {...} groups, back to back
-	sawGroup := false
+	sawGroup := bareSlugToken
 	for k < len(runes) && runes[k] == '{' {
 		depth := 0
 		for k < len(runes) {

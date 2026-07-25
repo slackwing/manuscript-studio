@@ -25,3 +25,5 @@
 {"name": "unknown command is prose", "in": "&bogus{x} is not a command", "out": "&bogus{x} is not a command"}
 {"name": "hash header is literal prose now", "in": "# Old markdown header", "out": "# Old markdown header"}
 {"name": "hash header trailing space stripped", "in": "## Chapter 1   ", "out": "## Chapter 1"}
+{"name": "whole-block &end emits just its token", "in": "  &end#kegparty  ", "out": "&end#kegparty"}
+{"name": "section-marked &end keeps its marker", "in": "\n\n&end#kegparty", "out": "\n\n&end#kegparty"}

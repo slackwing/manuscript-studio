@@ -292,3 +292,34 @@ func TestBuildOutline_InvalidPlaceholderExcluded(t *testing.T) {
 		t.Errorf("invalid placeholder must not reach the outline, got %+v", o.TopAnchors)
 	}
 }
+
+func TestParseCommand_End(t *testing.T) {
+	// Bare #slug token, no brace groups (SCRATCHPAD_PLAN.md §3).
+	cmd, ok := ParseCommand("&end#kegparty")
+	if !ok || cmd.Kind != CmdEnd || cmd.Slug != "kegparty" || cmd.Raw != "&end#kegparty" {
+		t.Fatalf("ParseCommand(&end#kegparty) = %+v ok=%v", cmd, ok)
+	}
+	// Slug self-terminates on [a-z0-9-]: trailing prose is not swallowed.
+	cmd, ok = ParseCommand("&end#keg party continues")
+	if !ok || cmd.Slug != "keg" || cmd.Raw != "&end#keg" {
+		t.Fatalf("end slug must self-terminate: %+v ok=%v", cmd, ok)
+	}
+	// No slug, no args → not a command.
+	if _, ok := ParseCommand("&end# nothing"); ok {
+		t.Fatal("&end# with no slug must not parse")
+	}
+	if _, ok := ParseCommand("&end of story"); ok {
+		t.Fatal("literal &end must not parse")
+	}
+	if !IsBlockCommandText(" &end#kegparty ") {
+		t.Fatal("sole-line &end must be a block command sentence")
+	}
+	// &end never reaches the outline.
+	o := BuildOutline([]string{"s1", "s2"}, map[string]string{
+		"s1": "&anchor#kegparty{The keg party}",
+		"s2": "&end#kegparty",
+	})
+	if len(o.TopAnchors) != 1 {
+		t.Fatalf("expected only the anchor in the outline, got %+v", o.TopAnchors)
+	}
+}

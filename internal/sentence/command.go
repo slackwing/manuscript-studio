@@ -18,6 +18,7 @@ import (
 //	&anchor#slug{label?}{details?}                       // details reserved, unrendered
 //	&reference#slug{notes?}                              // inline only
 //	&placeholder#slug{unit}{size?}{label?}{details?}     // see ParsePlaceholder
+//	&end#slug                                            // region terminator (SCRATCHPAD_PLAN.md)
 //
 // Argument vocabulary: {text} renders in the book, {label} shows in the
 // outline, {details} is auxiliary metadata (a placeholder's details overlay;
@@ -38,6 +39,7 @@ const (
 	CmdReference   CommandKind = "reference"
 	CmdMeta        CommandKind = "meta"
 	CmdPlaceholder CommandKind = "placeholder"
+	CmdEnd         CommandKind = "end"
 )
 
 // blockCommandKinds are the commands that stand alone as their own sentence
@@ -52,6 +54,7 @@ var blockCommandKinds = map[CommandKind]bool{
 	CmdAnchor:      true,
 	CmdMeta:        true,
 	CmdPlaceholder: true, // block iff sole line content, same as anchor (segman's call)
+	CmdEnd:         true, // block iff sole line content; invisible region terminator
 }
 
 // Command is a parsed &-command. Slug is the author's static #slug ("" if the
@@ -68,7 +71,7 @@ var (
 	// slugPattern: a static slug is lowercase letters, digits, and dashes.
 	slugPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 	// commandNames matched at the start of a token.
-	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder}
+	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder, CmdEnd}
 )
 
 // PlaceholderSpec is the interpreted argument list of a &placeholder command:
@@ -258,8 +261,16 @@ func ParseCommand(s string) (Command, bool) {
 	if i < len(runes) && runes[i] == '#' {
 		i++
 		start := i
-		for i < len(runes) && runes[i] != '{' {
-			i++
+		if kind == CmdEnd {
+			// 'end' may be a bare #slug token with no {...} groups, so its
+			// slug self-terminates on the slug charset [a-z0-9-].
+			for i < len(runes) && isSlugRune(runes[i]) {
+				i++
+			}
+		} else {
+			for i < len(runes) && runes[i] != '{' {
+				i++
+			}
 		}
 		slug = string(runes[start:i])
 	}
@@ -288,7 +299,7 @@ func ParseCommand(s string) (Command, bool) {
 	nextGroup:
 	}
 
-	if len(args) == 0 {
+	if len(args) == 0 && !(kind == CmdEnd && slug != "") {
 		return Command{}, false
 	}
 	return Command{
@@ -320,4 +331,9 @@ func matchKeyword(runes []rune) (CommandKind, int) {
 // ValidSlug reports whether a #slug matches the required charset [a-z0-9-]+.
 func ValidSlug(slug string) bool {
 	return slugPattern.MatchString(slug)
+}
+
+// isSlugRune reports whether r is in the #slug charset [a-z0-9-].
+func isSlugRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
 }
