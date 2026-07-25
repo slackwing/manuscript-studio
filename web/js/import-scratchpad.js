@@ -49,6 +49,15 @@ const WriteSysImportScratchpad = {
           e.stopPropagation();
           this.openModal({ mode: 'append', sentenceId: boundaryId });
         });
+        // The + is hidden by default and only shown when the mouse is near this
+        // gap — i.e. hovering the paragraph just below it (or the one above).
+        // We toggle .import-hot on the zone rather than making the zone itself
+        // pointer-interactive, so prose is never blocked.
+        const hot = () => zone.classList.add('import-hot');
+        const cold = () => zone.classList.remove('import-hot');
+        p.addEventListener('mouseenter', hot);
+        p.addEventListener('mouseleave', cold);
+        if (prev) { prev.addEventListener('mouseenter', hot); prev.addEventListener('mouseleave', cold); }
         pageArea.appendChild(zone);
       });
 

@@ -445,6 +445,14 @@ body {
   }
 }
 
+/* No folio on title/part divider pages. paged.js can't select @page by
+   content, so the config handler tags these pages .no-folio after render and
+   we hide the rendered page-number box here. */
+.pagedjs_page.no-folio .pagedjs_margin-bottom-right {
+  visibility: hidden !important;
+  content: none !important;
+}
+
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
   font-weight: normal;
@@ -2438,6 +2446,12 @@ p.section-break {
    vertical gap, so a clickable strip would steal clicks from the prose
    (and from every click-driven test). Only the small left-margin + tab is
    interactive; hovering it reveals the insertion rule. */
+/* The zone spans the paragraph width and sits in the gap ABOVE the paragraph.
+   It NEVER intercepts pointer events (it can overlay prose where paragraphs are
+   tight) — only the left-margin + tab is interactive. The + is HIDDEN by
+   default and revealed only when the mouse is near this gap; proximity is
+   detected by an invisible hit-area on the tab that reaches right into the gap,
+   so no persistent + shows at every paragraph. */
 .import-zone {
   position: absolute;
   left: 0;
@@ -2467,10 +2481,19 @@ p.section-break {
   text-align: center;
   padding: 0;
   cursor: pointer;
-  opacity: 0.18;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 .import-tab:hover { opacity: 1; }
 .import-tab:hover ~ .import-rule { border-top-color: #2a6fb0; }
+
+/* Reveal the gap's + when the mouse is near that gap: the renderer marks the
+   paragraph the gap sits above with .import-gap-below and points it at its zone
+   via a shared data attr, and hovering that paragraph (where the mouse is when
+   "near" the gap) fades the + in. This keeps .import-zone pointer-events:none
+   so prose is never blocked. */
+.import-hot .import-tab { opacity: 1; }
+.import-hot .import-rule { border-top-color: #2a6fb0; }
 
 /* "Fill from scratchpad" on a committed placeholder — left margin too. */
 .ph-fill-btn {
