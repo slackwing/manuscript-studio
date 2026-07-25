@@ -45,6 +45,12 @@ FAST_TESTS=(
   test-placeholder-parse
   test-placeholder
   test-region-resolver
+  test-anchor-glyph
+  test-anchor-inline
+  test-break-buttons
+  test-canonicalize
+  test-canon-render-pipeline
+  test-cheatsheet
 )
 
 SLOW_TESTS=(

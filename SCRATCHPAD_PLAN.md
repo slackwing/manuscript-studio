@@ -113,9 +113,11 @@ window onto that region of the book. Same source, visible from both places.
 
 - *(impl)* One page: left sidebar (list, create, rename, delete, open),
   main column editor. Evernote-style homepage comes later (decision 8).
-- ProseMirror via pinned esm.sh import map *(impl — same CDN posture as
-  paged.js/smartquotes; exact versions pinned; packages share dep URLs so
-  there is exactly one prosemirror-model instance)*.
+- ProseMirror vendored as ONE self-contained esbuild ESM bundle *(impl —
+  scripts/vendor-prosemirror.sh, versions pinned at vendor time; a single
+  bundle guarantees exactly one prosemirror-model instance, works offline,
+  and keeps the app's no-build-step discipline: bundling happens only at
+  vendor-refresh time, like vendor-segman.sh)*.
 - Schema: doc, paragraph, heading(1–3), bullet/ordered list, blockquote,
   horizontal_rule, image (from `scratchpad_image`), table (prosemirror-
   tables), text; marks strong/em; plus **book_content** — an atom node,

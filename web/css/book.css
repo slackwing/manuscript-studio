@@ -2433,52 +2433,63 @@ p.section-break {
 }
 #scratchpads-link:hover { color: #222; border-color: #999; }
 
-/* + rule between paragraphs (position-derived, rebuilt after pagination). */
+/* + rule between paragraphs (position-derived, rebuilt after pagination).
+   The zone NEVER intercepts pointer events — paragraphs often have no
+   vertical gap, so a clickable strip would steal clicks from the prose
+   (and from every click-driven test). Only the small left-margin + tab is
+   interactive; hovering it reveals the insertion rule. */
 .import-zone {
   position: absolute;
   left: 0;
   width: 100%;
-  height: 16px;
+  height: 14px;
   z-index: 9;
-  cursor: pointer;
+  pointer-events: none;
   display: flex;
   align-items: center;
 }
 .import-rule {
   flex: 1;
   border-top: 1px dashed transparent;
-  text-align: center;
-  line-height: 0;
 }
-.import-zone:hover .import-rule { border-top-color: #2a6fb0; }
-.import-plus {
-  visibility: hidden;
-  font: 10px "Helvetica", sans-serif;
-  color: #2a6fb0;
-  background: #fff;
-  padding: 2px 8px;
+.import-tab {
+  pointer-events: auto;
+  position: absolute;
+  left: -30px;
+  top: -3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   border: 1px solid #2a6fb0;
-  border-radius: 8px;
-  position: relative;
-  top: -1px;
+  background: #fff;
+  color: #2a6fb0;
+  font: 600 13px/16px "Helvetica", sans-serif;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.18;
 }
-.import-zone:hover .import-plus { visibility: visible; }
+.import-tab:hover { opacity: 1; }
+.import-tab:hover ~ .import-rule { border-top-color: #2a6fb0; }
 
-/* "Fill from scratchpad" on a committed placeholder. */
+/* "Fill from scratchpad" on a committed placeholder — left margin too. */
 .ph-fill-btn {
   position: absolute;
-  right: 4px;
+  left: -30px;
   z-index: 9;
-  visibility: hidden;
-  font: 10px "Helvetica", sans-serif;
-  color: #2a6fb0;
-  background: rgba(255, 255, 255, 0.95);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   border: 1px solid #2a6fb0;
-  border-radius: 8px;
-  padding: 2px 8px;
+  background: #fff;
+  color: #2a6fb0;
+  font: 12px/17px "Helvetica", sans-serif;
+  text-align: center;
+  padding: 0;
   cursor: pointer;
+  opacity: 0.18;
 }
-.pagedjs_page_content:hover .ph-fill-btn { visibility: visible; }
+.ph-fill-btn:hover { opacity: 1; }
 
 /* Canonize modal. */
 #import-modal-overlay {

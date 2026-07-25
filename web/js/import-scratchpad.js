@@ -37,12 +37,15 @@ const WriteSysImportScratchpad = {
         const boundaryId = prevSpans[prevSpans.length - 1].dataset.sentenceId;
         if (sug[boundaryId] !== undefined) return; // pending suggestion → ineligible
         if (!r.sentenceMap[boundaryId]) return;    // not a committed sentence
+        // The zone itself never intercepts pointer events (it overlays prose
+        // when paragraphs have no gap) — only the small left-margin + tab is
+        // clickable; hovering it reveals the insertion rule.
         const rect = p.getBoundingClientRect();
         const zone = document.createElement('div');
         zone.className = 'import-zone';
-        zone.style.top = `${Math.max(0, rect.top - pageRect.top - 10)}px`;
-        zone.innerHTML = '<span class="import-rule"><span class="import-plus">+ Import from scratchpad</span></span>';
-        zone.addEventListener('click', (e) => {
+        zone.style.top = `${Math.max(0, rect.top - pageRect.top - 9)}px`;
+        zone.innerHTML = '<button type="button" class="import-tab" title="Import from scratchpad (canonize)">+</button><span class="import-rule"></span>';
+        zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
           this.openModal({ mode: 'append', sentenceId: boundaryId });
         });
@@ -60,11 +63,13 @@ const WriteSysImportScratchpad = {
         if (!r.sentenceMap[sentenceId]) return;
         const slug = el.dataset.slug;
         if (!slug) return;
+        // Left-margin button too — never over the prose.
         const rect = holder.getBoundingClientRect();
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'ph-fill-btn';
-        btn.textContent = 'Fill from scratchpad';
+        btn.textContent = '⧉';
+        btn.title = `Fill placeholder #${slug} from scratchpad (canonize)`;
         btn.style.top = `${rect.top - pageRect.top + 2}px`;
         btn.addEventListener('click', (e) => {
           e.stopPropagation();

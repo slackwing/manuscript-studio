@@ -89,8 +89,8 @@ const SCRATCH_URL = new URL('scratchpad.html', TEST_URL).href;
     // --- book view: canonize via the + affordance ---
     await page.goto(TEST_URL);
     await page.waitForSelector('.sentence', { timeout: 30000 });
-    await page.waitForSelector('.import-zone', { timeout: 15000 });
-    await page.evaluate(() => document.querySelector('.import-zone').click());
+    await page.waitForSelector('.import-zone .import-tab', { timeout: 15000 });
+    await page.evaluate(() => document.querySelector('.import-zone .import-tab').click());
     await page.waitForSelector('#import-modal', { timeout: 5000 });
     await page.selectOption('#im-pad', String(padId));
     await page.waitForSelector('input[name="im-block"]', { timeout: 10000 });
