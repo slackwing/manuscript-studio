@@ -2590,6 +2590,15 @@ p.section-break {
   flex-direction: column;
   gap: 6px;
   align-items: flex-start;
+  /* The strip itself must never eat clicks aimed at the page under it —
+     only its interactive children are pointer-targets (same rule as the
+     import zones). */
+  pointer-events: none;
+}
+#manuscript-chrome #info-icon,
+#manuscript-chrome #push-button-container,
+#manuscript-chrome #push-button-container * {
+  pointer-events: auto;
 }
 #manuscript-chrome .mc-row {
   display: flex;
