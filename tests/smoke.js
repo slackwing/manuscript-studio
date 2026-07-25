@@ -15,15 +15,12 @@ const { TEST_URL, loginAsTestUser,
   // Wait for commits to load and page to render
   await waitForPagination(page);
 
-  // The header no longer carries a visible "migration info" line — that data
-  // moved to the ⓘ-icon tooltip. Check the tooltip got populated by hovering.
-  await page.locator('#info-icon').hover();
-  await page.waitForTimeout(150);
-  const tooltipText = await page.evaluate(() => {
-    const popup = document.querySelector('.info-popup');
-    return popup ? popup.textContent : '';
-  });
-  console.log('Info tooltip:', tooltipText.replace(/\s+/g, ' ').trim());
+  // Migration info now lives in the manuscript-chrome strip's info line:
+  // "Updated <ts> · <shorthash> · <n> words".
+  await page.waitForFunction(() => /Updated .+ · [0-9a-f]{7}/.test(
+    (document.getElementById('mc-info') || {}).textContent || ''), null, { timeout: 10000 });
+  const infoLine = await page.evaluate(() => document.getElementById('mc-info').textContent);
+  console.log('Chrome info line:', infoLine);
 
   // Check the manuscript was auto-loaded.
   const manuscriptLoaded = await page.evaluate(() => {

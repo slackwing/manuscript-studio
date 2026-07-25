@@ -43,18 +43,19 @@ const WriteSysGlobalSearch = {
     const q = this.input.value.trim().toLowerCase();
     if (!q) { this.hide(); return; }
     await this.load();
-    const ms = (this.data.manuscripts || []).filter(m => m.name.toLowerCase().includes(q)).slice(0, 8);
+    const ms = (this.data.manuscripts || []).filter(m =>
+      m.name.toLowerCase().includes(q) || (m.display_name || '').toLowerCase().includes(q)).slice(0, 8);
     const sp = (this.data.scratchpads || []).filter(s =>
       s.title.toLowerCase().includes(q) || (s.snippet || '').toLowerCase().includes(q)).slice(0, 8);
     this.items = [
-      ...ms.map(m => ({ type: 'manuscript', id: m.manuscript_id, title: m.name, meta: `${(m.word_count || 0).toLocaleString('en-US')} words` })),
+      ...ms.map(m => ({ type: 'manuscript', id: m.manuscript_id, title: m.display_name || m.name, meta: `${(m.word_count || 0).toLocaleString('en-US')} words` })),
       ...sp.map(s => ({ type: 'scratchpad', id: s.scratchpad_id, title: s.title, meta: new Date(s.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
     ];
     this.activeIdx = this.items.length ? 0 : -1;
     let html = '';
     if (ms.length) {
       html += '<div class="gs-group">Manuscripts</div>' + ms.map((m, i) =>
-        this.itemHTML(i, 'manuscript', m.name, `${(m.word_count || 0).toLocaleString('en-US')} words`)).join('');
+        this.itemHTML(i, 'manuscript', m.display_name || m.name, `${(m.word_count || 0).toLocaleString('en-US')} words`)).join('');
     }
     if (sp.length) {
       html += '<div class="gs-group">Scratchpads</div>' + sp.map((s, i) =>

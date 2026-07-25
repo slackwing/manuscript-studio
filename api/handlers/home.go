@@ -25,6 +25,7 @@ type HomeHandlers struct {
 type homeManuscript struct {
 	ManuscriptID  int        `json:"manuscript_id"`
 	Name          string     `json:"name"`
+	DisplayName   string     `json:"display_name"`
 	LastOpenedAt  *time.Time `json:"last_opened_at,omitempty"`
 	ProcessedAt   *time.Time `json:"processed_at,omitempty"`
 	SentenceCount int        `json:"sentence_count"`
@@ -59,7 +60,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	manuscripts := make([]homeManuscript, 0, len(options))
 	for _, opt := range options {
-		hm := homeManuscript{ManuscriptID: opt.ManuscriptID, Name: opt.Name}
+		hm := homeManuscript{ManuscriptID: opt.ManuscriptID, Name: opt.Name, DisplayName: opt.DisplayName}
 		if t, ok := opened[opt.ManuscriptID]; ok {
 			tt := t
 			hm.LastOpenedAt = &tt

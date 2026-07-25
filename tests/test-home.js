@@ -8,6 +8,10 @@ const {
   cleanupTestAnnotations, loginAsTestUser,
 } = require('./test-utils');
 
+// Cards show the human display name (config slug prettified as fallback).
+const DISPLAY_NAME = TEST_MANUSCRIPT_NAME.split('-')
+  .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
 const HOME_URL = new URL('home.html', TEST_URL).href;
 
 (async () => {
@@ -39,7 +43,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       homeLink: (document.getElementById('home-link') || {}).getAttribute
         ? document.getElementById('home-link').getAttribute('href') : null,
       brandLink: document.getElementById('brand').getAttribute('href'),
-    }), TEST_MANUSCRIPT_NAME);
+    }), DISPLAY_NAME);
     check('two card sections render', cards.sections === 2, String(cards.sections));
     check('test manuscript card present', cards.manuscriptCard);
     check('home icon and wordmark both link home',

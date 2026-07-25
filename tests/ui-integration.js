@@ -43,15 +43,12 @@ async function runTests() {
     const controlsVisibleBefore = await page.locator('#controls').isVisible();
     assert(controlsVisibleBefore, 'Controls are visible on page load');
 
-    // Migration info now lives in the ⓘ tooltip rather than a visible field.
-    await page.locator('#info-icon').hover();
-    await page.waitForTimeout(150);
-    const tooltipText = await page.evaluate(() => {
-      const popup = document.querySelector('.info-popup');
-      return popup ? popup.textContent : '';
-    });
-    assert(tooltipText.includes('Commit'),
-      `Migration info tooltip shown (got: "${tooltipText.slice(0, 60).replace(/\s+/g, ' ')}...")`);
+    // Migration info lives in the manuscript-chrome strip's info line.
+    await page.waitForFunction(() => /Updated .+ · [0-9a-f]{7}/.test(
+      (document.getElementById('mc-info') || {}).textContent || ''), null, { timeout: 10000 });
+    const infoLine = await page.evaluate(() => document.getElementById('mc-info').textContent);
+    assert(/[0-9a-f]{7}/.test(infoLine) && /words/.test(infoLine),
+      `Chrome info line shows updated · commit · words (got: "${infoLine}")`);
 
     // Test 3: Manuscript auto-loaded on page load
     const pagesRendered = await page.locator('.pagedjs_page').count();

@@ -82,8 +82,14 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Word count rides along for the manuscript-chrome strip (HOME_PLAN).
+	wordCount, _ := h.DB.GetMigrationWordCount(ctx, migration.MigrationID)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(migration)
+	json.NewEncoder(w).Encode(struct {
+		*models.Migration
+		WordCount int `json:"word_count"`
+	}{migration, wordCount})
 }
 
 // HandleGetManuscriptByMigration returns manuscript content for a migration.

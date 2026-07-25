@@ -24,7 +24,7 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 		VALUES ($1, $2)
 		ON CONFLICT (repo_path, file_path) DO UPDATE
 			SET repo_path = EXCLUDED.repo_path
-		RETURNING manuscript_id, repo_path, file_path, created_at
+		RETURNING manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at
 	`
 
 	var m models.Manuscript
@@ -32,6 +32,7 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 		&m.ManuscriptID,
 		&m.RepoPath,
 		&m.FilePath,
+		&m.DisplayName,
 		&m.CreatedAt,
 	)
 	if err != nil {
@@ -45,9 +46,9 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 func (db *DB) GetManuscriptByID(ctx context.Context, manuscriptID int) (*models.Manuscript, error) {
 	var m models.Manuscript
 	err := db.Pool.QueryRow(ctx,
-		`SELECT manuscript_id, repo_path, file_path, created_at FROM manuscript WHERE manuscript_id = $1`,
+		`SELECT manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at FROM manuscript WHERE manuscript_id = $1`,
 		manuscriptID,
-	).Scan(&m.ManuscriptID, &m.RepoPath, &m.FilePath, &m.CreatedAt)
+	).Scan(&m.ManuscriptID, &m.RepoPath, &m.FilePath, &m.DisplayName, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -59,7 +60,7 @@ func (db *DB) GetManuscriptByID(ctx context.Context, manuscriptID int) (*models.
 
 func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*models.Manuscript, error) {
 	query := `
-		SELECT manuscript_id, repo_path, file_path, created_at
+		SELECT manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at
 		FROM manuscript
 		WHERE repo_path = $1 AND file_path = $2
 	`
@@ -69,6 +70,7 @@ func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*mo
 		&m.ManuscriptID,
 		&m.RepoPath,
 		&m.FilePath,
+		&m.DisplayName,
 		&m.CreatedAt,
 	)
 	if err == pgx.ErrNoRows {

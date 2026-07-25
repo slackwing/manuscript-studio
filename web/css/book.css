@@ -722,10 +722,10 @@ p.section-break {
    margin: fixed in the left grey gutter, only shown when there's structure. */
 #outline-margin {
   position: fixed;
-  top: 148px; /* below #manuscript-chrome (HOME_PLAN.md) */
+  top: 142px; /* below #manuscript-chrome (HOME_PLAN.md) */
   left: 0;
   width: 290px;
-  max-height: calc(100vh - 168px);
+  max-height: calc(100vh - 162px);
   overflow-y: auto;
   z-index: 100;
   padding: 0 12px 12px 16px;
@@ -2085,7 +2085,8 @@ p.section-break {
 
 /* Dropdown panel — borrows GitHub's merge-button look: white surface,
    subtle border + shadow, items separated by hairlines. */
-#controls .push-menu {
+#controls .push-menu,
+#manuscript-chrome .push-menu {
   position: absolute;
   top: 100%;
   right: 0;
@@ -2103,7 +2104,8 @@ p.section-break {
 /* Items: two-row layout (label on top, smaller dim description below) with
    a leading icon column. <button> and <a> share identical layout so they
    look uniform. Anchor under #controls to beat `#controls button { ... }`. */
-#controls .push-menu-item {
+#controls .push-menu-item,
+#manuscript-chrome .push-menu-item {
   display: grid;
   grid-template-columns: 28px 1fr;
   align-items: start;
@@ -2127,12 +2129,14 @@ p.section-break {
   border-top: 1px solid #d8dee4;
 }
 
-#controls .push-menu-item:hover {
+#controls .push-menu-item:hover,
+#manuscript-chrome .push-menu-item:hover {
   background: #f6f8fa;
   color: #1f2328;
 }
 
-#controls .push-menu-icon {
+#controls .push-menu-icon,
+#manuscript-chrome .push-menu-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2143,19 +2147,22 @@ p.section-break {
   margin-top: 1px;
 }
 
-#controls .push-menu-text {
+#controls .push-menu-text,
+#manuscript-chrome .push-menu-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-#controls .push-menu-label {
+#controls .push-menu-label,
+#manuscript-chrome .push-menu-label {
   font-size: 14px;
   font-weight: 600;
   color: #1f2328;
 }
 
-#controls .push-menu-desc {
+#controls .push-menu-desc,
+#manuscript-chrome .push-menu-desc {
   font-size: 12px;
   font-weight: 400;
   color: #57606a;
@@ -2585,55 +2592,61 @@ p.section-break {
   left: 0;
   width: 290px;
   z-index: 100;
-  padding: 14px 12px 12px 18px;
+  padding: 16px 12px 12px 18px;
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+  flex-direction: row;
   align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   border-bottom: 1px solid #e3e0d8;
   /* The strip itself must never eat clicks aimed at the page under it —
      only its interactive children are pointer-targets (same rule as the
      import zones). */
   pointer-events: none;
 }
-#manuscript-chrome #info-icon,
 #manuscript-chrome #push-button-container,
 #manuscript-chrome #push-button-container * {
   pointer-events: auto;
 }
-#manuscript-chrome .mc-row {
+#manuscript-chrome .mc-left {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
-#manuscript-chrome .mc-spacer { flex: 1; }
 #mc-name {
-  font: 15px Georgia, serif;
+  font: 16px Georgia, serif;
   color: #222;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#manuscript-chrome #info-icon { color: #b5b0a4; display: inline-flex; }
-#manuscript-chrome #info-icon:hover { color: #57503f; }
-#manuscript-chrome .manuscript-updated {
+#mc-info {
   font: 10px "Helvetica", sans-serif;
   letter-spacing: 0.02em;
   color: #a39d90;
 }
-/* Compact, quiet push button inside the strip. */
+/* Compact push controls: the grouped primary+caret read as ONE button
+   (rounded outer corners only), matching the old top-bar multi-button. */
 #manuscript-chrome .push-btn-primary,
 #manuscript-chrome .push-btn-caret {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font: 600 11px "Helvetica", sans-serif;
-  padding: 5px 10px;
+  padding: 5px 9px;
   border: 1px solid #d0cabb;
-  border-radius: 6px;
   background: #fff;
   color: #57503f;
+  cursor: pointer;
+}
+#manuscript-chrome .push-btn-solo { border-radius: 6px; }
+#manuscript-chrome .push-btn-grouped { border-radius: 6px 0 0 6px; }
+#manuscript-chrome .push-btn-caret {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+  padding: 5px 6px;
+  font-size: 8px;
 }
 #manuscript-chrome .push-btn-primary:hover,
 #manuscript-chrome .push-btn-caret:hover {
@@ -2641,3 +2654,4 @@ p.section-break {
   color: #222;
 }
 #manuscript-chrome .push-btn-icon { display: inline-flex; }
+#manuscript-chrome .push-button-container { position: relative; flex: none; }

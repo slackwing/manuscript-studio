@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
@@ -27,7 +28,24 @@ type LoginRequest struct {
 // frontend can both display and route to a manuscript.
 type ManuscriptOption struct {
 	Name         string `json:"name"`
+	DisplayName  string `json:"display_name"`
 	ManuscriptID int    `json:"manuscript_id"`
+}
+
+// displayNameFor prefers the manuscript row's display_name; empty falls back
+// to a prettified config slug ("the-wildfire" → "The Wildfire").
+func displayNameFor(stored, slug string) string {
+	if stored != "" {
+		return stored
+	}
+	words := strings.Split(slug, "-")
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		words[i] = strings.ToUpper(w[:1]) + w[1:]
+	}
+	return strings.Join(words, " ")
 }
 
 type LoginResponse struct {
@@ -146,6 +164,7 @@ func userManuscriptOptions(ctx context.Context, db *database.DB, cfg *config.Con
 		}
 		out = append(out, ManuscriptOption{
 			Name:         ma.ManuscriptName,
+			DisplayName:  displayNameFor(m.DisplayName, ma.ManuscriptName),
 			ManuscriptID: m.ManuscriptID,
 		})
 	}

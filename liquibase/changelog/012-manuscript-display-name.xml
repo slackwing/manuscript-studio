@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Human display name for a manuscript ("The Wildfire"), distinct from
+         the config/file slug. NULL/empty falls back to a prettified slug
+         (Go side), so existing rows need no backfill; a real rename is just
+         an UPDATE on this column. -->
+    <changeSet id="012-manuscript-display-name" author="claude">
+        <addColumn tableName="manuscript">
+            <column name="display_name" type="VARCHAR(500)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

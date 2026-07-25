@@ -22,7 +22,10 @@ type Manuscript struct {
 	ManuscriptID int       `json:"manuscript_id"`
 	RepoPath     string    `json:"repo_path"`
 	FilePath     string    `json:"file_path"`
-	CreatedAt    time.Time `json:"created_at"`
+	// Human display name ("The Wildfire"); empty falls back to a prettified
+	// config slug (handlers.displayNameFor).
+	DisplayName string    `json:"display_name"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Lifecycle: pending → running → done | error (.Error set on error).

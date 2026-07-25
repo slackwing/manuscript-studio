@@ -54,19 +54,13 @@ const WriteSysRenderer = {
       this.currentSegmenter = migration.segmenter;
 
       const shortHash = migration.commit_hash.substring(0, 7);
-      const processedAt = new Date(migration.processed_at);
-      const date = processedAt.toLocaleDateString();
-      const session = window.currentSession || {};
-      const accessibleList = (window.currentSession && window.currentSession.accessible_manuscripts) || [];
-      const me = accessibleList.find(m => m.manuscript_id === this.manuscriptId);
-      const manuscriptName = (me && me.name) || '';
       // The session bootstrap is async — retry until it lands so the strip
       // never shows an empty name.
       const setName = (tries) => {
         const list = (window.currentSession && window.currentSession.accessible_manuscripts) || [];
         const mine = list.find(m => m.manuscript_id === this.manuscriptId);
         const nameEl = document.getElementById('mc-name');
-        if (mine && nameEl) { nameEl.textContent = mine.name; return; }
+        if (mine && nameEl) { nameEl.textContent = mine.display_name || mine.name; return; }
         if (tries < 20) setTimeout(() => setName(tries + 1), 250);
       };
       setName(0);
@@ -76,17 +70,7 @@ const WriteSysRenderer = {
         method: 'POST',
         headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
       }).catch(() => {});
-      if (window.WriteSysInfoTooltip) {
-        window.WriteSysInfoTooltip.set([
-          manuscriptName ? ['Manuscript', manuscriptName] : null,
-          session.username ? ['User', session.username] : null,
-          ['Commit', shortHash],
-          ['Segmenter', migration.segmenter],
-          ['Loaded', date],
-          ['Sentences', String(migration.sentence_count)],
-        ].filter(Boolean));
-      }
-      this.renderUpdatedLabel(processedAt);
+      this.renderInfoLine(migration);
 
       console.log(`Loading migration ${migration.migration_id}: ${shortHash} with segmenter ${migration.segmenter}`);
 
@@ -96,27 +80,31 @@ const WriteSysRenderer = {
     } catch (error) {
       console.error('Failed to load latest migration:', error);
       this.showStatus(`Error: ${error.message}`, 'error');
-      if (window.WriteSysInfoTooltip) {
-        window.WriteSysInfoTooltip.set([['Error', error.message]]);
-      }
-      this.renderUpdatedLabel(null);
+      this.renderInfoLine(null);
     }
   },
 
-  // Top-bar "Manuscript Updated: …" — formatted in the browser's timezone so
-  // the abbreviation (EDT/EST/etc.) reflects where the reader is, not the VM.
-  renderUpdatedLabel(processedAt) {
-    const el = document.getElementById('manuscript-updated');
+  // Chrome-strip info line: "Updated <ts> · <shorthash> · <n> words" —
+  // formatted in the browser's timezone so the abbreviation (EDT/EST/etc.)
+  // reflects where the reader is, not the VM.
+  renderInfoLine(migration) {
+    const el = document.getElementById('mc-info');
     if (!el) return;
-    if (!processedAt) {
+    if (!migration) {
       el.textContent = '';
       return;
     }
+    const processedAt = new Date(migration.processed_at);
     const monthDay = processedAt.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
     const time = processedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     const parts = processedAt.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ');
     const tz = parts[parts.length - 1] || '';
-    el.textContent = `Updated ${monthDay}, ${time}${tz ? ' ' + tz : ''}`;
+    const bits = [
+      `Updated ${monthDay}, ${time}${tz ? ' ' + tz : ''}`,
+      (migration.commit_hash || '').substring(0, 7),
+      migration.word_count ? `${migration.word_count.toLocaleString('en-US')} words` : '',
+    ].filter(Boolean);
+    el.textContent = bits.join(' · ');
   },
 
   // Poll /migrations/latest so a webhook-driven migration that arrives while

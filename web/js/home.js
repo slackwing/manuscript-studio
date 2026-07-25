@@ -52,7 +52,7 @@ const WriteSysHome = {
     const words = m.word_count ? `${m.word_count.toLocaleString('en-US')} words` : '';
     return `<a class="card card-manuscript" href="./?manuscript_id=${m.manuscript_id}">
       <span class="card-kindbar"></span>
-      <p class="card-title">${this.esc(m.name)}</p>
+      <p class="card-title">${this.esc(m.display_name || m.name)}</p>
       <p class="card-snippet">${words}</p>
       <p class="card-meta"><span>${this.esc(opened || updated)}</span>${opened ? `<span>· ${this.esc(updated)}</span>` : ''}</p>
     </a>`;
