@@ -172,9 +172,13 @@ const WriteSysOutline = {
     const starts = this.itemNodes.map(n => this.pageOfSentence(n.dataset.sentenceId) || 0);
     for (let i = 0; i < this.itemNodes.length; i++) {
       const start = starts[i];
-      // Next item with a known start page determines where this section ends.
+      // The next SECTION row (title/part/chapter) with a known start page
+      // determines where this section ends. Anchor rows (and placeholders,
+      // which list as anchors) are skipped: they live INSIDE a chapter, so a
+      // chapter's page count runs past them to the next real section.
       let nextStart = totalPages + 1;
       for (let j = i + 1; j < starts.length; j++) {
+        if (this.itemNodes[j].classList.contains('outline-anchor')) continue;
         if (starts[j] > 0) { nextStart = starts[j]; break; }
       }
       const span = Math.max(1, nextStart - start);

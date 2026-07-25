@@ -35,20 +35,22 @@ const {
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.waitForTimeout(1500);
 
-    // Two distinct prose sentences to suggest on.
+    // Three distinct prose sentences to suggest on (document order: the
+    // chapter must precede the block placeholder so the placeholder's
+    // outline row attaches to it).
     const targets = await page.evaluate(() => {
       const spans = Array.from(document.querySelectorAll('p .sentence'))
         .filter(s => s.textContent.trim().length > 20);
       const ids = [];
       for (const s of spans) {
         if (!ids.includes(s.dataset.sentenceId)) ids.push(s.dataset.sentenceId);
-        if (ids.length === 2) break;
+        if (ids.length === 3) break;
       }
       return ids;
     });
-    check('found two target sentences', targets.length === 2, targets.join(', '));
-    if (targets.length < 2) throw new Error('not enough target sentences');
-    const [inlineId, blockId] = targets;
+    check('found three target sentences', targets.length === 3, targets.join(', '));
+    if (targets.length < 3) throw new Error('not enough target sentences');
+    const [chapterId, inlineId, blockId] = targets;
 
     const csrf = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
     const put = async (id, text) => {
@@ -63,6 +65,11 @@ const {
       if (status === 200) suggested.push(id);
       return status;
     };
+
+    // A chapter above the placeholders, so the outline has a section row
+    // whose page count must run PAST the anchor-style placeholder row.
+    const st0 = await put(chapterId, '&chapter{The Keg Party}');
+    check('chapter suggestion PUT accepted', st0 === 200, `status ${st0}`);
 
     // Inline: sentences-unit placeholder mid-sentence, plus a mis-syntaxed
     // one that must print as literal prose.
@@ -131,10 +138,28 @@ const {
       const divs = Array.from(document.querySelectorAll('.pagedjs_pages .cmd-placeholder'));
       if (divs.length === 0) return { found: false };
       const chip = document.querySelector('.pagedjs_pages .cmd-placeholder .ph-chip-block');
+      const phs = Array.from(document.querySelectorAll('.pagedjs_pages .cmd-placeholder p .ph'));
+      // Regression guards: (a) a suggested placeholder's filler must stay
+      // invisible even under the blue .cmd-suggested affordance; (b) hatched
+      // rows must butt-joint with no gap, INCLUDING inside the halves of a
+      // paragraph paged.js split across pages (it zeroes padding on split
+      // elements, which used to open --ph-pad-sized gaps).
+      const first = phs[0] ? getComputedStyle(phs[0]) : null;
+      let maxGap = 0;
+      for (const ph of phs) {
+        const rows = Array.from(ph.getClientRects())
+          .filter(r => r.width > 1).sort((a, b) => a.top - b.top);
+        for (let i = 1; i < rows.length; i++) {
+          maxGap = Math.max(maxGap, rows[i].top - rows[i - 1].bottom);
+        }
+      }
       return {
         found: true,
         // A split paragraph clones its <p> across fragments, so >= 2.
-        paragraphs: document.querySelectorAll('.pagedjs_pages .cmd-placeholder p .ph').length,
+        paragraphs: phs.length,
+        transparent: first ? first.color === 'rgba(0, 0, 0, 0)' : false,
+        suggestedBlueHatch: first ? /2a6fb0/.test(first.backgroundImage) : false,
+        maxGap: +maxGap.toFixed(3),
         overlayText: chip ? chip.textContent : '',
         overlayVisible: chip ? getComputedStyle(chip).visibility !== 'hidden' : false,
         carriesSentenceId: divs.some(d => !!d.querySelector(`.sentence[data-sentence-id="${id}"]`)),
@@ -142,6 +167,9 @@ const {
     }, blockId);
     check('block placeholder rendered', block.found === true);
     check('block has >= 2 hatched paragraphs (s = 2)', block.paragraphs >= 2, String(block.paragraphs));
+    check('suggested block filler stays invisible (no blue text)', block.transparent === true);
+    check('suggested placeholder hatch carries the blue affordance', block.suggestedBlueHatch === true);
+    check('no gaps between hatched rows (split halves included)', block.maxGap < 0.5, `maxGap ${block.maxGap}px`);
     check('overlay chip persistent with slug — label + details', block.overlayVisible === true
       && /#the-argument — The argument/.test(block.overlayText || '')
       && /Three beats, escalating/.test(block.overlayText || ''), block.overlayText);
@@ -154,6 +182,24 @@ const {
       return item ? { cls: item.className, text: item.textContent.trim() } : null;
     });
     check('outline lists the placeholder as an anchor row', !!outline, outline && outline.cls);
+
+    // --- outline page count: a chapter's span runs PAST anchor rows ---
+    await page.waitForTimeout(800); // updatePageInfo settles post-pagination
+    const pageInfo = await page.evaluate(() => {
+      const totalPages = document.querySelectorAll('.pagedjs_page').length;
+      const ch = Array.from(document.querySelectorAll('.outline-item.outline-chapter'))
+        .find(n => /The Keg Party/.test(n.textContent));
+      const count = ch ? (ch.querySelector('.outline-count') || {}).textContent : null;
+      const start = ch ? (ch.querySelector('.outline-page') || {}).textContent : null;
+      return { totalPages, count, start };
+    });
+    // The chapter is the last section row, so its span must reach the final
+    // page — the anchor-style placeholder row inside it must not cut it off.
+    const expectedSpan = pageInfo.start
+      ? `${Math.max(1, pageInfo.totalPages - parseInt(pageInfo.start, 10) + 1)}pp` : null;
+    check('chapter page count runs past the placeholder row',
+      !!pageInfo.count && pageInfo.count === expectedSpan,
+      `count ${pageInfo.count}, start ${pageInfo.start}, ${pageInfo.totalPages} pages`);
 
     check('no page errors', errs.length === 0, errs.join('; '));
   } finally {

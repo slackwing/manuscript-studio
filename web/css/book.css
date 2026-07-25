@@ -2148,10 +2148,16 @@ p.section-break {
    on tile multiples, or the hatch rows will visibly jog.
    ============================================================ */
 .ph {
-  color: transparent;
+  /* !important: filler must NEVER show glyphs — the suggestion affordance
+     (.cmd-suggested .sentence { color: blue }) out-specifies .ph otherwise.
+     A suggested placeholder signals blue via its hatch tint instead (below). */
+  color: transparent !important;
   user-select: none;
   -webkit-user-select: none;
-  padding: var(--ph-pad, 3.7px) 0;
+  /* !important: paged.js zeroes padding on elements it splits across pages
+     (data-split-from/-to), which strips the row bridge from every line of
+     the split halves and opens --ph-pad-sized gaps between hatched rows. */
+  padding: var(--ph-pad, 3.7px) 0 !important;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6.4' height='6.4'%3E%3Cpath d='M-1.6,1.6 L1.6,-1.6 M-1.6,8 L8,-1.6 M4.8,8 L8,4.8' stroke='%23ccc5b6' stroke-width='1'/%3E%3C/svg%3E");
@@ -2222,6 +2228,13 @@ p.section-break {
   border: 1px solid #c9c2b2;
   padding: 6px 10px;
   max-width: 22em;
+}
+
+/* A suggested placeholder can't show blue text (filler is invisible by
+   contract), so the blue affordance moves into the hatch itself. */
+.cmd-suggested .ph,
+.sentence.has-suggestion .ph {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6.4' height='6.4'%3E%3Cpath d='M-1.6,1.6 L1.6,-1.6 M-1.6,8 L8,-1.6 M4.8,8 L8,4.8' stroke='%232a6fb0' stroke-opacity='0.5' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 /* The phase-nudge spacer must never paint anything of its own. */
