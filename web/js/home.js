@@ -49,10 +49,11 @@ const WriteSysHome = {
   manuscriptCard(m) {
     const opened = m.last_opened_at ? `opened ${this.when(m.last_opened_at)}` : '';
     const updated = m.processed_at ? `updated ${this.when(m.processed_at)}` : 'not synced yet';
+    const words = m.word_count ? `${m.word_count.toLocaleString('en-US')} words` : '';
     return `<a class="card card-manuscript" href="./?manuscript_id=${m.manuscript_id}">
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.name)}</p>
-      <p class="card-snippet">${m.sentence_count ? `${m.sentence_count} sentences` : ''}</p>
+      <p class="card-snippet">${words}</p>
       <p class="card-meta"><span>${this.esc(opened || updated)}</span>${opened ? `<span>· ${this.esc(updated)}</span>` : ''}</p>
     </a>`;
   },
@@ -72,8 +73,9 @@ const WriteSysHome = {
   section(title, count, cardsHTML, opts = {}) {
     return `<section class="home-section">
       <div class="home-section-head">
-        <h2>${title}</h2><span class="home-count">${count}</span><span class="home-spacer"></span>
-        ${opts.newBtn ? '<button type="button" class="home-new" id="home-new-pad">+ New scratchpad</button>' : ''}
+        <h2>${title}</h2><span class="home-count">${count}</span>
+        ${opts.newBtn ? '<button type="button" class="home-new" id="home-new-pad" title="New scratchpad">+</button>' : ''}
+        <span class="home-spacer"></span>
         ${opts.seeAll ? `<a class="home-seeall" href="home.html?view=${opts.seeAll}" data-view="${opts.seeAll}">See all →</a>` : ''}
       </div>
       ${cardsHTML ? `<div class="card-grid">${cardsHTML}</div>` : '<div class="home-empty">Nothing here yet.</div>'}

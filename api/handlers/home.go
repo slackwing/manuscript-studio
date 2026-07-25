@@ -28,6 +28,7 @@ type homeManuscript struct {
 	LastOpenedAt  *time.Time `json:"last_opened_at,omitempty"`
 	ProcessedAt   *time.Time `json:"processed_at,omitempty"`
 	SentenceCount int        `json:"sentence_count"`
+	WordCount     int        `json:"word_count"`
 }
 
 type homeScratchpad struct {
@@ -67,6 +68,9 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 			pt := mig.ProcessedAt
 			hm.ProcessedAt = &pt
 			hm.SentenceCount = mig.SentenceCount
+			if wc, err := h.DB.GetMigrationWordCount(ctx, mig.MigrationID); err == nil {
+				hm.WordCount = wc
+			}
 		}
 		manuscripts = append(manuscripts, hm)
 	}

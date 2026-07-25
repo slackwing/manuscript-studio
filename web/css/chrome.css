@@ -31,17 +31,17 @@ a#brand:hover { color: #000; }
   position: relative;
   width: min(380px, 40vw);
 }
-#gs-input {
+#controls #gs-input {
   width: 100%;
   font: 13px "Helvetica", sans-serif;
-  padding: 7px 12px 7px 30px;
+  padding: 7px 12px 7px 34px;
   border: 1px solid #ddd;
   border-radius: 8px;
-  background: #f7f6f3 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'%3E%3Cpath fill='%23999' d='M11.7 10.3a6.5 6.5 0 1 0-1.4 1.4l3.5 3.5 1.4-1.4-3.5-3.5zM7 11.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'/%3E%3C/svg%3E") no-repeat 9px center;
+  background: #f7f6f3 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'%3E%3Cpath fill='%23999' d='M11.7 10.3a6.5 6.5 0 1 0-1.4 1.4l3.5 3.5 1.4-1.4-3.5-3.5zM7 11.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'/%3E%3C/svg%3E") no-repeat 11px center;
   outline: none;
   color: #222;
 }
-#gs-input:focus { border-color: #2a6fb0; background-color: #fff; }
+#controls #gs-input:focus { border-color: #2a6fb0; background-color: #fff; }
 
 #gs-dropdown {
   position: absolute;
@@ -92,3 +92,21 @@ a#brand:hover { color: #000; }
 .gs-item .gs-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-item .gs-meta { font-size: 11px; color: #999; flex: none; }
 .gs-empty { padding: 10px; font: 12px "Helvetica", sans-serif; color: #999; }
+
+/* Links in the bar are chrome, not prose: no underlines, no :visited tint. */
+#home-link, #home-link:visited, #home-link:hover { text-decoration: none; }
+#home-link:visited { color: #666; }
+a#brand, a#brand:visited { text-decoration: none; color: inherit; }
+
+
+/* Quiet logout (book.css's #controls button is a loud legacy blue). */
+#controls #logout-btn {
+  font: 12px "Helvetica", sans-serif;
+  color: #666;
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+#controls #logout-btn:hover { color: #222; border-color: #999; background: #f7f6f3; }

@@ -47,14 +47,14 @@ const WriteSysGlobalSearch = {
     const sp = (this.data.scratchpads || []).filter(s =>
       s.title.toLowerCase().includes(q) || (s.snippet || '').toLowerCase().includes(q)).slice(0, 8);
     this.items = [
-      ...ms.map(m => ({ type: 'manuscript', id: m.manuscript_id, title: m.name, meta: `${m.sentence_count || 0} sentences` })),
+      ...ms.map(m => ({ type: 'manuscript', id: m.manuscript_id, title: m.name, meta: `${(m.word_count || 0).toLocaleString('en-US')} words` })),
       ...sp.map(s => ({ type: 'scratchpad', id: s.scratchpad_id, title: s.title, meta: new Date(s.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
     ];
     this.activeIdx = this.items.length ? 0 : -1;
     let html = '';
     if (ms.length) {
       html += '<div class="gs-group">Manuscripts</div>' + ms.map((m, i) =>
-        this.itemHTML(i, 'manuscript', m.name, `${m.sentence_count || 0} sentences`)).join('');
+        this.itemHTML(i, 'manuscript', m.name, `${(m.word_count || 0).toLocaleString('en-US')} words`)).join('');
     }
     if (sp.length) {
       html += '<div class="gs-group">Scratchpads</div>' + sp.map((s, i) =>

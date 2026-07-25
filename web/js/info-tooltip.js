@@ -55,10 +55,11 @@ const WriteSysInfoTooltip = {
     popup.addEventListener('mouseleave', () => this._scheduleHide());
     document.body.appendChild(popup);
     const rect = this._icon.getBoundingClientRect();
-    // Position below + slightly left so the popup tail visually anchors
-    // under the icon without spilling off-screen on narrow viewports.
-    popup.style.left = `${Math.max(8, rect.left - 12)}px`;
-    popup.style.top  = `${rect.bottom + 6 + window.scrollY}px`;
+    // The icon lives in the left-margin chrome strip now: pin the popup
+    // inside that margin column (never over the page — a hover-kept-alive
+    // popup overlaying prose would block clicks indefinitely).
+    popup.style.left = '8px';
+    popup.style.top  = `${rect.bottom + 8 + window.scrollY}px`;
     this._popup = popup;
   },
 

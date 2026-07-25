@@ -285,3 +285,15 @@ func (db *DB) GetManuscriptOpenedMap(ctx context.Context, userID string) (map[in
 	}
 	return out, rows.Err()
 }
+
+// GetMigrationWordCount sums whitespace-separated words across a migration's
+// sentences (home cards show words, not sentences). Command tokens count a
+// word or two — fine at card granularity.
+func (db *DB) GetMigrationWordCount(ctx context.Context, migrationID int) (int, error) {
+	var n int
+	err := db.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(GREATEST(1, array_length(regexp_split_to_array(btrim(text), '\s+'), 1))), 0)
+		FROM sentence WHERE migration_id = $1
+	`, migrationID).Scan(&n)
+	return n, err
+}

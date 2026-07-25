@@ -60,8 +60,16 @@ const WriteSysRenderer = {
       const accessibleList = (window.currentSession && window.currentSession.accessible_manuscripts) || [];
       const me = accessibleList.find(m => m.manuscript_id === this.manuscriptId);
       const manuscriptName = (me && me.name) || '';
-      const nameEl = document.getElementById('mc-name');
-      if (nameEl) nameEl.textContent = manuscriptName;
+      // The session bootstrap is async — retry until it lands so the strip
+      // never shows an empty name.
+      const setName = (tries) => {
+        const list = (window.currentSession && window.currentSession.accessible_manuscripts) || [];
+        const mine = list.find(m => m.manuscript_id === this.manuscriptId);
+        const nameEl = document.getElementById('mc-name');
+        if (mine && nameEl) { nameEl.textContent = mine.name; return; }
+        if (tries < 20) setTimeout(() => setName(tries + 1), 250);
+      };
+      setName(0);
 
       // Stamp per-user recency for the landing page (fire-and-forget).
       fetch(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/opened`, {
@@ -108,7 +116,7 @@ const WriteSysRenderer = {
     const time = processedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     const parts = processedAt.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ');
     const tz = parts[parts.length - 1] || '';
-    el.textContent = `Manuscript Updated: ${monthDay}, ${time}${tz ? ' ' + tz : ''}`;
+    el.textContent = `Updated ${monthDay}, ${time}${tz ? ' ' + tz : ''}`;
   },
 
   // Poll /migrations/latest so a webhook-driven migration that arrives while

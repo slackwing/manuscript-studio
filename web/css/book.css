@@ -284,7 +284,7 @@ body {
   line-height: 1.4;
   pointer-events: none;
   width: max-content;
-  max-width: calc(100vw - 24px);
+  max-width: 274px; /* stays inside the left margin column */
 }
 
 .info-popup-row {
@@ -292,8 +292,8 @@ body {
   gap: 14px;
   padding: 4px 0;
   border-bottom: 1px solid #eee;
-  white-space: nowrap;
 }
+.info-popup-text { word-break: break-all; }
 
 .info-popup-row:last-child { border-bottom: none; }
 
@@ -2585,11 +2585,12 @@ p.section-break {
   left: 0;
   width: 290px;
   z-index: 100;
-  padding: 10px 12px 10px 16px;
+  padding: 14px 12px 12px 18px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   align-items: flex-start;
+  border-bottom: 1px solid #e3e0d8;
   /* The strip itself must never eat clicks aimed at the page under it —
      only its interactive children are pointer-targets (same rule as the
      import zones). */
@@ -2606,14 +2607,37 @@ p.section-break {
   gap: 8px;
   width: 100%;
 }
+#manuscript-chrome .mc-spacer { flex: 1; }
 #mc-name {
-  font: 700 13px "Helvetica", sans-serif;
-  color: #333;
+  font: 15px Georgia, serif;
+  color: #222;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+#manuscript-chrome #info-icon { color: #b5b0a4; display: inline-flex; }
+#manuscript-chrome #info-icon:hover { color: #57503f; }
 #manuscript-chrome .manuscript-updated {
-  font-size: 10px;
-  color: #999;
+  font: 10px "Helvetica", sans-serif;
+  letter-spacing: 0.02em;
+  color: #a39d90;
 }
+/* Compact, quiet push button inside the strip. */
+#manuscript-chrome .push-btn-primary,
+#manuscript-chrome .push-btn-caret {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px "Helvetica", sans-serif;
+  padding: 5px 10px;
+  border: 1px solid #d0cabb;
+  border-radius: 6px;
+  background: #fff;
+  color: #57503f;
+}
+#manuscript-chrome .push-btn-primary:hover,
+#manuscript-chrome .push-btn-caret:hover {
+  border-color: #57503f;
+  color: #222;
+}
+#manuscript-chrome .push-btn-icon { display: inline-flex; }
