@@ -23,6 +23,8 @@ go.work
 vendor/
 !web/js/vendor/
 !web/js/vendor/**
+!web/scratchpad/vendor/
+!web/scratchpad/vendor/**
 
 # IDE files
 .idea/
