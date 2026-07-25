@@ -31,17 +31,20 @@ const (
 	CmdChapter   CommandKind = "chapter"
 	CmdAnchor    CommandKind = "anchor"
 	CmdReference CommandKind = "reference"
+	CmdMeta      CommandKind = "meta"
 )
 
 // blockCommandKinds are the commands that stand alone as their own sentence
 // when they occupy their own line. (anchor is block only when alone on its
 // line — that distinction is made by segman; a stored block-anchor sentence
-// is recognized here like any other block command.)
+// is recognized here like any other block command.) &meta is block but
+// renders as nothing — it carries a book-wide setting.
 var blockCommandKinds = map[CommandKind]bool{
 	CmdTitle:   true,
 	CmdPart:    true,
 	CmdChapter: true,
 	CmdAnchor:  true,
+	CmdMeta:    true,
 }
 
 // Command is a parsed &-command. Slug is the author's static #slug ("" if the
@@ -58,7 +61,7 @@ var (
 	// slugPattern: a static slug is lowercase letters, digits, and dashes.
 	slugPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 	// commandNames matched at the start of a token.
-	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference}
+	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta}
 )
 
 // IsBlockCommandText reports whether a stored sentence is a block &-command

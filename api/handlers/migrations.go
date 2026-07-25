@@ -138,11 +138,21 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		annotations = []models.Annotation{}
 	}
 
+	// Book-wide settings from &meta commands, for the renderer.
+	ids := make([]string, len(sentences))
+	textByID := make(map[string]string, len(sentences))
+	for i, s := range sentences {
+		ids[i] = s.SentenceID
+		textByID[s.SentenceID] = s.Text
+	}
+	settings := sentence.ExtractSettings(ids, textByID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"commit_hash": migration.CommitHash,
 		"sentences":   sentenceInfos,
 		"annotations": annotations,
+		"settings":    settings.Values,
 	})
 }
 

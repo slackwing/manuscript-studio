@@ -176,6 +176,7 @@ const WriteSysRenderer = {
       ]);
       this.currentSentences = data.sentences;
       this.currentAnnotations = data.annotations;
+      this.applySettings(data.settings || {});
 
       this.sentenceMap = {};
       this.currentSentences.forEach(s => {
@@ -459,6 +460,27 @@ const WriteSysRenderer = {
     return `<span class="inline-ref broken" title="unresolved reference: ${this.escapeHtml(c.slug || '')}">${notes}</span>`;
   },
 
+  // applySettings maps &meta settings onto the document: per-element settings
+  // become data-* attributes on <body> that book.css keys on; whole-page
+  // settings (font) become CSS custom properties. The property vocabulary is
+  // fixed server-side (ExtractSettings), so anything here is already valid.
+  applySettings(settings) {
+    const body = document.body;
+    const setAttr = (attr, val) => {
+      if (val) body.setAttribute(attr, val);
+      else body.removeAttribute(attr);
+    };
+    setAttr('data-chapter-align', settings['chapter-align'] || '');
+    setAttr('data-part-align', settings['part-align'] || '');
+    setAttr('data-title-align', settings['title-align'] || '');
+    setAttr('data-divider-folios', settings['divider-folios'] || '');
+    if (settings['font']) {
+      document.documentElement.style.setProperty('--book-font', settings['font']);
+    } else {
+      document.documentElement.style.removeProperty('--book-font');
+    }
+  },
+
   // renderBlockCommand renders a block &-command sentence as a heading
   // element, or returns null if `text` is not a block command. Uses
   // WriteSysCommand.structuralForm as the single source of truth for tag /
@@ -471,6 +493,11 @@ const WriteSysRenderer = {
     if (!cmd) return null;
     const parsed = cmd.parse(text.trim());
     if (!parsed || !cmd.BLOCK[parsed.kind] || parsed.raw !== text.trim()) return null;
+    // &meta renders as nothing (it's a setting), but stays in the DOM as a
+    // hidden, still-annotatable sentence span so it can be edited/suggested on.
+    if (parsed.kind === 'meta') {
+      return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
+    }
     const form = cmd.structuralForm(text);
     if (!form) return null;
 

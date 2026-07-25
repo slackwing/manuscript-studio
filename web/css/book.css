@@ -568,6 +568,25 @@ h3 {
   display: none;
 }
 
+/* &meta settings (TEX_COMMANDS_PLAN.md §5.5). Book-wide toggles applied as
+   body[data-*] attributes by the renderer. */
+body[data-chapter-align="center"] .cmd-chapter {
+  text-align: center;
+}
+body[data-chapter-align="left"] .cmd-chapter {
+  text-align: left;
+}
+body[data-part-align="left"] .cmd-part {
+  align-items: flex-start;
+  text-align: left;
+}
+body[data-title-align="left"] .cmd-title {
+  align-items: flex-start;
+  text-align: left;
+}
+/* divider-folios: off -> suppress the page number on title/part pages is
+   handled at the paged.js level; the attribute is a hook for that. */
+
 p {
   text-align: justify;
   text-indent: 0;

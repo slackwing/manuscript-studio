@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.0.0"
+const Version = "2.1.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -608,7 +608,7 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 
 // commandKeywords are the recognized &-command names. A '&' begins a command
 // only when immediately followed by one of these and then '#' or '{'.
-var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference"}
+var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta"}
 
 // isBlockCommandAt reports whether the '&' at index i begins a *block* command
 // — one that is its own segment. title/part/chapter are always block; anchor

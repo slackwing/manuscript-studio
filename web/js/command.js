@@ -15,9 +15,10 @@
  */
 
 const WriteSysCommand = {
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference'],
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta'],
   // Block commands stand alone as their own sentence when on their own line.
-  BLOCK: { title: true, part: true, chapter: true, anchor: true },
+  // &meta is block but renders as nothing (it carries a setting).
+  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true },
 
   SLUG_RE: /^[a-z0-9-]+$/,
 
