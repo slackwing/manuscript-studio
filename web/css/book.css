@@ -689,7 +689,7 @@ p.section-break {
   position: fixed;
   top: 90px;
   left: 0;
-  width: 210px;
+  width: 290px;
   max-height: calc(100vh - 110px);
   overflow-y: auto;
   z-index: 100;

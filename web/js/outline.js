@@ -174,10 +174,12 @@ const WriteSysOutline = {
       // dividers, not page-addressable content sections.
       const isChapter = this.itemNodes[i].classList.contains('outline-chapter');
       if (info && isChapter) {
-        // Two columns: page number (dark), then a page-count column ("Npp",
-        // light) only when the section spans more than one page.
+        // Two columns: page number (dark) then page count (light). Always
+        // show the count column — even "1pp" — so the two columns stay
+        // aligned across rows (omitting it would let the page number slide
+        // into the count column's space).
         const pageCol = start ? `<span class="outline-page">${start}</span>` : '';
-        const countCol = (start && span > 1) ? `<span class="outline-count">${span}pp</span>` : '';
+        const countCol = start ? `<span class="outline-count">${span}pp</span>` : '';
         info.innerHTML = pageCol + countCol;
         info.title = start ? `starts on page ${start}, spans ${span} page${span > 1 ? 's' : ''}` : '';
       } else if (info) {
