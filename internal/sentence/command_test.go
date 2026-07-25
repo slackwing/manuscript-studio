@@ -101,16 +101,26 @@ func TestValidateSentenceText_Commands(t *testing.T) {
 		}
 	}
 	invalid := []string{
-		"&reference#origin{note}",         // inline command can't be its own sentence
-		"&chapter#P1C1{1.}{Smoke}",        // uppercase slug
-		"&chapter#p1_c1{1.}{Smoke}",       // underscore in slug
-		"&chapter#p1{a}\n{b}",             // embedded newline
-		"&bogus{x}",                       // unknown keyword
-		"&chapter#p1{I.}{Smoke} trailing", // trailing content after command
+		"&reference#origin{note}",   // inline command can't be its own sentence
+		"&chapter#P1C1{1.}{Smoke}",  // uppercase slug
+		"&chapter#p1_c1{1.}{Smoke}", // underscore in slug
+		"&chapter#p1{a}\n{b}",       // embedded newline
 	}
 	for _, s := range invalid {
 		if err := ValidateSentenceText(s); err == nil {
 			t.Errorf("ValidateSentenceText(%q) = nil, want error", s)
+		}
+	}
+
+	// A leading '&' that isn't a clean whole-sentence command is ordinary
+	// prose now (a bare/inline '&' is not an error).
+	validAsContent := []string{
+		"&bogus{x}",                       // unknown keyword -> prose
+		"&chapter#p1{I.}{Smoke} trailing", // command + trailing -> a content sentence
+	}
+	for _, s := range validAsContent {
+		if err := ValidateSentenceText(s); err != nil {
+			t.Errorf("ValidateSentenceText(%q) = %v, want nil (content)", s, err)
 		}
 	}
 }

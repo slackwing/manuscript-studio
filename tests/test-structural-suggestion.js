@@ -46,16 +46,16 @@ async function syncManuscript() {
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.waitForTimeout(1500);
 
-    // The canonical test manuscript begins with "# The Wildfire" / "## Chapter
-    // 1" / "### I." headers. Suggest turning the "## Chapter 1" header into a
-    // &part command and confirm the preview renders as a Part heading.
+    // The canonical manuscript's "## Chapter 1" now renders as literal prose
+    // (Markdown # is deprecated). Suggest turning that sentence into a &part
+    // command and confirm the preview renders as a Part heading.
     const targetId = await page.evaluate(() => {
       const s = Array.from(document.querySelectorAll('.sentence'))
-        .find(x => x.textContent.trim() === 'Chapter 1');
+        .find(x => x.textContent.trim() === '## Chapter 1');
       return s ? s.dataset.sentenceId : null;
     });
-    check('found a "## Chapter 1" header sentence', !!targetId, `id ${targetId}`);
-    if (!targetId) throw new Error('no header sentence to test');
+    check('found the "## Chapter 1" sentence (now literal)', !!targetId, `id ${targetId}`);
+    if (!targetId) throw new Error('no target sentence to test');
 
     const csrf = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
     const putStatus = await page.evaluate(async ({ id, csrf }) => {

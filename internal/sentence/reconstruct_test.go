@@ -23,7 +23,7 @@ func TestReconstruct_SmallCases(t *testing.T) {
 			want:      "One. Two.\n",
 		},
 		{
-			name:      "section marker after a header drops the marker and just gives a blank-line gap",
+			name:      "# is content; a following \\n\\n marker still gives a blank-line gap",
 			sentences: []string{"# H", "\n\nBody."},
 			want:      "# H\n\nBody.\n",
 		},
@@ -38,9 +38,9 @@ func TestReconstruct_SmallCases(t *testing.T) {
 			want:      "One.\n\tIndented.\n",
 		},
 		{
-			name:      "header followed by plain sentence inserts a blank line",
+			name:      "# is content; followed by plain sentence it's a continuation (no blank line)",
 			sentences: []string{"# H", "Body."},
-			want:      "# H\n\nBody.\n",
+			want:      "# H Body.\n",
 		},
 	}
 	for _, tc := range cases {

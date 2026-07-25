@@ -100,14 +100,11 @@ const WriteSysCommand = {
       if (piece === '') continue; // empty block (e.g. leading delimiter)
       const trimmed = piece.trim();
       const cmd = this.parse(trimmed);
-      const headerMatch = trimmed.match(/^(#+)\s+(.*)$/);
       if (cmd && this.BLOCK[cmd.kind] && cmd.raw === trimmed) {
         frags.push({ kind: 'command', cmd, marker });
-      } else if (headerMatch) {
-        // Legacy Markdown header (transition support): a block fragment that
-        // renders as <h*>, no diff, like a command.
-        frags.push({ kind: 'header', level: Math.min(headerMatch[1].length, 6), text: headerMatch[2], marker });
       } else {
+        // Markdown # headers are deprecated and no longer rendered specially —
+        // a '#' line is ordinary prose (convert to an &-command for a heading).
         frags.push({ kind: 'prose', text: piece, marker });
       }
       marker = '';
@@ -184,26 +181,17 @@ const WriteSysCommand = {
     return out;
   },
 
-  // structuralForm describes how a stored sentence renders as a heading-like
-  // element, or null if it's ordinary content. Unifies Markdown headers and
-  // block &-commands so the renderer and the suggestion-preview path agree on
-  // one shape: { tag, cls, visible }.
-  //   # H / ## H / ### H        -> { h1|h2|h3.., 'md-header', 'H' }
-  // The on-page heading shows ONLY the label — the description is metadata
-  // for the outline (see TEX_COMMANDS_PLAN.md §5), never concatenated into the
-  // heading. `visible` is what renders on the page; `description` is carried
-  // for later use (outline) but not shown here.
+  // structuralForm describes how a block &-command renders as a heading-like
+  // element, or null if it's ordinary content. Shape: { tag, cls, visible,
+  // description }. The on-page heading shows ONLY the label — the description
+  // is outline metadata (never rendered in the book).
   //   &title{name}              -> { h1, 'cmd-title',   name }
   //   &part#s{label}{desc?}     -> { h2, 'cmd-part',    label }
   //   &chapter#s{label}{desc?}  -> { h3, 'cmd-chapter', label }
   //   &anchor#s{desc?}          -> { div,'cmd-anchor',  desc }   (no label)
+  // (Markdown # headers are deprecated — a '#' sentence is ordinary content.)
   structuralForm(text) {
     const t = String(text);
-    const hm = t.match(/^(#+)\s+(.*)$/);
-    if (hm) {
-      const level = Math.min(hm[1].length, 6);
-      return { tag: 'h' + level, cls: 'md-header', visible: hm[2], description: '' };
-    }
     const cmd = this.parse(t.trim());
     if (!cmd || !this.BLOCK[cmd.kind] || cmd.raw !== t.trim()) return null;
     switch (cmd.kind) {

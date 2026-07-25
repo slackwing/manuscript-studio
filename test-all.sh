@@ -65,7 +65,6 @@ SLOW_TESTS=(
   test-rainbow-deletion
   test-inline-tag-input
   trash-icon-test
-  test-heading-suggestion-display
 )
 
 mode="${1:-all}"

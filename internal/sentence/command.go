@@ -65,8 +65,8 @@ var (
 )
 
 // IsBlockCommandText reports whether a stored sentence is a block &-command
-// (its whole text is one command token). Used alongside IsHeaderText to route
-// structural sentences through the header-like tokenize/reconstruct path.
+// (its whole text is one command token). Used to route block-command
+// sentences through the own-line, blank-line-gapped tokenize/reconstruct path.
 func IsBlockCommandText(text string) bool {
 	cmd, ok := ParseCommand(strings.TrimSpace(text))
 	if !ok {

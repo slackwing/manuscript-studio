@@ -121,15 +121,11 @@ func classifyMarker(whitespace string, atStart, prevStructural bool) string {
 	return ""
 }
 
-// isHeaderSegment recognises segman segments that are markdown headers.
-func isHeaderSegment(segment string) bool {
-	return strings.HasPrefix(segment, "#") && headerPattern.MatchString(segment)
-}
-
 // isStructuralSegment recognises segments that stand on their own line with
-// no leading marker: Markdown headers and block &-commands.
+// no leading marker: block &-commands. (Markdown # headers are deprecated —
+// a '#' segment is ordinary content.)
 func isStructuralSegment(segment string) bool {
-	return isHeaderSegment(segment) || IsBlockCommandText(segment)
+	return IsBlockCommandText(segment)
 }
 
 // locateSegment finds where `seg` (whitespace-collapsed by segman) appears

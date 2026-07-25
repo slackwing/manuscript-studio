@@ -1748,13 +1748,9 @@ p.section-break {
   font-style: italic;
 }
 
-/* Sentence with a pending suggested edit: subtle dashed underline so it's
-   visible at a glance without competing with highlight colors. */
-.sentence.has-suggestion {
-  text-decoration: underline dashed #aaa;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1px;
-}
+/* A pending suggested edit is signaled by its coloring — red/green word diff
+   for prose, blue for a changed command/header — so no separate underline is
+   needed. (Removed: the old .has-suggestion dashed underline was redundant.) */
 
 /* Inline diff inside a suggested-edit span (rendered by suggestions.js). */
 .sentence del {

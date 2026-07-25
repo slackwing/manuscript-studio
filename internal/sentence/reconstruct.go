@@ -4,17 +4,12 @@ import (
 	"strings"
 )
 
-// IsHeaderText reports whether a sentence is a heading (storage form
-// "# ..." through "###### ...", no leading marker).
-func IsHeaderText(text string) bool {
-	return strings.HasPrefix(text, "#") && headerPattern.MatchString(text)
-}
-
 // IsStructuralText reports whether a sentence stands on its own line with no
-// leading marker: a Markdown header or a block &-command. These reconstruct
-// with a blank-line gap before and after, like headers.
+// leading marker: a block &-command. These reconstruct with a blank-line gap
+// before and after. (Markdown # headers are deprecated — a '#' sentence is
+// ordinary content now.)
 func IsStructuralText(text string) bool {
-	return IsHeaderText(text) || IsBlockCommandText(text)
+	return IsBlockCommandText(text)
 }
 
 // Reconstruct rebuilds the original .manuscript bytes from a sentence list.
@@ -22,10 +17,10 @@ func IsStructuralText(text string) bool {
 // (parse → reconstruct) must be byte-equal for any well-formed source.
 //
 // Reconstruction rule:
-//   - A header sentence emits its text plus "\n", and a blank-line gap is
-//     ensured both before (if there's prior content) and after (the next
-//     non-header sentence starts on a fresh line, separated by a blank).
-//   - A non-header sentence:
+//   - A block-command sentence emits its text plus "\n", and a blank-line gap
+//     is ensured both before (if there's prior content) and after (the next
+//     content sentence starts on a fresh line, separated by a blank).
+//   - A content sentence:
 //       * If it carries a leading "\n\n" or "\n\t" marker, that marker is
 //         emitted verbatim (provides the paragraph/section break).
 //       * Otherwise it's appended directly. If the previous output ended
@@ -34,12 +29,12 @@ func IsStructuralText(text string) bool {
 //   - The output ends with a trailing newline (matches typical source files).
 func Reconstruct(sentences []string) string {
 	var b strings.Builder
-	prevWasStructural := false // last emit was a header or block &-command
+	prevWasStructural := false // last emit was a block &-command
 	prevWasContent := false    // last emit was a content sentence (vs. structural or nothing)
 
 	for _, s := range sentences {
-		// Headers and block &-commands both stand on their own line with a
-		// blank-line gap before and after.
+		// A block &-command stands on its own line with a blank-line gap
+		// before and after.
 		if IsStructuralText(s) {
 			if b.Len() > 0 {
 				ensureTrailingBlankLine(&b)

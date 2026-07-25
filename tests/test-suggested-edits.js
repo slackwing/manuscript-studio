@@ -3,10 +3,10 @@
  *
  * Re-clicking the selected sentence opens a modal with monospace textarea.
  * Save (Enter) → server PUT, in-DOM span shows word-level diff
- * (<del>removed</del> / <strong>added</strong>) and a dashed underline,
+ * (<del>removed</del> / <strong>added</strong>) (the .has-suggestion class is retained as a hook,
  * keeping its original data-sentence-id. Refresh → suggestion persists.
  * Saving identical-to-original text → suggestion deleted server-side and
- * the dashed underline / diff markup disappear.
+ * the diff markup disappears when the suggestion is cleared.
  */
 
 const { execSync } = require('child_process');
@@ -74,12 +74,21 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
     assert(true, 'Re-click opens suggestion modal');
 
+    // The edit textarea shows GLYPH form (§ for \n\n, ¶ for \n\t) so compare
+    // against the glyph-converted original, not raw storage form.
+    const wantGlyph = await page.evaluate((t) =>
+      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, first.text);
     const textareaValue = await page.locator('.suggestion-modal-textarea').inputValue();
-    assert(textareaValue === first.text,
-      `Textarea pre-fills with original sentence text (got "${textareaValue.slice(0,30)}..." want "${first.text.slice(0,30)}...")`);
+    assert(textareaValue === wantGlyph,
+      `Textarea pre-fills with original sentence text (got "${textareaValue.slice(0,30)}..." want "${wantGlyph.slice(0,30)}...")`);
 
-    const newText = first.text.replace(/\.$/, '') + ' (with edit added).';
-    await page.locator('.suggestion-modal-textarea').fill(newText);
+    // Edit in glyph form; the server stores the fromGlyphs (raw) form.
+    const newTextGlyph = wantGlyph.replace(/\.$/, '') + ' (with edit added).';
+    const newText = await page.evaluate((t) =>
+      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.fromGlyphs(t) : t, newTextGlyph);
+    // Type the glyph form (as the user would in the modal); the modal converts
+    // to raw storage form (newText) on save.
+    await page.locator('.suggestion-modal-textarea').fill(newTextGlyph);
     await page.locator('.suggestion-modal-textarea').press('Enter');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     assert(true, 'Enter saves and closes the modal');
@@ -111,7 +120,11 @@ function psql(sql) {
       `Diff includes inserted text in <strong> (got ${sentenceState.strongCount})`);
 
     const dbRow = psql(`SELECT text FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='test'`);
-    assert(dbRow === newText, `Server stored the suggestion (got "${dbRow.slice(0,30)}...")`);
+    // psql trims leading/trailing whitespace, so a leading \n\n/\n\t marker is
+    // stripped in dbRow — compare marker-stripped content, which is what
+    // matters for "the edit was stored".
+    const strip = (s) => s.replace(/^(\n\n|\n\t)/, '').trim();
+    assert(strip(dbRow) === strip(newText), `Server stored the suggestion (got "${dbRow.slice(0,30)}...")`);
 
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });

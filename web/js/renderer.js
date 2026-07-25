@@ -391,14 +391,6 @@ const WriteSysRenderer = {
           if (html) out.push(html);
           continue;
         }
-        if (f.kind === 'header') {
-          // Legacy Markdown header fragment → render as <h*>, result only (a
-          // structural block, like a command). Transition support.
-          flush();
-          const chCls = changed ? ' cmd-suggested' : '';
-          out.push(`<h${f.level} class="md-header${chCls}"><span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(f.text)}</span></h${f.level}>`);
-          continue;
-        }
         // Prose fragment.
         const cls = f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : '');
         const body = this.stripLeadingMarker(f.text);
