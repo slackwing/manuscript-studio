@@ -146,14 +146,17 @@ class BookContentView {
   build() {
     const a = this.node.attrs;
     const tabs = this.canonized()
-      ? [['live', 'Live'], ['snapshot', 'As canonized']]
+      ? [['live', 'Live'], ['snapshot', 'Snapshot']]
       : [['edit', 'Edit'], ['preview', 'Preview']];
     const status = this.canonized()
-      ? `#${esc(a.refSlug)} → manuscript ${a.manuscriptId}${a.label ? ` · ${esc(a.label)}` : ''}`
+      ? `In book · #${esc(a.refSlug)}${a.label ? ` · ${esc(a.label)}` : ''}`
       : 'draft';
+    const statusHint = this.canonized()
+      ? `This block's text was placed into manuscript ${a.manuscriptId} as region #${a.refSlug}. Live follows the book (including your pending suggestions); Snapshot is the text as it was when placed.`
+      : 'Draft: plain .manuscript text. From the book view, use + between paragraphs (or a placeholder) to place it into a manuscript.';
     this.dom.innerHTML = `
       <div class="bc-header">
-        <span class="bc-status${this.canonized() ? ' bc-canonized' : ''}">Book content · ${status}</span>
+        <span class="bc-status${this.canonized() ? ' bc-canonized' : ''}" title="${statusHint}">Book content · ${status}</span>
         <span class="bc-tabs">${tabs.map(([k, l]) =>
           `<button type="button" data-tab="${k}" class="${k === this.mode ? 'active' : ''}">${l}</button>`).join('')}
         </span>
@@ -219,7 +222,7 @@ class BookContentView {
 
   renderSnapshot() {
     const a = this.node.attrs;
-    this.body.innerHTML = `<div class="bc-note">Snapshot as canonized ${esc(a.canonizedAt || '')}</div><div class="bc-render"></div>`;
+    this.body.innerHTML = `<div class="bc-note" title="The text as it was at the moment it was placed into the book — kept forever, even as the book moves on.">Snapshot from ${esc((a.canonizedAt || '').slice(0, 10))}</div><div class="bc-render"></div>`;
     const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
     window.WriteSysScratchRender.renderText(this.body.querySelector('.bc-render'), canon(a.snapshotText));
   }

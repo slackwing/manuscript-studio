@@ -4,7 +4,7 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor } from './editor-core.mjs?v=2';
+import { createScratchpadEditor } from './editor-core.mjs?v=3';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
@@ -72,6 +72,11 @@ export const ScratchpadModal = {
     const url = new URL(window.location.href);
     url.hash = `scratchpad=${scratchpadId}`;
     history.replaceState(null, '', url);
+    // Landing-page recency stamp (fire-and-forget; cards sort by this).
+    fetch(`api/scratchpads/${scratchpadId}/opened`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
+    }).catch(() => {});
     window.WriteSysScratchpad = this.editor; // test / power-user hook
     window.dispatchEvent(new CustomEvent('scratchpad-modal-opened', { detail: { scratchpadId } }));
   },

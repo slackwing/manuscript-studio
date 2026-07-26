@@ -38,36 +38,36 @@ const WriteSysHome = {
   },
 
   when(iso) {
-    // Always a DATE (never a clock time) — "Jul 25", with the year once
-    // it's far enough back to matter.
+    // Under 24h → clock time; under ~10 months → "Jul 25"; older → +year.
     if (!iso) return '';
     const d = new Date(iso);
     const days = (Date.now() - d.getTime()) / 86400000;
+    if (days < 1) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     if (days < 300) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   },
 
   manuscriptCard(m) {
-    const opened = m.last_opened_at ? `opened ${this.when(m.last_opened_at)}` : '';
     const updated = m.processed_at ? `updated ${this.when(m.processed_at)}` : 'not synced yet';
+    const created = m.created_at ? `created ${this.when(m.created_at)}` : '';
     const words = m.word_count ? `${m.word_count.toLocaleString('en-US')} words` : '';
     return `<a class="card card-manuscript" href="./?manuscript_id=${m.manuscript_id}">
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.display_name || m.name)}</p>
       <p class="card-snippet">${words}</p>
-      <p class="card-meta"><span>${this.esc(opened || updated)}</span>${opened ? `<span>· ${this.esc(updated)}</span>` : ''}</p>
+      <p class="card-meta"><span>${this.esc(updated)}</span>${created ? `<span>· ${this.esc(created)}</span>` : ''}</p>
     </a>`;
   },
 
   scratchpadCard(s) {
     const badge = s.block_count
-      ? `<span class="card-badge">${s.canonized_count}/${s.block_count} canonized</span>` : '';
+      ? `<span class="card-badge" title="${s.canonized_count} of ${s.block_count} book-content blocks have been placed into a book (their text now lives in the manuscript)">⧉ ${s.canonized_count}/${s.block_count}</span>` : '';
     return `<div class="card card-scratchpad" data-scratchpad-id="${s.scratchpad_id}" tabindex="0" role="button">
       <span class="card-kindbar"></span>
       <button type="button" class="card-del" title="Delete scratchpad">×</button>
       <p class="card-title">${this.esc(s.title)}</p>
       <p class="card-snippet">${this.esc(s.snippet || '')}</p>
-      <p class="card-meta"><span>${this.esc(this.when(s.updated_at))}</span>${badge}</p>
+      <p class="card-meta"><span>updated ${this.esc(this.when(s.updated_at))}</span><span>· created ${this.esc(this.when(s.created_at))}</span>${badge}</p>
     </div>`;
   },
 
