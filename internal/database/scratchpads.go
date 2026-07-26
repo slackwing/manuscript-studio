@@ -236,7 +236,7 @@ func (db *DB) ListScratchpadsWithDocs(ctx context.Context, userID string) ([]mod
 		SELECT scratchpad_id, user_id, title, doc, schema_version, created_at, updated_at
 		FROM scratchpad
 		WHERE user_id = $1 AND deleted_at IS NULL
-		ORDER BY updated_at DESC
+		ORDER BY COALESCE(last_opened_at, updated_at) DESC
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list scratchpads with docs: %w", err)
@@ -296,4 +296,12 @@ func (db *DB) GetMigrationWordCount(ctx context.Context, migrationID int) (int, 
 		FROM sentence WHERE migration_id = $1
 	`, migrationID).Scan(&n)
 	return n, err
+}
+
+// TouchScratchpadOpened stamps landing-page recency when the modal opens.
+func (db *DB) TouchScratchpadOpened(ctx context.Context, id int) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE scratchpad SET last_opened_at = NOW() WHERE scratchpad_id = $1 AND deleted_at IS NULL
+	`, id)
+	return err
 }

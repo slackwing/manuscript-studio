@@ -38,12 +38,13 @@ const WriteSysHome = {
   },
 
   when(iso) {
+    // Always a DATE (never a clock time) — "Jul 25", with the year once
+    // it's far enough back to matter.
     if (!iso) return '';
     const d = new Date(iso);
     const days = (Date.now() - d.getTime()) / 86400000;
-    if (days < 1) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     if (days < 300) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   },
 
   manuscriptCard(m) {

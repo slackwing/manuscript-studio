@@ -19,5 +19,6 @@
     <include file="changelog/010-scratchpads.xml"/>
     <include file="changelog/011-manuscript-opened.xml"/>
     <include file="changelog/012-manuscript-display-name.xml"/>
+    <include file="changelog/013-scratchpad-opened.xml"/>
 
 </databaseChangeLog>

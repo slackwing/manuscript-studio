@@ -26,6 +26,7 @@ type homeManuscript struct {
 	ManuscriptID  int        `json:"manuscript_id"`
 	Name          string     `json:"name"`
 	DisplayName   string     `json:"display_name"`
+	CreatedAt     time.Time  `json:"created_at"`
 	LastOpenedAt  *time.Time `json:"last_opened_at,omitempty"`
 	ProcessedAt   *time.Time `json:"processed_at,omitempty"`
 	SentenceCount int        `json:"sentence_count"`
@@ -35,6 +36,7 @@ type homeManuscript struct {
 type homeScratchpad struct {
 	ScratchpadID int       `json:"scratchpad_id"`
 	Title        string    `json:"title"`
+	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	Snippet      string    `json:"snippet"`
 	BlockCount   int       `json:"block_count"`
@@ -60,7 +62,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	manuscripts := make([]homeManuscript, 0, len(options))
 	for _, opt := range options {
-		hm := homeManuscript{ManuscriptID: opt.ManuscriptID, Name: opt.Name, DisplayName: opt.DisplayName}
+		hm := homeManuscript{ManuscriptID: opt.ManuscriptID, Name: opt.Name, DisplayName: opt.DisplayName, CreatedAt: opt.CreatedAt}
 		if t, ok := opened[opt.ManuscriptID]; ok {
 			tt := t
 			hm.LastOpenedAt = &tt
@@ -99,7 +101,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	scratchpads := make([]homeScratchpad, 0, len(pads))
 	for _, p := range pads {
-		hs := homeScratchpad{ScratchpadID: p.ScratchpadID, Title: p.Title, UpdatedAt: p.UpdatedAt}
+		hs := homeScratchpad{ScratchpadID: p.ScratchpadID, Title: p.Title, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
 		if snippet, blocks, canonized, err := scratchpad.Summary(p.Doc, 140); err == nil {
 			hs.Snippet, hs.BlockCount, hs.Canonized = snippet, blocks, canonized
 		}

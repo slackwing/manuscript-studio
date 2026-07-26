@@ -188,6 +188,23 @@ func (h *ScratchpadHandlers) HandleDelete(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleOpened stamps landing-page recency (modal open, fire-and-forget).
+func (h *ScratchpadHandlers) HandleOpened(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok || !h.requireCSRF(w, r) {
+		return
+	}
+	s, ok := h.requireOwnedScratchpad(w, r, session.Username)
+	if !ok {
+		return
+	}
+	if err := h.DB.TouchScratchpadOpened(r.Context(), s.ScratchpadID); err != nil {
+		http.Error(w, "Failed to stamp", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // HandleCanonizeBlock is step 2 of Canonize (plan §5): the suggestion was
 // already PUT via the existing endpoint (stale-migration guard and all);
 // this stamps the block's ref + snapshot into the doc and the derived index.

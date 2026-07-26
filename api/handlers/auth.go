@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
@@ -27,9 +28,10 @@ type LoginRequest struct {
 // ManuscriptOption pairs the friendly name with its DB-keyed id so the
 // frontend can both display and route to a manuscript.
 type ManuscriptOption struct {
-	Name         string `json:"name"`
-	DisplayName  string `json:"display_name"`
-	ManuscriptID int    `json:"manuscript_id"`
+	Name         string    `json:"name"`
+	DisplayName  string    `json:"display_name"`
+	ManuscriptID int       `json:"manuscript_id"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // displayNameFor prefers the manuscript row's display_name; empty falls back
@@ -166,6 +168,7 @@ func userManuscriptOptions(ctx context.Context, db *database.DB, cfg *config.Con
 			Name:         ma.ManuscriptName,
 			DisplayName:  displayNameFor(m.DisplayName, ma.ManuscriptName),
 			ManuscriptID: m.ManuscriptID,
+			CreatedAt:    m.CreatedAt,
 		})
 	}
 	return out, nil

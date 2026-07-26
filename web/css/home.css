@@ -58,7 +58,9 @@ body.home-page {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  /* Fixed square cells — 1fr tracks stretch cards wide when the row is
+     sparse, which is exactly what un-squares them. */
+  grid-template-columns: repeat(auto-fill, 210px);
   gap: 14px;
 }
 
@@ -69,7 +71,7 @@ body.home-page {
   border: 1px solid #e4e1d8;
   border-radius: 10px;
   padding: 16px;
-  min-height: 190px;
+  aspect-ratio: 1 / 1;
   display: flex;
   flex-direction: column;
   text-decoration: none;

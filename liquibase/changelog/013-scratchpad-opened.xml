@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Scratchpad recency for the landing page: opening the modal stamps
+         this; cards sort by it (fallback: updated_at). Mirrors
+         manuscript_opened, but scratchpads are single-owner so a column
+         suffices. -->
+    <changeSet id="013-scratchpad-opened" author="claude">
+        <addColumn tableName="scratchpad">
+            <column name="last_opened_at" type="TIMESTAMPTZ"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
