@@ -1,7 +1,9 @@
 /* Scratchpad editor styles (HOME_PLAN.md): loaded on demand by the modal.
-   The chrome is Helvetica like the app; the writing surface is Georgia — a
-   scratchpad is prose, not source. Book content inside widgets renders in
-   a shadow root with book.css, so book styles never leak out here. */
+   The chrome AND the writing surface are sans-serif (Helvetica) — a scratchpad
+   is a working space, deliberately CONTRASTING with the serif book/snippet
+   font so the two read as different kinds of text. Book content inside widgets
+   renders in a shadow root with book.css (serif), so that contrast holds and
+   book styles never leak out here. */
 
 /* ---- the modal shell ---- */
 .spm-overlay {
@@ -129,7 +131,7 @@
   border: 1px solid #ddd;
   padding: 28px 34px;
   min-height: 100%;
-  font: 15px/1.65 Georgia, serif;
+  font: 15px/1.6 "Helvetica", "Arial", sans-serif;
   color: #1a1a1a;
 }
 /* The scratchpad is a working surface, not a typeset page — prose reads

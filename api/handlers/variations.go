@@ -110,6 +110,13 @@ func (h *VariationHandlers) HandleListVariations(w http.ResponseWriter, r *http.
 		http.Error(w, "Failed to list variations", http.StatusInternalServerError)
 		return
 	}
+	// Re-resolve linked names fresh (see manuscriptDisplayName) so stale stored
+	// values don't leak through the picker either.
+	for i := range rows {
+		if rows[i].LinkedManuscriptID != 0 {
+			rows[i].LinkedManuscriptName = h.manuscriptDisplayName(r, rows[i].LinkedManuscriptID)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"variations": rows})
 }
