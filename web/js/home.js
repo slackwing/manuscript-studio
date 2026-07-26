@@ -137,10 +137,11 @@ const WriteSysHome = {
   },
 
   async createPad() {
+    const now = new Date();
     const r = await fetch('api/scratchpads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
-      body: JSON.stringify({ title: 'Untitled' }),
+      body: JSON.stringify({ title: `Untitled ${now.getMonth() + 1}/${now.getDate()}` }),
     });
     if (!r.ok) return;
     const pad = await r.json();

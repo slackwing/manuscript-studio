@@ -78,9 +78,11 @@ const {
       'She waited on the platform. &placeholder#reunion{sentences}{l}{Reunion beat}{They finally meet. Keep it wordless.} The end came quietly, and also &placeholder{words} stayed literal.');
     check('inline suggestion PUT accepted', st1 === 200, `status ${st1}`);
 
-    // Block: paragraphs-unit placeholder as the sentence's whole text.
+    // Block: paragraphs-unit placeholder as the sentence's whole text, WITH
+    // a leading paragraph-indent marker — the first filler paragraph must
+    // honor it (regression: markers were dropped for block placeholders).
     const st2 = await put(blockId,
-      '&placeholder#the-argument{paragraphs}{s}{The argument}{Mara confronts him. Three beats, escalating.}');
+      '\n\t&placeholder#the-argument{paragraphs}{s}{The argument}{Mara confronts him. Three beats, escalating.}');
     check('block suggestion PUT accepted', st2 === 200, `status ${st2}`);
 
     await page.reload();
@@ -167,6 +169,9 @@ const {
       };
     }, blockId);
     check('block placeholder rendered', block.found === true);
+    const indented = await page.evaluate(() =>
+      !!document.querySelector('.pagedjs_pages .cmd-placeholder p:first-of-type.indented'));
+    check('leading \\n\\t marker indents the first filler paragraph', indented === true);
     check('block has >= 2 hatched paragraphs (s = 2)', block.paragraphs >= 2, String(block.paragraphs));
     check('suggested block filler stays invisible (no blue text)', block.transparent === true);
     check('suggested placeholder hatch carries the blue affordance', block.suggestedBlueHatch === true);

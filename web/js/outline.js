@@ -72,7 +72,8 @@ const WriteSysOutline = {
           let description = label;
           if (c.kind === 'placeholder') {
             const spec = cmd.placeholderSpec(c.args);
-            if (!spec.valid) continue;
+            // Unlabeled placeholders are pure spacing — not outline-worthy.
+            if (!spec.valid || !spec.label.trim()) continue;
             description = spec.label;
           }
           const a = { description, slug: c.slug, sentence_id: s.id };

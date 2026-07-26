@@ -425,7 +425,7 @@ const WriteSysRenderer = {
           // Otherwise a block command fragment → render its result, no diff.
           // &meta renders nothing. All share this sentence's id.
           flush();
-          const html = this.renderBlockCommandFrag(f.cmd, id, changed);
+          const html = this.renderBlockCommandFrag(f.cmd, id, changed, f.marker);
           if (html) out.push(html);
           continue;
         }
@@ -518,7 +518,10 @@ const WriteSysRenderer = {
   // element (heading / part page / anchor marker), or nothing for &meta. The
   // .sentence span carries the given id so the fragment is hoverable/
   // annotatable and shares identity with the rest of the sentence.
-  renderBlockCommandFrag(cmd, id, changed) {
+  renderBlockCommandFrag(cmd, id, changed, marker) {
+    // Structural break class from the fragment's leading marker — block
+    // placeholders honor \n\t (indent) and \n\n (section) like prose does.
+    const markerCls = marker === '\n\t' ? 'indented' : (marker === '\n\n' ? 'section-break' : '');
     if (cmd.kind === 'placeholder') {
       const lib = window.WriteSysPlaceholder;
       const spec = window.WriteSysCommand.placeholderSpec(cmd.args);
@@ -528,11 +531,11 @@ const WriteSysRenderer = {
         return `<p><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${this.escapeHtml(cmd.raw)}</span></p>`;
       }
       if (spec.unit === 'paragraphs') {
-        return lib.blockHTML(spec, cmd.slug, id, changed, this.escapeHtml.bind(this));
+        return lib.blockHTML(spec, cmd.slug, id, changed, this.escapeHtml.bind(this), markerCls);
       }
       // A sentences-unit placeholder alone on its line: a one-run paragraph.
       const chCls = changed ? ' cmd-suggested' : '';
-      return `<p class="ph-line${chCls}"><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${lib.inlineHTML(spec, cmd.slug)}</span></p>`;
+      return `<p class="ph-line${markerCls ? ' ' + markerCls : ''}${chCls}"><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${lib.inlineHTML(spec, cmd.slug)}</span></p>`;
     }
     if (cmd.kind === 'meta') {
       // A changed &meta renders as a small blue marker (it's otherwise

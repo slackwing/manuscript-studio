@@ -117,13 +117,15 @@ const WriteSysPlaceholder = {
   // Block (paragraphs-unit) placeholder: N filler paragraphs in a wrapper,
   // details chip overlaid persistently. Every span carries the sentence id so
   // the whole region stays hoverable/annotatable as one sentence.
-  blockHTML(spec, slug, id, changed, escapeHtml) {
+  blockHTML(spec, slug, id, changed, escapeHtml, markerCls) {
     const rand = this.rng(this.seedOf(spec, slug));
     const paras = this.fillerParagraphs(spec.count, rand);
     const slugAttr = slug ? ` data-slug="${this.esc(slug)}"` : '';
     const chCls = changed ? ' cmd-suggested' : '';
     const body = paras.map((p, i) => {
-      const cls = i === 0 ? '' : ' class="indented"';
+      // First filler paragraph inherits the placeholder's own structural
+      // marker (\n\t indent / \n\n section); the rest indent as usual.
+      const cls = i === 0 ? (markerCls ? ` class="${markerCls}"` : '') : ' class="indented"';
       return `<p${cls}><span class="sentence ph" data-sentence-id="${escapeHtml(id)}" aria-hidden="true">${this.esc(p)}</span></p>`;
     }).join('');
     const chip = this.chipInnerHTML(spec, slug);

@@ -102,7 +102,8 @@ func BuildOutline(ids []string, textByID map[string]string) *Outline {
 			// placeholder renders as prose and stays out of the outline.
 			if cmd.Kind == CmdPlaceholder {
 				spec := ParsePlaceholder(cmd)
-				if !spec.Valid {
+				// Unlabeled placeholders are pure spacing — not outline-worthy.
+				if !spec.Valid || strings.TrimSpace(spec.Label) == "" {
 					continue
 				}
 				label = spec.Label

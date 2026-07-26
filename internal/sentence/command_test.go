@@ -323,3 +323,13 @@ func TestParseCommand_End(t *testing.T) {
 		t.Fatalf("expected only the anchor in the outline, got %+v", o.TopAnchors)
 	}
 }
+
+func TestBuildOutline_BlankLabelPlaceholderExcluded(t *testing.T) {
+	o := BuildOutline([]string{"s1", "s2"}, map[string]string{
+		"s1": "&placeholder#spacer{paragraphs}{m}",
+		"s2": "&placeholder#spacer2{sentences}{l}{  }{details}",
+	})
+	if len(o.TopAnchors) != 0 {
+		t.Errorf("blank-label placeholders are pure spacing and must stay out of the outline, got %+v", o.TopAnchors)
+	}
+}
