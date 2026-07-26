@@ -27,6 +27,13 @@ func (b Block) Canonized() bool { return b.RefSlug != "" }
 
 type pmNode map[string]interface{}
 
+// isSnippetNode matches the snippet node type — "snippet" is canonical;
+// "book_content" is the legacy name still present in older docs.
+func isSnippetNode(n pmNode) bool {
+	t, _ := n["type"].(string)
+	return t == "snippet" || t == "book_content"
+}
+
 // walk visits every node in a PM doc depth-first (blocks can sit inside
 // list items, table cells, etc.).
 func walk(node pmNode, visit func(pmNode)) {
@@ -82,7 +89,7 @@ func ExtractBlocks(doc json.RawMessage) ([]Block, error) {
 	}
 	var out []Block
 	walk(root, func(n pmNode) {
-		if t, _ := n["type"].(string); t != "book_content" {
+		if !isSnippetNode(n) {
 			return
 		}
 		attrs, _ := n["attrs"].(map[string]interface{})
@@ -110,7 +117,7 @@ func Canonize(doc json.RawMessage, blockID string, manuscriptID int, refSlug, la
 		if found != nil || errOut != nil {
 			return
 		}
-		if t, _ := n["type"].(string); t != "book_content" {
+		if !isSnippetNode(n) {
 			return
 		}
 		attrs, _ := n["attrs"].(map[string]interface{})
@@ -153,7 +160,7 @@ func Summary(doc json.RawMessage, n int) (snippet string, blocks, canonized int,
 	}
 	var runes []rune
 	walk(root, func(node pmNode) {
-		if t, _ := node["type"].(string); t == "book_content" {
+		if isSnippetNode(node) {
 			blocks++
 			if attrs, _ := node["attrs"].(map[string]interface{}); attrs != nil && attrStr(attrs, "refSlug") != "" {
 				canonized++

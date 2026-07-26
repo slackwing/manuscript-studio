@@ -1,7 +1,7 @@
 /**
  * Book-side Canonize (SCRATCHPAD_PLAN.md §7): a + rule between paragraphs
  * (and a "Fill" affordance on placeholders) that imports a scratchpad's
- * draft book-content block as ONE suggested edit wrapped in
+ * draft snippet as ONE suggested edit wrapped in
  * &anchor#slug{label} … &end#slug.
  *
  * Step 1 is the ordinary suggestion PUT (stale-migration guard included);
@@ -105,7 +105,7 @@ const WriteSysImportScratchpad = {
         <label>Scratchpad
           <select id="im-pad"><option value="">Loading…</option></select>
         </label>
-        <div id="im-blocks" class="im-blocks"><span class="im-muted">Pick a scratchpad to list its draft book-content blocks.</span></div>
+        <div id="im-blocks" class="im-blocks"><span class="im-muted">Pick a scratchpad to list its draft snippets.</span></div>
         <div class="im-row">
           <label>Slug <input id="im-slug" type="text" ${target.mode === 'replace' ? 'readonly' : ''}
             value="${target.mode === 'replace' ? this.esc(target.slug) : ''}" placeholder="a-z, 0-9, dashes"></label>
@@ -158,14 +158,14 @@ const WriteSysImportScratchpad = {
       const data = await fetchJSON(`api/scratchpads/${scratchpadId}`, {}, false);
       const drafts = [];
       const walk = (node) => {
-        if (node && node.type === 'book_content' && node.attrs && !node.attrs.refSlug && (node.attrs.text || '').trim()) {
+        if (node && (node.type === 'snippet' || node.type === 'book_content') && node.attrs && !node.attrs.refSlug && (node.attrs.text || '').trim()) {
           drafts.push({ blockId: node.attrs.blockId, text: node.attrs.text });
         }
         (node && node.content || []).forEach(walk);
       };
       walk(data.scratchpad.doc);
       if (drafts.length === 0) {
-        holder.innerHTML = '<span class="im-muted">No draft book-content blocks (with text) in this scratchpad.</span>';
+        holder.innerHTML = '<span class="im-muted">No draft snippets (with text) in this scratchpad.</span>';
         return;
       }
       holder.innerHTML = drafts.map((d, i) => `

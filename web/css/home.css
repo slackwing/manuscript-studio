@@ -139,12 +139,12 @@ body.home-page {
   right: 8px;
   border: none;
   background: none;
-  color: #ccc;
-  font-size: 14px;
+  color: #c4bdb0;
   cursor: pointer;
   visibility: hidden;
-  padding: 2px 6px;
+  padding: 4px 5px;
 }
+.card-del svg { display: block; }
 .card:hover .card-del { visibility: visible; }
 .card-del:hover { color: #b33b3a; }
 

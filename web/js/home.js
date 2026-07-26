@@ -61,10 +61,10 @@ const WriteSysHome = {
 
   scratchpadCard(s) {
     const badge = s.block_count
-      ? `<span class="card-badge" title="${s.canonized_count} of ${s.block_count} book-content blocks have been placed into a book (their text now lives in the manuscript)">⧉ ${s.canonized_count}/${s.block_count}</span>` : '';
+      ? `<span class="card-badge" title="${s.canonized_count} of ${s.block_count} snippets have been placed into a book (their text now lives in the manuscript)">⧉ ${s.canonized_count}/${s.block_count}</span>` : '';
     return `<div class="card card-scratchpad" data-scratchpad-id="${s.scratchpad_id}" tabindex="0" role="button">
       <span class="card-kindbar"></span>
-      <button type="button" class="card-del" title="Delete scratchpad">×</button>
+      <button type="button" class="card-del" title="Delete scratchpad"><svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg></button>
       <p class="card-title">${this.esc(s.title)}</p>
       <p class="card-snippet">${this.esc(s.snippet || '')}</p>
       <p class="card-meta"><span>updated ${this.esc(this.when(s.updated_at))}</span>${badge}</p>

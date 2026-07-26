@@ -107,11 +107,20 @@ func (s *Server) setupRouter() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Cap request bodies so a runaway upload can't OOM the process.
+	// Cap request bodies so a runaway upload can't OOM the process. Two
+	// routes legitimately carry more than the 1MiB default: scratchpad
+	// image uploads (10MB files) and scratchpad doc autosaves (4MB JSON).
+	// This runs before base-path stripping, so match by suffix/segment.
 	const maxRequestBody = 1 << 20 // 1 MiB
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			req.Body = http.MaxBytesReader(w, req.Body, maxRequestBody)
+			limit := int64(maxRequestBody)
+			if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/api/scratchpad-images") {
+				limit = 11 << 20
+			} else if req.Method == http.MethodPut && strings.Contains(req.URL.Path, "/api/scratchpads/") {
+				limit = 5 << 20
+			}
+			req.Body = http.MaxBytesReader(w, req.Body, limit)
 			next.ServeHTTP(w, req)
 		})
 	})

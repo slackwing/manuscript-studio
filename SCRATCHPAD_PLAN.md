@@ -118,14 +118,20 @@ window onto that region of the book. Same source, visible from both places.
   bundle guarantees exactly one prosemirror-model instance, works offline,
   and keeps the app's no-build-step discipline: bundling happens only at
   vendor-refresh time, like vendor-segman.sh)*.
-- Schema: doc, paragraph, heading(1–3), bullet/ordered list, blockquote,
+- Schema: doc, paragraph, heading(1–4), bullet/ordered list, blockquote,
   horizontal_rule, image (from `scratchpad_image`), table (prosemirror-
-  tables), text; marks strong/em; plus **book_content** — an atom node,
+  tables), text; marks strong/em; plus **snippet** — an atom node,
   attrs `{blockId, text, manuscriptId, refSlug, label, snapshotText,
-  canonizedMigrationId, canonizedAt}`.
-- **book_content NodeView**:
-  - Draft: tabs *Edit* (monospace textarea → node attr `text`; suggested-
-    edit muscle memory) and *Preview* (book render).
+  canonizedMigrationId, canonizedAt, createdAt}`.
+  *(2026-07: renamed from `book_content` → `snippet`; UI says "Manuscript
+  Snippet". Old docs still carry `book_content` nodes — the editor converts
+  them on load (modernizeDoc, which also NOW-backfills missing `createdAt`)
+  and the server extractor accepts both names.)*
+- **snippet NodeView** (2026-07 rework — preview-first):
+  - Draft: always shows the book-rendered *Preview*; a single click flips
+    it into the monospace textarea (→ node attr `text`); blur returns to
+    Preview. Status line "Manuscript Snippet · draft".
+  - Canonized: status "Manuscript Snippet · Canon · #slug", blue header.
   - Canonized: tabs *Live* (region resolved from the effective manuscript)
     and *As canonized* (snapshot render); read-only; "Open in book" link;
     unresolvable region → error banner + snapshot fallback (decision 6).

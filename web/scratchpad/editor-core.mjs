@@ -3,8 +3,8 @@
  * scratchpad page died; the singleton modal (modal.mjs) is the only host.
  *
  * ProseMirror (vendored bundle — scripts/vendor-prosemirror.sh) drives the
- * SCRATCHPAD surface only. Book content is NEVER edited with PM — the
- * book_content node's text is plain .manuscript source in a monospace
+ * SCRATCHPAD surface only. Book content is NEVER edited with PM — a
+ * snippet node's text is plain .manuscript source in a monospace
  * textarea, previewed/lived through the real book pipeline
  * (scratch-render.js → renderer.js in a shadow root with book.css).
  */
@@ -16,7 +16,8 @@ import {
   baseKeymap, toggleMark, setBlockType, wrapIn, chainCommands,
   addListNodes, wrapInList, splitListItem, liftListItem, sinkListItem,
   dropCursor, gapCursor,
-  tableNodes, tableEditing, goToNextCell,
+  tableNodes, tableEditing, columnResizing, goToNextCell,
+  addRowAfter, deleteRow, addColumnAfter, deleteColumn, deleteTable,
 } from './vendor/prosemirror.mjs';
 
 const csrf = () => sessionStorage.getItem('csrf_token') || '';
@@ -33,7 +34,7 @@ const coreNodes = {
   heading: {
     group: 'block', content: 'inline*', defining: true,
     attrs: { level: { default: 1 } },
-    parseDOM: [1, 2, 3].map(l => ({ tag: 'h' + l, attrs: { level: l } })),
+    parseDOM: [1, 2, 3, 4].map(l => ({ tag: 'h' + l, attrs: { level: l } })),
     toDOM: n => ['h' + n.attrs.level, 0],
   },
   blockquote: {
@@ -62,8 +63,10 @@ const coreNodes = {
     }],
   },
   // The bridge into the book (SCRATCHPAD_PLAN.md §2/§3). Atom: PM never
-  // looks inside; the NodeView owns everything.
-  book_content: {
+  // looks inside; the NodeView owns everything. Named "snippet" — docs
+  // saved before the rename carry "book_content" and are converted on
+  // load (modernizeDoc); the server accepts both names.
+  snippet: {
     group: 'block', atom: true, selectable: true,
     attrs: {
       blockId: { default: '' },
@@ -74,9 +77,16 @@ const coreNodes = {
       snapshotText: { default: '' },
       canonizedMigrationId: { default: 0 },
       canonizedAt: { default: '' },
+      // When the snippet was first created (writing-time provenance).
+      // Snippets from before this field get NOW backfilled on load —
+      // approximate, but ensures every snippet carries a timestamp.
+      createdAt: { default: '' },
     },
-    parseDOM: [{ tag: 'div[data-book-content]', getAttrs: () => ({}) }],
-    toDOM: n => ['div', { 'data-book-content': n.attrs.blockId }],
+    parseDOM: [
+      { tag: 'div[data-snippet]', getAttrs: () => ({}) },
+      { tag: 'div[data-book-content]', getAttrs: () => ({}) },
+    ],
+    toDOM: n => ['div', { 'data-snippet': n.attrs.blockId }],
   },
   text: { group: 'inline' },
   hard_break: {
@@ -100,10 +110,25 @@ const withTables = withLists.append(tableNodes({
 }));
 export const schema = new Schema({ nodes: withTables, marks: base.spec.marks });
 
+// Docs saved before the snippet rename store nodes as "book_content".
+// Convert in place before Node.fromJSON; the doc self-heals on next save.
+function modernizeDoc(json) {
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return;
+    if (n.type === 'book_content') n.type = 'snippet';
+    if (n.type === 'snippet' && n.attrs && !n.attrs.createdAt) {
+      n.attrs.createdAt = new Date().toISOString();
+    }
+    (n.content || []).forEach(walk);
+  };
+  walk(json);
+  return json;
+}
+
 // ------------------------------------------------- manuscript data cache
 
 // Per-target-manuscript effective data for Live views; module-level so
-// several blocks targeting one book share fetches within a page.
+// several snippets targeting one book share fetches within a page.
 export const bookData = {
   cache: {},
   async load(manuscriptId, force = false) {
@@ -124,20 +149,24 @@ export const bookData = {
   },
 };
 
-// ------------------------------------------------------- book_content view
+// ----------------------------------------------------------- snippet view
 
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-class BookContentView {
+const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';
+
+class SnippetView {
   constructor(node, view, getPos) {
     this.node = node;
     this.view = view;
     this.getPos = getPos;
     this.dom = document.createElement('div');
-    this.dom.className = 'bc-widget';
+    this.dom.className = 'sn-widget';
     this.dom.dataset.blockId = node.attrs.blockId;
-    this.mode = node.attrs.refSlug ? 'live' : 'edit';
+    // Preview-first: a snippet always shows its rendered form; a single
+    // click on a draft's preview flips it into the monospace editor.
+    this.mode = node.attrs.refSlug ? 'live' : 'preview';
     this.build();
   }
 
@@ -145,31 +174,31 @@ class BookContentView {
 
   build() {
     const a = this.node.attrs;
-    const tabs = this.canonized()
-      ? [['live', 'Live'], ['snapshot', 'Snapshot']]
-      : [['edit', 'Edit'], ['preview', 'Preview']];
+    this.dom.classList.toggle('sn-canon', this.canonized());
     const status = this.canonized()
-      ? `In book · #${esc(a.refSlug)}${a.label ? ` · ${esc(a.label)}` : ''}`
-      : 'draft';
-    const statusHint = this.canonized()
-      ? `This block's text was placed into manuscript ${a.manuscriptId} as region #${a.refSlug}. Live follows the book (including your pending suggestions); Snapshot is the text as it was when placed.`
-      : 'Draft: plain .manuscript text. From the book view, use + between paragraphs (or a placeholder) to place it into a manuscript.';
+      ? `Manuscript Snippet · Canon · #${esc(a.refSlug)}${a.label ? ` · ${esc(a.label)}` : ''}`
+      : 'Manuscript Snippet · draft';
+    const created = a.createdAt ? ` Created ${esc(a.createdAt.slice(0, 10))}.` : '';
+    const statusHint = (this.canonized()
+      ? `This snippet's text was placed into manuscript ${a.manuscriptId} as region #${a.refSlug}. Live follows the book (including your pending suggestions); Snapshot is the text as it was when placed.`
+      : 'Draft: plain .manuscript text. Click the preview to edit. From the book view, use + between paragraphs (or a placeholder) to place it into a manuscript.') + created;
+    const tabs = this.canonized() ? [['live', 'Live'], ['snapshot', 'Snapshot']] : [];
     this.dom.innerHTML = `
-      <div class="bc-header">
-        <span class="bc-status${this.canonized() ? ' bc-canonized' : ''}" title="${statusHint}">Book content · ${status}</span>
-        <span class="bc-tabs">${tabs.map(([k, l]) =>
+      <div class="sn-header">
+        <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>
+        <span class="sn-tabs">${tabs.map(([k, l]) =>
           `<button type="button" data-tab="${k}" class="${k === this.mode ? 'active' : ''}">${l}</button>`).join('')}
         </span>
-        <span class="bc-actions">
+        <span class="sn-actions">
           ${this.canonized()
             ? `<button type="button" data-act="refresh" title="Re-resolve from the manuscript">↻</button>
-               <a class="bc-open" href="index.html?manuscript_id=${a.manuscriptId}#${encodeURIComponent(a.refSlug)}" title="Open in book">Open in book ↗</a>`
+               <a class="sn-open" href="index.html?manuscript_id=${a.manuscriptId}#${encodeURIComponent(a.refSlug)}" title="Open in book">Open in book ↗</a>`
             : ''}
-          <button type="button" data-act="remove" title="Remove block">×</button>
+          <button type="button" data-act="remove" class="sn-trash" title="Remove snippet">${TRASH_SVG}</button>
         </span>
       </div>
-      <div class="bc-body"></div>`;
-    this.body = this.dom.querySelector('.bc-body');
+      <div class="sn-body"></div>`;
+    this.body = this.dom.querySelector('.sn-body');
     this.dom.querySelectorAll('[data-tab]').forEach(btn => {
       btn.addEventListener('click', () => this.setMode(btn.dataset.tab));
     });
@@ -196,8 +225,8 @@ class BookContentView {
   renderEdit() {
     this.body.innerHTML = '';
     const ta = document.createElement('textarea');
-    ta.className = 'bc-text';
-    ta.placeholder = 'Book content in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
+    ta.className = 'sn-text';
+    ta.placeholder = 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
     ta.value = this.node.attrs.text;
     ta.rows = Math.max(6, this.node.attrs.text.split('\n').length + 2);
     const flush = () => {
@@ -209,46 +238,62 @@ class BookContentView {
     };
     let t;
     ta.addEventListener('input', () => { clearTimeout(t); t = setTimeout(flush, 400); });
-    ta.addEventListener('blur', () => { clearTimeout(t); flush(); });
+    ta.addEventListener('blur', () => {
+      clearTimeout(t);
+      flush();
+      // Leaving the editor returns the snippet to its resting preview.
+      if (this.mode === 'edit') this.setMode('preview');
+    });
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') ta.blur(); });
     this.body.appendChild(ta);
     this.ta = ta;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
   }
 
   renderPreview() {
-    this.body.innerHTML = '<div class="bc-render"></div>';
-    const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-    window.WriteSysScratchRender.renderText(this.body.firstChild, canon(this.node.attrs.text));
+    this.ta = null;
+    this.body.innerHTML = '<div class="sn-render sn-clickable" title="Click to edit"></div>';
+    const host = this.body.firstChild;
+    const text = this.node.attrs.text;
+    if (text.trim()) {
+      const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
+      window.WriteSysScratchRender.renderText(host, canon(text));
+    } else {
+      host.innerHTML = '<div class="sn-empty">Empty snippet — click to write.</div>';
+    }
+    host.addEventListener('click', () => { if (!this.canonized()) this.setMode('edit'); });
   }
 
   renderSnapshot() {
     const a = this.node.attrs;
-    this.body.innerHTML = `<div class="bc-note" title="The text as it was at the moment it was placed into the book — kept forever, even as the book moves on.">Snapshot from ${esc((a.canonizedAt || '').slice(0, 10))}</div><div class="bc-render"></div>`;
+    this.body.innerHTML = `<div class="sn-note" title="The text as it was at the moment it was placed into the book — kept forever, even as the book moves on.">Snapshot from ${esc((a.canonizedAt || '').slice(0, 10))}</div><div class="sn-render"></div>`;
     const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-    window.WriteSysScratchRender.renderText(this.body.querySelector('.bc-render'), canon(a.snapshotText));
+    window.WriteSysScratchRender.renderText(this.body.querySelector('.sn-render'), canon(a.snapshotText));
   }
 
   async renderLive(force) {
     const a = this.node.attrs;
-    this.body.innerHTML = '<div class="bc-note">Resolving from the manuscript…</div><div class="bc-render"></div>';
-    const host = this.body.querySelector('.bc-render');
+    this.body.innerHTML = '<div class="sn-note">Resolving from the manuscript…</div><div class="sn-render"></div>';
+    const host = this.body.querySelector('.sn-render');
     try {
       const data = await bookData.load(a.manuscriptId, force);
       const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
       const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, a.refSlug, window.WriteSysCommand, canon);
       if (res.status !== 'ok') {
         // Strictness (SCRATCHPAD_PLAN decision 6): broken → snapshot fallback.
-        this.body.querySelector('.bc-note').innerHTML =
-          `<span class="bc-error">Region #${esc(a.refSlug)} ${res.status === 'missing-anchor'
+        this.body.querySelector('.sn-note').innerHTML =
+          `<span class="sn-error">Region #${esc(a.refSlug)} ${res.status === 'missing-anchor'
             ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the snapshot.</span>`;
         window.WriteSysScratchRender.renderText(host, canon(a.snapshotText));
         return;
       }
-      this.body.querySelector('.bc-note').textContent =
+      this.body.querySelector('.sn-note').textContent =
         `Live from the effective manuscript (committed + your suggestions).`;
       window.WriteSysScratchRender.render(host, res.items);
     } catch (e) {
-      this.body.querySelector('.bc-note').innerHTML =
-        `<span class="bc-error">Could not load manuscript ${a.manuscriptId} (${esc(e.message)}) — showing the snapshot.</span>`;
+      this.body.querySelector('.sn-note').innerHTML =
+        `<span class="sn-error">Could not load manuscript ${a.manuscriptId} (${esc(e.message)}) — showing the snapshot.</span>`;
       const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
       window.WriteSysScratchRender.renderText(host, canon(a.snapshotText));
     }
@@ -258,8 +303,8 @@ class BookContentView {
     const pos = this.getPos();
     if (pos == null) return;
     const label = this.canonized()
-      ? `Remove this canonized block from the scratchpad? The book region #${this.node.attrs.refSlug} is NOT touched.`
-      : 'Remove this draft block? Its text is only saved in scratchpad history.';
+      ? `Remove this canonized snippet from the scratchpad? The book region #${this.node.attrs.refSlug} is NOT touched.`
+      : 'Remove this draft snippet? Its text is only saved in scratchpad history.';
     if (!window.confirm(label)) return;
     this.view.dispatch(this.view.state.tr.delete(pos, pos + this.node.nodeSize));
     this.view.focus();
@@ -270,13 +315,15 @@ class BookContentView {
     const was = this.node.attrs;
     this.node = node;
     if (!!was.refSlug !== !!node.attrs.refSlug) {
-      this.mode = node.attrs.refSlug ? 'live' : 'edit';
+      this.mode = node.attrs.refSlug ? 'live' : 'preview';
       this.build();
       return true;
     }
-    if (this.ta && this.mode === 'edit' && document.activeElement !== this.ta
+    if (this.mode === 'edit' && this.ta && document.activeElement !== this.ta
         && this.ta.value !== node.attrs.text) {
       this.ta.value = node.attrs.text;
+    } else if (this.mode === 'preview' && was.text !== node.attrs.text) {
+      this.renderBody();
     }
     return true;
   }
@@ -313,23 +360,110 @@ function insertBlockSafely(state, dispatch, node) {
   return true;
 }
 
-function cmdInsertBookContent(state, dispatch) {
-  return insertBlockSafely(state, dispatch, schema.nodes.book_content.createAndFill({
+function cmdInsertSnippet(state, dispatch) {
+  return insertBlockSafely(state, dispatch, schema.nodes.snippet.createAndFill({
     blockId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+    createdAt: new Date().toISOString(),
   }));
 }
 
-function cmdInsertTable(state, dispatch) {
+function insertTableOfSize(state, dispatch, rows, cols) {
   const { table, table_row, table_cell } = schema.nodes;
-  const cell = () => table_cell.createAndFill();
-  const rows = [0, 1, 2].map(() => table_row.create(null, [cell(), cell(), cell()]));
-  return insertBlockSafely(state, dispatch, table.create(null, rows));
+  const mkRow = () => table_row.create(null,
+    Array.from({ length: cols }, () => table_cell.createAndFill()));
+  return insertBlockSafely(state, dispatch,
+    table.create(null, Array.from({ length: rows }, mkRow)));
 }
 
 function markActive(state, type) {
   const { from, $from, to, empty } = state.selection;
   if (empty) return !!type.isInSet(state.storedMarks || $from.marks());
   return state.doc.rangeHasMark(from, to, type);
+}
+
+function headingActive(state, level) {
+  const n = state.selection.$from.parent;
+  return n.type === schema.nodes.heading && n.attrs.level === level;
+}
+
+// tableNodes stamps tableRole into each node spec — the robust "am I in a
+// table?" check, independent of node names.
+function inTable(state) {
+  const $from = state.selection.$from;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.spec.tableRole === 'table') return true;
+  }
+  return false;
+}
+
+// SVG toolbar glyphs (text labels read as buttons, not tools).
+const ICON_UL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="2.5" cy="12.5" r="1.4"/><rect x="6" y="2.7" width="9" height="1.6" rx="0.8"/><rect x="6" y="7.2" width="9" height="1.6" rx="0.8"/><rect x="6" y="11.7" width="9" height="1.6" rx="0.8"/></svg>';
+const ICON_OL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><text x="0" y="5.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">1.</text><text x="0" y="10.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">2.</text><text x="0" y="15.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">3.</text><rect x="6" y="2.7" width="9" height="1.6" rx="0.8"/><rect x="6" y="7.2" width="9" height="1.6" rx="0.8"/><rect x="6" y="11.7" width="9" height="1.6" rx="0.8"/></svg>';
+
+// The Word-style rows×cols grid dropdown behind the Table button.
+function buildTablePicker(toolbarEl, getView) {
+  const MAX = 8;
+  const wrap = document.createElement('span');
+  wrap.className = 'tb-tablewrap';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.title = 'Insert table';
+  btn.textContent = 'Table ▾';
+  const pop = document.createElement('div');
+  pop.className = 'tb-grid';
+  pop.hidden = true;
+  const label = document.createElement('div');
+  label.className = 'tb-grid-label';
+  const cellsHost = document.createElement('div');
+  cellsHost.className = 'tb-grid-cells';
+  cellsHost.style.gridTemplateColumns = `repeat(${MAX}, 1fr)`;
+  const cells = [];
+  for (let r = 1; r <= MAX; r++) {
+    for (let c = 1; c <= MAX; c++) {
+      const cell = document.createElement('span');
+      cell.className = 'tb-grid-cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.addEventListener('mouseenter', () => {
+        cells.forEach(el =>
+          el.classList.toggle('on', +el.dataset.r <= r && +el.dataset.c <= c));
+        label.textContent = `${c} × ${r}`;
+      });
+      cell.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const view = getView();
+        insertTableOfSize(view.state, view.dispatch, r, c);
+        close();
+        view.focus();
+      });
+      cellsHost.appendChild(cell);
+      cells.push(cell);
+    }
+  }
+  pop.append(label, cellsHost);
+  wrap.append(btn, pop);
+
+  const reset = () => {
+    cells.forEach(el => el.classList.remove('on'));
+    label.textContent = 'Table size';
+  };
+  reset();
+  const onDocDown = (e) => { if (!wrap.contains(e.target)) close(); };
+  const close = () => {
+    pop.hidden = true;
+    document.removeEventListener('mousedown', onDocDown, true);
+    reset();
+  };
+  btn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (pop.hidden) {
+      pop.hidden = false;
+      document.addEventListener('mousedown', onDocDown, true);
+    } else {
+      close();
+    }
+  });
+  toolbarEl.appendChild(wrap);
 }
 
 // ----------------------------------------------------------- the instance
@@ -379,38 +513,56 @@ export async function createScratchpadEditor(els, scratchpadId) {
   };
 
   // ---- toolbar ----
+  // show: called on every state change; the button hides when false
+  // (the table-ops group only exists while the cursor is in a table).
+  const showInTable = s => inTable(s);
   const items = [
     { label: 'B', title: 'Bold (Ctrl-B)', run: toggleMark(schema.marks.strong), active: s => markActive(s, schema.marks.strong) },
     { label: 'I', title: 'Italic (Ctrl-I)', cls: 'i', run: toggleMark(schema.marks.em), active: s => markActive(s, schema.marks.em) },
     { sep: true },
-    { label: '¶', title: 'Paragraph', run: setBlockType(schema.nodes.paragraph) },
-    { label: 'H1', title: 'Heading 1', run: setBlockType(schema.nodes.heading, { level: 1 }) },
-    { label: 'H2', title: 'Heading 2', run: setBlockType(schema.nodes.heading, { level: 2 }) },
+    ...[1, 2, 3, 4].map(l => ({
+      label: 'H' + l, title: 'Heading ' + l,
+      run: setBlockType(schema.nodes.heading, { level: l }),
+      active: s => headingActive(s, l),
+    })),
     { sep: true },
-    { label: '• List', title: 'Bullet list', run: wrapInList(schema.nodes.bullet_list) },
-    { label: '1. List', title: 'Ordered list', run: wrapInList(schema.nodes.ordered_list) },
+    { html: ICON_UL, title: 'Bullet list', run: wrapInList(schema.nodes.bullet_list) },
+    { html: ICON_OL, title: 'Numbered list', run: wrapInList(schema.nodes.ordered_list) },
+    { sep: true },
     { label: '❝', title: 'Blockquote', run: wrapIn(schema.nodes.blockquote) },
     { label: '—', title: 'Horizontal rule', run: (s, d) => insertBlockSafely(s, d, schema.nodes.horizontal_rule.create()) },
     { sep: true },
-    { label: 'Table', title: 'Insert 3×3 table', run: cmdInsertTable },
+    { table: true },
     { label: 'Image', title: 'Insert image', run: () => { els.imageInput.click(); return true; } },
-    { label: '⧉ Book content', title: 'Insert a book-content block (monospace .manuscript text; canonize it from the book view)', cls: 'bc-btn', run: cmdInsertBookContent },
+    { label: '⧉ Snippet', title: 'Insert a Manuscript Snippet (monospace .manuscript text; canonize it from the book view)', cls: 'sn-btn', run: cmdInsertSnippet },
+    { sep: true, show: showInTable },
+    { label: '+ Row', title: 'Add row below', run: addRowAfter, show: showInTable },
+    { label: '− Row', title: 'Delete row', run: deleteRow, show: showInTable },
+    { label: '+ Col', title: 'Add column right', run: addColumnAfter, show: showInTable },
+    { label: '− Col', title: 'Delete column', run: deleteColumn, show: showInTable },
+    { label: '✕ Table', title: 'Delete table', run: deleteTable, show: showInTable },
     { sep: true },
     { label: '↶', title: 'Undo', run: undo },
     { label: '↷', title: 'Redo', run: redo },
   ];
   els.toolbarEl.innerHTML = '';
   const btns = [];
+  const dyn = []; // anything with a show() — buttons and separators alike
   for (const it of items) {
+    if (it.table) {
+      buildTablePicker(els.toolbarEl, () => view);
+      continue;
+    }
     if (it.sep) {
       const sep = document.createElement('span');
       sep.className = 'tb-sep';
       els.toolbarEl.appendChild(sep);
+      if (it.show) { sep._item = it; dyn.push(sep); }
       continue;
     }
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = it.label;
+    if (it.html) b.innerHTML = it.html; else b.textContent = it.label;
     b.title = it.title;
     if (it.cls) b.classList.add(it.cls);
     b.addEventListener('mousedown', (e) => {
@@ -421,15 +573,19 @@ export async function createScratchpadEditor(els, scratchpadId) {
     b._item = it;
     els.toolbarEl.appendChild(b);
     btns.push(b);
+    if (it.show) dyn.push(b);
   }
-  const updateToolbar = () => btns.forEach(b => {
-    if (b._item.active) b.classList.toggle('active', b._item.active(view.state));
-  });
+  const updateToolbar = () => {
+    btns.forEach(b => {
+      if (b._item.active) b.classList.toggle('active', b._item.active(view.state));
+    });
+    dyn.forEach(el => el.classList.toggle('tb-hidden', !el._item.show(view.state)));
+  };
 
   // ---- editor ----
   const li = schema.nodes.list_item;
   const state = EditorState.create({
-    doc: PMNode.fromJSON(schema, pad.doc),
+    doc: PMNode.fromJSON(schema, modernizeDoc(pad.doc)),
     plugins: [
       history(),
       keymap({
@@ -443,6 +599,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       keymap(baseKeymap),
       dropCursor(),
       gapCursor(),
+      columnResizing(),
       tableEditing(),
     ],
   });
@@ -450,7 +607,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
   view = new EditorView(els.editorEl, {
     state,
     nodeViews: {
-      book_content: (node, v, getPos) => new BookContentView(node, v, getPos),
+      snippet: (node, v, getPos) => new SnippetView(node, v, getPos),
     },
     dispatchTransaction(tr) {
       if (destroyed) return;
@@ -486,7 +643,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     bookData,
     get view() { return view; },
     saveNow,
-    insertBookContent: () => { cmdInsertBookContent(view.state, view.dispatch); },
+    insertSnippet: () => { cmdInsertSnippet(view.state, view.dispatch); },
     pm: { Selection, TextSelection, NodeSelection },
     isDirty: () => saveState !== 'saved',
     async destroy() {

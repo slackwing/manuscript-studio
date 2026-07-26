@@ -84,8 +84,41 @@
 .sp-toolbar button.i { font-style: italic; }
 .sp-toolbar button:hover { background: #f0ece4; }
 .sp-toolbar button.active { background: #e6dfd2; border-color: #d0c8b8; }
-.sp-toolbar button.bc-btn { color: #2a6fb0; font-weight: 600; }
+.sp-toolbar button.sn-btn { color: #2a6fb0; font-weight: 600; }
+.sp-toolbar button svg { display: block; }
 .tb-sep { width: 1px; height: 18px; background: #ddd; margin: 0 4px; }
+.sp-toolbar .tb-hidden { display: none; }
+
+/* Word-style table-size grid dropdown */
+.tb-tablewrap { position: relative; display: inline-block; }
+.tb-grid {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px -8px rgba(20, 16, 8, 0.35);
+  padding: 8px;
+}
+.tb-grid-label {
+  font: 11px "Helvetica", sans-serif;
+  color: #57503f;
+  margin-bottom: 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+.tb-grid-cells { display: grid; gap: 2px; }
+.tb-grid-cell {
+  width: 15px;
+  height: 15px;
+  border: 1px solid #d0c8b8;
+  background: #faf8f4;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.tb-grid-cell.on { background: #cfe0f0; border-color: #2a6fb0; }
 
 /* ---- ProseMirror surface ---- */
 .ProseMirror {
@@ -100,14 +133,21 @@
   color: #1a1a1a;
 }
 .ProseMirror p { margin: 0 0 0.8em; }
-.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 {
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4 {
   font-family: "Helvetica", sans-serif;
   line-height: 1.3;
   margin: 1.2em 0 0.4em;
+  /* Explicit: host pages (home/index) style bare h1/h2 and those
+     properties would otherwise leak into the editor surface. */
+  font-weight: 700;
+  font-style: normal;
+  text-align: left;
+  color: #1a1a1a;
 }
 .ProseMirror h1 { font-size: 22px; }
 .ProseMirror h2 { font-size: 18px; }
 .ProseMirror h3 { font-size: 15px; }
+.ProseMirror h4 { font-size: 13px; color: #444; }
 .ProseMirror blockquote {
   border-left: 3px solid #d0c8b8;
   margin: 0 0 0.8em;
@@ -149,9 +189,21 @@
   content: ""; position: absolute; inset: 0;
   background: rgba(42, 111, 176, 0.12); pointer-events: none;
 }
+/* column drag-resize (prosemirror-tables columnResizing) */
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #7fadd6;
+  pointer-events: none;
+  z-index: 20;
+}
+.ProseMirror.resize-cursor { cursor: col-resize; }
 
-/* ---- book_content widget ---- */
-.bc-widget {
+/* ---- Manuscript Snippet widget ---- */
+.sn-widget {
   border: 1px solid #c9c2b2;
   background: #fbfaf7;
   margin: 0 0 0.9em;
@@ -161,9 +213,9 @@
   white-space: normal;
 }
 /* Widget chrome is UI, not document text: never part of a selection. */
-.bc-widget .bc-header { user-select: none; }
-.bc-widget ::selection { background: transparent; }
-.bc-header {
+.sn-widget .sn-header { user-select: none; }
+.sn-widget ::selection { background: transparent; }
+.sn-header {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -173,9 +225,9 @@
   font: 11px "Helvetica", sans-serif;
   color: #57503f;
 }
-.bc-status { flex: 1; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
-.bc-status.bc-canonized { color: #2a6fb0; }
-.bc-tabs button, .bc-actions button {
+.sn-status { flex: 1; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+.sn-status.sn-canonized { color: #2a6fb0; }
+.sn-tabs button, .sn-actions button {
   font: 11px "Helvetica", sans-serif;
   border: 1px solid transparent;
   background: transparent;
@@ -183,12 +235,12 @@
   cursor: pointer;
   color: #57503f;
 }
-.bc-tabs button.active { background: #fff; border-color: #d0c8b8; }
-.bc-actions button:hover { color: #222; }
-.bc-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
-.bc-open:hover { text-decoration: underline; }
-.bc-body { padding: 0; }
-.bc-text {
+.sn-tabs button.active { background: #fff; border-color: #d0c8b8; }
+.sn-actions button:hover { color: #222; }
+.sn-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
+.sn-open:hover { text-decoration: underline; }
+.sn-body { padding: 0; }
+.sn-text {
   display: block;
   width: 100%;
   border: none;
@@ -201,10 +253,29 @@
   min-height: 90px;
   box-sizing: border-box;
 }
-.bc-note {
+.sn-note {
   font: 11px "Helvetica", sans-serif;
   color: #8a8378;
   padding: 5px 10px;
 }
-.bc-error { color: #b33b3a; }
-.bc-render { background: #fff; }
+.sn-error { color: #b33b3a; }
+.sn-render { background: #fff; }
+.sn-render.sn-clickable { cursor: text; }
+.sn-empty {
+  font: italic 12px "Helvetica", sans-serif;
+  color: #a49b8a;
+  padding: 14px 12px;
+}
+.sn-trash svg { display: block; }
+.sn-actions .sn-trash { color: #a49b8a; padding: 3px 5px; }
+.sn-actions .sn-trash:hover { color: #b33b3a; }
+
+/* Canon: the placed-into-the-book state wears blue. */
+.sn-widget.sn-canon { border-color: #a8c4dd; }
+.sn-widget.sn-canon .sn-header {
+  background: #e8f0f8;
+  border-bottom-color: #cfdff0;
+  color: #2a5f96;
+}
+.sn-widget.sn-canon .sn-tabs button { color: #2a5f96; }
+.sn-widget.sn-canon .sn-tabs button.active { background: #fff; border-color: #a8c4dd; }
