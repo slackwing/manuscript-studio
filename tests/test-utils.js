@@ -139,6 +139,9 @@ async function resetTestManuscript() {
     await cleanupTestAnnotations();
     if (TEST_MANUSCRIPT_ID > 0) {
       psql(`
+        DELETE FROM command_slug WHERE migration_id IN (
+          SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
+        );
         DELETE FROM sentence WHERE migration_id IN (
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
         );
