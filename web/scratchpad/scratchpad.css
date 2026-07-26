@@ -132,7 +132,9 @@
   font: 15px/1.65 Georgia, serif;
   color: #1a1a1a;
 }
-.ProseMirror p { margin: 0 0 0.8em; }
+/* The scratchpad is a working surface, not a typeset page — prose reads
+   left-aligned, not justified (justify can leak in from book.css's global p). */
+.ProseMirror p { margin: 0 0 0.8em; text-align: left; }
 .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4 {
   font-family: "Helvetica", sans-serif;
   line-height: 1.3;

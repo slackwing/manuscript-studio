@@ -11,7 +11,7 @@ function ensureCSS() {
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=6';
+  link.href = 'scratchpad/scratchpad.css?v=7';
   document.head.appendChild(link);
 }
 
