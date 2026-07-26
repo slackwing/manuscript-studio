@@ -174,7 +174,7 @@ func (db *DB) SoftDeleteScratchpad(ctx context.Context, id int) error {
 // CanonizeScratchpadBlock stamps canonize attrs into the doc's block node
 // (internal/scratchpad.Canonize), appends a revision, and re-derives the
 // block index — one transaction. Returns the updated block.
-func (db *DB) CanonizeScratchpadBlock(ctx context.Context, id int, blockID string, manuscriptID int, refSlug, label string, migrationID int) (*scratchpad.Block, error) {
+func (db *DB) CanonizeScratchpadBlock(ctx context.Context, id int, blockID string, manuscriptID int, refSlug, label string, migrationID int, manuscriptName string) (*scratchpad.Block, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -186,7 +186,7 @@ func (db *DB) CanonizeScratchpadBlock(ctx context.Context, id int, blockID strin
 	`, id).Scan(&doc); err != nil {
 		return nil, fmt.Errorf("lock scratchpad: %w", err)
 	}
-	updated, block, err := scratchpad.Canonize(json.RawMessage(doc), blockID, manuscriptID, refSlug, label, migrationID, time.Now())
+	updated, block, err := scratchpad.Canonize(json.RawMessage(doc), blockID, manuscriptID, refSlug, label, migrationID, manuscriptName, time.Now())
 	if err != nil {
 		return nil, err
 	}

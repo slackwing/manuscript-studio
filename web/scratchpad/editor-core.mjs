@@ -81,6 +81,12 @@ const coreNodes = {
       // Snippets from before this field get NOW backfilled on load —
       // approximate, but ensures every snippet carries a timestamp.
       createdAt: { default: '' },
+      // Optional link pinning this snippet to ONE manuscript: it can only
+      // be canonized there, and its draft words count toward that
+      // manuscript's wordcount history. 0/'' = unlinked. Canonizing
+      // auto-links (stamped server-side).
+      linkedManuscriptId: { default: 0 },
+      linkedManuscriptName: { default: '' },
     },
     parseDOM: [
       { tag: 'div[data-snippet]', getAttrs: () => ({}) },
@@ -154,6 +160,20 @@ export const bookData = {
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
+
+// The user's accessible manuscripts, for the link picker. One fetch per
+// page life; failure resets so a retry can succeed.
+let manuscriptsPromise = null;
+function listManuscripts() {
+  if (!manuscriptsPromise) {
+    manuscriptsPromise = fetchJSON('api/home', {}, false).then(d =>
+      (d.manuscripts || []).map(m => ({ id: m.manuscript_id, name: m.display_name || m.name })));
+    manuscriptsPromise.catch(() => { manuscriptsPromise = null; });
+  }
+  return manuscriptsPromise;
+}
+
 const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';
 
 class SnippetView {
@@ -183,9 +203,20 @@ class SnippetView {
       ? `This snippet's text was placed into manuscript ${a.manuscriptId} as region #${a.refSlug}. Live follows the book (including your pending suggestions); Snapshot is the text as it was when placed.`
       : 'Draft: plain .manuscript text. Click the preview to edit. From the book view, use + between paragraphs (or a placeholder) to place it into a manuscript.') + created;
     const tabs = this.canonized() ? [['live', 'Live'], ['snapshot', 'Snapshot']] : [];
+    // Link affordance, right of the status: unlinked drafts get the link
+    // button; linked snippets a chip (draft chips carry the unlink ×; a
+    // canonized snippet's link is permanent).
+    let linkBit = '';
+    if (a.linkedManuscriptId) {
+      const unlink = this.canonized() ? ''
+        : `<button type="button" class="sn-unlink" title="Unlink from ${esc(a.linkedManuscriptName)}">×</button>`;
+      linkBit = `<span class="sn-linkchip" title="Linked to ${esc(a.linkedManuscriptName)} — this snippet can only be canonized into that manuscript.">${LINK_SVG}<span class="sn-linkname">${esc(a.linkedManuscriptName)}</span>${unlink}</span>`;
+    } else if (!this.canonized()) {
+      linkBit = `<button type="button" class="sn-linkbtn" title="Link to manuscript">${LINK_SVG}</button>`;
+    }
     this.dom.innerHTML = `
       <div class="sn-header">
-        <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>
+        <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}
         <span class="sn-tabs">${tabs.map(([k, l]) =>
           `<button type="button" data-tab="${k}" class="${k === this.mode ? 'active' : ''}">${l}</button>`).join('')}
         </span>
@@ -205,7 +236,75 @@ class SnippetView {
     this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.remove());
     const refresh = this.dom.querySelector('[data-act="refresh"]');
     if (refresh) refresh.addEventListener('click', () => this.renderLive(true));
+    const linkBtn = this.dom.querySelector('.sn-linkbtn');
+    if (linkBtn) linkBtn.addEventListener('click', () => this.openLinkPicker());
+    const unlinkBtn = this.dom.querySelector('.sn-unlink');
+    if (unlinkBtn) unlinkBtn.addEventListener('click', () => this.setLink(0, ''));
     this.renderBody();
+  }
+
+  setLink(id, name) {
+    const pos = this.getPos();
+    if (pos == null) return;
+    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null,
+      { ...this.node.attrs, linkedManuscriptId: id, linkedManuscriptName: name }));
+  }
+
+  async openLinkPicker() {
+    this.closeLinkPicker();
+    const pop = document.createElement('div');
+    pop.className = 'sn-linkpop';
+    pop.innerHTML = `
+      <input type="text" class="sn-linkpop-q" placeholder="Search manuscripts…" autocomplete="off">
+      <div class="sn-linkpop-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
+    this.dom.querySelector('.sn-header').appendChild(pop);
+    this.linkPop = pop;
+    this._outside = (e) => { if (!pop.contains(e.target)) this.closeLinkPicker(); };
+    setTimeout(() => document.addEventListener('mousedown', this._outside, true), 0);
+    const q = pop.querySelector('.sn-linkpop-q');
+    const list = pop.querySelector('.sn-linkpop-list');
+    q.focus();
+    let all;
+    try {
+      all = await listManuscripts();
+    } catch (e) {
+      list.innerHTML = '<span class="sn-linkpop-empty">Could not load manuscripts</span>';
+      return;
+    }
+    if (!this.linkPop) return; // closed while loading
+    const renderList = () => {
+      const needle = q.value.trim().toLowerCase();
+      const hits = all.filter(m => m.name.toLowerCase().includes(needle));
+      list.innerHTML = hits.length
+        ? hits.map(m => `<button type="button" data-mid="${m.id}" data-name="${esc(m.name)}">${esc(m.name)}</button>`).join('')
+        : '<span class="sn-linkpop-empty">No matches</span>';
+    };
+    renderList();
+    q.addEventListener('input', renderList);
+    q.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.closeLinkPicker();
+      if (e.key === 'Enter') {
+        const first = list.querySelector('button[data-mid]');
+        if (first) first.click();
+      }
+    });
+    list.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-mid]');
+      if (!b) return;
+      this.setLink(parseInt(b.dataset.mid, 10), b.dataset.name);
+      this.closeLinkPicker();
+    });
+  }
+
+  closeLinkPicker() {
+    if (this._outside) {
+      document.removeEventListener('mousedown', this._outside, true);
+      this._outside = null;
+    }
+    if (this.linkPop) {
+      this.linkPop.remove();
+      this.linkPop = null;
+    }
   }
 
   setMode(mode) {
@@ -316,6 +415,13 @@ class SnippetView {
     this.node = node;
     if (!!was.refSlug !== !!node.attrs.refSlug) {
       this.mode = node.attrs.refSlug ? 'live' : 'preview';
+      this.closeLinkPicker();
+      this.build();
+      return true;
+    }
+    if (was.linkedManuscriptId !== node.attrs.linkedManuscriptId
+        || was.linkedManuscriptName !== node.attrs.linkedManuscriptName) {
+      this.closeLinkPicker();
       this.build();
       return true;
     }
@@ -328,6 +434,7 @@ class SnippetView {
     return true;
   }
 
+  destroy() { this.closeLinkPicker(); }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
 }
@@ -483,14 +590,40 @@ export async function createScratchpadEditor(els, scratchpadId) {
   let saveState = 'saved';
   let destroyed = false;
 
+  // Failed saves retry on exponential backoff (2s → 60s cap) with a live
+  // countdown in the status slot; any success resets the ladder. The modal
+  // refuses to close while unsaved (saveNow returns false), so a dead
+  // server never eats work.
+  let retryTimer = null;
+  let countdownTimer = null;
+  let retryAttempt = 0;
+
+  const clearRetry = () => {
+    clearTimeout(retryTimer); retryTimer = null;
+    clearInterval(countdownTimer); countdownTimer = null;
+  };
+
   const setSaveState = (s) => {
     saveState = s;
     els.statusEl.textContent = s === 'saved' ? 'Saved' : (s === 'saving' ? 'Saving…' : 'Unsaved');
   };
 
+  const scheduleRetry = () => {
+    clearRetry();
+    retryAttempt = Math.min(retryAttempt + 1, 6);
+    let secs = Math.min(60, Math.pow(2, retryAttempt)); // 2, 4, 8, …, 60
+    const show = () => {
+      els.statusEl.textContent = `Failed to save. Trying again in ${secs}s`;
+    };
+    show();
+    countdownTimer = setInterval(() => { secs -= 1; if (secs > 0) show(); }, 1000);
+    retryTimer = setTimeout(() => { clearRetry(); saveNow(); }, secs * 1000);
+  };
+
   const saveNow = async () => {
-    if (!view) return;
+    if (!view) return false;
     clearTimeout(saveTimer);
+    clearRetry();
     setSaveState('saving');
     try {
       const r = await fetch(`api/scratchpads/${scratchpadId}`, {
@@ -499,14 +632,19 @@ export async function createScratchpadEditor(els, scratchpadId) {
         body: JSON.stringify({ title: els.titleInput.value, doc: view.state.doc.toJSON() }),
       });
       if (!r.ok) throw new Error(String(r.status));
+      retryAttempt = 0;
       setSaveState('saved');
+      return true;
     } catch (e) {
       console.error('autosave failed', e);
-      setSaveState('unsaved');
+      saveState = 'unsaved';
+      if (!destroyed) scheduleRetry();
+      return false;
     }
   };
 
   const scheduleSave = () => {
+    clearRetry();
     setSaveState('unsaved');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 1200);
@@ -649,6 +787,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     async destroy() {
       destroyed = true;
       clearTimeout(saveTimer);
+      clearRetry();
       els.titleInput.removeEventListener('input', onTitleInput);
       els.imageInput.removeEventListener('change', onImage);
       if (saveState !== 'saved') await saveNow();

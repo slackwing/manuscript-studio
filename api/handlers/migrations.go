@@ -83,7 +83,14 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 	}
 
 	// Word count rides along for the manuscript-chrome strip (HOME_PLAN).
+	// With wordcount_history enabled the table (effective + linked
+	// snippets) is the source; live count is the fallback pre-first-run.
 	wordCount, _ := h.DB.GetMigrationWordCount(ctx, migration.MigrationID)
+	if h.Config.WordcountHistory.Enabled {
+		if wr, err := h.DB.GetLatestWordcount(ctx, migration.ManuscriptID); err == nil && wr != nil {
+			wordCount = wr.Total()
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(struct {
@@ -291,4 +298,29 @@ func (h *MigrationHandlers) HandleGetOutline(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(outline)
+}
+
+// HandleGetWordcountHistory returns a manuscript's daily wordcount rows —
+// data for the wordcount-over-time graph. Rows exist only while the
+// wordcount_history feature is enabled and its cron has run; an empty list
+// is a normal answer, not an error.
+func (h *MigrationHandlers) HandleGetWordcountHistory(w http.ResponseWriter, r *http.Request) {
+	manuscriptID, err := strconv.Atoi(chi.URLParam(r, "manuscript_id"))
+	if err != nil {
+		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
+		return
+	}
+	rows, err := h.DB.ListWordcountHistory(r.Context(), manuscriptID)
+	if err != nil {
+		http.Error(w, "Failed to load wordcount history", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Enabled bool                     `json:"enabled"`
+		Rows    []database.WordcountRow `json:"rows"`
+	}{h.Config.WordcountHistory.Enabled, rows})
 }

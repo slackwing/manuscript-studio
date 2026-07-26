@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,6 +26,37 @@ type Config struct {
 	Manuscripts []ManuscriptConfig `yaml:"manuscripts"`
 	Migrations  MigrationConfig    `yaml:"migrations"`
 	RateLimits  RateLimitsConfig   `yaml:"rate_limits"`
+
+	// Optional daily wordcount history (the wordcount-over-time graph's
+	// data). When enabled, an in-process cron recomputes every manuscript's
+	// row hourly (keyed by day — intra-day runs overwrite today's row) and
+	// the homepage/info-header wordcounts are served from the history table
+	// instead of the live count. When disabled nothing runs and nothing
+	// else changes.
+	WordcountHistory WordcountHistoryConfig `yaml:"wordcount_history"`
+}
+
+type WordcountHistoryConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Compute cadence in minutes; rows stay keyed by day regardless.
+	// Default 60.
+	IntervalMinutes int `yaml:"interval_minutes"`
+	// IANA timezone that defines the day cutoff for history rows
+	// (e.g. "America/New_York"). Default "UTC".
+	Timezone string `yaml:"timezone"`
+}
+
+// Location resolves the configured timezone (default UTC). Validate()
+// guarantees it parses, so runtime resolution cannot fail.
+func (w WordcountHistoryConfig) Location() *time.Location {
+	if w.Timezone == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(w.Timezone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 type DatabaseConfig struct {
@@ -171,6 +203,9 @@ func Load() (*Config, error) {
 	if config.Database.Port == 0 {
 		config.Database.Port = 5432
 	}
+	if config.WordcountHistory.IntervalMinutes <= 0 {
+		config.WordcountHistory.IntervalMinutes = 60
+	}
 	config.Server.BasePath = normalizeBasePath(config.Server.BasePath)
 
 	config.Paths.PrivateDir = expandPath(config.Paths.PrivateDir)
@@ -196,6 +231,12 @@ func (c *Config) Validate() error {
 
 	if c.Server.BasePath != "" && !basePathPattern.MatchString(c.Server.BasePath) {
 		return fmt.Errorf("server.base_path %q has invalid characters; only [A-Za-z0-9._~-] segments separated by '/' are allowed", c.Server.BasePath)
+	}
+
+	if c.WordcountHistory.Timezone != "" {
+		if _, err := time.LoadLocation(c.WordcountHistory.Timezone); err != nil {
+			return fmt.Errorf("wordcount_history.timezone %q is not a valid IANA timezone: %w", c.WordcountHistory.Timezone, err)
+		}
 	}
 
 	if c.Server.Env != "production" {

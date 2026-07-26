@@ -139,3 +139,20 @@ migrations:
 rate_limits:
   admin_per_token_rpm: 10
   admin_per_token_burst: 5
+
+# ============================================================
+# Wordcount History (optional). When enabled, an in-process cron
+# recomputes each manuscript's daily wordcount row every
+# interval_minutes (rows are keyed by day — intra-day runs overwrite
+# today's row, so the number is at most an hour stale while the table
+# grows by only one row per manuscript per day). The homepage and
+# manuscript-header wordcounts are then served from this table:
+# effective words (committed + pending suggestions, all users) plus
+# linked, not-yet-canonized snippet words. When disabled, nothing
+# runs and the live committed count is used everywhere, as before.
+# ============================================================
+wordcount_history:
+  enabled: false
+  interval_minutes: 60
+  # IANA timezone defining the day cutoff for rows. Default UTC.
+  timezone: "UTC"

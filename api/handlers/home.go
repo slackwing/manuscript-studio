@@ -74,6 +74,14 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 			if wc, err := h.DB.GetMigrationWordCount(ctx, mig.MigrationID); err == nil {
 				hm.WordCount = wc
 			}
+			// wordcount_history enabled → the table (effective + linked
+			// snippets, all users) is the source of truth; the live count
+			// above stays as the fallback until the cron's first run.
+			if h.Config.WordcountHistory.Enabled {
+				if wr, err := h.DB.GetLatestWordcount(ctx, opt.ManuscriptID); err == nil && wr != nil {
+					hm.WordCount = wr.Total()
+				}
+			}
 		}
 		manuscripts = append(manuscripts, hm)
 	}

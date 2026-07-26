@@ -110,6 +110,18 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     });
     check('draft preview renders book-style after blur', /keg arrived at noon/.test(previewText));
 
+    // --- link / unlink via the header affordance ---
+    await page.click('.sn-widget .sn-linkbtn');
+    await page.waitForSelector('.sn-linkpop button[data-mid]', { timeout: 5000 });
+    await page.click('.sn-linkpop button[data-mid]');
+    await page.waitForSelector('.sn-widget .sn-linkchip', { timeout: 5000 });
+    const chipName = await page.textContent('.sn-widget .sn-linkchip .sn-linkname');
+    check('link picker links the snippet (chip shows name)', !!chipName.trim(), chipName.trim());
+    await page.click('.sn-widget .sn-unlink');
+    await page.waitForSelector('.sn-widget .sn-linkbtn', { timeout: 5000 });
+    check('chip × unlinks (link button back)', true);
+    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
+
     // Table + image machinery smoke checks. Selection sits ON the freshly
     // inserted snippet atom — park it at doc end first so the image
     // insert (replaceSelectionWith) can't swallow the block.
@@ -190,6 +202,13 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     const canonBlue = await page.evaluate(() =>
       document.querySelector('.sn-widget').classList.contains('sn-canon'));
     check('canonized widget wears the blue bar', canonBlue === true);
+    // Canonizing auto-links; a canonized snippet's link is permanent (no ×).
+    const canonLink = await page.evaluate(() => ({
+      chip: !!document.querySelector('.sn-widget .sn-linkchip'),
+      name: (document.querySelector('.sn-widget .sn-linkname') || {}).textContent || '',
+      unlink: !!document.querySelector('.sn-widget .sn-unlink'),
+    }));
+    check('canonize auto-linked (chip, no unlink ×)', canonLink.chip && !canonLink.unlink, canonLink.name);
     await page.waitForFunction(() => {
       const host = document.querySelector('.sn-widget .sn-render');
       return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);

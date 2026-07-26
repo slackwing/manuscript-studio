@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Block is a book_content node's attrs as the server cares about them.
+// Block is a snippet node's attrs as the server cares about them.
 type Block struct {
 	BlockID              string `json:"blockId"`
 	Text                 string `json:"text"`
@@ -20,6 +20,10 @@ type Block struct {
 	SnapshotText         string `json:"snapshotText"`
 	CanonizedMigrationID int    `json:"canonizedMigrationId"`
 	CanonizedAt          string `json:"canonizedAt"` // RFC3339, "" when draft
+	// LinkedManuscriptID pins the snippet to one manuscript: it can only be
+	// canonized there, and its draft words count toward that manuscript's
+	// wordcount history. 0 = unlinked.
+	LinkedManuscriptID int `json:"linkedManuscriptId"`
 }
 
 // Canonized reports whether the block has been canonized into a manuscript.
@@ -78,6 +82,7 @@ func blockFromAttrs(attrs map[string]interface{}) Block {
 		SnapshotText:         attrStr(attrs, "snapshotText"),
 		CanonizedMigrationID: attrInt(attrs, "canonizedMigrationId"),
 		CanonizedAt:          attrStr(attrs, "canonizedAt"),
+		LinkedManuscriptID:   attrInt(attrs, "linkedManuscriptId"),
 	}
 }
 
@@ -106,7 +111,7 @@ func ExtractBlocks(doc json.RawMessage) ([]Block, error) {
 // text at this moment, kept forever), and the timestamp. Fails if the block
 // is missing or already canonized (strictness — decision 6). Returns the
 // updated doc JSON and the resulting Block.
-func Canonize(doc json.RawMessage, blockID string, manuscriptID int, refSlug, label string, migrationID int, now time.Time) (json.RawMessage, Block, error) {
+func Canonize(doc json.RawMessage, blockID string, manuscriptID int, refSlug, label string, migrationID int, manuscriptName string, now time.Time) (json.RawMessage, Block, error) {
 	var root map[string]interface{}
 	if err := json.Unmarshal(doc, &root); err != nil {
 		return nil, Block{}, fmt.Errorf("parse doc: %w", err)
@@ -128,6 +133,16 @@ func Canonize(doc json.RawMessage, blockID string, manuscriptID int, refSlug, la
 			errOut = fmt.Errorf("block %s is already canonized (→ #%s)", blockID, attrStr(attrs, "refSlug"))
 			return
 		}
+		// A linked snippet can only be canonized into its linked manuscript.
+		if linked := attrInt(attrs, "linkedManuscriptId"); linked != 0 && linked != manuscriptID {
+			errOut = fmt.Errorf("block %s is linked to manuscript %d and can only be canonized there", blockID, linked)
+			return
+		}
+		// Canonizing auto-links: from here on this snippet belongs to that
+		// manuscript (and the wordcount cron must never double-count it —
+		// Canonized() excludes it from the snippet component).
+		attrs["linkedManuscriptId"] = manuscriptID
+		attrs["linkedManuscriptName"] = manuscriptName
 		attrs["manuscriptId"] = manuscriptID
 		attrs["refSlug"] = refSlug
 		attrs["label"] = label

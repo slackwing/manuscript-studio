@@ -225,7 +225,10 @@
   font: 11px "Helvetica", sans-serif;
   color: #57503f;
 }
-.sn-status { flex: 1; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+.sn-status { text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
+/* tabs (always rendered, empty for drafts) absorb the slack so the link
+   chip sits right next to the status text */
+.sn-tabs { margin-left: auto; }
 .sn-status.sn-canonized { color: #2a6fb0; }
 .sn-tabs button, .sn-actions button {
   font: 11px "Helvetica", sans-serif;
@@ -267,6 +270,86 @@
   padding: 14px 12px;
 }
 .sn-trash svg { display: block; }
+
+/* link-to-manuscript affordance (right of the status text) */
+.sn-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  color: #a49b8a;
+}
+.sn-linkbtn:hover { color: #2a6fb0; }
+.sn-linkbtn svg { display: block; }
+.sn-linkchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 2px 6px;
+  border: 1px solid #cfdff0;
+  border-radius: 9px;
+  background: #e8f0f8;
+  color: #2a5f96;
+  font: 10px "Helvetica", sans-serif;
+  white-space: nowrap;
+}
+.sn-linkchip svg { flex: none; }
+.sn-linkname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+}
+.sn-unlink {
+  border: none;
+  background: none;
+  padding: 0 0 0 2px;
+  font-size: 11px;
+  line-height: 1;
+  color: #7d9cbd;
+  cursor: pointer;
+}
+.sn-unlink:hover { color: #b33b3a; }
+.sn-linkpop {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 8px;
+  z-index: 40;
+  width: 260px;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px -8px rgba(20, 16, 8, 0.35);
+  padding: 6px;
+}
+.sn-header { position: relative; }
+.sn-linkpop-q {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d0c8b8;
+  padding: 5px 7px;
+  font: 12px "Helvetica", sans-serif;
+  outline: none;
+  margin-bottom: 4px;
+}
+.sn-linkpop-q:focus { border-color: #2a6fb0; }
+.sn-linkpop-list { max-height: 180px; overflow-y: auto; }
+.sn-linkpop-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 6px 7px;
+  font: 12px "Helvetica", sans-serif;
+  color: #333;
+  cursor: pointer;
+}
+.sn-linkpop-list button:hover { background: #eef3f9; color: #2a5f96; }
+.sn-linkpop-empty {
+  display: block;
+  font: italic 11px "Helvetica", sans-serif;
+  color: #a49b8a;
+  padding: 6px 7px;
+}
 .sn-actions .sn-trash { color: #a49b8a; padding: 3px 5px; }
 .sn-actions .sn-trash:hover { color: #b33b3a; }
 

@@ -28,6 +28,8 @@ const WriteSysScratchRender = {
         background: #fff;
         padding: 14px 18px;
       }
+      /* Widgets are working views, not pages: left-justify prose. */
+      .scratch-book p { text-align: left; }
       .scratch-book .sentence,
       .scratch-book .sentence:not(.selected):hover {
         cursor: text;

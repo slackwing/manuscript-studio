@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"html"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -96,6 +98,38 @@ func (s *Server) ResegmentOnSegmenterChange(ctx context.Context) {
 	s.adminHandlers.ResegmentOnSegmenterChange(ctx)
 }
 
+// RunWordcountCron drives the optional wordcount-history feature: one run
+// at startup (covers downtime — the day's row appears as soon as the server
+// is back), then every configured interval. Rows are keyed by day in the
+// configured timezone, so intra-day runs overwrite today's row in place.
+// No-op unless wordcount_history.enabled.
+func (s *Server) RunWordcountCron(ctx context.Context) {
+	if !s.config.WordcountHistory.Enabled {
+		return
+	}
+	interval := time.Duration(s.config.WordcountHistory.IntervalMinutes) * time.Minute
+	loc := s.config.WordcountHistory.Location()
+	run := func() {
+		rows, err := s.dbWrapper.ComputeWordcountHistory(ctx, loc)
+		if err != nil {
+			log.Printf("wordcount cron failed: %v", err)
+			return
+		}
+		log.Printf("wordcount cron: computed %d manuscript(s)", len(rows))
+	}
+	run()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
+}
+
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
 
@@ -177,6 +211,7 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/{migration_id}/history", s.migrationHandlers.HandleGetSentenceHistory)
 			r.Get("/migrations/{migration_id}/suggestions", s.suggestionHandlers.HandleGetSuggestionsForMigration)
 			r.Get("/migrations/{migration_id}/outline", s.migrationHandlers.HandleGetOutline)
+			r.Get("/manuscripts/{manuscript_id}/wordcount-history", s.migrationHandlers.HandleGetWordcountHistory)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
@@ -238,6 +273,7 @@ func (s *Server) setupRouter() {
 			r.Get("/status", s.adminHandlers.HandleStatus)
 			r.Post("/users", s.adminHandlers.HandleCreateUser)
 			r.Post("/grants", s.adminHandlers.HandleCreateGrant)
+			r.Post("/wordcount-compute", s.adminHandlers.HandleWordcountCompute)
 		})
 	})
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -236,7 +237,16 @@ func (h *ScratchpadHandlers) HandleCanonizeBlock(w http.ResponseWriter, r *http.
 	if !requireManuscriptAccess(w, r, h.DB, h.Config, req.ManuscriptID) {
 		return
 	}
-	block, err := h.DB.CanonizeScratchpadBlock(r.Context(), s.ScratchpadID, blockID, req.ManuscriptID, req.RefSlug, req.Label, req.MigrationID)
+	// The canonized snippet auto-links to the target manuscript; the link
+	// chip wants a human name.
+	manuscriptName := ""
+	if m, err := h.DB.GetManuscriptByID(r.Context(), req.ManuscriptID); err == nil && m != nil {
+		manuscriptName = m.DisplayName
+		if manuscriptName == "" {
+			manuscriptName = filepath.Base(m.RepoPath)
+		}
+	}
+	block, err := h.DB.CanonizeScratchpadBlock(r.Context(), s.ScratchpadID, blockID, req.ManuscriptID, req.RefSlug, req.Label, req.MigrationID, manuscriptName)
 	if err != nil {
 		// Already-canonized / missing block are client errors (strictness).
 		http.Error(w, err.Error(), http.StatusConflict)

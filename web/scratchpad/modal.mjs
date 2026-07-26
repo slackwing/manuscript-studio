@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor } from './editor-core.mjs?v=4';
+import { createScratchpadEditor } from './editor-core.mjs?v=5';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=4';
+  link.href = 'scratchpad/scratchpad.css?v=5';
   document.head.appendChild(link);
 }
 
@@ -29,6 +29,8 @@ export const ScratchpadModal = {
 
   async _open(scratchpadId) {
     await this.close();
+    // close() refuses when a save keeps failing — don't stack a second pad.
+    if (this.overlay) return;
     ensureCSS();
 
     const overlay = document.createElement('div');
@@ -49,6 +51,11 @@ export const ScratchpadModal = {
     this.overlay = overlay;
 
     overlay.querySelector('#spm-close').addEventListener('click', () => this.close());
+    // Clicking the backdrop closes too (the guard below still flushes —
+    // and refuses to close — before anything is lost).
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay) this.close();
+    });
     overlay.querySelector('#spm-expand').addEventListener('click', () =>
       overlay.querySelector('.spm-dialog').classList.toggle('spm-full'));
     this._esc = (e) => { if (e.key === 'Escape') this.close(); };
@@ -83,6 +90,12 @@ export const ScratchpadModal = {
 
   async close() {
     if (!this.overlay) return;
+    // Flush before closing; a failed save keeps the pad open (the status
+    // slot shows the retry countdown) so nothing is ever lost.
+    if (this.editor && this.editor.isDirty()) {
+      const ok = await this.editor.saveNow();
+      if (!ok) return;
+    }
     const overlay = this.overlay;
     this.overlay = null;
     document.removeEventListener('keydown', this._esc);

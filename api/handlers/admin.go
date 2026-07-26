@@ -499,3 +499,19 @@ func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.Ma
 	}
 	mlog.Info("migration done", slog.String("result", result.Message))
 }
+
+// HandleWordcountCompute forces a wordcount-history run right now (the same
+// computation as the in-process cron). Works even with the feature disabled
+// — useful for tests and one-off refreshes; only serving switches on the
+// config flag.
+func (h *AdminHandlers) HandleWordcountCompute(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.DB.ComputeWordcountHistory(r.Context(), h.Config.WordcountHistory.Location())
+	if err != nil {
+		http.Error(w, "Wordcount compute failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Rows []database.WordcountRow `json:"rows"`
+	}{rows})
+}

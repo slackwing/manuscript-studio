@@ -62,6 +62,9 @@ func main() {
 	// migration itself runs in its own goroutine and must not block startup.
 	go server.ResegmentOnSegmenterChange(context.Background())
 
+	// Optional wordcount-history cron (no-op unless enabled in config).
+	go server.RunWordcountCron(context.Background())
+
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:      server.Router(),

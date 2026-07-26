@@ -117,3 +117,13 @@ migrations:
 rate_limits:
   admin_per_token_rpm: 600
   admin_per_token_burst: 60
+
+# ============================================================
+# Wordcount History (optional) — hourly in-process cron stores one
+# row per manuscript per day (intra-day runs overwrite today's row).
+# Homepage / info-header wordcounts source from the table when enabled.
+# ============================================================
+wordcount_history:
+  enabled: true
+  interval_minutes: 5
+  timezone: "America/New_York"

@@ -159,7 +159,12 @@ const WriteSysImportScratchpad = {
       const drafts = [];
       const walk = (node) => {
         if (node && (node.type === 'snippet' || node.type === 'book_content') && node.attrs && !node.attrs.refSlug && (node.attrs.text || '').trim()) {
-          drafts.push({ blockId: node.attrs.blockId, text: node.attrs.text });
+          drafts.push({
+            blockId: node.attrs.blockId,
+            text: node.attrs.text,
+            linkedId: node.attrs.linkedManuscriptId || 0,
+            linkedName: node.attrs.linkedManuscriptName || '',
+          });
         }
         (node && node.content || []).forEach(walk);
       };
@@ -168,10 +173,15 @@ const WriteSysImportScratchpad = {
         holder.innerHTML = '<span class="im-muted">No draft snippets (with text) in this scratchpad.</span>';
         return;
       }
-      holder.innerHTML = drafts.map((d, i) => `
-        <label class="im-block"><input type="radio" name="im-block" value="${i}">
-          <span class="im-block-text">${this.esc(d.text.slice(0, 120))}${d.text.length > 120 ? '…' : ''}</span>
-        </label>`).join('');
+      // A snippet linked to a different manuscript can't be canonized here.
+      const curManuscript = (window.WriteSysRenderer && window.WriteSysRenderer.manuscriptId) || 0;
+      holder.innerHTML = drafts.map((d, i) => {
+        const blocked = d.linkedId && d.linkedId !== curManuscript;
+        return `
+        <label class="im-block"${blocked ? ' style="opacity:.55"' : ''}><input type="radio" name="im-block" value="${i}"${blocked ? ' disabled' : ''}>
+          <span class="im-block-text">${this.esc(d.text.slice(0, 120))}${d.text.length > 120 ? '…' : ''}${blocked ? ` <span class="im-muted">(linked to ${this.esc(d.linkedName || 'another manuscript')})</span>` : ''}</span>
+        </label>`;
+      }).join('');
       holder.querySelectorAll('input[name="im-block"]').forEach(inp => {
         inp.addEventListener('change', () => {
           this.selectedBlock = { scratchpadId, ...drafts[parseInt(inp.value, 10)] };

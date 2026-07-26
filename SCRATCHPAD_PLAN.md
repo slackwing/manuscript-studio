@@ -179,3 +179,26 @@ scratchpad handlers (CRUD, block extraction, canonize, images); node unit:
 region resolver + suggested-text builder; Playwright: scratchpad page e2e
 (create → block → canonize into test manuscript → suggestion exists → book
 renders region → widget Live/snapshot tabs), classified per N10.
+
+## Snippet linking + wordcount history (2026-07)
+
+- **Linking**: a draft snippet can be linked to ONE manuscript (link button
+  right of the status; linked → chip with name + unlink ×). A linked
+  snippet can only be canonized into that manuscript (client disables the
+  radio in the + modal; server rejects in Canonize). Canonizing
+  auto-links, and a canonized snippet's link is permanent (no ×). Attrs:
+  `linkedManuscriptId` / `linkedManuscriptName` (0/'' = unlinked).
+- **Wordcount history** (optional; `wordcount_history` in config.yaml):
+  in-process cron — run at startup + every `interval_minutes` (default 60)
+  — upserts one `wordcount_history` row per manuscript per day (day cutoff
+  in `timezone`, default UTC): `words_committed`, `words_effective`
+  (committed with pending suggestions substituted, all users, latest per
+  sentence), `words_snippets` (linked + NOT canonized, all users). No
+  double-count: a canonized snippet is counted via effective only.
+  When enabled, /api/home and /api/migrations/latest serve
+  `effective + snippets` from the table (live count is the pre-first-run
+  fallback); GET /api/manuscripts/{id}/wordcount-history feeds the future
+  graph; POST /api/admin/wordcount-compute (SYSTEM_TOKEN) forces a run.
+- **Autosave**: failed saves show "Failed to save. Trying again in Ns"
+  with exponential backoff (2s→60s); the modal refuses to close (×, Esc,
+  or backdrop click — backdrop click closes too now) while unsaved.
