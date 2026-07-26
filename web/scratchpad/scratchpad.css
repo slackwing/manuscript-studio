@@ -63,6 +63,18 @@
   flex: 1;
   overflow-y: auto;
   padding: 18px 22px 60px;
+  /* Legal-pad feel: a soft warm-yellow paper with faint blue horizontal rules
+     as a decorative background texture — deliberately NOT aligned to the text
+     baseline (fixed 28px pitch, not the line-height), so it reads as paper
+     grain rather than lined writing. */
+  background-color: #fdfaec;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    rgba(120, 160, 210, 0.14) 27px,
+    rgba(120, 160, 210, 0.14) 28px
+  );
 }
 
 /* ---- toolbar ---- */
