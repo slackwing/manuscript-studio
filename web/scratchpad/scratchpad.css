@@ -343,6 +343,14 @@
   color: #444;
   padding: 4px 6px 8px;
 }
+/* Deletion date on a Restore… row: quiet, right-aligned. */
+.sn-ins-deleted {
+  flex: none;
+  margin-left: auto;
+  font: 10px "Helvetica", sans-serif;
+  color: #8a8378;
+  white-space: nowrap;
+}
 .sn-actions button:hover { color: #222; }
 .sn-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
 .sn-open:hover { text-decoration: underline; }
@@ -354,6 +362,11 @@
 .sn-text-wrap {
   position: relative;
   width: 100%;
+  /* White editing surface. The textarea itself is transparent (so the tab
+     overlay + selection highlight show through), so the white must live on the
+     wrapper behind both layers — otherwise the widget's beige shows and the
+     editor looks disabled. (A frozen variation styles its own surface.) */
+  background: #fff;
 }
 /* Shared box metrics for both layers. */
 .sn-text,

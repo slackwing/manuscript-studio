@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Soft-delete for variations: the snippet-widget trash now marks a
+         variation deleted (deleted_at) instead of erasing it, and the Snippet
+         menu's "Restore…" lists deleted variations (newest deletion first) to
+         bring back. All live list/get queries filter deleted_at IS NULL. -->
+    <changeSet id="016-variation-soft-delete" author="claude">
+        <addColumn tableName="variation">
+            <column name="deleted_at" type="TIMESTAMPTZ"/>
+        </addColumn>
+        <sql>
+            -- Newest-deletion-first restore list, live-row filtering.
+            CREATE INDEX idx_variation_deleted_at
+                ON variation(deleted_at DESC) WHERE deleted_at IS NOT NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

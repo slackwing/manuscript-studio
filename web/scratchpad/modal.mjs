@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor } from './editor-core.mjs?v=7';
+import { createScratchpadEditor } from './editor-core.mjs?v=8';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=8';
+  link.href = 'scratchpad/scratchpad.css?v=9';
   document.head.appendChild(link);
 }
 

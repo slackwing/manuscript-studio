@@ -22,5 +22,6 @@
     <include file="changelog/013-scratchpad-opened.xml"/>
     <include file="changelog/014-wordcount-history.xml"/>
     <include file="changelog/015-variations.xml"/>
+    <include file="changelog/016-variation-soft-delete.xml"/>
 
 </databaseChangeLog>

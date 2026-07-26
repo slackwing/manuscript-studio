@@ -164,7 +164,19 @@ export const variationApi = {
   freeze: (id, frozen) => apiCall('POST', `api/variations/${id}/freeze`, { frozen }),
   link: (snippetId, manuscriptId) => apiCall('PUT', `api/snippets/${snippetId}/link`, { manuscript_id: manuscriptId }),
   canonize: (id, manuscriptId) => apiCall('POST', `api/variations/${id}/canonize`, { manuscript_id: manuscriptId }),
+  softDelete: (id) => apiCall('DELETE', `api/variations/${id}`),
+  restore: (id) => apiCall('POST', `api/variations/${id}/restore`),
+  listDeleted: (q) => fetchJSON(`api/variations/deleted?q=${encodeURIComponent(q || '')}`, {}, false),
 };
+
+// fmtDeleted renders a deleted_at ISO timestamp as a short local date for the
+// Restore… list (e.g. "Jul 26"). Empty/invalid → ''.
+function fmtDeleted(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 // letterOf(1) = 'A'. The ordinal is an integer so a future cap lift can
 // render AA/AB — for now the server refuses past Z.
@@ -382,7 +394,7 @@ class SnippetView {
     if (text.trim()) {
       renderBookText(host, text);
     } else {
-      host.innerHTML = `<div class="sn-empty">${frozen ? 'Empty (frozen) variation.' : 'Empty variation — click to write.'}</div>`;
+      host.innerHTML = `<div class="sn-empty">${frozen ? 'Empty (frozen) variation.' : 'Click to write.'}</div>`;
     }
     host.addEventListener('click', () => {
       if (!this.frozen()) { this.mode = 'edit'; this.renderBody(); }
@@ -620,14 +632,26 @@ class SnippetView {
     }
   }
 
-  removeWidget(broken) {
+  async removeWidget(broken) {
     const pos = this.getPos();
     if (pos == null) return;
     const label = broken
       ? 'Remove this widget?'
-      : `Remove this snippet widget from the scratchpad? Variation ${this.letter()} itself is kept — still reachable from its related variations.`;
+      : `Delete variation ${this.letter()}? It's soft-deleted — bring it back any time via the ⧉ Snippet ▾ menu → Restore…`;
     if (!window.confirm(label)) return;
-    this.view.dispatch(this.view.state.tr.delete(pos, pos + this.node.nodeSize));
+    // Soft-delete the variation first (a broken widget has no live variation to
+    // delete). If the delete fails, keep the widget so nothing is lost.
+    if (!broken && this.varId) {
+      try {
+        await variationApi.softDelete(this.varId);
+      } catch (e) {
+        alert('Could not delete variation: ' + e.message);
+        return;
+      }
+    }
+    const freshPos = this.getPos();
+    if (freshPos == null) return;
+    this.view.dispatch(this.view.state.tr.delete(freshPos, freshPos + this.node.nodeSize));
     this.view.focus();
   }
 
@@ -806,12 +830,54 @@ function buildSnippetMenu(toolbarEl, getView) {
   const renderRoot = () => {
     pop.innerHTML = `
       <button type="button" class="sn-ins-new">New snippet</button>
-      <button type="button" class="sn-ins-based">Based on…</button>`;
+      <button type="button" class="sn-ins-based">Based on…</button>
+      <button type="button" class="sn-ins-restore">Restore…</button>`;
     pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
       try { insertVariation(await variationApi.createNew()); }
       catch (e) { alert('Could not create snippet: ' + e.message); }
     });
     pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
+    pop.querySelector('.sn-ins-restore').addEventListener('click', renderRestore);
+  };
+
+  // Restore… picker: soft-deleted variations, newest deletion first. Selecting
+  // one un-deletes it and inserts its widget.
+  const renderRestore = async () => {
+    pop.innerHTML = `
+      <input type="text" class="sn-ins-q" placeholder="Search deleted variations…" autocomplete="off">
+      <div class="sn-ins-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
+    const q = pop.querySelector('.sn-ins-q');
+    const list = pop.querySelector('.sn-ins-list');
+    q.focus();
+    const load = async () => {
+      let rows;
+      try {
+        rows = (await variationApi.listDeleted(q.value.trim())).variations || [];
+      } catch (e) {
+        list.innerHTML = '<span class="sn-linkpop-empty">Could not load deleted variations</span>';
+        return;
+      }
+      list.innerHTML = rows.length
+        ? rows.map(r => `
+          <button type="button" data-vid="${r.variation_id}">
+            <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
+            <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
+            <span class="sn-ins-deleted">${esc(fmtDeleted(r.deleted_at))}</span>
+          </button>`).join('')
+        : '<span class="sn-linkpop-empty">No deleted variations</span>';
+    };
+    let t;
+    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+    q.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    list.addEventListener('click', async (e) => {
+      const b = e.target.closest('button[data-vid]');
+      if (!b) return;
+      try {
+        const ctx = await variationApi.restore(parseInt(b.dataset.vid, 10));
+        insertVariation(ctx);
+      } catch (err) { alert('Could not restore variation: ' + err.message); }
+    });
+    await load();
   };
 
   const renderPicker = async () => {

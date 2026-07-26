@@ -114,6 +114,64 @@ func (h *VariationHandlers) HandleListVariations(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(map[string]interface{}{"variations": rows})
 }
 
+// HandleListDeletedVariations: GET /api/variations/deleted?q= — soft-deleted
+// variations for the Restore… picker, newest deletion first.
+func (h *VariationHandlers) HandleListDeletedVariations(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	rows, err := h.DB.ListDeletedVariations(r.Context(), session.Username, r.URL.Query().Get("q"))
+	if err != nil {
+		http.Error(w, "Failed to list deleted variations", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"variations": rows})
+}
+
+// HandleDeleteVariation: DELETE /api/variations/{id} — soft-delete (sets
+// deleted_at). The widget is removed client-side; Restore… brings it back.
+func (h *VariationHandlers) HandleDeleteVariation(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok || !h.requireCSRF(w, r) {
+		return
+	}
+	id, ok := h.variationID(w, r)
+	if !ok {
+		return
+	}
+	if err := h.DB.SoftDeleteVariation(r.Context(), session.Username, id); err != nil {
+		writeVariationError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleRestoreVariation: POST /api/variations/{id}/restore — clears
+// deleted_at. Returns the restored variation context (the widget payload).
+func (h *VariationHandlers) HandleRestoreVariation(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok || !h.requireCSRF(w, r) {
+		return
+	}
+	id, ok := h.variationID(w, r)
+	if !ok {
+		return
+	}
+	if err := h.DB.RestoreVariation(r.Context(), session.Username, id); err != nil {
+		writeVariationError(w, err)
+		return
+	}
+	out, err := h.DB.GetVariationContext(r.Context(), session.Username, id)
+	if err != nil {
+		writeVariationError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
 func (h *VariationHandlers) variationID(w http.ResponseWriter, r *http.Request) (int, bool) {
 	id, err := strconv.Atoi(chi.URLParam(r, "variation_id"))
 	if err != nil || id <= 0 {

@@ -241,8 +241,13 @@ func (s *Server) setupRouter() {
 			r.Post("/snippets", s.variationHandlers.HandleCreateSnippet)
 			r.Put("/snippets/{snippet_id}/link", s.variationHandlers.HandleLinkSnippet)
 			r.Get("/variations", s.variationHandlers.HandleListVariations)
+			// Static path before the {variation_id} pattern so chi doesn't
+			// treat "deleted" as an id.
+			r.Get("/variations/deleted", s.variationHandlers.HandleListDeletedVariations)
 			r.Get("/variations/{variation_id}", s.variationHandlers.HandleGetVariation)
 			r.Put("/variations/{variation_id}", s.variationHandlers.HandleUpdateVariation)
+			r.Delete("/variations/{variation_id}", s.variationHandlers.HandleDeleteVariation)
+			r.Post("/variations/{variation_id}/restore", s.variationHandlers.HandleRestoreVariation)
 			r.Post("/variations/{variation_id}/freeze", s.variationHandlers.HandleFreezeVariation)
 			r.Post("/variations/{variation_id}/canonize", s.variationHandlers.HandleCanonizeVariation)
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)

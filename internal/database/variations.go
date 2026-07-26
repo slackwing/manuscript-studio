@@ -202,7 +202,7 @@ func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*
 		SELECT v.variation_id, v.snippet_id, v.ordinal, v.parent_variation_id, v.text, v.frozen, v.created_at, v.updated_at,
 		       s.user_id, s.linked_manuscript_id, s.linked_manuscript_name, s.canon_variation_id
 		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
-		WHERE v.variation_id = $1
+		WHERE v.variation_id = $1 AND v.deleted_at IS NULL
 	`, id).Scan(&out.Variation.VariationID, &out.Variation.SnippetID, &out.Variation.Ordinal,
 		&out.Variation.ParentVariationID, &out.Variation.Text, &out.Variation.Frozen,
 		&out.Variation.CreatedAt, &out.Variation.UpdatedAt,
@@ -228,7 +228,7 @@ func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*
 	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT variation_id, ordinal, frozen FROM variation
-		WHERE parent_variation_id = $1 AND ordinal IS NOT NULL
+		WHERE parent_variation_id = $1 AND ordinal IS NOT NULL AND deleted_at IS NULL
 		ORDER BY ordinal
 	`, id)
 	if err != nil {
@@ -323,7 +323,7 @@ func (db *DB) ListVariationsForPicker(ctx context.Context, userID, q string) ([]
 		       COALESCE(s.linked_manuscript_id, 0), s.linked_manuscript_name,
 		       (s.canon_variation_id IS NOT NULL) AS canonized
 		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
-		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL
+		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NULL
 		  AND ($2 = '' OR v.text ILIKE '%' || $2 || '%')
 		ORDER BY v.updated_at DESC
 		LIMIT 50
@@ -340,6 +340,80 @@ func (db *DB) ListVariationsForPicker(ctx context.Context, userID, q string) ([]
 			return nil, err
 		}
 		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// DeletedVariation is a soft-deleted variation shown in the Restore… picker.
+type DeletedVariation struct {
+	VariationID          int       `json:"variation_id"`
+	SnippetID            string    `json:"snippet_id"`
+	Ordinal              int       `json:"ordinal"`
+	Preview              string    `json:"preview"`
+	Frozen               bool      `json:"frozen"`
+	DeletedAt            time.Time `json:"deleted_at"`
+	LinkedManuscriptName string    `json:"linked_manuscript_name"`
+}
+
+// SoftDeleteVariation marks a lettered variation deleted (owner-checked). The
+// canon variation (NULL ordinal) can't be deleted this way. Idempotent: a
+// re-delete just refreshes deleted_at.
+func (db *DB) SoftDeleteVariation(ctx context.Context, userID string, id int) error {
+	var owner string
+	var ordinal *int
+	err := db.Pool.QueryRow(ctx, `
+		SELECT s.user_id, v.ordinal FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		WHERE v.variation_id = $1
+	`, id).Scan(&owner, &ordinal)
+	if err != nil || owner != userID {
+		return ErrNotOwner
+	}
+	if ordinal == nil {
+		return ErrVariationCanon
+	}
+	_, err = db.Pool.Exec(ctx, `UPDATE variation SET deleted_at = NOW() WHERE variation_id = $1`, id)
+	return err
+}
+
+// RestoreVariation clears deleted_at (owner-checked), bringing a soft-deleted
+// variation back. A frozen variation restores fine — it stays frozen.
+func (db *DB) RestoreVariation(ctx context.Context, userID string, id int) error {
+	var owner string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT s.user_id FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		WHERE v.variation_id = $1
+	`, id).Scan(&owner)
+	if err != nil || owner != userID {
+		return ErrNotOwner
+	}
+	_, err = db.Pool.Exec(ctx, `UPDATE variation SET deleted_at = NULL WHERE variation_id = $1`, id)
+	return err
+}
+
+// ListDeletedVariations feeds the Restore… picker: the user's soft-deleted
+// lettered variations, most recently DELETED first. q filters on text.
+func (db *DB) ListDeletedVariations(ctx context.Context, userID, q string) ([]DeletedVariation, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT v.variation_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.frozen,
+		       v.deleted_at, s.linked_manuscript_name
+		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NOT NULL
+		  AND ($2 = '' OR v.text ILIKE '%' || $2 || '%')
+		ORDER BY v.deleted_at DESC
+		LIMIT 50
+	`, userID, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DeletedVariation{}
+	for rows.Next() {
+		var d DeletedVariation
+		if err := rows.Scan(&d.VariationID, &d.SnippetID, &d.Ordinal, &d.Preview, &d.Frozen,
+			&d.DeletedAt, &d.LinkedManuscriptName); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
 	return out, rows.Err()
 }
