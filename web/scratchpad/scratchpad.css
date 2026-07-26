@@ -222,7 +222,12 @@
 .sn-widget {
   border: 1px solid #c9c2b2;
   background: #fbfaf7;
-  margin: 0 0 0.9em;
+  /* Inset from the scratchpad text left & right so a snippet reads as a card
+     laid ON the paper, narrower than the surrounding prose. The soft outset
+     shadow lifts it off the warm paper. */
+  margin: 0.3em 24px 0.9em;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(60, 50, 30, 0.12);
   /* The editor surface is white-space: pre-wrap — without this, the
      widget template's own newlines/indentation render as blank strips
      (and paint grey when the node is selected). */
