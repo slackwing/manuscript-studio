@@ -168,6 +168,9 @@ func (h *VariationHandlers) HandleRestoreVariation(w http.ResponseWriter, r *htt
 		writeVariationError(w, err)
 		return
 	}
+	if out.Snippet.LinkedManuscriptID != 0 {
+		out.Snippet.LinkedManuscriptName = h.manuscriptDisplayName(r, out.Snippet.LinkedManuscriptID)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
 }
@@ -196,6 +199,12 @@ func (h *VariationHandlers) HandleGetVariation(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		writeVariationError(w, err)
 		return
+	}
+	// Re-resolve the linked manuscript name fresh (never trust the stored
+	// snippet column): a stale value — e.g. an old "darkfeather.git" from the
+	// repo-basename bug — self-heals, and later renames propagate.
+	if out.Snippet.LinkedManuscriptID != 0 {
+		out.Snippet.LinkedManuscriptName = h.manuscriptDisplayName(r, out.Snippet.LinkedManuscriptID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
@@ -314,11 +323,25 @@ func (h *VariationHandlers) HandleCanonizeVariation(w http.ResponseWriter, r *ht
 }
 
 func (h *VariationHandlers) manuscriptDisplayName(r *http.Request, manuscriptID int) string {
-	if m, err := h.DB.GetManuscriptByID(r.Context(), manuscriptID); err == nil && m != nil {
-		if m.DisplayName != "" {
-			return m.DisplayName
-		}
-		return filepath.Base(m.RepoPath)
+	m, err := h.DB.GetManuscriptByID(r.Context(), manuscriptID)
+	if err != nil || m == nil {
+		return ""
 	}
-	return ""
+	if m.DisplayName != "" {
+		return m.DisplayName
+	}
+	// Fall back to the manuscript's config NAME (title-cased), NOT the repo
+	// basename — a manuscript may live in a repo whose name differs entirely
+	// (e.g. the-wildfire lives in slackwing/darkfeather, so filepath.Base would
+	// wrongly show "darkfeather.git"). Match the DB row back to its config
+	// entry by repo_path + file_path.
+	for i := range h.Config.Manuscripts {
+		mc := &h.Config.Manuscripts[i]
+		if mc.Repository.CloneURL() == m.RepoPath && mc.Repository.Path == m.FilePath {
+			return displayNameFor("", mc.Name)
+		}
+	}
+	// No config match — use the manuscript's own name if we can derive one,
+	// else the file's base name (never the repo's).
+	return displayNameFor("", filepath.Base(m.FilePath))
 }
