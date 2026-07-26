@@ -105,11 +105,17 @@ body.home-page {
 }
 .card-meta {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 2px;
   font-size: 11px;
   color: #999;
+  margin: 0;
 }
+/* Each stamp is an unbreakable unit — no mid-stamp wrapping, no dots. */
+.card-meta span { white-space: nowrap; }
+.card-meta .card-badge { margin-left: auto; }
 .card-badge {
   font-size: 10px;
   font-weight: 600;
