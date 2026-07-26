@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/slackwing/manuscript-studio/internal/models"
 	"github.com/slackwing/manuscript-studio/internal/scratchpad"
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 // Scratchpad persistence (SCRATCHPAD_PLAN.md §4/§5). The doc JSONB is the
@@ -286,16 +287,29 @@ func (db *DB) GetManuscriptOpenedMap(ctx context.Context, userID string) (map[in
 	return out, rows.Err()
 }
 
-// GetMigrationWordCount sums whitespace-separated words across a migration's
-// sentences (home cards show words, not sentences). Command tokens count a
-// word or two — fine at card granularity.
+// GetMigrationWordCount counts real prose words across a migration's
+// sentences (home cards show words, not sentences). Unlike a raw whitespace
+// count, this EXCLUDES &-command scaffolding — headings, anchor/part/chapter
+// labels, &meta, &placeholder details, and inline command tokens — so the
+// number reflects book prose, not markup (see sentence.CountProseWords).
 func (db *DB) GetMigrationWordCount(ctx context.Context, migrationID int) (int, error) {
-	var n int
-	err := db.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(GREATEST(1, array_length(regexp_split_to_array(btrim(text), '\s+'), 1))), 0)
-		FROM sentence WHERE migration_id = $1
-	`, migrationID).Scan(&n)
-	return n, err
+	rows, err := db.Pool.Query(ctx, `
+		SELECT text FROM sentence WHERE migration_id = $1
+	`, migrationID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	total := 0
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			return 0, err
+		}
+		total += sentence.CountProseWords(text)
+	}
+	return total, rows.Err()
 }
 
 // TouchScratchpadOpened stamps landing-page recency when the modal opens.
