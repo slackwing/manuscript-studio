@@ -21,11 +21,11 @@
  */
 
 const WriteSysCommand = {
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'end'],
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'snippet', 'end'],
   // Block commands stand alone as their own sentence when on their own line.
   // &meta is block but renders as nothing (it carries a setting). anchor,
   // placeholder, and end are block only when sole line content (segman).
-  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, end: true },
+  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, snippet: true, end: true },
 
   // Placeholder t-shirt sizes. Sentences double-ish; paragraphs are
   // Fibonacci. The asymmetry is deliberate (PLACEHOLDER_PLAN.md).
@@ -240,7 +240,7 @@ const WriteSysCommand = {
       const cmd = this.parse(chars.slice(i).join(''));
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
-      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'end') {
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'snippet' || cmd.kind === 'end') {
         out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end });
       }
       i = end;
@@ -272,6 +272,10 @@ const WriteSysCommand = {
         // A block anchor renders as a glyph (⚓), NOT its label text. The label
         // is outline metadata and shows on hover (title) + in the outline nav.
         return { tag: 'div', cls: 'cmd-anchor', visible: '', description: '', glyph: true, label: cmd.args[0] || '' };
+      case 'snippet':
+        // A canon-region opener (VARIATIONS_PLAN.md) renders exactly like a
+        // block anchor — the extra class is a styling/selection hook.
+        return { tag: 'div', cls: 'cmd-anchor cmd-snippet', visible: '', description: '', glyph: true, label: cmd.args[0] || '' };
       default:
         return null;
     }

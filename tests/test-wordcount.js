@@ -3,17 +3,24 @@
 // manuscript per day (committed / effective / linked-snippet words, all
 // users) and the homepage + info-header wordcounts source from it.
 //
-// Flow: baseline compute → add a scratchpad with a snippet LINKED to the
-// test manuscript → recompute → snippet words appear in words_snippets and
-// in the table-sourced word_count of /api/home and /api/migrations/latest.
+// Variation semantics (VARIATIONS_PLAN §6): a linked, non-canonized snippet
+// group contributes exactly ONE representative — its most recently updated
+// variation — because sibling variations are alternatives of one passage.
+//
+// Flow: baseline compute → linked group with TWO variations (7-word A,
+// 9-word B updated later) + an unlinked group → recompute → words_snippets
+// counts B only (9), and /api/home + /api/migrations/latest serve the
+// table-sourced total.
 const {
   TEST_MANUSCRIPT_ID, API_BASE_URL, TEST_USERNAME, TEST_PASSWORD, SYSTEM_TOKEN,
   cleanupTestAnnotations,
 } = require('./test-utils');
 
-// "Seven words of progress toward the book." → 7 prose words.
-const SNIPPET_TEXT = 'Seven words of progress toward the book.';
-const SNIPPET_WORDS = 7;
+// Variation A: 7 prose words. Variation B (updated later): 9 — the
+// representative, since it's the most recently updated.
+const TEXT_A = 'Seven words of progress toward the book.';
+const TEXT_B = 'Nine whole words of progress toward the book now.';
+const REP_WORDS = 9;
 
 (async () => {
   console.log('=== wordcount history e2e ===\n');
@@ -48,7 +55,6 @@ const SNIPPET_WORDS = 7;
     headers: { Authorization: `Bearer ${SYSTEM_TOKEN}`, 'Content-Type': 'application/json' },
   });
 
-  let padId = null;
   try {
     const compute = async () => {
       const r = await admin('/admin/wordcount-compute', { method: 'POST' });
@@ -64,43 +70,31 @@ const SNIPPET_WORDS = 7;
     check('baseline effective == committed (no suggestions)', base.words_effective === base.words_committed);
     check('baseline snippet words == 0', base.words_snippets === 0);
 
-    // --- a scratchpad with a snippet LINKED to the test manuscript ---
-    const padResp = await authed('/scratchpads', { method: 'POST', body: JSON.stringify({ title: 'wordcount e2e' }) });
-    padId = (await padResp.json()).scratchpad_id;
-    const doc = {
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [{ type: 'text', text: 'scratch notes do not count' }] },
-        {
-          type: 'snippet',
-          attrs: {
-            blockId: 'wc-e2e-block', text: SNIPPET_TEXT,
-            manuscriptId: 0, refSlug: '', label: '', snapshotText: '',
-            canonizedMigrationId: 0, canonizedAt: '', createdAt: new Date().toISOString(),
-            linkedManuscriptId: TEST_MANUSCRIPT_ID, linkedManuscriptName: 'Test Manuscripts',
-          },
-        },
-        // An UNLINKED draft must not count toward any manuscript.
-        {
-          type: 'snippet',
-          attrs: {
-            blockId: 'wc-e2e-unlinked', text: 'These words float free of any book.',
-            manuscriptId: 0, refSlug: '', label: '', snapshotText: '',
-            canonizedMigrationId: 0, canonizedAt: '', createdAt: new Date().toISOString(),
-            linkedManuscriptId: 0, linkedManuscriptName: '',
-          },
-        },
-      ],
-    };
-    const putResp = await authed(`/scratchpads/${padId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ title: 'wordcount e2e', doc }),
+    // --- a LINKED group with two variations + an unlinked group ---
+    const groupCtx = await (await authed('/snippets', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
+    const varA = groupCtx.variation.variation_id;
+    check('snippet group + variation A created', groupCtx.variation.ordinal === 1, `#${groupCtx.snippet.snippet_id}`);
+    let r = await authed(`/variations/${varA}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_A }) });
+    check('A text saved', r.status === 204);
+    r = await authed(`/snippets/${groupCtx.snippet.snippet_id}/link`, {
+      method: 'PUT', body: JSON.stringify({ manuscript_id: TEST_MANUSCRIPT_ID }),
     });
-    check('scratchpad with linked snippet saved', putResp.ok);
+    check('group linked to the test manuscript', r.ok);
+    // Variation B, based on A, updated later → the representative.
+    const ctxB = await (await authed('/snippets', {
+      method: 'POST', body: JSON.stringify({ mode: 'variation', source_variation_id: varA, freeze_source: false }),
+    })).json();
+    r = await authed(`/variations/${ctxB.variation.variation_id}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_B }) });
+    check('B text saved (most recently updated)', r.status === 204);
+    // An UNLINKED group must not count toward any manuscript.
+    const loose = await (await authed('/snippets', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
+    await authed(`/variations/${loose.variation.variation_id}`, {
+      method: 'PUT', body: JSON.stringify({ text: 'These words float free of any book.' }),
+    });
 
     const after = await compute();
-    check('linked snippet words counted', after.words_snippets === SNIPPET_WORDS,
-      `got ${after.words_snippets}, want ${SNIPPET_WORDS}`);
+    check('ONE representative counted (B, not A+B)', after.words_snippets === REP_WORDS,
+      `got ${after.words_snippets}, want ${REP_WORDS}`);
     check('committed unchanged by snippets', after.words_committed === base.words_committed);
 
     // --- read paths source from the table (feature enabled in dev) ---
@@ -117,15 +111,12 @@ const SNIPPET_WORDS = 7;
     const hist = await (await authed(`/manuscripts/${TEST_MANUSCRIPT_ID}/wordcount-history`)).json();
     check('history endpoint enabled', hist.enabled === true);
     const today = (hist.rows || [])[hist.rows.length - 1];
-    check('history endpoint returns today\'s row', today && today.words_snippets === SNIPPET_WORDS);
+    check('history endpoint returns today\'s row', today && today.words_snippets === REP_WORDS);
   } finally {
-    try {
-      if (padId) await authed(`/scratchpads/${padId}`, { method: 'DELETE' });
-      // Leave the table consistent for other consumers: recompute now that
-      // the pad is gone.
-      await admin('/admin/wordcount-compute', { method: 'POST' });
-    } catch (e) { /* best effort */ }
+    // cleanupTestAnnotations wipes this user's snippets/variations; then
+    // recompute so the table stays consistent for other consumers.
     await cleanupTestAnnotations();
+    try { await admin('/admin/wordcount-compute', { method: 'POST' }); } catch (e) { /* best effort */ }
   }
 
   console.log(failed === 0 ? '\n✅ Test passed' : `\n❌ ${failed} check(s) failed`);

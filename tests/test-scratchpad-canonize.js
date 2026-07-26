@@ -1,14 +1,23 @@
-// Scratchpad + Canonize end-to-end (SCRATCHPAD_PLAN.md): create a scratchpad,
-// add a snippet (preview-first widget; click flips it into the monospace
-// editor), canonize it into the test manuscript from the book view's +
-// affordance, verify the ONE suggested edit renders as anchor + content +
-// (hidden) end in the book, and that the scratchpad widget flips to a
-// Canon Live view resolved from the effective manuscript, with the
-// As-canonized snapshot tab intact. Also uploads a >1MiB image — a
-// regression guard for the global request-body cap that used to truncate
-// multipart uploads ("Invalid multipart form").
+// Variations + Canonize end-to-end (VARIATIONS_PLAN.md): create a pad and a
+// snippet (variation A), write via the preview-first click-to-edit widget,
+// link/unlink the GROUP, branch variation B (freezing A), then dub B canon
+// from the book view's + affordance — one suggested edit wrapping B's text
+// in &snippet#<id>{label} … &end#<id>. Verify the region renders in the
+// book (anchor-like marker + outline label), and that the widgets show the
+// parent/child letter tabs, the snowflake freeze state, and the blue Canon
+// tab that live-resolves from the effective manuscript with the
+// as-canonized snapshot behind an in-body toggle.
+//
+// Also uploads a >1MiB image — regression guard for the global body cap.
 const { chromium } = require('playwright');
 const zlib = require('zlib');
+const {
+  TEST_URL,
+  cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination, paginationStamp, waitForRepagination,
+} = require('./test-utils');
+
+const HOME_URL = new URL('home.html', TEST_URL).href;
 
 // A real, valid PNG of random noise (incompressible → ~w*h*4 bytes) to
 // exercise the raised body limit on api/scratchpad-images.
@@ -45,16 +54,9 @@ function noisyPng(w, h) {
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
-const {
-  TEST_URL,
-  cleanupTestAnnotations, loginAsTestUser,
-  waitForPagination, paginationStamp, waitForRepagination,
-} = require('./test-utils');
-
-const HOME_URL = new URL('home.html', TEST_URL).href;
 
 (async () => {
-  console.log('=== scratchpad + canonize e2e ===\n');
+  console.log('=== variations + canonize e2e ===\n');
   let failed = 0;
   const check = (name, ok, detail = '') => {
     console.log(`${ok ? '✓' : '✗'} ${name}${detail ? ` (${detail})` : ''}`);
@@ -72,13 +74,15 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
 
   let padId = null;
   let boundaryId = null;
-  const SLUG = 'e2e-keg';
+  let snippetId = null;
+  let varA = null;
+  let varB = null;
   const BLOCK_TEXT = 'The keg arrived at noon. Nobody signed for it.\n\n\tBy dusk the yard was full.';
 
   try {
     await loginAsTestUser(page);
 
-    // --- home page: create a pad (opens THE modal), add a block, autosave ---
+    // --- home page: create a pad (opens THE modal), insert variation A ---
     await page.goto(HOME_URL);
     await page.waitForSelector('#home-new-pad', { timeout: 20000 });
     await page.click('#home-new-pad');
@@ -88,54 +92,38 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     check('pad created + modal editor loaded (hash carries id)', Number.isInteger(padId), `id ${padId}`);
 
     await page.fill('#spm-title', 'E2E pad');
-    await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
-    // Preview-first: a fresh draft shows its (empty) preview; a single
-    // click flips it into the monospace editor.
-    await page.waitForSelector('.sn-widget .sn-render .sn-empty', { timeout: 5000 });
+    const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+    varA = ctxA.variation.variation_id;
+    snippetId = ctxA.snippet.snippet_id;
+    check('snippet group + variation A created', ctxA.variation.ordinal === 1 && /^[a-z0-9]{10}$/.test(snippetId), `#${snippetId}`);
+
+    // Preview-first: fresh variation shows its (empty) preview; a single
+    // click flips into the monospace editor; blur returns to preview.
+    await page.waitForSelector('.sn-widget .sn-render .sn-empty', { timeout: 10000 });
     const draftStatus = await page.textContent('.sn-widget .sn-status');
-    check('draft status reads Manuscript Snippet · draft', /Manuscript Snippet · draft/.test(draftStatus), draftStatus);
+    check('status reads Manuscript Snippet · A · draft', /Manuscript Snippet · A · draft/.test(draftStatus), draftStatus.trim());
     await page.click('.sn-widget .sn-render');
     await page.waitForSelector('.sn-widget .sn-text', { timeout: 5000 });
     await page.fill('.sn-widget .sn-text', BLOCK_TEXT);
     await page.locator('.sn-widget .sn-text').blur();
-    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
-    check('snippet text autosaved', true);
-
-    // Blur returns the widget to preview, rendered through the book
-    // pipeline (shadow root).
-    await page.waitForSelector('.sn-widget .sn-render', { timeout: 5000 });
-    const previewText = await page.evaluate(() => {
+    await page.waitForFunction(() => {
       const host = document.querySelector('.sn-widget .sn-render');
-      return host && host.shadowRoot ? host.shadowRoot.textContent : '';
-    });
-    check('draft preview renders book-style after blur', /keg arrived at noon/.test(previewText));
+      return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
+    }, null, { timeout: 10000 });
+    check('variation text autosaved; preview renders book-style after blur', true);
 
-    // --- link / unlink via the header affordance ---
+    // --- link / unlink the GROUP via the header affordance ---
     await page.click('.sn-widget .sn-linkbtn');
     await page.waitForSelector('.sn-linkpop button[data-mid]', { timeout: 5000 });
     await page.click('.sn-linkpop button[data-mid]');
     await page.waitForSelector('.sn-widget .sn-linkchip', { timeout: 5000 });
     const chipName = await page.textContent('.sn-widget .sn-linkchip .sn-linkname');
-    check('link picker links the snippet (chip shows name)', !!chipName.trim(), chipName.trim());
+    check('link picker links the group (chip shows name)', !!chipName.trim(), chipName.trim());
     await page.click('.sn-widget .sn-unlink');
     await page.waitForSelector('.sn-widget .sn-linkbtn', { timeout: 5000 });
     check('chip × unlinks (link button back)', true);
-    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
 
-    // Table + image machinery smoke checks. Selection sits ON the freshly
-    // inserted snippet atom — park it at doc end first so the image
-    // insert (replaceSelectionWith) can't swallow the block.
-    await page.evaluate(() => {
-      const sp = window.WriteSysScratchpad;
-      const { table, table_row, table_cell } = sp.schema.nodes;
-      const cell = () => table_cell.createAndFill();
-      const rows = [0, 1].map(() => table_row.create(null, [cell(), cell()]));
-      sp.view.dispatch(sp.view.state.tr.insert(0, table.create(null, rows)));
-      const st = sp.view.state;
-      sp.view.dispatch(st.tr.setSelection(sp.pm.Selection.atEnd(st.doc)));
-    });
-    check('table inserted', await page.locator('.ProseMirror table').count() === 1);
-    // >1MiB PNG: would have been truncated by the old global body cap.
+    // --- image machinery: >1MiB PNG (old body cap regression) ---
     const png = noisyPng(840, 840);
     check('test image exceeds the old 1MiB cap', png.length > (1 << 20), `${png.length} bytes`);
     await page.setInputFiles('#spm-image-input', { name: 'big.png', mimeType: 'image/png', buffer: png });
@@ -146,83 +134,138 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       return r.ok && (r.headers.get('content-type') || '').startsWith('image/');
     });
     check('image uploaded and served', imgOk === true);
-    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
 
-    // --- book view: canonize via the + affordance ---
+    // --- branch: variation B based on A, freezing A ---
+    const ctxB = await page.evaluate((src) => window.WriteSysScratchpad.insertVariationOf(src, true), varA);
+    varB = ctxB.variation.variation_id;
+    check('variation B created from A (text copied, parent recorded, A frozen)',
+      ctxB.variation.ordinal === 2 && ctxB.variation.text.includes('keg arrived')
+      && ctxB.variation.parent_variation_id === varA && ctxB.parent.frozen === true);
+    await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2, null, { timeout: 10000 });
+    const bWidget = page.locator(`.sn-widget[data-variation-id="${varB}"]`);
+    await bWidget.locator('.sn-tab-parent').waitFor({ timeout: 10000 });
+    check('B shows parent tab A (lineage icon)', (await bWidget.locator('.sn-tab-parent').textContent()).includes('A'));
+
+    // Parent tab renders A read-only.
+    await bWidget.locator('.sn-tab-parent').click();
+    await page.waitForFunction((vid) => {
+      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      const host = w && w.querySelector('.sn-render');
+      return host && host.shadowRoot && /keg arrived/i.test(host.shadowRoot.textContent);
+    }, varB, { timeout: 10000 });
+    check('parent tab shows A read-only', true);
+
+    // A's widget after reload: frozen (snowflake pressed) + child tab B.
+    // (page.goto to the same URL is a no-op hash change — reload instead.)
+    await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
+    await page.reload();
+    await page.waitForFunction((vid) => {
+      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      return w && /frozen/.test((w.querySelector('.sn-status') || {}).textContent || '');
+    }, varA, { timeout: 20000 });
+    const aWidget = page.locator(`.sn-widget[data-variation-id="${varA}"]`);
+    check('A is frozen after being branched with freeze', await aWidget.locator('.sn-freeze.pressed').count() === 1);
+    check('A shows child tab B', (await aWidget.locator('.sn-tab').allTextContents()).join('').includes('B'));
+
+    // Frozen preview does not open the editor on click.
+    await aWidget.locator('.sn-render').click();
+    check('frozen A preview refuses edit', await aWidget.locator('.sn-text').count() === 0);
+    // Unfreeze → refreeze via the snowflake.
+    await aWidget.locator('.sn-freeze').click();
+    await page.waitForFunction((vid) => {
+      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      return w && w.querySelector('.sn-freeze') && !w.querySelector('.sn-freeze').classList.contains('pressed');
+    }, varA, { timeout: 10000 });
+    check('snowflake unfreezes A', true);
+    await aWidget.locator('.sn-freeze').click();
+    await page.waitForFunction((vid) => {
+      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      return w && w.querySelector('.sn-freeze.pressed');
+    }, varA, { timeout: 10000 });
+
+    // --- book view: canonize B via the + affordance ---
     await page.goto(TEST_URL);
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.waitForSelector('.import-zone .import-tab', { timeout: 15000 });
     await page.evaluate(() => document.querySelector('.import-zone .import-tab').click());
     await page.waitForSelector('#import-modal', { timeout: 5000 });
-    await page.selectOption('#im-pad', String(padId));
     await page.waitForSelector('input[name="im-block"]', { timeout: 10000 });
-    await page.check('input[name="im-block"]');
-    await page.fill('#im-slug', SLUG);
+    const picked = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.im-block'));
+      const b = rows.find(r => r.querySelector('.im-block-letter').textContent === 'B');
+      if (!b) return false;
+      b.querySelector('input').click();
+      return true;
+    });
+    check('canonize modal lists variations; B picked', picked === true);
     await page.fill('#im-label', 'Keg Party');
     const stamp = await paginationStamp(page);
     await page.click('#im-go');
     await page.waitForSelector('#import-modal', { state: 'detached', timeout: 20000 });
     check('canonize modal completed', true);
-    await waitForRepagination(page, stamp); // suggestion re-render completed
-    const book = await page.evaluate((slug) => {
-      const anchor = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${slug}"], .pagedjs_pages .inline-anchor[data-slug="${slug}"]`);
-      const end = document.querySelector(`.pagedjs_pages .cmd-end[data-slug="${slug}"]`);
+    await waitForRepagination(page, stamp);
+    const book = await page.evaluate((sid) => {
+      const opener = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${sid}"], .pagedjs_pages .inline-anchor[data-slug="${sid}"]`);
+      const end = document.querySelector(`.pagedjs_pages .cmd-end[data-slug="${sid}"]`);
       const content = Array.from(document.querySelectorAll('.pagedjs_pages .sentence'))
         .some(s => /keg arrived at noon/i.test(s.textContent));
       const outlineRow = Array.from(document.querySelectorAll('.outline-item.outline-anchor'))
         .find(n => /Keg Party/.test(n.textContent));
       return {
-        anchorFound: !!anchor,
+        openerFound: !!opener,
         endFound: !!end,
         endVisibleWhileSuggested: end ? !end.hidden : false,
         content,
         outlineRow: !!outlineRow,
       };
-    }, SLUG);
-    check('anchor renders in book (suggested)', book.anchorFound);
-    check('anchor label lists in the outline', book.outlineRow);
-    check('imported prose renders in book', book.content === true);
+    }, snippetId);
+    check('&snippet region opener renders in book (suggested)', book.openerFound);
+    check('snippet label lists in the outline', book.outlineRow);
+    check('canonized prose renders in book', book.content === true);
     check('&end present, visible as blue marker while suggested', book.endFound && book.endVisibleWhileSuggested);
 
-    const boundary = await page.evaluate((slug) => {
-      const anchor = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${slug}"] .sentence`);
-      return anchor ? anchor.dataset.sentenceId : null;
-    }, SLUG);
+    const boundary = await page.evaluate((sid) => {
+      const opener = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${sid}"] .sentence`);
+      return opener ? opener.dataset.sentenceId : null;
+    }, snippetId);
     boundaryId = boundary;
-    check('one suggestion carries the region (anchor shares boundary sentence id)', !!boundaryId, boundaryId);
+    check('one suggestion carries the region', !!boundaryId, boundaryId);
 
-    // --- widget via URL hash restore: canonized state, Live + snapshot ---
+    // --- widgets after canonize: Canon tab everywhere, blue state ---
     await page.goto(`${HOME_URL}#scratchpad=${padId}`);
-    await page.waitForSelector('.spm-overlay .sn-widget', { timeout: 20000 });
+    await page.waitForFunction(() => document.querySelectorAll('.sn-widget .sn-tab-canon').length === 2, null, { timeout: 20000 });
+    check('Canon tab appears on BOTH variations of the group', true);
+    check('canonized group wears the blue state', await page.locator('.sn-widget.sn-canon').count() === 2);
+
+    // Canon tab: live view resolves the region from the effective manuscript.
+    await page.locator(`.sn-widget[data-variation-id="${varB}"] .sn-tab-canon`).click();
     await page.waitForFunction(() => {
-      const el = document.querySelector('.sn-widget .sn-status');
-      return el && /Canon · #/.test(el.textContent) && el.classList.contains('sn-canonized');
-    }, null, { timeout: 10000 });
-    check('widget shows Canon status', true);
-    const canonBlue = await page.evaluate(() =>
-      document.querySelector('.sn-widget').classList.contains('sn-canon'));
-    check('canonized widget wears the blue bar', canonBlue === true);
-    // Canonizing auto-links; a canonized snippet's link is permanent (no ×).
-    const canonLink = await page.evaluate(() => ({
-      chip: !!document.querySelector('.sn-widget .sn-linkchip'),
-      name: (document.querySelector('.sn-widget .sn-linkname') || {}).textContent || '',
-      unlink: !!document.querySelector('.sn-widget .sn-unlink'),
-    }));
-    check('canonize auto-linked (chip, no unlink ×)', canonLink.chip && !canonLink.unlink, canonLink.name);
-    await page.waitForFunction(() => {
-      const host = document.querySelector('.sn-widget .sn-render');
+      const notes = Array.from(document.querySelectorAll('.sn-widget .sn-note'));
+      const live = notes.find(n => /effective manuscript/i.test(n.textContent));
+      if (!live) return false;
+      const host = live.parentElement.querySelector('.sn-render');
       return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
     }, null, { timeout: 15000 });
-    check('Live view resolves region from effective manuscript', true);
-    const note = await page.evaluate(() => document.querySelector('.sn-widget .sn-note').textContent);
-    check('Live note confirms effective source', /effective manuscript/i.test(note), note);
+    check('Canon tab live-resolves region from effective manuscript', true);
 
-    await page.click('.sn-widget [data-tab="snapshot"]');
-    const snap = await page.evaluate(() => {
-      const host = document.querySelector('.sn-widget .sn-render');
-      return host && host.shadowRoot ? host.shadowRoot.textContent : '';
-    });
-    check('As-canonized snapshot preserved', /keg arrived at noon/i.test(snap));
+    // In-body toggle to the as-canonized snapshot.
+    await page.click('.sn-canonswap');
+    await page.waitForFunction(() => {
+      const note = Array.from(document.querySelectorAll('.sn-widget .sn-note'))
+        .find(n => /As canonized/i.test(n.textContent));
+      if (!note) return false;
+      const host = note.parentElement.querySelector('.sn-render');
+      return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
+    }, null, { timeout: 10000 });
+    check('as-canonized snapshot behind the in-body toggle', true);
+
+    // Canonized group's link chip is permanent (no unlink ×).
+    const linkState = await page.evaluate(() => ({
+      chips: document.querySelectorAll('.sn-widget .sn-linkchip').length,
+      unlinks: document.querySelectorAll('.sn-widget .sn-unlink').length,
+    }));
+    check('canonize auto-linked the group (chips, no unlink ×)',
+      linkState.chips === 2 && linkState.unlinks === 0, JSON.stringify(linkState));
 
     check('no page errors', errs.length === 0, errs.slice(0, 3).join('; '));
   } finally {

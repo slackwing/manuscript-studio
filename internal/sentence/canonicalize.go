@@ -66,9 +66,9 @@ func canonicalizeBody(body string) string {
 	// Idempotent: any run of whitespace (spaces, tabs, OR the newline this rule
 	// itself inserts) between the anchor and following prose normalizes to a
 	// single "\n". Recognize an anchor command at the very start with trailing
-	// content.
-	if strings.HasPrefix(trimmed, "&anchor") {
-		if cmd, ok := ParseCommand(trimmed); ok && cmd.Kind == CmdAnchor {
+	// content. &snippet (canon region opener) follows the same rule.
+	if strings.HasPrefix(trimmed, "&anchor") || strings.HasPrefix(trimmed, "&snippet") {
+		if cmd, ok := ParseCommand(trimmed); ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSnippet) {
 			rest := trimmed[len(cmd.Raw):]
 			restTrimmed := strings.TrimLeft(rest, " \t\n")
 			if restTrimmed != "" {

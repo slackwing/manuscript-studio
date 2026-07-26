@@ -3,10 +3,11 @@
  * scratchpad page died; the singleton modal (modal.mjs) is the only host.
  *
  * ProseMirror (vendored bundle — scripts/vendor-prosemirror.sh) drives the
- * SCRATCHPAD surface only. Book content is NEVER edited with PM — a
- * snippet node's text is plain .manuscript source in a monospace
- * textarea, previewed/lived through the real book pipeline
- * (scratch-render.js → renderer.js in a shadow root with book.css).
+ * SCRATCHPAD surface only. Snippet content is NEVER edited with PM — since
+ * VARIATIONS_PLAN.md a snippet node is a PLACEMENT marker {variationId};
+ * the text lives in the variation tables and is edited in a monospace
+ * textarea, previewed through the real book pipeline (scratch-render.js →
+ * renderer.js in a shadow root with book.css).
  */
 import {
   Schema, Node as PMNode,
@@ -62,37 +63,16 @@ const coreNodes = {
       class: 'scratch-image',
     }],
   },
-  // The bridge into the book (SCRATCHPAD_PLAN.md §2/§3). Atom: PM never
-  // looks inside; the NodeView owns everything. Named "snippet" — docs
-  // saved before the rename carry "book_content" and are converted on
-  // load (modernizeDoc); the server accepts both names.
+  // A snippet PLACEMENT (VARIATIONS_PLAN.md): atom marker for one variation.
+  // All content/state lives server-side; the NodeView fetches its context.
   snippet: {
     group: 'block', atom: true, selectable: true,
-    attrs: {
-      blockId: { default: '' },
-      text: { default: '' },
-      manuscriptId: { default: 0 },
-      refSlug: { default: '' },
-      label: { default: '' },
-      snapshotText: { default: '' },
-      canonizedMigrationId: { default: 0 },
-      canonizedAt: { default: '' },
-      // When the snippet was first created (writing-time provenance).
-      // Snippets from before this field get NOW backfilled on load —
-      // approximate, but ensures every snippet carries a timestamp.
-      createdAt: { default: '' },
-      // Optional link pinning this snippet to ONE manuscript: it can only
-      // be canonized there, and its draft words count toward that
-      // manuscript's wordcount history. 0/'' = unlinked. Canonizing
-      // auto-links (stamped server-side).
-      linkedManuscriptId: { default: 0 },
-      linkedManuscriptName: { default: '' },
-    },
-    parseDOM: [
-      { tag: 'div[data-snippet]', getAttrs: () => ({}) },
-      { tag: 'div[data-book-content]', getAttrs: () => ({}) },
-    ],
-    toDOM: n => ['div', { 'data-snippet': n.attrs.blockId }],
+    attrs: { variationId: { default: 0 } },
+    parseDOM: [{
+      tag: 'div[data-variation-id]',
+      getAttrs: dom => ({ variationId: parseInt(dom.getAttribute('data-variation-id'), 10) || 0 }),
+    }],
+    toDOM: n => ['div', { 'data-variation-id': String(n.attrs.variationId) }],
   },
   text: { group: 'inline' },
   hard_break: {
@@ -116,24 +96,26 @@ const withTables = withLists.append(tableNodes({
 }));
 export const schema = new Schema({ nodes: withTables, marks: base.spec.marks });
 
-// Docs saved before the snippet rename store nodes as "book_content".
-// Convert in place before Node.fromJSON; the doc self-heals on next save.
+// Drop nodes this schema no longer understands: pre-variations snippet
+// nodes ("book_content", or "snippet" with text-in-attrs and no
+// variationId). The author deleted all snippets before the rearchitecture;
+// this is a belt-and-suspenders guard so a stray legacy doc still opens.
 function modernizeDoc(json) {
-  const walk = (n) => {
-    if (!n || typeof n !== 'object') return;
-    if (n.type === 'book_content') n.type = 'snippet';
-    if (n.type === 'snippet' && n.attrs && !n.attrs.createdAt) {
-      n.attrs.createdAt = new Date().toISOString();
+  const clean = (n) => {
+    if (!n || typeof n !== 'object') return null;
+    if (n.type === 'book_content') return null;
+    if (n.type === 'snippet' && !(n.attrs && n.attrs.variationId > 0)) return null;
+    if (Array.isArray(n.content)) {
+      n.content = n.content.map(clean).filter(Boolean);
     }
-    (n.content || []).forEach(walk);
+    return n;
   };
-  walk(json);
-  return json;
+  return clean(json) || { type: 'doc', content: [{ type: 'paragraph' }] };
 }
 
 // ------------------------------------------------- manuscript data cache
 
-// Per-target-manuscript effective data for Live views; module-level so
+// Per-target-manuscript effective data for Canon views; module-level so
 // several snippets targeting one book share fetches within a page.
 export const bookData = {
   cache: {},
@@ -155,12 +137,48 @@ export const bookData = {
   },
 };
 
+// ------------------------------------------------------ variation API
+
+async function apiCall(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const msg = (await r.text()).trim();
+    const err = new Error(msg || String(r.status));
+    err.status = r.status;
+    throw err;
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+export const variationApi = {
+  context: (id) => fetchJSON(`api/variations/${id}`, {}, false),
+  list: (q) => fetchJSON(`api/variations?q=${encodeURIComponent(q || '')}`, {}, false),
+  createNew: () => apiCall('POST', 'api/snippets', { mode: 'new' }),
+  createFrom: (sourceId, freeze) => apiCall('POST', 'api/snippets',
+    { mode: 'variation', source_variation_id: sourceId, freeze_source: freeze }),
+  saveText: (id, text) => apiCall('PUT', `api/variations/${id}`, { text }),
+  freeze: (id, frozen) => apiCall('POST', `api/variations/${id}/freeze`, { frozen }),
+  link: (snippetId, manuscriptId) => apiCall('PUT', `api/snippets/${snippetId}/link`, { manuscript_id: manuscriptId }),
+  canonize: (id, manuscriptId) => apiCall('POST', `api/variations/${id}/canonize`, { manuscript_id: manuscriptId }),
+};
+
+// letterOf(1) = 'A'. The ordinal is an integer so a future cap lift can
+// render AA/AB — for now the server refuses past Z.
+export const letterOf = (ordinal) => ordinal ? String.fromCharCode(64 + ordinal) : '·';
+
 // ----------------------------------------------------------- snippet view
 
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
+const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';
+const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M8 1v14M1.9 4.5l12.2 7M14.1 4.5l-12.2 7M8 1l-1.8 1.8M8 1l1.8 1.8M8 15l-1.8-1.8M8 15l1.8-1.8M1.9 4.5l.6 2.4M1.9 4.5l2.4-.6M14.1 11.5l-.6-2.4M14.1 11.5l-2.4.6M14.1 4.5l-2.4-.6M14.1 4.5l-.6 2.4M1.9 11.5l2.4.6M1.9 11.5l.6-2.4"/></svg>';
+const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
 
 // The user's accessible manuscripts, for the link picker. One fetch per
 // page life; failure resets so a retry can succeed.
@@ -174,80 +192,329 @@ function listManuscripts() {
   return manuscriptsPromise;
 }
 
-const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';
+// Views with unsaved variation text register a flush here so the modal's
+// close guard can flush (and refuse to close on failure). dirtyVariations
+// mirrors which views still hold unsaved text — isDirty() consults it.
+const variationFlushers = new Set();
+const dirtyVariations = new Set();
+
+function renderBookText(host, text) {
+  const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
+  window.WriteSysScratchRender.renderText(host, canon(text));
+}
 
 class SnippetView {
   constructor(node, view, getPos) {
     this.node = node;
     this.view = view;
     this.getPos = getPos;
+    this.varId = node.attrs.variationId;
     this.dom = document.createElement('div');
     this.dom.className = 'sn-widget';
-    this.dom.dataset.blockId = node.attrs.blockId;
-    // Preview-first: a snippet always shows its rendered form; a single
-    // click on a draft's preview flips it into the monospace editor.
-    this.mode = node.attrs.refSlug ? 'live' : 'preview';
+    this.dom.dataset.variationId = String(this.varId);
+    this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Manuscript Snippet · loading…</span></div><div class="sn-body"></div>';
+    this.tab = 'self';       // 'self' | 'canon' | other variationId (number)
+    this.mode = 'preview';   // self tab only: 'preview' | 'edit'
+    this.peerCache = {};     // variationId → context (parent/child tabs)
+    this.dirty = false;
+    this.flush = async () => true;
+    this.load();
+  }
+
+  async load() {
+    try {
+      this.ctx = await variationApi.context(this.varId);
+    } catch (e) {
+      this.dom.innerHTML = `
+        <div class="sn-header">
+          <span class="sn-status">Manuscript Snippet · unavailable</span>
+          <span class="sn-tabs"></span>
+          <span class="sn-actions"><button type="button" data-act="remove" class="sn-trash" title="Remove widget">${TRASH_SVG}</button></span>
+        </div>
+        <div class="sn-body"><div class="sn-note"><span class="sn-error">Variation ${this.varId} could not be loaded (${esc(e.message)}).</span></div></div>`;
+      this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(true));
+      return;
+    }
     this.build();
   }
 
-  canonized() { return !!this.node.attrs.refSlug; }
+  async refresh(keepTab = true) {
+    const tab = this.tab;
+    this.peerCache = {};
+    try {
+      this.ctx = await variationApi.context(this.varId);
+    } catch (e) { /* keep the stale view rather than blanking */ }
+    if (!keepTab) this.tab = 'self';
+    else this.tab = tab;
+    this.build();
+  }
+
+  canonized() { return this.ctx.snippet.canon_variation_id > 0; }
+  frozen() { return this.ctx.variation.frozen; }
+  letter() { return letterOf(this.ctx.variation.ordinal); }
+
+  // Tab model: parent (with lineage icon) → self → children → Canon (blue).
+  tabDefs() {
+    const defs = [];
+    if (this.ctx.parent) {
+      defs.push({ key: this.ctx.parent.variation_id, letter: letterOf(this.ctx.parent.ordinal), parent: true });
+    }
+    defs.push({ key: 'self', letter: this.letter(), self: true });
+    for (const c of this.ctx.children) {
+      defs.push({ key: c.variation_id, letter: letterOf(c.ordinal) });
+    }
+    if (this.canonized()) defs.push({ key: 'canon', letter: 'Canon', canon: true });
+    return defs;
+  }
 
   build() {
-    const a = this.node.attrs;
+    const v = this.ctx.variation;
+    const sn = this.ctx.snippet;
     this.dom.classList.toggle('sn-canon', this.canonized());
-    const status = this.canonized()
-      ? `Manuscript Snippet · Canon · #${esc(a.refSlug)}${a.label ? ` · ${esc(a.label)}` : ''}`
-      : 'Manuscript Snippet · draft';
-    const created = a.createdAt ? ` Created ${esc(a.createdAt.slice(0, 10))}.` : '';
-    const statusHint = (this.canonized()
-      ? `This snippet's text was placed into manuscript ${a.manuscriptId} as region #${a.refSlug}. Live follows the book (including your pending suggestions); Snapshot is the text as it was when placed.`
-      : 'Draft: plain .manuscript text. Click the preview to edit. From the book view, use + between paragraphs (or a placeholder) to place it into a manuscript.') + created;
-    const tabs = this.canonized() ? [['live', 'Live'], ['snapshot', 'Snapshot']] : [];
-    // Link affordance, right of the status: unlinked drafts get the link
-    // button; linked snippets a chip (draft chips carry the unlink ×; a
-    // canonized snippet's link is permanent).
+    const state = this.frozen() ? 'frozen' : 'draft';
+    const status = `Manuscript Snippet · ${this.letter()} · ${state}`;
+    const statusHint = `Variation ${this.letter()} of snippet #${sn.snippet_id}. ` +
+      (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). ' : 'Click the preview to edit. ') +
+      `Created ${esc((v.created_at || '').slice(0, 10))}.`;
+
+    // Link affordance (GROUP-level): unlinked gets the link button; linked
+    // a chip (unlink × until canonized — canon pins the link permanently).
     let linkBit = '';
-    if (a.linkedManuscriptId) {
+    if (sn.linked_manuscript_id) {
       const unlink = this.canonized() ? ''
-        : `<button type="button" class="sn-unlink" title="Unlink from ${esc(a.linkedManuscriptName)}">×</button>`;
-      linkBit = `<span class="sn-linkchip" title="Linked to ${esc(a.linkedManuscriptName)} — this snippet can only be canonized into that manuscript.">${LINK_SVG}<span class="sn-linkname">${esc(a.linkedManuscriptName)}</span>${unlink}</span>`;
-    } else if (!this.canonized()) {
+        : `<button type="button" class="sn-unlink" title="Unlink from ${esc(sn.linked_manuscript_name)}">×</button>`;
+      linkBit = `<span class="sn-linkchip" title="Linked to ${esc(sn.linked_manuscript_name)} — this snippet can only be canonized into that manuscript.">${LINK_SVG}<span class="sn-linkname">${esc(sn.linked_manuscript_name)}</span>${unlink}</span>`;
+    } else {
       linkBit = `<button type="button" class="sn-linkbtn" title="Link to manuscript">${LINK_SVG}</button>`;
     }
+
+    // Tabs: letters; overflow beyond 8 collapses into a ▾ dropdown.
+    const defs = this.tabDefs();
+    const MAXTABS = 8;
+    const shown = defs.length > MAXTABS ? defs.slice(0, MAXTABS - 1) : defs;
+    const overflow = defs.length > MAXTABS ? defs.slice(MAXTABS - 1) : [];
+    const tabHtml = shown.map(d => this.tabButtonHTML(d)).join('') +
+      (overflow.length
+        ? `<span class="sn-tab-more"><button type="button" class="sn-more-btn" title="More variations">▾</button><span class="sn-more-list" hidden>${overflow.map(d => this.tabButtonHTML(d)).join('')}</span></span>`
+        : '');
+
+    const openBook = this.canonized() && sn.linked_manuscript_id
+      ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.snippet_id)}" title="Open in book">Open in book ↗</a>`
+      : '';
     this.dom.innerHTML = `
       <div class="sn-header">
-        <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}
-        <span class="sn-tabs">${tabs.map(([k, l]) =>
-          `<button type="button" data-tab="${k}" class="${k === this.mode ? 'active' : ''}">${l}</button>`).join('')}
-        </span>
+        <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
+        <span class="sn-tabs">${tabHtml}</span>
         <span class="sn-actions">
-          ${this.canonized()
-            ? `<button type="button" data-act="refresh" title="Re-resolve from the manuscript">↻</button>
-               <a class="sn-open" href="index.html?manuscript_id=${a.manuscriptId}#${encodeURIComponent(a.refSlug)}" title="Open in book">Open in book ↗</a>`
-            : ''}
-          <button type="button" data-act="remove" class="sn-trash" title="Remove snippet">${TRASH_SVG}</button>
+          ${openBook}
+          <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+          <button type="button" data-act="remove" class="sn-trash" title="Remove widget (the variation itself is kept)">${TRASH_SVG}</button>
         </span>
       </div>
       <div class="sn-body"></div>`;
     this.body = this.dom.querySelector('.sn-body');
+    this.saveEl = this.dom.querySelector('.sn-save');
+
     this.dom.querySelectorAll('[data-tab]').forEach(btn => {
-      btn.addEventListener('click', () => this.setMode(btn.dataset.tab));
+      btn.addEventListener('click', () => this.setTab(btn.dataset.tab));
     });
-    this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.remove());
-    const refresh = this.dom.querySelector('[data-act="refresh"]');
-    if (refresh) refresh.addEventListener('click', () => this.renderLive(true));
+    const more = this.dom.querySelector('.sn-more-btn');
+    if (more) {
+      more.addEventListener('click', () => {
+        const list = this.dom.querySelector('.sn-more-list');
+        list.hidden = !list.hidden;
+      });
+    }
+    this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(false));
+    this.dom.querySelector('[data-act="freeze"]').addEventListener('click', () => this.toggleFreeze());
     const linkBtn = this.dom.querySelector('.sn-linkbtn');
     if (linkBtn) linkBtn.addEventListener('click', () => this.openLinkPicker());
     const unlinkBtn = this.dom.querySelector('.sn-unlink');
-    if (unlinkBtn) unlinkBtn.addEventListener('click', () => this.setLink(0, ''));
+    if (unlinkBtn) unlinkBtn.addEventListener('click', () => this.setLink(0));
     this.renderBody();
   }
 
-  setLink(id, name) {
-    const pos = this.getPos();
-    if (pos == null) return;
-    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null,
-      { ...this.node.attrs, linkedManuscriptId: id, linkedManuscriptName: name }));
+  tabButtonHTML(d) {
+    const active = (d.self && this.tab === 'self') || (d.canon && this.tab === 'canon') || d.key === this.tab;
+    const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '', d.parent ? 'sn-tab-parent' : ''].filter(Boolean).join(' ');
+    const title = d.canon ? 'Canon — the version placed into the book'
+      : d.parent ? `Variation ${d.letter} (parent — this one was based on it)`
+      : d.self ? `Variation ${d.letter} (this widget)`
+      : `Variation ${d.letter} (based on this one)`;
+    return `<button type="button" data-tab="${d.self ? 'self' : (d.canon ? 'canon' : d.key)}" class="${cls}" title="${title}">${d.parent ? PARENT_SVG : ''}${esc(String(d.letter))}</button>`;
+  }
+
+  setTab(key) {
+    this.tab = key === 'self' || key === 'canon' ? key : parseInt(key, 10);
+    this.mode = 'preview';
+    this.dom.querySelectorAll('[data-tab]').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === String(key));
+    });
+    this.renderBody();
+  }
+
+  renderBody() {
+    if (this.tab === 'self') {
+      return this.mode === 'edit' ? this.renderEdit() : this.renderSelfPreview();
+    }
+    if (this.tab === 'canon') return this.renderCanon(false);
+    return this.renderPeer(this.tab);
+  }
+
+  renderSelfPreview() {
+    this.ta = null;
+    const frozen = this.frozen();
+    this.body.innerHTML = `<div class="sn-render${frozen ? '' : ' sn-clickable'}" title="${frozen ? 'Frozen — unfreeze (snowflake) to edit' : 'Click to edit'}"></div>`;
+    const host = this.body.firstChild;
+    const text = this.ctx.variation.text;
+    if (text.trim()) {
+      renderBookText(host, text);
+    } else {
+      host.innerHTML = `<div class="sn-empty">${frozen ? 'Empty (frozen) variation.' : 'Empty variation — click to write.'}</div>`;
+    }
+    host.addEventListener('click', () => {
+      if (!this.frozen()) { this.mode = 'edit'; this.renderBody(); }
+    });
+  }
+
+  renderEdit() {
+    this.body.innerHTML = '';
+    const ta = document.createElement('textarea');
+    ta.className = 'sn-text';
+    ta.placeholder = 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
+    ta.value = this.ctx.variation.text;
+    ta.rows = Math.max(6, this.ctx.variation.text.split('\n').length + 2);
+    let t = null;
+    let saveAttempt = 0;
+    let retryTimer = null;
+    let countdown = null;
+    const clearRetry = () => { clearTimeout(retryTimer); retryTimer = null; clearInterval(countdown); countdown = null; };
+    const save = async () => {
+      clearTimeout(t); clearRetry();
+      if (ta.value === this.ctx.variation.text) { dirtyVariations.delete(this); this.saveEl.textContent = ''; return true; }
+      this.saveEl.textContent = 'saving…';
+      try {
+        await variationApi.saveText(this.varId, ta.value);
+        const changed = this.ctx.variation.text !== ta.value;
+        this.ctx.variation.text = ta.value;
+        dirtyVariations.delete(this);
+        saveAttempt = 0;
+        this.saveEl.textContent = '';
+        // Blur may have flipped to preview before this save resolved —
+        // re-render so the preview shows what was just saved.
+        if (changed && this.tab === 'self' && this.mode === 'preview') this.renderBody();
+        return true;
+      } catch (e) {
+        if (e.status === 409) {
+          // Frozen underneath us (another widget/tab) — surface it.
+          this.saveEl.textContent = 'frozen — not saved';
+          return false;
+        }
+        saveAttempt = Math.min(saveAttempt + 1, 6);
+        let secs = Math.min(60, Math.pow(2, saveAttempt));
+        const show = () => { this.saveEl.textContent = `Failed to save. Trying again in ${secs}s`; };
+        show();
+        countdown = setInterval(() => { secs -= 1; if (secs > 0) show(); }, 1000);
+        retryTimer = setTimeout(() => { clearRetry(); save(); }, secs * 1000);
+        return false;
+      }
+    };
+    this.flush = save;
+    variationFlushers.add(save);
+    ta.addEventListener('input', () => {
+      dirtyVariations.add(this);
+      clearTimeout(t); clearRetry();
+      t = setTimeout(save, 600);
+    });
+    ta.addEventListener('blur', () => {
+      save();
+      if (this.tab === 'self' && this.mode === 'edit') { this.mode = 'preview'; this.renderBody(); }
+    });
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') ta.blur(); });
+    this.body.appendChild(ta);
+    this.ta = ta;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+
+  async renderPeer(variationId) {
+    this.body.innerHTML = '<div class="sn-note">Loading variation…</div>';
+    let ctx = this.peerCache[variationId];
+    if (!ctx) {
+      try {
+        ctx = this.peerCache[variationId] = await variationApi.context(variationId);
+      } catch (e) {
+        this.body.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load variation (${esc(e.message)}).</span></div>`;
+        return;
+      }
+    }
+    if (this.tab !== variationId) return; // switched away while loading
+    const rel = this.ctx.parent && this.ctx.parent.variation_id === variationId ? 'parent of' : 'based on';
+    this.body.innerHTML = `
+      <div class="sn-note">Variation ${esc(letterOf(ctx.variation.ordinal))} · ${ctx.variation.frozen ? 'frozen' : 'draft'} · ${rel} ${esc(this.letter())} — read-only here (it lives in its own widget).</div>
+      <div class="sn-render"></div>`;
+    const host = this.body.querySelector('.sn-render');
+    if (ctx.variation.text.trim()) renderBookText(host, ctx.variation.text);
+    else host.innerHTML = '<div class="sn-empty">Empty variation.</div>';
+  }
+
+  // Canon truth derives from the manuscript (VARIATIONS_PLAN §2): resolve
+  // the &snippet#id … &end#id region from the effective manuscript; the
+  // canon variation's text is the immutable as-canonized snapshot, used as
+  // fallback and via the in-body toggle.
+  async renderCanon(showSnapshot) {
+    const sn = this.ctx.snippet;
+    const snap = this.ctx.canon ? this.ctx.canon.text : '';
+    const canonizedOn = this.ctx.canon ? (this.ctx.canon.created_at || '').slice(0, 10) : '';
+    if (showSnapshot) {
+      this.body.innerHTML = `
+        <div class="sn-note">As canonized (${esc(canonizedOn)}) — the text at the moment it entered the book. <a href="#" class="sn-canonswap">Show live</a></div>
+        <div class="sn-render"></div>`;
+      this.body.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(false); });
+      renderBookText(this.body.querySelector('.sn-render'), snap);
+      return;
+    }
+    this.body.innerHTML = '<div class="sn-note">Resolving from the manuscript…</div><div class="sn-render"></div>';
+    const host = this.body.querySelector('.sn-render');
+    try {
+      const data = await bookData.load(sn.linked_manuscript_id, false);
+      const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
+      const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.snippet_id, window.WriteSysCommand, canon);
+      if (this.tab !== 'canon') return;
+      if (res.status !== 'ok') {
+        this.body.querySelector('.sn-note').innerHTML =
+          `<span class="sn-error">Region #${esc(sn.snippet_id)} ${res.status === 'missing-anchor'
+            ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the as-canonized snapshot.</span>`;
+        renderBookText(host, snap);
+        return;
+      }
+      this.body.querySelector('.sn-note').innerHTML =
+        `Live from the effective manuscript (committed + your suggestions). <a href="#" class="sn-canonswap">Show as-canonized</a>`;
+      this.body.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(true); });
+      window.WriteSysScratchRender.render(host, res.items);
+    } catch (e) {
+      this.body.querySelector('.sn-note').innerHTML =
+        `<span class="sn-error">Could not load manuscript ${sn.linked_manuscript_id} (${esc(e.message)}) — showing the snapshot.</span>`;
+      renderBookText(host, snap);
+    }
+  }
+
+  async toggleFreeze() {
+    try {
+      await variationApi.freeze(this.varId, !this.frozen());
+      await this.refresh();
+    } catch (e) {
+      alert('Could not toggle freeze: ' + e.message);
+    }
+  }
+
+  async setLink(manuscriptId) {
+    try {
+      await variationApi.link(this.ctx.snippet.snippet_id, manuscriptId);
+      await this.refresh();
+    } catch (e) {
+      alert('Could not update link: ' + e.message);
+    }
   }
 
   async openLinkPicker() {
@@ -276,7 +543,7 @@ class SnippetView {
       const needle = q.value.trim().toLowerCase();
       const hits = all.filter(m => m.name.toLowerCase().includes(needle));
       list.innerHTML = hits.length
-        ? hits.map(m => `<button type="button" data-mid="${m.id}" data-name="${esc(m.name)}">${esc(m.name)}</button>`).join('')
+        ? hits.map(m => `<button type="button" data-mid="${m.id}">${esc(m.name)}</button>`).join('')
         : '<span class="sn-linkpop-empty">No matches</span>';
     };
     renderList();
@@ -291,7 +558,7 @@ class SnippetView {
     list.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-mid]');
       if (!b) return;
-      this.setLink(parseInt(b.dataset.mid, 10), b.dataset.name);
+      this.setLink(parseInt(b.dataset.mid, 10));
       this.closeLinkPicker();
     });
   }
@@ -307,103 +574,12 @@ class SnippetView {
     }
   }
 
-  setMode(mode) {
-    this.mode = mode;
-    this.dom.querySelectorAll('[data-tab]').forEach(b =>
-      b.classList.toggle('active', b.dataset.tab === mode));
-    this.renderBody();
-  }
-
-  renderBody() {
-    if (this.mode === 'edit') return this.renderEdit();
-    if (this.mode === 'preview') return this.renderPreview();
-    if (this.mode === 'snapshot') return this.renderSnapshot();
-    return this.renderLive(false);
-  }
-
-  renderEdit() {
-    this.body.innerHTML = '';
-    const ta = document.createElement('textarea');
-    ta.className = 'sn-text';
-    ta.placeholder = 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
-    ta.value = this.node.attrs.text;
-    ta.rows = Math.max(6, this.node.attrs.text.split('\n').length + 2);
-    const flush = () => {
-      if (ta.value === this.node.attrs.text) return;
-      const pos = this.getPos();
-      if (pos == null) return;
-      this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, null,
-        { ...this.node.attrs, text: ta.value }));
-    };
-    let t;
-    ta.addEventListener('input', () => { clearTimeout(t); t = setTimeout(flush, 400); });
-    ta.addEventListener('blur', () => {
-      clearTimeout(t);
-      flush();
-      // Leaving the editor returns the snippet to its resting preview.
-      if (this.mode === 'edit') this.setMode('preview');
-    });
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') ta.blur(); });
-    this.body.appendChild(ta);
-    this.ta = ta;
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-  }
-
-  renderPreview() {
-    this.ta = null;
-    this.body.innerHTML = '<div class="sn-render sn-clickable" title="Click to edit"></div>';
-    const host = this.body.firstChild;
-    const text = this.node.attrs.text;
-    if (text.trim()) {
-      const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-      window.WriteSysScratchRender.renderText(host, canon(text));
-    } else {
-      host.innerHTML = '<div class="sn-empty">Empty snippet — click to write.</div>';
-    }
-    host.addEventListener('click', () => { if (!this.canonized()) this.setMode('edit'); });
-  }
-
-  renderSnapshot() {
-    const a = this.node.attrs;
-    this.body.innerHTML = `<div class="sn-note" title="The text as it was at the moment it was placed into the book — kept forever, even as the book moves on.">Snapshot from ${esc((a.canonizedAt || '').slice(0, 10))}</div><div class="sn-render"></div>`;
-    const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-    window.WriteSysScratchRender.renderText(this.body.querySelector('.sn-render'), canon(a.snapshotText));
-  }
-
-  async renderLive(force) {
-    const a = this.node.attrs;
-    this.body.innerHTML = '<div class="sn-note">Resolving from the manuscript…</div><div class="sn-render"></div>';
-    const host = this.body.querySelector('.sn-render');
-    try {
-      const data = await bookData.load(a.manuscriptId, force);
-      const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-      const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, a.refSlug, window.WriteSysCommand, canon);
-      if (res.status !== 'ok') {
-        // Strictness (SCRATCHPAD_PLAN decision 6): broken → snapshot fallback.
-        this.body.querySelector('.sn-note').innerHTML =
-          `<span class="sn-error">Region #${esc(a.refSlug)} ${res.status === 'missing-anchor'
-            ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the snapshot.</span>`;
-        window.WriteSysScratchRender.renderText(host, canon(a.snapshotText));
-        return;
-      }
-      this.body.querySelector('.sn-note').textContent =
-        `Live from the effective manuscript (committed + your suggestions).`;
-      window.WriteSysScratchRender.render(host, res.items);
-    } catch (e) {
-      this.body.querySelector('.sn-note').innerHTML =
-        `<span class="sn-error">Could not load manuscript ${a.manuscriptId} (${esc(e.message)}) — showing the snapshot.</span>`;
-      const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-      window.WriteSysScratchRender.renderText(host, canon(a.snapshotText));
-    }
-  }
-
-  remove() {
+  removeWidget(broken) {
     const pos = this.getPos();
     if (pos == null) return;
-    const label = this.canonized()
-      ? `Remove this canonized snippet from the scratchpad? The book region #${this.node.attrs.refSlug} is NOT touched.`
-      : 'Remove this draft snippet? Its text is only saved in scratchpad history.';
+    const label = broken
+      ? 'Remove this widget?'
+      : `Remove this snippet widget from the scratchpad? Variation ${this.letter()} itself is kept — still reachable from its related variations.`;
     if (!window.confirm(label)) return;
     this.view.dispatch(this.view.state.tr.delete(pos, pos + this.node.nodeSize));
     this.view.focus();
@@ -411,30 +587,16 @@ class SnippetView {
 
   update(node) {
     if (node.type !== this.node.type) return false;
-    const was = this.node.attrs;
+    if (node.attrs.variationId !== this.varId) return false;
     this.node = node;
-    if (!!was.refSlug !== !!node.attrs.refSlug) {
-      this.mode = node.attrs.refSlug ? 'live' : 'preview';
-      this.closeLinkPicker();
-      this.build();
-      return true;
-    }
-    if (was.linkedManuscriptId !== node.attrs.linkedManuscriptId
-        || was.linkedManuscriptName !== node.attrs.linkedManuscriptName) {
-      this.closeLinkPicker();
-      this.build();
-      return true;
-    }
-    if (this.mode === 'edit' && this.ta && document.activeElement !== this.ta
-        && this.ta.value !== node.attrs.text) {
-      this.ta.value = node.attrs.text;
-    } else if (this.mode === 'preview' && was.text !== node.attrs.text) {
-      this.renderBody();
-    }
     return true;
   }
 
-  destroy() { this.closeLinkPicker(); }
+  destroy() {
+    this.closeLinkPicker();
+    variationFlushers.delete(this.flush);
+    dirtyVariations.delete(this);
+  }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
 }
@@ -465,13 +627,6 @@ function insertBlockSafely(state, dispatch, node) {
     dispatch(tr.scrollIntoView());
   }
   return true;
-}
-
-function cmdInsertSnippet(state, dispatch) {
-  return insertBlockSafely(state, dispatch, schema.nodes.snippet.createAndFill({
-    blockId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
-    createdAt: new Date().toISOString(),
-  }));
 }
 
 function insertTableOfSize(state, dispatch, rows, cols) {
@@ -573,12 +728,114 @@ function buildTablePicker(toolbarEl, getView) {
   toolbarEl.appendChild(wrap);
 }
 
+// The ⧉ Snippet ▾ menu: New snippet, or Based on… (variation picker sorted
+// by variation updated_at, then a freeze-the-source choice).
+function buildSnippetMenu(toolbarEl, getView) {
+  const wrap = document.createElement('span');
+  wrap.className = 'tb-tablewrap';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'sn-btn';
+  btn.title = 'Insert a Manuscript Snippet (new, or a variation based on an existing one)';
+  btn.textContent = '⧉ Snippet ▾';
+  const pop = document.createElement('div');
+  pop.className = 'sn-insertpop';
+  pop.hidden = true;
+  wrap.append(btn, pop);
+
+  const onDocDown = (e) => { if (!wrap.contains(e.target)) close(); };
+  const close = () => {
+    pop.hidden = true;
+    document.removeEventListener('mousedown', onDocDown, true);
+  };
+
+  const insertVariation = (ctx) => {
+    const view = getView();
+    insertBlockSafely(view.state, view.dispatch,
+      schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+    close();
+    view.focus();
+  };
+
+  const renderRoot = () => {
+    pop.innerHTML = `
+      <button type="button" class="sn-ins-new">New snippet</button>
+      <button type="button" class="sn-ins-based">Based on…</button>`;
+    pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
+      try { insertVariation(await variationApi.createNew()); }
+      catch (e) { alert('Could not create snippet: ' + e.message); }
+    });
+    pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
+  };
+
+  const renderPicker = async () => {
+    pop.innerHTML = `
+      <input type="text" class="sn-ins-q" placeholder="Search variations…" autocomplete="off">
+      <div class="sn-ins-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
+    const q = pop.querySelector('.sn-ins-q');
+    const list = pop.querySelector('.sn-ins-list');
+    q.focus();
+    const load = async () => {
+      let rows;
+      try {
+        rows = (await variationApi.list(q.value.trim())).variations || [];
+      } catch (e) {
+        list.innerHTML = '<span class="sn-linkpop-empty">Could not load variations</span>';
+        return;
+      }
+      list.innerHTML = rows.length
+        ? rows.map(r => `
+          <button type="button" data-vid="${r.variation_id}" data-frozen="${r.frozen}">
+            <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
+            <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
+          </button>`).join('')
+        : '<span class="sn-linkpop-empty">No variations yet</span>';
+    };
+    let t;
+    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+    q.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    list.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-vid]');
+      if (!b) return;
+      renderFreezeChoice(parseInt(b.dataset.vid, 10), b.dataset.frozen === 'true',
+        b.querySelector('.sn-ins-letter').textContent);
+    });
+    await load();
+  };
+
+  const renderFreezeChoice = (sourceId, alreadyFrozen, letter) => {
+    const create = async (freeze) => {
+      try { insertVariation(await variationApi.createFrom(sourceId, freeze)); }
+      catch (e) { alert('Could not create variation: ' + e.message); }
+    };
+    if (alreadyFrozen) { create(false); return; }
+    pop.innerHTML = `
+      <div class="sn-ins-ask">Freeze variation ${esc(letter)} (the source)? Frozen variations are read-only until unfrozen.</div>
+      <button type="button" class="sn-ins-freeze">Freeze it</button>
+      <button type="button" class="sn-ins-nofreeze">Keep it editable</button>`;
+    pop.querySelector('.sn-ins-freeze').addEventListener('click', () => create(true));
+    pop.querySelector('.sn-ins-nofreeze').addEventListener('click', () => create(false));
+  };
+
+  btn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (pop.hidden) {
+      pop.hidden = false;
+      renderRoot();
+      document.addEventListener('mousedown', onDocDown, true);
+    } else {
+      close();
+    }
+  });
+  toolbarEl.appendChild(wrap);
+}
+
 // ----------------------------------------------------------- the instance
 
 /**
  * createScratchpadEditor(els, scratchpadId): loads the pad, mounts PM, and
  * returns the instance. els = {titleInput, statusEl, toolbarEl, editorEl,
- * imageInput}. destroy() flushes any unsaved changes.
+ * imageInput}. destroy() flushes any unsaved changes (doc AND variations).
  */
 export async function createScratchpadEditor(els, scratchpadId) {
   const data = await fetchJSON(`api/scratchpads/${scratchpadId}`, {}, false);
@@ -620,11 +877,18 @@ export async function createScratchpadEditor(els, scratchpadId) {
     retryTimer = setTimeout(() => { clearRetry(); saveNow(); }, secs * 1000);
   };
 
+  // Flush any widget textareas with unsaved variation text.
+  const flushVariations = async () => {
+    const results = await Promise.all([...variationFlushers].map(f => f().catch(() => false)));
+    return results.every(Boolean);
+  };
+
   const saveNow = async () => {
     if (!view) return false;
     clearTimeout(saveTimer);
     clearRetry();
     setSaveState('saving');
+    const variationsOk = await flushVariations();
     try {
       const r = await fetch(`api/scratchpads/${scratchpadId}`, {
         method: 'PUT',
@@ -634,7 +898,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       if (!r.ok) throw new Error(String(r.status));
       retryAttempt = 0;
       setSaveState('saved');
-      return true;
+      return variationsOk;
     } catch (e) {
       console.error('autosave failed', e);
       saveState = 'unsaved';
@@ -672,7 +936,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { sep: true },
     { table: true },
     { label: 'Image', title: 'Insert image', run: () => { els.imageInput.click(); return true; } },
-    { label: '⧉ Snippet', title: 'Insert a Manuscript Snippet (monospace .manuscript text; canonize it from the book view)', cls: 'sn-btn', run: cmdInsertSnippet },
+    { snippetMenu: true },
     { sep: true, show: showInTable },
     { label: '+ Row', title: 'Add row below', run: addRowAfter, show: showInTable },
     { label: '− Row', title: 'Delete row', run: deleteRow, show: showInTable },
@@ -689,6 +953,10 @@ export async function createScratchpadEditor(els, scratchpadId) {
   for (const it of items) {
     if (it.table) {
       buildTablePicker(els.toolbarEl, () => view);
+      continue;
+    }
+    if (it.snippetMenu) {
+      buildSnippetMenu(els.toolbarEl, () => view);
       continue;
     }
     if (it.sep) {
@@ -779,12 +1047,26 @@ export async function createScratchpadEditor(els, scratchpadId) {
     scratchpadId,
     schema,
     bookData,
+    variationApi,
     get view() { return view; },
     saveNow,
-    insertSnippet: () => { cmdInsertSnippet(view.state, view.dispatch); },
+    // Programmatic inserts (tests / power use): create server-side, place.
+    insertSnippet: async () => {
+      const ctx = await variationApi.createNew();
+      insertBlockSafely(view.state, view.dispatch,
+        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+      return ctx;
+    },
+    insertVariationOf: async (sourceId, freezeSource) => {
+      const ctx = await variationApi.createFrom(sourceId, !!freezeSource);
+      insertBlockSafely(view.state, view.dispatch,
+        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+      return ctx;
+    },
     pm: { Selection, TextSelection, NodeSelection },
-    isDirty: () => saveState !== 'saved',
+    isDirty: () => saveState !== 'saved' || dirtyVariations.size > 0,
     async destroy() {
+      await flushVariations(); // best effort; the modal's guard already ran
       destroyed = true;
       clearTimeout(saveTimer);
       clearRetry();

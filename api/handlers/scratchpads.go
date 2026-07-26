@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -14,7 +13,6 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/models"
-	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 // Scratchpads (SCRATCHPAD_PLAN.md): DB-only, USER-owned working material —
@@ -120,16 +118,8 @@ func (h *ScratchpadHandlers) HandleGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	blocks, err := h.DB.GetScratchpadBlocks(r.Context(), s.ScratchpadID)
-	if err != nil {
-		http.Error(w, "Failed to load blocks", http.StatusInternalServerError)
-		return
-	}
-	if blocks == nil {
-		blocks = []models.ScratchpadBlockRow{}
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"scratchpad": s, "blocks": blocks})
+	json.NewEncoder(w).Encode(map[string]interface{}{"scratchpad": s})
 }
 
 func (h *ScratchpadHandlers) HandleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -204,56 +194,6 @@ func (h *ScratchpadHandlers) HandleOpened(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// HandleCanonizeBlock is step 2 of Canonize (plan §5): the suggestion was
-// already PUT via the existing endpoint (stale-migration guard and all);
-// this stamps the block's ref + snapshot into the doc and the derived index.
-// Requires access to the TARGET manuscript, not just scratchpad ownership.
-func (h *ScratchpadHandlers) HandleCanonizeBlock(w http.ResponseWriter, r *http.Request) {
-	session, ok := h.requireSession(w, r)
-	if !ok || !h.requireCSRF(w, r) {
-		return
-	}
-	s, ok := h.requireOwnedScratchpad(w, r, session.Username)
-	if !ok {
-		return
-	}
-	blockID := chi.URLParam(r, "block_id")
-	var req struct {
-		ManuscriptID int    `json:"manuscript_id"`
-		RefSlug      string `json:"ref_slug"`
-		Label        string `json:"label"`
-		MigrationID  int    `json:"migration_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
-		return
-	}
-	if !sentence.ValidSlug(req.RefSlug) {
-		http.Error(w, "ref_slug must match [a-z0-9-]+", http.StatusBadRequest)
-		return
-	}
-	if !requireManuscriptAccess(w, r, h.DB, h.Config, req.ManuscriptID) {
-		return
-	}
-	// The canonized snippet auto-links to the target manuscript; the link
-	// chip wants a human name.
-	manuscriptName := ""
-	if m, err := h.DB.GetManuscriptByID(r.Context(), req.ManuscriptID); err == nil && m != nil {
-		manuscriptName = m.DisplayName
-		if manuscriptName == "" {
-			manuscriptName = filepath.Base(m.RepoPath)
-		}
-	}
-	block, err := h.DB.CanonizeScratchpadBlock(r.Context(), s.ScratchpadID, blockID, req.ManuscriptID, req.RefSlug, req.Label, req.MigrationID, manuscriptName)
-	if err != nil {
-		// Already-canonized / missing block are client errors (strictness).
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(block)
 }
 
 func (h *ScratchpadHandlers) HandleUploadImage(w http.ResponseWriter, r *http.Request) {

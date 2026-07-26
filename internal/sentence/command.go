@@ -18,6 +18,7 @@ import (
 //	&anchor#slug{label?}{details?}                       // details reserved, unrendered
 //	&reference#slug{notes?}                              // inline only
 //	&placeholder#slug{unit}{size?}{label?}{details?}     // see ParsePlaceholder
+//	&snippet#id{label}                                   // canon region opener (VARIATIONS_PLAN.md)
 //	&end#slug                                            // region terminator (SCRATCHPAD_PLAN.md)
 //
 // Argument vocabulary: {text} renders in the book, {label} shows in the
@@ -39,6 +40,7 @@ const (
 	CmdReference   CommandKind = "reference"
 	CmdMeta        CommandKind = "meta"
 	CmdPlaceholder CommandKind = "placeholder"
+	CmdSnippet     CommandKind = "snippet"
 	CmdEnd         CommandKind = "end"
 )
 
@@ -54,6 +56,7 @@ var blockCommandKinds = map[CommandKind]bool{
 	CmdAnchor:      true,
 	CmdMeta:        true,
 	CmdPlaceholder: true, // block iff sole line content, same as anchor (segman's call)
+	CmdSnippet:     true, // block iff sole line content; canon region opener (VARIATIONS_PLAN.md)
 	CmdEnd:         true, // block iff sole line content; invisible region terminator
 }
 
@@ -71,7 +74,7 @@ var (
 	// slugPattern: a static slug is lowercase letters, digits, and dashes.
 	slugPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 	// commandNames matched at the start of a token.
-	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder, CmdEnd}
+	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder, CmdSnippet, CmdEnd}
 )
 
 // PlaceholderSpec is the interpreted argument list of a &placeholder command:

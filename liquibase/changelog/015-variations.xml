@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Variations (VARIATIONS_PLAN.md): a snippet is an abstract GROUP —
+         global ID (also the &snippet command's #id in the manuscript),
+         manuscript link, canon pointer. A variation is the real content:
+         text, letter ordinal (integer, 1=A; NULL for the hidden canon
+         variation), parent lineage, frozen flag. Variation text lives HERE,
+         not in scratchpad doc JSON — the PM node is just {variationId}.
+         The old scratchpad_block derived index is superseded (all snippets
+         were deleted by the author before this migration — no backfill). -->
+    <changeSet id="015-variations" author="claude">
+        <dropTable tableName="scratchpad_block"/>
+
+        <createTable tableName="snippet">
+            <column name="snippet_id" type="VARCHAR(16)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(255)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_snippet_user"
+                             references="&quot;user&quot;(username)"/>
+            </column>
+            <column name="linked_manuscript_id" type="INTEGER"/>
+            <column name="linked_manuscript_name" type="VARCHAR(255)" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="canon_variation_id" type="INTEGER"/>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="variation">
+            <column name="variation_id" type="SERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="snippet_id" type="VARCHAR(16)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_variation_snippet"
+                             references="snippet(snippet_id)"/>
+            </column>
+            <column name="ordinal" type="INTEGER"/>
+            <column name="parent_variation_id" type="INTEGER">
+                <constraints foreignKeyName="fk_variation_parent"
+                             references="variation(variation_id)"/>
+            </column>
+            <column name="text" type="TEXT" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="frozen" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="variation_revision">
+            <column name="revision_id" type="SERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="variation_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_variation_revision_variation"
+                             references="variation(variation_id)"/>
+            </column>
+            <column name="text" type="TEXT" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="saved_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE snippet ADD CONSTRAINT fk_snippet_canon_variation
+                FOREIGN KEY (canon_variation_id) REFERENCES variation(variation_id);
+            -- One letter per group; the canon variation's NULL ordinal is
+            -- exempt from uniqueness by SQL semantics, and a partial unique
+            -- index guarantees at most one canon row per group anyway.
+            CREATE UNIQUE INDEX idx_variation_snippet_ordinal
+                ON variation(snippet_id, ordinal) WHERE ordinal IS NOT NULL;
+            CREATE UNIQUE INDEX idx_variation_snippet_canon
+                ON variation(snippet_id) WHERE ordinal IS NULL;
+            CREATE INDEX idx_variation_updated ON variation(updated_at DESC);
+            CREATE INDEX idx_variation_revision_variation
+                ON variation_revision(variation_id);
+            CREATE INDEX idx_snippet_user ON snippet(user_id);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

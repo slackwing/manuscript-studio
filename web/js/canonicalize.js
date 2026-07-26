@@ -41,9 +41,10 @@ const WriteSysCanonicalize = (function () {
       }
       // Leading-anchor split. Idempotent: spaces, tabs, OR the inserted
       // newline between the anchor and prose all normalize to a single "\n".
-      if (trimmed.startsWith('&anchor')) {
+      // &snippet (canon region opener) follows the same rule — Go lockstep.
+      if (trimmed.startsWith('&anchor') || trimmed.startsWith('&snippet')) {
         const a = cmd.parse(trimmed);
-        if (a && a.kind === 'anchor') {
+        if (a && (a.kind === 'anchor' || a.kind === 'snippet')) {
           const rest = trimmed.slice(a.raw.length).replace(/^[ \t\n]+/, '');
           if (rest !== '') {
             return a.raw + '\n' + canonicalizeProse(rest);

@@ -2568,6 +2568,17 @@ p.section-break {
 }
 .im-block:hover { background: #faf7f0; }
 .im-block-text { font: 11px/1.5 "Monaco", monospace; color: #333; white-space: pre-wrap; }
+.im-block-letter {
+  flex: none;
+  font: 700 10px "Helvetica", sans-serif;
+  color: #57503f;
+  background: #efe9dc;
+  border: 1px solid #d0c8b8;
+  border-radius: 3px;
+  padding: 2px 5px;
+  margin-right: 2px;
+  align-self: flex-start;
+}
 .im-muted { color: #999; font-size: 12px; }
 .im-error { color: #b33b3a; font-size: 12px; margin-top: 8px; }
 .im-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

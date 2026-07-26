@@ -110,8 +110,11 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	scratchpads := make([]homeScratchpad, 0, len(pads))
 	for _, p := range pads {
 		hs := homeScratchpad{ScratchpadID: p.ScratchpadID, Title: p.Title, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
-		if snippet, blocks, canonized, err := scratchpad.Summary(p.Doc, 140); err == nil {
-			hs.Snippet, hs.BlockCount, hs.Canonized = snippet, blocks, canonized
+		if preview, variationIDs, err := scratchpad.Summary(p.Doc, 140); err == nil {
+			hs.Snippet, hs.BlockCount = preview, len(variationIDs)
+			if canonized, err := h.DB.CountCanonizedAmong(ctx, variationIDs); err == nil {
+				hs.Canonized = canonized
+			}
 		}
 		scratchpads = append(scratchpads, hs)
 	}

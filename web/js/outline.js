@@ -65,7 +65,7 @@ const WriteSysOutline = {
           const ch = { label, description: desc, slug: c.slug, sentence_id: s.id, anchors: [] };
           if (curPart >= 0) { o.parts[curPart].chapters.push(ch); curChapter = o.parts[curPart].chapters.length - 1; }
           else { o.top_chapters.push(ch); curChapter = o.top_chapters.length - 1; }
-        } else if (c.kind === 'anchor' || c.kind === 'placeholder') {
+        } else if (c.kind === 'anchor' || c.kind === 'placeholder' || c.kind === 'snippet') {
           // A placeholder lists exactly like an anchor — indistinguishable in
           // the outline — using its {label}; mis-syntaxed placeholders render
           // as prose and stay out of the outline (mirrors Go BuildOutline).

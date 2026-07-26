@@ -134,15 +134,3 @@ type Scratchpad struct {
 	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
-// ScratchpadBlockRow is the derived index row for a CANONIZED book-content
-// block (re-extracted from the doc on every save).
-type ScratchpadBlockRow struct {
-	BlockID              string    `json:"block_id"`
-	ScratchpadID         int       `json:"scratchpad_id"`
-	ManuscriptID         int       `json:"manuscript_id"`
-	RefSlug              string    `json:"ref_slug"`
-	Label                string    `json:"label"`
-	SnapshotText         string    `json:"snapshot_text"`
-	CanonizedMigrationID int       `json:"canonized_migration_id"`
-	CanonizedAt          time.Time `json:"canonized_at"`
-}

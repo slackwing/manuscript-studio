@@ -640,7 +640,7 @@ const WriteSysRenderer = {
       }
       return lib.inlineHTML(spec, c.slug);
     }
-    if (c.kind === 'anchor') {
+    if (c.kind === 'anchor' || c.kind === 'snippet') {
       const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
       // Invisible marker (zero-width) — the host sentence is the scroll target.
       return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`;
@@ -664,7 +664,7 @@ const WriteSysRenderer = {
     // Match an escaped command token: &amp;(keyword)(#slug)?{...}{...}...
     // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
     // Args are plain (no nested braces in the escaped stream we care about).
-    const re = /&amp;(reference|anchor|placeholder)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
+    const re = /&amp;(reference|anchor|placeholder|snippet)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');

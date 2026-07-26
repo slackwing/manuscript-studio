@@ -180,6 +180,12 @@ region resolver + suggested-text builder; Playwright: scratchpad page e2e
 (create → block → canonize into test manuscript → suggestion exists → book
 renders region → widget Live/snapshot tabs), classified per N10.
 
+> **2026-07-26: the snippet model below is SUPERSEDED by
+> VARIATIONS_PLAN.md** (snippet = variation group; content lives in the
+> variation tables; canon regions use `&snippet#id{label}` … `&end#id`).
+> Sections here remain accurate for the scratchpad surface, storage of
+> docs/images, and the + import affordance placement.
+
 ## Snippet linking + wordcount history (2026-07)
 
 - **Linking**: a draft snippet can be linked to ONE manuscript (link button

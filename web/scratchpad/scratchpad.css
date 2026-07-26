@@ -239,6 +239,108 @@
   color: #57503f;
 }
 .sn-tabs button.active { background: #fff; border-color: #d0c8b8; }
+.sn-tabs .sn-tab { min-width: 24px; text-align: center; font-weight: 600; }
+.sn-tabs .sn-tab svg { vertical-align: -1px; margin-right: 2px; opacity: 0.7; }
+.sn-tabs .sn-tab-canon { color: #2a6fb0; font-weight: 700; }
+.sn-tabs .sn-tab-canon.active { background: #e8f0f8; border-color: #a8c4dd; }
+.sn-tab-more { position: relative; display: inline-block; }
+.sn-more-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px -8px rgba(20, 16, 8, 0.35);
+  padding: 3px;
+}
+.sn-save { font-size: 10px; color: #a49b8a; white-space: nowrap; }
+
+/* snowflake freeze toggle — depressed while frozen */
+.sn-actions .sn-freeze { color: #a49b8a; padding: 3px 5px; }
+.sn-actions .sn-freeze svg { display: block; }
+.sn-actions .sn-freeze:hover { color: #2a6fb0; }
+.sn-actions .sn-freeze.pressed {
+  color: #2a6fb0;
+  background: #e8f0f8;
+  border: 1px solid #a8c4dd;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 2px rgba(42, 111, 176, 0.3);
+}
+
+/* ⧉ Snippet ▾ insert menu */
+.sn-insertpop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: 300px;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px -8px rgba(20, 16, 8, 0.35);
+  padding: 6px;
+}
+.sn-insertpop > button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 7px 8px;
+  font: 12px "Helvetica", sans-serif;
+  color: #333;
+  cursor: pointer;
+}
+.sn-insertpop > button:hover { background: #eef3f9; color: #2a5f96; }
+.sn-insertpop .sn-ins-q {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d0c8b8;
+  padding: 5px 7px;
+  font: 12px "Helvetica", sans-serif;
+  outline: none;
+  margin-bottom: 4px;
+}
+.sn-insertpop .sn-ins-q:focus { border-color: #2a6fb0; }
+.sn-ins-list { max-height: 220px; overflow-y: auto; }
+.sn-ins-list button {
+  display: flex;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 6px 7px;
+  cursor: pointer;
+  align-items: flex-start;
+}
+.sn-ins-list button:hover { background: #eef3f9; }
+.sn-ins-letter {
+  flex: none;
+  font: 700 10px "Helvetica", sans-serif;
+  color: #57503f;
+  background: #efe9dc;
+  border: 1px solid #d0c8b8;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+.sn-ins-preview {
+  font: 11px/1.45 "Monaco", monospace;
+  color: #333;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.sn-ins-ask {
+  font: 12px/1.5 "Helvetica", sans-serif;
+  color: #444;
+  padding: 4px 6px 8px;
+}
 .sn-actions button:hover { color: #222; }
 .sn-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
 .sn-open:hover { text-decoration: underline; }

@@ -2,11 +2,9 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/slackwing/manuscript-studio/internal/scratchpad"
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
@@ -39,30 +37,35 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		loc = time.UTC
 	}
 	day := time.Now().In(loc).Format("2006-01-02")
-	// Linked draft snippet words per manuscript, from every user's
-	// scratchpads. The doc JSON is the source of truth for blocks.
+	// Linked draft snippet words per manuscript (all users). Sibling
+	// variations are alternatives of ONE passage, so each linked,
+	// NON-canonized group contributes exactly one representative: its most
+	// recently updated lettered variation (VARIATIONS_PLAN §6). Canonized
+	// groups count via words_effective only — never both.
 	snippetWords := map[int]int{}
-	docRows, err := db.Pool.Query(ctx, `SELECT doc FROM scratchpad WHERE deleted_at IS NULL`)
+	repRows, err := db.Pool.Query(ctx, `
+		SELECT s.linked_manuscript_id, v.text
+		FROM snippet s
+		JOIN LATERAL (
+			SELECT text FROM variation
+			WHERE snippet_id = s.snippet_id AND ordinal IS NOT NULL
+			ORDER BY updated_at DESC LIMIT 1
+		) v ON true
+		WHERE s.linked_manuscript_id IS NOT NULL AND s.canon_variation_id IS NULL
+	`)
 	if err != nil {
-		return nil, fmt.Errorf("list scratchpad docs: %w", err)
+		return nil, fmt.Errorf("list linked snippet representatives: %w", err)
 	}
-	defer docRows.Close()
-	for docRows.Next() {
-		var doc []byte
-		if err := docRows.Scan(&doc); err != nil {
+	defer repRows.Close()
+	for repRows.Next() {
+		var mid int
+		var text string
+		if err := repRows.Scan(&mid, &text); err != nil {
 			return nil, err
 		}
-		blocks, err := scratchpad.ExtractBlocks(json.RawMessage(doc))
-		if err != nil {
-			continue // one malformed doc must not sink the whole run
-		}
-		for _, b := range blocks {
-			if !b.Canonized() && b.LinkedManuscriptID > 0 {
-				snippetWords[b.LinkedManuscriptID] += sentence.CountProseWords(b.Text)
-			}
-		}
+		snippetWords[mid] += sentence.CountProseWords(text)
 	}
-	if err := docRows.Err(); err != nil {
+	if err := repRows.Err(); err != nil {
 		return nil, err
 	}
 

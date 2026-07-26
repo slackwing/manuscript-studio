@@ -34,6 +34,7 @@ type Server struct {
 	annotationHandlers *handlers.AnnotationHandlers
 	suggestionHandlers *handlers.SuggestionHandlers
 	scratchpadHandlers *handlers.ScratchpadHandlers
+	variationHandlers  *handlers.VariationHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
@@ -68,6 +69,11 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config:       cfg,
 		},
 		scratchpadHandlers: &handlers.ScratchpadHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+			Config:       cfg,
+		},
+		variationHandlers: &handlers.VariationHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
@@ -229,8 +235,16 @@ func (s *Server) setupRouter() {
 			r.Get("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleGet)
 			r.Put("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleUpdate)
 			r.Delete("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleDelete)
-			r.Post("/scratchpads/{scratchpad_id}/blocks/{block_id}/canonize", s.scratchpadHandlers.HandleCanonizeBlock)
 			r.Post("/scratchpads/{scratchpad_id}/opened", s.scratchpadHandlers.HandleOpened)
+			// Snippets/variations (VARIATIONS_PLAN.md): content lives in
+			// rows, the doc carries placements; canonize step 2 is here.
+			r.Post("/snippets", s.variationHandlers.HandleCreateSnippet)
+			r.Put("/snippets/{snippet_id}/link", s.variationHandlers.HandleLinkSnippet)
+			r.Get("/variations", s.variationHandlers.HandleListVariations)
+			r.Get("/variations/{variation_id}", s.variationHandlers.HandleGetVariation)
+			r.Put("/variations/{variation_id}", s.variationHandlers.HandleUpdateVariation)
+			r.Post("/variations/{variation_id}/freeze", s.variationHandlers.HandleFreezeVariation)
+			r.Post("/variations/{variation_id}/canonize", s.variationHandlers.HandleCanonizeVariation)
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
 			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)
 

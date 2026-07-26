@@ -25,7 +25,7 @@ const WriteSysRegion = {
       const eff = canon(raw);
       for (const f of cmdLib.segmentFragments(eff)) {
         if (state === 'before') {
-          if (f.kind === 'command' && f.cmd.kind === 'anchor' && f.cmd.slug === slug) {
+          if (f.kind === 'command' && (f.cmd.kind === 'anchor' || f.cmd.kind === 'snippet') && f.cmd.slug === slug) {
             state = 'inside';
           }
           continue;

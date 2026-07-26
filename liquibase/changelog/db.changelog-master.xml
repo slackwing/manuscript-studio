@@ -21,5 +21,6 @@
     <include file="changelog/012-manuscript-display-name.xml"/>
     <include file="changelog/013-scratchpad-opened.xml"/>
     <include file="changelog/014-wordcount-history.xml"/>
+    <include file="changelog/015-variations.xml"/>
 
 </databaseChangeLog>

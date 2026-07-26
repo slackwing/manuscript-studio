@@ -113,14 +113,24 @@ async function cleanupTestAnnotations() {
       DELETE FROM tag WHERE migration_id IN (
         SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
       );
-      DELETE FROM scratchpad_block WHERE scratchpad_id IN (
-        SELECT scratchpad_id FROM scratchpad WHERE user_id = '${TEST_USERNAME}'
-      );
       DELETE FROM scratchpad_revision WHERE scratchpad_id IN (
         SELECT scratchpad_id FROM scratchpad WHERE user_id = '${TEST_USERNAME}'
       );
       DELETE FROM scratchpad WHERE user_id = '${TEST_USERNAME}';
       DELETE FROM scratchpad_image WHERE user_id = '${TEST_USERNAME}';
+      UPDATE snippet SET canon_variation_id = NULL WHERE user_id = '${TEST_USERNAME}';
+      DELETE FROM variation_revision WHERE variation_id IN (
+        SELECT variation_id FROM variation WHERE snippet_id IN (
+          SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
+        )
+      );
+      UPDATE variation SET parent_variation_id = NULL WHERE snippet_id IN (
+        SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
+      );
+      DELETE FROM variation WHERE snippet_id IN (
+        SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
+      );
+      DELETE FROM snippet WHERE user_id = '${TEST_USERNAME}';
     `);
     console.log(`[CLEANUP] fast wipe done (worker ${WORKER}, manuscript_id=${TEST_MANUSCRIPT_ID})`);
   } catch (error) {
