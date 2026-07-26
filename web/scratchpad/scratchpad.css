@@ -63,9 +63,6 @@
   flex: 1;
   overflow-y: auto;
   padding: 18px 22px 60px;
-  /* Quiet warm surround; the paper texture itself lives on the .ProseMirror
-     sheet inside this scroll area. */
-  background: #f3efe2;
 }
 
 /* ---- toolbar ---- */
@@ -130,19 +127,8 @@
   outline: none;
   white-space: pre-wrap;
   word-wrap: break-word;
-  /* Legal-pad paper lives on the actual text surface (this element), not just
-     the .spm-editor padding around it — soft warm-yellow with faint blue rules
-     as a decorative texture at a fixed 28px pitch, deliberately NOT aligned to
-     the baseline so it reads as paper grain rather than lined writing. */
-  background-color: #fdfaec;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 27px,
-    rgba(120, 160, 210, 0.14) 27px,
-    rgba(120, 160, 210, 0.14) 28px
-  );
-  border: 1px solid #e7e0cc;
+  background: #fff;
+  border: 1px solid #ddd;
   padding: 28px 34px;
   min-height: 100%;
   font: 15px/1.6 "Helvetica", "Arial", sans-serif;
@@ -224,12 +210,7 @@
 .sn-widget {
   border: 1px solid #c9c2b2;
   background: #fbfaf7;
-  /* Inset from the scratchpad text left & right so a snippet reads as a card
-     laid ON the paper, narrower than the surrounding prose. The soft outset
-     shadow lifts it off the warm paper. */
-  margin: 0.3em 24px 0.9em;
-  border-radius: 3px;
-  box-shadow: 0 1px 4px rgba(60, 50, 30, 0.12);
+  margin: 0 0 0.9em;
   /* The editor surface is white-space: pre-wrap — without this, the
      widget template's own newlines/indentation render as blank strips
      (and paint grey when the node is selected). */
