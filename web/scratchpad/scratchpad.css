@@ -380,6 +380,11 @@
   overflow: hidden;          /* never scroll; height is set to fit content */
   z-index: 1;
 }
+/* The transparent background hides the browser's default selection highlight
+   (it paints against nothing), so make it explicit — otherwise mouse-selecting
+   text looks like it does nothing. */
+.sn-text::selection { background: #b4d5fe; color: #222; }
+.sn-text::-moz-selection { background: #b4d5fe; color: #222; }
 /* Overlay sits exactly behind the textarea, same geometry, non-interactive. */
 .sn-text-overlay {
   position: absolute;
