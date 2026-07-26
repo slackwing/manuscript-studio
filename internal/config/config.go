@@ -8,6 +8,10 @@ import (
 	"strings"
 	"time"
 
+	// The production container ships no /usr/share/zoneinfo; embedding the
+	// IANA database makes wordcount_history.timezone work everywhere.
+	_ "time/tzdata"
+
 	"gopkg.in/yaml.v3"
 )
 
