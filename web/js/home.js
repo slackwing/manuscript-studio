@@ -67,7 +67,7 @@ const WriteSysHome = {
       <button type="button" class="card-del" title="Delete scratchpad">×</button>
       <p class="card-title">${this.esc(s.title)}</p>
       <p class="card-snippet">${this.esc(s.snippet || '')}</p>
-      <p class="card-meta"><span>updated ${this.esc(this.when(s.updated_at))}</span><span>created ${this.esc(this.when(s.created_at))}</span>${badge}</p>
+      <p class="card-meta"><span>updated ${this.esc(this.when(s.updated_at))}</span>${badge}</p>
     </div>`;
   },
 
