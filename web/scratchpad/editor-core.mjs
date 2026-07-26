@@ -175,6 +175,18 @@ export const letterOf = (ordinal) => ordinal ? String.fromCharCode(64 + ordinal)
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// tabMarkupHTML mirrors a textarea's raw value into overlay HTML, rendering
+// each literal tab as a faint grey → glyph so \t whitespace is visible. The
+// span keeps the REAL tab character (so it consumes exactly one tab stop —
+// identical width to the textarea's own tab, given the shared tab-size) and
+// draws the → via CSS ::before with zero advance width, so alignment is exact
+// with no scroll sync (the editor never scrolls; see renderEdit). A trailing
+// newline gets a zero-width space so the overlay's last line keeps height.
+const tabMarkupHTML = (value) => {
+  const withNL = value.endsWith('\n') ? value + '​' : value;
+  return esc(withNL).replace(/\t/g, '<span class="sn-tab">\t</span>');
+};
+
 const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
 const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';
 const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M8 1v14M1.9 4.5l12.2 7M14.1 4.5l-12.2 7M8 1l-1.8 1.8M8 1l1.8 1.8M8 15l-1.8-1.8M8 15l1.8-1.8M1.9 4.5l.6 2.4M1.9 4.5l2.4-.6M14.1 11.5l-.6-2.4M14.1 11.5l-2.4.6M14.1 4.5l-2.4-.6M14.1 4.5l-.6 2.4M1.9 11.5l2.4.6M1.9 11.5l.6-2.4"/></svg>';
@@ -430,11 +442,45 @@ class SnippetView {
       save();
       if (this.tab === 'self' && this.mode === 'edit') { this.mode = 'preview'; this.renderBody(); }
     });
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') ta.blur(); });
-    this.body.appendChild(ta);
+
+    // Literal .manuscript editing: Tab inserts a real \t at the caret (so a
+    // "\n\t" paragraph break is typeable) instead of moving focus. Shift-Tab
+    // still escapes the field so the author is never trapped.
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { ta.blur(); return; }
+      if (e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        const s = ta.selectionStart, en = ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + '\t' + ta.value.slice(en);
+        ta.selectionStart = ta.selectionEnd = s + 1;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+
+    // The editor never scrolls internally — it grows to fit its content (the
+    // dialog body scrolls instead). This also makes the tab-marker overlay
+    // trivial: no scroll position to sync, just matched static geometry.
+    const wrap = document.createElement('div');
+    wrap.className = 'sn-text-wrap';
+    const overlay = document.createElement('div');
+    overlay.className = 'sn-text-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    const autoGrow = () => {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+      // Mirror the text into the overlay, rendering each tab as a faint grey
+      // → glyph so invisible whitespace is visible. Everything else is neutral
+      // (the textarea's own text sits transparent on top).
+      overlay.innerHTML = tabMarkupHTML(ta.value);
+    };
+    ta.addEventListener('input', autoGrow);
+    wrap.appendChild(overlay);
+    wrap.appendChild(ta);
+    this.body.appendChild(wrap);
     this.ta = ta;
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);
+    autoGrow();
   }
 
   async renderPeer(variationId) {

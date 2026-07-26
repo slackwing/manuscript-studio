@@ -347,18 +347,60 @@
 .sn-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
 .sn-open:hover { text-decoration: underline; }
 .sn-body { padding: 0; }
-.sn-text {
-  display: block;
+/* The snippet editor: a textarea on top of a mirror overlay that visualizes
+   tabs. Both share identical box metrics + tab-size so glyphs align exactly.
+   The editor never scrolls internally (auto-grows to fit — see renderEdit), so
+   there is no scroll position to sync. */
+.sn-text-wrap {
+  position: relative;
   width: 100%;
-  border: none;
-  outline: none;
-  resize: vertical;
+}
+/* Shared box metrics for both layers. */
+.sn-text,
+.sn-text-overlay {
+  box-sizing: border-box;
+  width: 100%;
   padding: 10px 12px;
   font: 12px/1.55 "Monaco", monospace;
-  background: #fff;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  border: none;
+  margin: 0;
+}
+.sn-text {
+  position: relative;
+  display: block;
+  outline: none;
+  resize: none;              /* auto-grows instead */
+  background: transparent;   /* let the overlay show through */
   color: #222;
   min-height: 90px;
-  box-sizing: border-box;
+  overflow: hidden;          /* never scroll; height is set to fit content */
+  z-index: 1;
+}
+/* Overlay sits exactly behind the textarea, same geometry, non-interactive. */
+.sn-text-overlay {
+  position: absolute;
+  inset: 0;
+  color: transparent;        /* only the tab markers paint */
+  pointer-events: none;
+  z-index: 0;
+  min-height: 90px;
+}
+/* A tab: keep the real \t (so it consumes one tab stop, matching the textarea)
+   and draw a faint grey → at its start with zero advance width. */
+.sn-text-overlay .sn-tab {
+  position: relative;
+}
+.sn-text-overlay .sn-tab::before {
+  content: "\2192";          /* → */
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #c4c0b8;
+  pointer-events: none;
 }
 .sn-note {
   font: 11px "Helvetica", sans-serif;
