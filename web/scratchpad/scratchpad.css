@@ -63,18 +63,9 @@
   flex: 1;
   overflow-y: auto;
   padding: 18px 22px 60px;
-  /* Legal-pad feel: a soft warm-yellow paper with faint blue horizontal rules
-     as a decorative background texture — deliberately NOT aligned to the text
-     baseline (fixed 28px pitch, not the line-height), so it reads as paper
-     grain rather than lined writing. */
-  background-color: #fdfaec;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 27px,
-    rgba(120, 160, 210, 0.14) 27px,
-    rgba(120, 160, 210, 0.14) 28px
-  );
+  /* Quiet warm surround; the paper texture itself lives on the .ProseMirror
+     sheet inside this scroll area. */
+  background: #f3efe2;
 }
 
 /* ---- toolbar ---- */
@@ -139,8 +130,19 @@
   outline: none;
   white-space: pre-wrap;
   word-wrap: break-word;
-  background: #fff;
-  border: 1px solid #ddd;
+  /* Legal-pad paper lives on the actual text surface (this element), not just
+     the .spm-editor padding around it — soft warm-yellow with faint blue rules
+     as a decorative texture at a fixed 28px pitch, deliberately NOT aligned to
+     the baseline so it reads as paper grain rather than lined writing. */
+  background-color: #fdfaec;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    rgba(120, 160, 210, 0.14) 27px,
+    rgba(120, 160, 210, 0.14) 28px
+  );
+  border: 1px solid #e7e0cc;
   padding: 28px 34px;
   min-height: 100%;
   font: 15px/1.6 "Helvetica", "Arial", sans-serif;
