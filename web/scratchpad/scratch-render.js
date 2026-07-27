@@ -25,7 +25,8 @@ const WriteSysScratchRender = {
         font-size: 12pt;
         line-height: 1.6;
         color: #1a1a1a;
-        background: #fff;
+        background: transparent;   /* let the host's bg show (white for self,
+                                      darker grey for a disabled peer preview) */
         padding: 14px 18px;
       }
       /* Widgets are working views, not pages: left-justify prose. */
