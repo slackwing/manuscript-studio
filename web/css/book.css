@@ -823,16 +823,9 @@ p.section-break {
   color: #999;
   font-style: italic;
 }
-/* Between the full desktop gutter layout and the mobile second-bar layout,
-   the left gutter is too narrow to hold the outline — hide it (the info chrome
-   still fits). Below 640px the mobile layout (further down) takes over and
-   brings the outline back as a second bar. */
-@media (max-width: 1100px) and (min-width: 641px) {
-  #outline-margin { display: none !important; }
-}
-
-/* NOTE: the mobile (≤640px) layout lives at the very END of this file, after
-   all the base #controls / #manuscript-chrome / #outline-margin / .pagedjs_*
+/* NOTE: the narrow-layout (≤1100px) block lives at the very END of this file,
+   after all the base #controls / #manuscript-chrome / #outline-margin /
+   .pagedjs_*
    rules it overrides — CSS resolves equal-specificity conflicts by source
    order, so the mobile block MUST come last to win. */
 
@@ -2676,16 +2669,21 @@ p.section-break {
 #manuscript-chrome .push-button-container { position: relative; flex: none; }
 
 /* ============================================================
-   Mobile (≤640px) — MUST be last in the file (equal-specificity
+   Narrow layout (≤1100px) — MUST be last in the file (equal-specificity
    rules win by source order; these override the desktop
    #controls / #manuscript-chrome / #outline-margin / .pagedjs_*
    rules defined earlier).
 
-   The left gutter collapses, so the manuscript chrome (info) and
-   the outline relocate into a SECOND horizontal bar directly under
-   the top bar: info in the left 1/3, outline in the right 2/3.
+   Breakpoint = 1100px, not 640px: the desktop layout needs a 290px left
+   gutter + a 576px page + a 290px right gutter ≈ 1156px to not overlap, so
+   anything below ~1100px must use this compact layout — not just phones.
+   The left gutter collapses, so the manuscript chrome (info) and the outline
+   relocate into a SECOND horizontal bar directly under the top bar: info in
+   the left 1/3, outline in the right 2/3. (The page itself only gets scaled
+   to fit at ≤768px — see renderer.applyResponsiveScaling; between 769–1100px
+   the 576px sheet still fits beside the bars.)
    ============================================================ */
-@media (max-width: 640px) {
+@media (max-width: 1100px) {
   /* --- top bar: fixed short height so the second bar butts flush against it
          (no book showing through a gap). Smaller controls let it shrink. --- */
   #controls {

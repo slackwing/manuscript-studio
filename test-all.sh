@@ -53,6 +53,7 @@ FAST_TESTS=(
   test-canonicalize
   test-canon-render-pipeline
   test-cheatsheet
+  test-responsive-layout
 )
 
 SLOW_TESTS=(
