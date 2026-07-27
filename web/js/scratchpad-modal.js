@@ -10,7 +10,7 @@ const WriteSysScratchpadModal = {
 
   async _load() {
     if (!this._mod) {
-      this._mod = await import(new URL('scratchpad/modal.mjs?v=7', document.baseURI).href);
+      this._mod = await import(new URL('scratchpad/modal.mjs?v=8', document.baseURI).href);
     }
     return this._mod;
   },
@@ -25,17 +25,31 @@ const WriteSysScratchpadModal = {
     return this._mod.ScratchpadModal.close();
   },
 
+  // Restore/react to the URL hash. Accepts #scratchpad=N and the deep-link form
+  // #scratchpad=N&sketch=ID (navigate-to-source). If a pad is already open,
+  // just scroll to the sketch; otherwise open the pad (which then scrolls).
   restoreFromHash() {
-    const m = (window.location.hash || '').match(/^#scratchpad=(\d+)$/);
-    if (m) this.open(parseInt(m[1], 10));
+    const h = window.location.hash || '';
+    const sp = h.match(/[#&]scratchpad=(\d+)/);
+    if (!sp) return;
+    const sketchM = h.match(/[#&]sketch=(\d+)/);
+    const spid = parseInt(sp[1], 10);
+    if (this._mod && this._mod.ScratchpadModal.currentId() === spid) {
+      // Same pad already open — just scroll to the sketch, if any.
+      if (sketchM) this._mod.ScratchpadModal.scrollToSketchWidget(parseInt(sketchM[1], 10));
+    } else {
+      this.open(spid);
+    }
   },
 };
 
 if (typeof window !== 'undefined') {
   window.WriteSysScratchpadModal = WriteSysScratchpadModal;
+  const restore = () => WriteSysScratchpadModal.restoreFromHash();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => WriteSysScratchpadModal.restoreFromHash());
+    document.addEventListener('DOMContentLoaded', restore);
   } else {
-    WriteSysScratchpadModal.restoreFromHash();
+    restore();
   }
+  window.addEventListener('hashchange', restore);
 }

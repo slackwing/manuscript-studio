@@ -118,16 +118,13 @@ async function cleanupTestAnnotations() {
       );
       DELETE FROM scratchpad WHERE user_id = '${TEST_USERNAME}';
       DELETE FROM scratchpad_image WHERE user_id = '${TEST_USERNAME}';
-      UPDATE snippet SET canon_variation_id = NULL WHERE user_id = '${TEST_USERNAME}';
-      DELETE FROM variation_revision WHERE variation_id IN (
-        SELECT variation_id FROM variation WHERE snippet_id IN (
+      UPDATE snippet SET canon_sketch_id = NULL WHERE user_id = '${TEST_USERNAME}';
+      DELETE FROM sketch_revision WHERE sketch_id IN (
+        SELECT sketch_id FROM sketch WHERE snippet_id IN (
           SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
         )
       );
-      UPDATE variation SET parent_variation_id = NULL WHERE snippet_id IN (
-        SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
-      );
-      DELETE FROM variation WHERE snippet_id IN (
+      DELETE FROM sketch WHERE snippet_id IN (
         SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
       );
       DELETE FROM snippet WHERE user_id = '${TEST_USERNAME}';

@@ -93,9 +93,9 @@ function noisyPng(w, h) {
 
     await page.fill('#spm-title', 'E2E pad');
     const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
-    varA = ctxA.variation.variation_id;
+    varA = ctxA.sketch.sketch_id;
     snippetId = ctxA.snippet.snippet_id;
-    check('snippet group + variation A created', ctxA.variation.ordinal === 1 && /^[a-z0-9]{10}$/.test(snippetId), `#${snippetId}`);
+    check('snippet group + variation A created', ctxA.sketch.ordinal === 1 && /^[a-z0-9]{10}$/.test(snippetId), `#${snippetId}`);
 
     // Preview-first: fresh variation shows its (empty) preview; a single
     // click flips into the monospace editor; blur returns to preview.
@@ -135,53 +135,38 @@ function noisyPng(w, h) {
     });
     check('image uploaded and served', imgOk === true);
 
-    // --- branch: variation B based on A, freezing A ---
-    const ctxB = await page.evaluate((src) => window.WriteSysScratchpad.insertVariationOf(src, true), varA);
-    varB = ctxB.variation.variation_id;
-    check('variation B created from A (text copied, parent recorded, A frozen)',
-      ctxB.variation.ordinal === 2 && ctxB.variation.text.includes('keg arrived')
-      && ctxB.variation.parent_variation_id === varA && ctxB.parent.frozen === true);
+    // --- based on: sketch B is a NEW SIBLING of A (text copied, A untouched,
+    // no lineage) ---
+    const ctxB = await page.evaluate((src) => window.WriteSysScratchpad.insertSketchOf(src), varA);
+    varB = ctxB.sketch.sketch_id;
+    check('sketch B minted from A (next letter, text copied, no parent)',
+      ctxB.sketch.ordinal === 2 && ctxB.sketch.text.includes('keg arrived')
+      && ctxB.sketch.parent_variation_id === undefined);
     await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2, null, { timeout: 10000 });
-    const bWidget = page.locator(`.sn-widget[data-variation-id="${varB}"]`);
-    await bWidget.locator('.sn-tab-parent').waitFor({ timeout: 10000 });
-    check('B shows parent tab A (lineage icon)', (await bWidget.locator('.sn-tab-parent').textContent()).includes('A'));
+    const bWidget = page.locator(`.sn-widget[data-sketch-id="${varB}"]`);
 
-    // Parent tab renders A read-only.
-    await bWidget.locator('.sn-tab-parent').click();
+    // B's tabs: B first (its own sketch), a separator, then A as a sibling.
+    await bWidget.locator('.sn-tab-self').waitFor({ timeout: 10000 });
+    check('B tab shown first (self)', (await bWidget.locator('.sn-tab-self').textContent()).trim() === 'B');
+    check('separator + sibling A present',
+      await bWidget.locator('.sn-tab-sep').count() === 1
+      && (await bWidget.locator('.sn-tab').allTextContents()).join('').includes('A'));
+
+    // Click A's sibling tab → read-only PEER preview with navigate-to-source.
+    await bWidget.locator('.sn-tab', { hasText: 'A' }).first().click();
     await page.waitForFunction((vid) => {
-      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      const host = w && w.querySelector('.sn-render');
+      const w = document.querySelector(`.sn-widget[data-sketch-id="${vid}"]`);
+      const host = w && w.querySelector('.sn-render.sn-peer');
       return host && host.shadowRoot && /keg arrived/i.test(host.shadowRoot.textContent);
     }, varB, { timeout: 10000 });
-    check('parent tab shows A read-only', true);
+    check('sibling tab shows A read-only (peer preview)', true);
+    check('peer preview offers navigate-to-source',
+      await bWidget.locator('.sn-goto-source').count() === 1);
 
-    // A's widget after reload: frozen (snowflake pressed) + child tab B.
-    // (page.goto to the same URL is a no-op hash change — reload instead.)
+    // A was NOT frozen by the based-on (siblings don't freeze sources).
     await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
-    await page.reload();
-    await page.waitForFunction((vid) => {
-      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      return w && /frozen/.test((w.querySelector('.sn-status') || {}).textContent || '');
-    }, varA, { timeout: 20000 });
-    const aWidget = page.locator(`.sn-widget[data-variation-id="${varA}"]`);
-    check('A is frozen after being branched with freeze', await aWidget.locator('.sn-freeze.pressed').count() === 1);
-    check('A shows child tab B', (await aWidget.locator('.sn-tab').allTextContents()).join('').includes('B'));
-
-    // Frozen preview does not open the editor on click.
-    await aWidget.locator('.sn-render').click();
-    check('frozen A preview refuses edit', await aWidget.locator('.sn-text').count() === 0);
-    // Unfreeze → refreeze via the snowflake.
-    await aWidget.locator('.sn-freeze').click();
-    await page.waitForFunction((vid) => {
-      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      return w && w.querySelector('.sn-freeze') && !w.querySelector('.sn-freeze').classList.contains('pressed');
-    }, varA, { timeout: 10000 });
-    check('snowflake unfreezes A', true);
-    await aWidget.locator('.sn-freeze').click();
-    await page.waitForFunction((vid) => {
-      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      return w && w.querySelector('.sn-freeze.pressed');
-    }, varA, { timeout: 10000 });
+    const aWidget = page.locator(`.sn-widget[data-sketch-id="${varA}"]`);
+    check('A stays editable (not frozen by based-on)', await aWidget.locator('.sn-freeze.pressed').count() === 0);
 
     // --- book view: canonize B via the + affordance ---
     await page.goto(TEST_URL);
@@ -197,7 +182,7 @@ function noisyPng(w, h) {
       b.querySelector('input').click();
       return true;
     });
-    check('canonize modal lists variations; B picked', picked === true);
+    check('canonize modal lists sketches; B picked', picked === true);
     await page.fill('#im-label', 'Keg Party');
     const stamp = await paginationStamp(page);
     await page.click('#im-go');
@@ -238,7 +223,7 @@ function noisyPng(w, h) {
     check('canonized group wears the blue state', await page.locator('.sn-widget.sn-canon').count() === 2);
 
     // Canon tab: live view resolves the region from the effective manuscript.
-    await page.locator(`.sn-widget[data-variation-id="${varB}"] .sn-tab-canon`).click();
+    await page.locator(`.sn-widget[data-sketch-id="${varB}"] .sn-tab-canon`).click();
     await page.waitForFunction(() => {
       const notes = Array.from(document.querySelectorAll('.sn-widget .sn-note'));
       const live = notes.find(n => /effective manuscript/i.test(n.textContent));

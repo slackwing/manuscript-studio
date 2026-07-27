@@ -34,7 +34,7 @@ type Server struct {
 	annotationHandlers *handlers.AnnotationHandlers
 	suggestionHandlers *handlers.SuggestionHandlers
 	scratchpadHandlers *handlers.ScratchpadHandlers
-	variationHandlers  *handlers.VariationHandlers
+	sketchHandlers    *handlers.SketchHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
@@ -73,7 +73,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			SessionStore: sessionStore,
 			Config:       cfg,
 		},
-		variationHandlers: &handlers.VariationHandlers{
+		sketchHandlers: &handlers.SketchHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
@@ -236,20 +236,22 @@ func (s *Server) setupRouter() {
 			r.Put("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleUpdate)
 			r.Delete("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleDelete)
 			r.Post("/scratchpads/{scratchpad_id}/opened", s.scratchpadHandlers.HandleOpened)
-			// Snippets/variations (VARIATIONS_PLAN.md): content lives in
+			// Snippets/sketches (VARIATIONS_PLAN.md): content lives in
 			// rows, the doc carries placements; canonize step 2 is here.
-			r.Post("/snippets", s.variationHandlers.HandleCreateSnippet)
-			r.Put("/snippets/{snippet_id}/link", s.variationHandlers.HandleLinkSnippet)
-			r.Get("/variations", s.variationHandlers.HandleListVariations)
-			// Static path before the {variation_id} pattern so chi doesn't
+			r.Post("/snippets", s.sketchHandlers.HandleCreateSnippet)
+			r.Put("/snippets/{snippet_id}/link", s.sketchHandlers.HandleLinkSnippet)
+			r.Post("/snippets/{snippet_id}/freeze-all", s.sketchHandlers.HandleFreezeAllSketches)
+			r.Get("/sketches", s.sketchHandlers.HandleListSketches)
+			// Static path before the {sketch_id} pattern so chi doesn't
 			// treat "deleted" as an id.
-			r.Get("/variations/deleted", s.variationHandlers.HandleListDeletedVariations)
-			r.Get("/variations/{variation_id}", s.variationHandlers.HandleGetVariation)
-			r.Put("/variations/{variation_id}", s.variationHandlers.HandleUpdateVariation)
-			r.Delete("/variations/{variation_id}", s.variationHandlers.HandleDeleteVariation)
-			r.Post("/variations/{variation_id}/restore", s.variationHandlers.HandleRestoreVariation)
-			r.Post("/variations/{variation_id}/freeze", s.variationHandlers.HandleFreezeVariation)
-			r.Post("/variations/{variation_id}/canonize", s.variationHandlers.HandleCanonizeVariation)
+			r.Get("/sketches/deleted", s.sketchHandlers.HandleListDeletedSketches)
+			r.Get("/sketches/{sketch_id}", s.sketchHandlers.HandleGetSketch)
+			r.Get("/sketches/{sketch_id}/home", s.sketchHandlers.HandleGetSketchHome)
+			r.Put("/sketches/{sketch_id}", s.sketchHandlers.HandleUpdateSketch)
+			r.Delete("/sketches/{sketch_id}", s.sketchHandlers.HandleDeleteSketch)
+			r.Post("/sketches/{sketch_id}/restore", s.sketchHandlers.HandleRestoreSketch)
+			r.Post("/sketches/{sketch_id}/freeze", s.sketchHandlers.HandleFreezeSketch)
+			r.Post("/sketches/{sketch_id}/canonize", s.sketchHandlers.HandleCanonizeSketch)
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
 			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)
 

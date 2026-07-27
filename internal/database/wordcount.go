@@ -47,11 +47,11 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		SELECT s.linked_manuscript_id, v.text
 		FROM snippet s
 		JOIN LATERAL (
-			SELECT text FROM variation
-			WHERE snippet_id = s.snippet_id AND ordinal IS NOT NULL
+			SELECT text FROM sketch
+			WHERE snippet_id = s.snippet_id AND ordinal IS NOT NULL AND deleted_at IS NULL
 			ORDER BY updated_at DESC LIMIT 1
 		) v ON true
-		WHERE s.linked_manuscript_id IS NOT NULL AND s.canon_variation_id IS NULL
+		WHERE s.linked_manuscript_id IS NOT NULL AND s.canon_sketch_id IS NULL
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list linked snippet representatives: %w", err)

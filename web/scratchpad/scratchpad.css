@@ -245,8 +245,32 @@
 .sn-tabs button.active { background: #fff; border-color: #d0c8b8; }
 .sn-tabs .sn-tab { min-width: 24px; text-align: center; font-weight: 600; }
 .sn-tabs .sn-tab svg { vertical-align: -1px; margin-right: 2px; opacity: 0.7; }
+/* This widget's own sketch is shown first, subtly emphasized. */
+.sn-tabs .sn-tab-self { border-color: #b8b0a0; }
+/* Separator between this sketch and the sibling previews. */
+.sn-tab-sep {
+  display: inline-block;
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 5px;
+  background: #d0c8b8;
+}
 .sn-tabs .sn-tab-canon { color: #2a6fb0; font-weight: 700; }
 .sn-tabs .sn-tab-canon.active { background: #e8f0f8; border-color: #a8c4dd; }
+/* A sibling shown as a read-only PREVIEW: disabled-looking, no caret. */
+.sn-render.sn-peer {
+  opacity: 0.72;
+  background: #f3f1ec;
+  cursor: default;
+  user-select: text;      /* selectable to read/copy, but not editable */
+}
+.sn-goto-source { color: #2a6fb0; text-decoration: underline; cursor: pointer; }
+/* Brief highlight when navigate-to-source lands on a widget. */
+.sn-widget.sn-flash { animation: sn-flash-kf 1.6s ease; }
+@keyframes sn-flash-kf {
+  0%, 100% { box-shadow: none; }
+  15% { box-shadow: 0 0 0 3px rgba(42, 111, 176, 0.5); }
+}
 .sn-tab-more { position: relative; display: inline-block; }
 .sn-more-list {
   position: absolute;

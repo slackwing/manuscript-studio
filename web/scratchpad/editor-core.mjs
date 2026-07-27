@@ -137,7 +137,7 @@ export const bookData = {
   },
 };
 
-// ------------------------------------------------------ variation API
+// ------------------------------------------------------ sketch API
 
 async function apiCall(method, url, body) {
   const r = await fetch(url, {
@@ -154,19 +154,28 @@ async function apiCall(method, url, body) {
   return r.status === 204 ? null : r.json();
 }
 
-export const variationApi = {
-  context: (id) => fetchJSON(`api/variations/${id}`, {}, false),
-  list: (q) => fetchJSON(`api/variations?q=${encodeURIComponent(q || '')}`, {}, false),
-  createNew: () => apiCall('POST', 'api/snippets', { mode: 'new' }),
-  createFrom: (sourceId, freeze) => apiCall('POST', 'api/snippets',
-    { mode: 'variation', source_variation_id: sourceId, freeze_source: freeze }),
-  saveText: (id, text) => apiCall('PUT', `api/variations/${id}`, { text }),
-  freeze: (id, frozen) => apiCall('POST', `api/variations/${id}/freeze`, { frozen }),
+// currentScratchpadId: the scratchpad a newly-created sketch is homed in. The
+// modal sets this when it opens a scratchpad (from #scratchpad=N).
+let currentScratchpadId = 0;
+export function setCurrentScratchpadId(id) { currentScratchpadId = id | 0; }
+
+export const sketchApi = {
+  context: (id) => fetchJSON(`api/sketches/${id}`, {}, false),
+  list: (q) => fetchJSON(`api/sketches?q=${encodeURIComponent(q || '')}`, {}, false),
+  createNew: () => apiCall('POST', 'api/snippets', { mode: 'new', scratchpad_id: currentScratchpadId }),
+  // Based on a source sketch → a new sibling sketch (next letter, text copied).
+  // No source freezing; the source is left as-is.
+  createFrom: (sourceId) => apiCall('POST', 'api/snippets',
+    { mode: 'sketch', source_sketch_id: sourceId, scratchpad_id: currentScratchpadId }),
+  saveText: (id, text) => apiCall('PUT', `api/sketches/${id}`, { text }),
+  freeze: (id, frozen) => apiCall('POST', `api/sketches/${id}/freeze`, { frozen }),
+  freezeAll: (snippetId) => apiCall('POST', `api/snippets/${snippetId}/freeze-all`),
   link: (snippetId, manuscriptId) => apiCall('PUT', `api/snippets/${snippetId}/link`, { manuscript_id: manuscriptId }),
-  canonize: (id, manuscriptId) => apiCall('POST', `api/variations/${id}/canonize`, { manuscript_id: manuscriptId }),
-  softDelete: (id) => apiCall('DELETE', `api/variations/${id}`),
-  restore: (id) => apiCall('POST', `api/variations/${id}/restore`),
-  listDeleted: (q) => fetchJSON(`api/variations/deleted?q=${encodeURIComponent(q || '')}`, {}, false),
+  canonize: (id, manuscriptId) => apiCall('POST', `api/sketches/${id}/canonize`, { manuscript_id: manuscriptId }),
+  softDelete: (id) => apiCall('DELETE', `api/sketches/${id}`),
+  restore: (id) => apiCall('POST', `api/sketches/${id}/restore`),
+  listDeleted: (q) => fetchJSON(`api/sketches/deleted?q=${encodeURIComponent(q || '')}`, {}, false),
+  home: (id) => fetchJSON(`api/sketches/${id}/home`, {}, false),
 };
 
 // fmtDeleted renders a deleted_at ISO timestamp as a short local date for the
@@ -232,10 +241,11 @@ class SnippetView {
     this.node = node;
     this.view = view;
     this.getPos = getPos;
-    this.varId = node.attrs.variationId;
+    this.sketchId = node.attrs.variationId;
     this.dom = document.createElement('div');
     this.dom.className = 'sn-widget';
-    this.dom.dataset.variationId = String(this.varId);
+    this.dom.dataset.variationId = String(this.sketchId); // legacy attr (PM node)
+    this.dom.dataset.sketchId = String(this.sketchId);     // navigate-to-source target
     this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Manuscript Snippet · loading…</span></div><div class="sn-body"></div>';
     this.tab = 'self';       // 'self' | 'canon' | other variationId (number)
     this.mode = 'preview';   // self tab only: 'preview' | 'edit'
@@ -247,7 +257,7 @@ class SnippetView {
 
   async load() {
     try {
-      this.ctx = await variationApi.context(this.varId);
+      this.ctx = await sketchApi.context(this.sketchId);
     } catch (e) {
       this.dom.innerHTML = `
         <div class="sn-header">
@@ -255,7 +265,7 @@ class SnippetView {
           <span class="sn-tabs"></span>
           <span class="sn-actions"><button type="button" data-act="remove" class="sn-trash" title="Remove widget">${TRASH_SVG}</button></span>
         </div>
-        <div class="sn-body"><div class="sn-note"><span class="sn-error">Variation ${this.varId} could not be loaded (${esc(e.message)}).</span></div></div>`;
+        <div class="sn-body"><div class="sn-note"><span class="sn-error">Sketch ${this.sketchId} could not be loaded (${esc(e.message)}).</span></div></div>`;
       this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(true));
       return;
     }
@@ -266,38 +276,40 @@ class SnippetView {
     const tab = this.tab;
     this.peerCache = {};
     try {
-      this.ctx = await variationApi.context(this.varId);
+      this.ctx = await sketchApi.context(this.sketchId);
     } catch (e) { /* keep the stale view rather than blanking */ }
     if (!keepTab) this.tab = 'self';
     else this.tab = tab;
     this.build();
   }
 
-  canonized() { return this.ctx.snippet.canon_variation_id > 0; }
-  frozen() { return this.ctx.variation.frozen; }
-  letter() { return letterOf(this.ctx.variation.ordinal); }
+  canonized() { return this.ctx.snippet.canon_sketch_id > 0; }
+  frozen() { return this.ctx.sketch.frozen; }
+  letter() { return letterOf(this.ctx.sketch.ordinal); }
 
-  // Tab model: parent (with lineage icon) → self → children → Canon (blue).
+  // Tab model: THIS sketch first, a separator, then the other sibling sketches
+  // (by letter), then Canon (blue) if any. Sketches are flat siblings — no
+  // lineage — and each widget's home sketch is shown first so you always see
+  // "which one this is".
   tabDefs() {
     const defs = [];
-    if (this.ctx.parent) {
-      defs.push({ key: this.ctx.parent.variation_id, letter: letterOf(this.ctx.parent.ordinal), parent: true });
-    }
     defs.push({ key: 'self', letter: this.letter(), self: true });
-    for (const c of this.ctx.children) {
-      defs.push({ key: c.variation_id, letter: letterOf(c.ordinal) });
+    const others = (this.ctx.siblings || []).filter(s => s.sketch_id !== this.sketchId);
+    if (others.length) defs.push({ sep: true });
+    for (const s of others) {
+      defs.push({ key: s.sketch_id, letter: letterOf(s.ordinal) });
     }
     if (this.canonized()) defs.push({ key: 'canon', letter: 'Canon', canon: true });
     return defs;
   }
 
   build() {
-    const v = this.ctx.variation;
+    const v = this.ctx.sketch;
     const sn = this.ctx.snippet;
     this.dom.classList.toggle('sn-canon', this.canonized());
     const state = this.frozen() ? 'frozen' : 'draft';
     const status = `Manuscript Snippet · ${this.letter()} · ${state}`;
-    const statusHint = `Variation ${this.letter()} of snippet #${sn.snippet_id}. ` +
+    const statusHint = `Sketch ${this.letter()} of snippet #${sn.snippet_id}. ` +
       (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). ' : 'Click the preview to edit. ') +
       `Created ${esc((v.created_at || '').slice(0, 10))}.`;
 
@@ -319,7 +331,7 @@ class SnippetView {
     const overflow = defs.length > MAXTABS ? defs.slice(MAXTABS - 1) : [];
     const tabHtml = shown.map(d => this.tabButtonHTML(d)).join('') +
       (overflow.length
-        ? `<span class="sn-tab-more"><button type="button" class="sn-more-btn" title="More variations">▾</button><span class="sn-more-list" hidden>${overflow.map(d => this.tabButtonHTML(d)).join('')}</span></span>`
+        ? `<span class="sn-tab-more"><button type="button" class="sn-more-btn" title="More sketches">▾</button><span class="sn-more-list" hidden>${overflow.map(d => this.tabButtonHTML(d)).join('')}</span></span>`
         : '');
 
     const openBook = this.canonized() && sn.linked_manuscript_id
@@ -332,7 +344,7 @@ class SnippetView {
         <span class="sn-actions">
           ${openBook}
           <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-          <button type="button" data-act="remove" class="sn-trash" title="Remove widget (the variation itself is kept)">${TRASH_SVG}</button>
+          <button type="button" data-act="remove" class="sn-trash" title="Delete this sketch (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
         </span>
       </div>
       <div class="sn-body"></div>`;
@@ -359,13 +371,13 @@ class SnippetView {
   }
 
   tabButtonHTML(d) {
+    if (d.sep) return `<span class="sn-tab-sep" aria-hidden="true"></span>`;
     const active = (d.self && this.tab === 'self') || (d.canon && this.tab === 'canon') || d.key === this.tab;
-    const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '', d.parent ? 'sn-tab-parent' : ''].filter(Boolean).join(' ');
+    const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '', d.self ? 'sn-tab-self' : ''].filter(Boolean).join(' ');
     const title = d.canon ? 'Canon — the version placed into the book'
-      : d.parent ? `Variation ${d.letter} (parent — this one was based on it)`
-      : d.self ? `Variation ${d.letter} (this widget)`
-      : `Variation ${d.letter} (based on this one)`;
-    return `<button type="button" data-tab="${d.self ? 'self' : (d.canon ? 'canon' : d.key)}" class="${cls}" title="${title}">${d.parent ? PARENT_SVG : ''}${esc(String(d.letter))}</button>`;
+      : d.self ? `Sketch ${d.letter} (this widget's sketch)`
+      : `Sketch ${d.letter} (preview; click to view)`;
+    return `<button type="button" data-tab="${d.self ? 'self' : (d.canon ? 'canon' : d.key)}" class="${cls}" title="${title}">${esc(String(d.letter))}</button>`;
   }
 
   setTab(key) {
@@ -390,7 +402,7 @@ class SnippetView {
     const frozen = this.frozen();
     this.body.innerHTML = `<div class="sn-render${frozen ? '' : ' sn-clickable'}" title="${frozen ? 'Frozen — unfreeze (snowflake) to edit' : 'Click to edit'}"></div>`;
     const host = this.body.firstChild;
-    const text = this.ctx.variation.text;
+    const text = this.ctx.sketch.text;
     if (text.trim()) {
       renderBookText(host, text);
     } else {
@@ -406,8 +418,8 @@ class SnippetView {
     const ta = document.createElement('textarea');
     ta.className = 'sn-text';
     ta.placeholder = 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
-    ta.value = this.ctx.variation.text;
-    ta.rows = Math.max(6, this.ctx.variation.text.split('\n').length + 2);
+    ta.value = this.ctx.sketch.text;
+    ta.rows = Math.max(6, this.ctx.sketch.text.split('\n').length + 2);
     let t = null;
     let saveAttempt = 0;
     let retryTimer = null;
@@ -415,12 +427,12 @@ class SnippetView {
     const clearRetry = () => { clearTimeout(retryTimer); retryTimer = null; clearInterval(countdown); countdown = null; };
     const save = async () => {
       clearTimeout(t); clearRetry();
-      if (ta.value === this.ctx.variation.text) { dirtyVariations.delete(this); this.saveEl.textContent = ''; return true; }
+      if (ta.value === this.ctx.sketch.text) { dirtyVariations.delete(this); this.saveEl.textContent = ''; return true; }
       this.saveEl.textContent = 'saving…';
       try {
-        await variationApi.saveText(this.varId, ta.value);
-        const changed = this.ctx.variation.text !== ta.value;
-        this.ctx.variation.text = ta.value;
+        await sketchApi.saveText(this.sketchId, ta.value);
+        const changed = this.ctx.sketch.text !== ta.value;
+        this.ctx.sketch.text = ta.value;
         dirtyVariations.delete(this);
         saveAttempt = 0;
         this.saveEl.textContent = '';
@@ -495,25 +507,44 @@ class SnippetView {
     autoGrow();
   }
 
-  async renderPeer(variationId) {
-    this.body.innerHTML = '<div class="sn-note">Loading variation…</div>';
-    let ctx = this.peerCache[variationId];
+  // A sibling sketch shown as a READ-ONLY preview (its real home widget is
+  // elsewhere). Disabled-looking, no caret; a link navigates to its source.
+  async renderPeer(sketchId) {
+    this.body.innerHTML = '<div class="sn-note">Loading sketch…</div>';
+    let ctx = this.peerCache[sketchId];
     if (!ctx) {
       try {
-        ctx = this.peerCache[variationId] = await variationApi.context(variationId);
+        ctx = this.peerCache[sketchId] = await sketchApi.context(sketchId);
       } catch (e) {
-        this.body.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load variation (${esc(e.message)}).</span></div>`;
+        this.body.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load sketch (${esc(e.message)}).</span></div>`;
         return;
       }
     }
-    if (this.tab !== variationId) return; // switched away while loading
-    const rel = this.ctx.parent && this.ctx.parent.variation_id === variationId ? 'parent of' : 'based on';
+    if (this.tab !== sketchId) return; // switched away while loading
+    const letter = esc(letterOf(ctx.sketch.ordinal));
     this.body.innerHTML = `
-      <div class="sn-note">Variation ${esc(letterOf(ctx.variation.ordinal))} · ${ctx.variation.frozen ? 'frozen' : 'draft'} · ${rel} ${esc(this.letter())} — read-only here (it lives in its own widget).</div>
-      <div class="sn-render"></div>`;
+      <div class="sn-note">Previewing sketch ${letter}. <a href="#" class="sn-goto-source">Click here to navigate to source.</a></div>
+      <div class="sn-render sn-peer"></div>`;
+    this.body.querySelector('.sn-goto-source').addEventListener('click', (e) => {
+      e.preventDefault();
+      this.gotoSketchSource(sketchId);
+    });
     const host = this.body.querySelector('.sn-render');
-    if (ctx.variation.text.trim()) renderBookText(host, ctx.variation.text);
-    else host.innerHTML = '<div class="sn-empty">Empty variation.</div>';
+    if (ctx.sketch.text.trim()) renderBookText(host, ctx.sketch.text);
+    else host.innerHTML = '<div class="sn-empty">Empty sketch.</div>';
+  }
+
+  // Navigate to a sketch's home widget: ask the server which scratchpad hosts
+  // it, then set the URL hash to open that scratchpad and scroll to the widget
+  // (#scratchpad=N&sketch=ID). modal.mjs handles the hash.
+  async gotoSketchSource(sketchId) {
+    let spID = 0;
+    try { spID = (await sketchApi.home(sketchId)).scratchpad_id | 0; } catch (e) { /* fall through */ }
+    if (spID > 0) {
+      window.location.hash = `#scratchpad=${spID}&sketch=${sketchId}`;
+    } else {
+      alert('That sketch has no home scratchpad on record yet.');
+    }
   }
 
   // Canon truth derives from the manuscript (VARIATIONS_PLAN §2): resolve
@@ -559,7 +590,7 @@ class SnippetView {
 
   async toggleFreeze() {
     try {
-      await variationApi.freeze(this.varId, !this.frozen());
+      await sketchApi.freeze(this.sketchId, !this.frozen());
       await this.refresh();
     } catch (e) {
       alert('Could not toggle freeze: ' + e.message);
@@ -568,7 +599,7 @@ class SnippetView {
 
   async setLink(manuscriptId) {
     try {
-      await variationApi.link(this.ctx.snippet.snippet_id, manuscriptId);
+      await sketchApi.link(this.ctx.snippet.snippet_id, manuscriptId);
       await this.refresh();
     } catch (e) {
       alert('Could not update link: ' + e.message);
@@ -641,9 +672,9 @@ class SnippetView {
     if (!window.confirm(label)) return;
     // Soft-delete the variation first (a broken widget has no live variation to
     // delete). If the delete fails, keep the widget so nothing is lost.
-    if (!broken && this.varId) {
+    if (!broken && this.sketchId) {
       try {
-        await variationApi.softDelete(this.varId);
+        await sketchApi.softDelete(this.sketchId);
       } catch (e) {
         alert('Could not delete variation: ' + e.message);
         return;
@@ -657,7 +688,7 @@ class SnippetView {
 
   update(node) {
     if (node.type !== this.node.type) return false;
-    if (node.attrs.variationId !== this.varId) return false;
+    if (node.attrs.variationId !== this.sketchId) return false;
     this.node = node;
     return true;
   }
@@ -822,7 +853,7 @@ function buildSnippetMenu(toolbarEl, getView) {
   const insertVariation = (ctx) => {
     const view = getView();
     insertBlockSafely(view.state, view.dispatch,
-      schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+      schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
     close();
     view.focus();
   };
@@ -833,7 +864,7 @@ function buildSnippetMenu(toolbarEl, getView) {
       <button type="button" class="sn-ins-based">Based on…</button>
       <button type="button" class="sn-ins-restore">Restore…</button>`;
     pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
-      try { insertVariation(await variationApi.createNew()); }
+      try { insertVariation(await sketchApi.createNew()); }
       catch (e) { alert('Could not create snippet: ' + e.message); }
     });
     pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
@@ -852,14 +883,14 @@ function buildSnippetMenu(toolbarEl, getView) {
     const load = async () => {
       let rows;
       try {
-        rows = (await variationApi.listDeleted(q.value.trim())).variations || [];
+        rows = (await sketchApi.listDeleted(q.value.trim())).sketches || [];
       } catch (e) {
         list.innerHTML = '<span class="sn-linkpop-empty">Could not load deleted variations</span>';
         return;
       }
       list.innerHTML = rows.length
         ? rows.map(r => `
-          <button type="button" data-vid="${r.variation_id}">
+          <button type="button" data-vid="${r.sketch_id}">
             <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
             <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
             <span class="sn-ins-deleted">${esc(fmtDeleted(r.deleted_at))}</span>
@@ -873,7 +904,7 @@ function buildSnippetMenu(toolbarEl, getView) {
       const b = e.target.closest('button[data-vid]');
       if (!b) return;
       try {
-        const ctx = await variationApi.restore(parseInt(b.dataset.vid, 10));
+        const ctx = await sketchApi.restore(parseInt(b.dataset.vid, 10));
         insertVariation(ctx);
       } catch (err) { alert('Could not restore variation: ' + err.message); }
     });
@@ -882,7 +913,7 @@ function buildSnippetMenu(toolbarEl, getView) {
 
   const renderPicker = async () => {
     pop.innerHTML = `
-      <input type="text" class="sn-ins-q" placeholder="Search variations…" autocomplete="off">
+      <input type="text" class="sn-ins-q" placeholder="Search sketches…" autocomplete="off">
       <div class="sn-ins-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
     const q = pop.querySelector('.sn-ins-q');
     const list = pop.querySelector('.sn-ins-list');
@@ -890,43 +921,31 @@ function buildSnippetMenu(toolbarEl, getView) {
     const load = async () => {
       let rows;
       try {
-        rows = (await variationApi.list(q.value.trim())).variations || [];
+        rows = (await sketchApi.list(q.value.trim())).sketches || [];
       } catch (e) {
-        list.innerHTML = '<span class="sn-linkpop-empty">Could not load variations</span>';
+        list.innerHTML = '<span class="sn-linkpop-empty">Could not load sketches</span>';
         return;
       }
       list.innerHTML = rows.length
         ? rows.map(r => `
-          <button type="button" data-vid="${r.variation_id}" data-frozen="${r.frozen}">
+          <button type="button" data-vid="${r.sketch_id}">
             <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
             <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
           </button>`).join('')
-        : '<span class="sn-linkpop-empty">No variations yet</span>';
+        : '<span class="sn-linkpop-empty">No sketches yet</span>';
     };
     let t;
     q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
     q.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-    list.addEventListener('click', (e) => {
+    // Picking a source sketch mints a NEW sibling sketch directly (next letter,
+    // text copied). No freeze dialog — the source is left as-is.
+    list.addEventListener('click', async (e) => {
       const b = e.target.closest('button[data-vid]');
       if (!b) return;
-      renderFreezeChoice(parseInt(b.dataset.vid, 10), b.dataset.frozen === 'true',
-        b.querySelector('.sn-ins-letter').textContent);
+      try { insertVariation(await sketchApi.createFrom(parseInt(b.dataset.vid, 10))); }
+      catch (err) { alert('Could not create sketch: ' + err.message); }
     });
     await load();
-  };
-
-  const renderFreezeChoice = (sourceId, alreadyFrozen, letter) => {
-    const create = async (freeze) => {
-      try { insertVariation(await variationApi.createFrom(sourceId, freeze)); }
-      catch (e) { alert('Could not create variation: ' + e.message); }
-    };
-    if (alreadyFrozen) { create(false); return; }
-    pop.innerHTML = `
-      <div class="sn-ins-ask">Freeze variation ${esc(letter)} (the source)? Frozen variations are read-only until unfrozen.</div>
-      <button type="button" class="sn-ins-freeze">Freeze it</button>
-      <button type="button" class="sn-ins-nofreeze">Keep it editable</button>`;
-    pop.querySelector('.sn-ins-freeze').addEventListener('click', () => create(true));
-    pop.querySelector('.sn-ins-nofreeze').addEventListener('click', () => create(false));
   };
 
   btn.addEventListener('mousedown', (e) => {
@@ -1159,20 +1178,21 @@ export async function createScratchpadEditor(els, scratchpadId) {
     scratchpadId,
     schema,
     bookData,
-    variationApi,
+    sketchApi,
     get view() { return view; },
     saveNow,
     // Programmatic inserts (tests / power use): create server-side, place.
     insertSnippet: async () => {
-      const ctx = await variationApi.createNew();
+      const ctx = await sketchApi.createNew();
       insertBlockSafely(view.state, view.dispatch,
-        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+        schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
       return ctx;
     },
-    insertVariationOf: async (sourceId, freezeSource) => {
-      const ctx = await variationApi.createFrom(sourceId, !!freezeSource);
+    // Based-on: mint a new sibling sketch (next letter) and place it.
+    insertSketchOf: async (sourceId) => {
+      const ctx = await sketchApi.createFrom(sourceId);
       insertBlockSafely(view.state, view.dispatch,
-        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+        schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
       return ctx;
     },
     pm: { Selection, TextSelection, NodeSelection },

@@ -65,6 +65,19 @@ func main() {
 	// Optional wordcount-history cron (no-op unless enabled in config).
 	go server.RunWordcountCron(context.Background())
 
+	// One-time backfill: sketch.scratchpad_id (added in migration 017) is empty
+	// for sketches created before homes were tracked. Populate each sketch's
+	// home from the scratchpad doc that places its widget. Idempotent — only
+	// touches sketches whose scratchpad_id is still NULL.
+	go func() {
+		dbw := &database.DB{Pool: db}
+		if n, err := dbw.BackfillSketchHomes(context.Background()); err != nil {
+			log.Printf("sketch-home backfill: %v", err)
+		} else if n > 0 {
+			log.Printf("backfilled home scratchpad for %d sketch(es)", n)
+		}
+	}()
+
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:      server.Router(),
