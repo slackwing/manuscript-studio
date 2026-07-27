@@ -358,6 +358,17 @@ ARCHITECTURE.md §6.5–§6.7.
 Schema migrations 002–006 (status, sessions, completed, prev-sentence,
 suggested_change) are all live. 001 is frozen — see §3.
 
+### Prod URL + verifying a deploy
+
+Production is served at **https://andrewcheong.com/manuscripts/** (health:
+`/manuscripts/readyz`, assets under `/manuscripts/...`). After a deploy,
+confirm `/readyz` returns 200 and the served `?v=` cache-busters match the
+ones you bumped.
+
+For anything that needs an authenticated prod session (read-only inspection
+of the running app), **just ask the user for a session token** — they'll
+supply one on request. Never echo it back into the conversation.
+
 ### Deploying
 
 When the user asks you to deploy, run `./remote-deploy.sh` from the repo
