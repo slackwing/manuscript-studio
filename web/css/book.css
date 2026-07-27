@@ -2798,4 +2798,19 @@ p.section-break {
   }
   /* the page keeps its shadow + border (the book-page look) — inherited from
      the base .pagedjs_page rule; nothing overridden here. */
+
+  /* --- kill horizontal document overflow. `transform: scale()` shrinks the
+         page VISUALLY but NOT its layout/scroll width, so the un-scaled 576px
+         sheet (plus the desktop-positioned #annotation-margin, which sits far
+         off to the right on mobile) made the document wider than the viewport.
+         On a real device the browser then zooms out to fit the whole width —
+         the "starts zoomed in, scrolls right, gap on the right edge" bug.
+         Clipping overflow-x at the root removes that phantom width so the page
+         loads at 1:1 with no side-scroll. (Pre-existing; exposed once the rest
+         of the mobile layout was correct.) --- */
+  html, body { overflow-x: hidden; max-width: 100%; }
+  /* The sticky-note margin isn't part of the mobile layout yet (a dedicated
+     mobile notes UI comes later); it's positioned for the desktop gutter, so
+     on mobile it just juts off-screen right. Hide it so it can't add width. */
+  #annotation-margin { display: none !important; }
 }

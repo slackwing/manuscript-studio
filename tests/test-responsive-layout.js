@@ -11,7 +11,7 @@
  * renders no outline on its own — we inject a synthetic outline via
  * WriteSysOutline.render() to exercise the .has-outline layout deterministically.
  */
-const { chromium } = require('playwright');
+const { chromium, devices } = require('playwright');
 const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils');
 
 const SYNTH_OUTLINE = {
@@ -137,6 +137,37 @@ function overlaps(a, b) {
   }
 
   await browser.close();
+
+  // ---- Real mobile device (Pixel 7: DPR 2.6, mobile UA). This is the case a
+  //      plain small window MISSES: transform: scale() leaves the un-scaled page
+  //      width in the layout, so the document was wider than the viewport and
+  //      the device zoomed out to fit ("starts zoomed in, scrolls right, gap on
+  //      the right"). Assert the document is exactly viewport-width. ----
+  console.log('\n[device Pixel 7]');
+  {
+    const dev = await chromium.launch();
+    const ctx = await dev.newContext({ ...devices['Pixel 7'] });
+    const dpage = await ctx.newPage();
+    await loginAsTestUser(dpage);
+    await dpage.goto(TEST_URL);
+    await waitForPagination(dpage);
+    await dpage.evaluate((o) => window.WriteSysOutline.render(o), SYNTH_OUTLINE);
+    await dpage.waitForTimeout(400);
+    const d = await dpage.evaluate(() => ({
+      vw: document.documentElement.clientWidth,
+      docScrollW: document.documentElement.scrollWidth,
+      bodyScrollW: document.body.scrollWidth,
+      winInner: window.innerWidth,
+      scale: window.visualViewport ? window.visualViewport.scale : 1,
+    }));
+    // ≤2px slop for sub-pixel rounding at DPR 2.6.
+    check('document is not wider than the viewport (no zoom-out / right-scroll)',
+      d.docScrollW <= d.vw + 2 && d.bodyScrollW <= d.vw + 2 && d.winInner <= d.vw + 2,
+      JSON.stringify(d));
+    check('loads at 1:1 (visualViewport scale ~1)', Math.abs(d.scale - 1) < 0.02, `scale=${d.scale}`);
+    await dev.close();
+  }
+
   if (failures) { console.log(`\n❌ ${failures} layout check(s) failed`); process.exit(1); }
-  console.log('\n✅ responsive layout OK at desktop / tablet / mobile');
+  console.log('\n✅ responsive layout OK at desktop / tablet / mobile / device');
 })().catch(e => { console.error(e); process.exit(1); });
