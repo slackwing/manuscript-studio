@@ -874,7 +874,7 @@ function buildSnippetMenu(toolbarEl, getView) {
   const renderRoot = () => {
     pop.innerHTML = `
       <button type="button" class="sn-ins-new">New snippet</button>
-      <button type="button" class="sn-ins-based">Based on…</button>
+      <button type="button" class="sn-ins-based">Related to…</button>
       <button type="button" class="sn-ins-restore">Restore…</button>`;
     pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
       try { insertVariation(await sketchApi.createNew()); }
