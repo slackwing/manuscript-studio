@@ -15,12 +15,22 @@ const WriteSysAnnotations = {
     isCommitted: false
   },
 
-  // Must match the matching CSS variables in book.css.
+  // Must match the matching CSS variables in book.css (see the "Gutter layout"
+  // block there — these are the single source of truth for the symmetric
+  // page-anchored gutters).
   SPACING: {
     PAGE_WIDTH: 576,
-    ANNOTATION_WIDTH: 272,
-    HORIZONTAL_GAP: 32,
+    ANNOTATION_WIDTH: 272,   // sticky-note content width (unchanged; notes keep their size)
+    HORIZONTAL_GAP: 32,      // gap between the page edge and gutter content, BOTH sides
+    GUTTER_BAND: 300,        // reserved band each side (outline / sticky) — the mirror width
   },
+
+  // The desktop layout fits only when the centered page plus BOTH page-anchored
+  // gutter bands (band + gap each side) fit the viewport. Below this the layout
+  // switches to the mobile second-bar (see book.css @media). Keep this in sync
+  // with the @media (max-width: …) there.
+  //   2 × (GUTTER_BAND + HORIZONTAL_GAP) + PAGE_WIDTH = 2×332 + 576 = 1240
+  DESKTOP_MIN_WIDTH: 1240,
 
   init() {
     document.addEventListener('click', (e) => {
@@ -117,15 +127,31 @@ const WriteSysAnnotations = {
     const margin = document.getElementById('annotation-margin');
     if (!margin) return;
 
-    const positionMargin = () => {
-      const windowWidth = window.innerWidth;
-      const marginWidth = (windowWidth - this.SPACING.PAGE_WIDTH) / 2;
-      const rightPosition = marginWidth - this.SPACING.HORIZONTAL_GAP - this.SPACING.ANNOTATION_WIDTH;
-      margin.style.right = `${rightPosition}px`;
+    // ONE source of truth for BOTH page-anchored gutters. The page is centered,
+    // so the gutter each side is (winW − pageW)/2. Sticky notes sit
+    // HORIZONTAL_GAP to the RIGHT of the page's right edge; the outline mirrors
+    // that HORIZONTAL_GAP to the LEFT of the page's left edge — same gap, same
+    // GUTTER_BAND width, mirror images. As the viewport widens, both stay glued
+    // to the page and the extra space opens symmetrically at the far edges.
+    // (On mobile the outline relocates to the second bar via CSS; this left
+    // positioning is harmless there because #outline-margin.has-outline is
+    // re-anchored by the @media rule.)
+    const outline = document.getElementById('outline-margin');
+    const chrome = document.getElementById('manuscript-chrome');
+    const positionGutters = () => {
+      const gutter = (window.innerWidth - this.SPACING.PAGE_WIDTH) / 2;
+      // Right edge of the annotation band: gutter minus the gap and the band.
+      margin.style.right = `${gutter - this.SPACING.HORIZONTAL_GAP - this.SPACING.ANNOTATION_WIDTH}px`;
+      // Mirror on the left: the outline band's left edge. The manuscript-chrome
+      // info header sits in the same band directly above the outline, so it
+      // shares the exact same left.
+      const leftBand = Math.max(0, gutter - this.SPACING.HORIZONTAL_GAP - this.SPACING.GUTTER_BAND);
+      if (outline) outline.style.left = `${leftBand}px`;
+      if (chrome) chrome.style.left = `${leftBand}px`;
     };
 
-    positionMargin();
-    window.addEventListener('resize', positionMargin);
+    positionGutters();
+    window.addEventListener('resize', positionGutters);
   },
 
   // Mark an auto-created note as committed so "never mind" won't delete it

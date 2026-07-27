@@ -35,8 +35,11 @@ function check(name, cond, detail) {
 
 async function measure(page, width, height) {
   await page.setViewportSize({ width, height });
-  // Force the outline to exist (the test manuscript has no command structure).
+  // Force the outline to exist (the test manuscript has no command structure),
+  // then fire resize so annotations.js positionGutters recomputes the mirrored
+  // left/right offsets for the new viewport width.
   await page.evaluate((o) => window.WriteSysOutline.render(o), SYNTH_OUTLINE);
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
   await page.waitForTimeout(150);
   return page.evaluate(() => {
     const q = s => document.querySelector(s);
@@ -46,6 +49,8 @@ async function measure(page, width, height) {
       controls: rect('#controls'),
       chrome: rect('#manuscript-chrome'),
       outline: rect('#outline-margin'),
+      annotation: rect('#annotation-margin'),
+      page: rect('.pagedjs_page'),
       outlineDisplay: outline ? getComputedStyle(outline).display : 'MISSING',
       outlineHasClass: outline ? outline.classList.contains('has-outline') : false,
       brandLines: (() => {
@@ -72,26 +77,47 @@ function overlaps(a, b) {
   await waitForPagination(page);
   await page.waitForFunction(() => !!window.WriteSysOutline, null, { timeout: 10000 });
 
-  // ---- Desktop (1280): outline shows in the left gutter, no second bar. ----
-  console.log('\n[desktop 1280×1000]');
+  // ---- Desktop (1400): outline in the left gutter, ANCHORED to the page edge,
+  //      mirroring the sticky-note gutter on the right (the design rule). ----
+  console.log('\n[desktop 1400×1000]');
   {
-    const m = await measure(page, 1280, 1000);
+    const m = await measure(page, 1400, 1000);
+    const GAP = 32, BAND = 300;
     check('outline has-outline class', m.outlineHasClass, 'missing');
     check('outline visible', m.outlineDisplay !== 'none', `display=${m.outlineDisplay}`);
-    check('outline in left gutter (x≈0)', m.outline && m.outline.x < 20, JSON.stringify(m.outline));
     check('outline below the chrome (stacked, not side-by-side)',
       m.outline && m.chrome && m.outline.y >= m.chrome.y, JSON.stringify({ outlineY: m.outline && m.outline.y, chromeY: m.chrome && m.chrome.y }));
+    check('chrome shares the outline\'s left (same band)',
+      m.outline && m.chrome && Math.abs(m.outline.x - m.chrome.x) <= 1, JSON.stringify({ outlineX: m.outline && m.outline.x, chromeX: m.chrome && m.chrome.x }));
+    // The mirror: outline right edge sits GAP px left of the page's left edge.
+    check(`outline anchored ${GAP}px left of the page edge (not viewport-pinned)`,
+      m.page && m.outline && Math.abs((m.page.x - m.outline.right) - GAP) <= 2,
+      JSON.stringify({ pageLeft: m.page && m.page.x, outlineRight: m.outline && m.outline.right }));
+    check('outline band is the shared 300px width',
+      m.outline && Math.abs(m.outline.w - BAND) <= 1, `w=${m.outline && m.outline.w}`);
     check('no horizontal overflow', m.docWidth <= m.winWidth + 1, `doc=${m.docWidth} win=${m.winWidth}`);
   }
 
-  // ---- Tablet (900): second-bar layout must engage (was the 641–1100 dead zone). ----
+  // ---- Just below the 1240px breakpoint: must already be the second bar
+  //      (the outline band no longer fits beside the page — the design rule). ----
+  console.log('\n[below breakpoint 1200×1000]');
+  {
+    const m = await measure(page, 1200, 1000);
+    check('second bar engaged (chrome not full desktop band)',
+      m.chrome && m.chrome.w < m.winWidth * 0.45, `chromeW=${m.chrome && m.chrome.w}`);
+    check('chrome + outline no overlap', !overlaps(m.chrome, m.outline),
+      JSON.stringify({ chrome: m.chrome, outline: m.outline }));
+    check('no horizontal overflow', m.docWidth <= m.winWidth + 1, `doc=${m.docWidth} win=${m.winWidth}`);
+  }
+
+  // ---- Tablet (900): second-bar layout. ----
   console.log('\n[tablet 900×1000]');
   {
     const m = await measure(page, 900, 1000);
-    check('outline visible (NOT hidden in the 641–1100 zone)', m.outlineDisplay !== 'none', `display=${m.outlineDisplay}`);
+    check('outline visible', m.outlineDisplay !== 'none', `display=${m.outlineDisplay}`);
     check('chrome + outline side-by-side, no overlap', !overlaps(m.chrome, m.outline),
       JSON.stringify({ chrome: m.chrome, outline: m.outline }));
-    check('chrome is the left ~third (not full 290px desktop width)',
+    check('chrome is the left ~third (not full desktop band)',
       m.chrome && m.chrome.w < m.winWidth * 0.45, `chromeW=${m.chrome && m.chrome.w}`);
     check('outline starts right of the chrome', m.outline && m.chrome && m.outline.x >= m.chrome.right - 2,
       JSON.stringify({ outlineX: m.outline && m.outline.x, chromeRight: m.chrome && m.chrome.right }));

@@ -1,9 +1,24 @@
 /* Spacing constants - critical invariants tested in spacing-invariants-test.js */
 :root {
   --page-gap: 2em;              /* Vertical gap between pages (32px) */
-  --horizontal-gap: 32px;        /* Gap from page edge to annotation margin */
   --annotation-top: 150px;       /* Top margin from viewport to annotations */
   --annotation-width: 272px;     /* Fixed width of annotation container (240 + 32px page gap) */
+
+  /* ── Gutter layout (the two page-anchored side bands) ───────────────────
+     The book page is centered; each side has a gutter the outline (left) and
+     the sticky notes (right) live in. They are MIRROR IMAGES: both sit
+     --horizontal-gap from the page edge and reserve a --gutter-band-width band.
+     The dynamic left/right offsets are computed in annotations.js
+     (initAnnotationMargin → positionGutters) from the SAME numbers, so there is
+     one source of truth — do not hardcode a competing left/right here.
+
+     Desktop only when the page + both bands + both gaps fit:
+       2 × (band + gap) + page = 2×(300+32) + 576 = 1240px.
+     Below 1240px the layout switches to the mobile second-bar (see the @media
+     block at the end of this file). Keep these three numbers, annotations.js
+     SPACING, and that breakpoint in sync. */
+  --horizontal-gap: 32px;        /* gap from page edge to gutter content, BOTH sides */
+  --gutter-band-width: 300px;    /* reserved band each side (outline / sticky mirror) */
 
   /* Color system - Kindle-like highlights and sticky notes */
   /* Highlight colors (sentence backgrounds) - used across highlight classes and rainbow bars */
@@ -718,13 +733,15 @@ p.section-break {
   overflow: visible;
 }
 
-/* Left-margin document outline navigator. Mirrors the right annotation
-   margin: fixed in the left grey gutter, only shown when there's structure. */
+/* Left-margin document outline navigator. The MIRROR of the right annotation
+   margin: same band width, same gap from the page edge. `left` is set in JS
+   (annotations.js positionGutters) so it tracks the centered page — don't pin
+   it here. Only shown when there's structure. */
 #outline-margin {
   position: fixed;
   top: 142px; /* below #manuscript-chrome (HOME_PLAN.md) */
-  left: 0;
-  width: 290px;
+  /* left: set by JS (mirrors the sticky-note gutter). */
+  width: var(--gutter-band-width);
   max-height: calc(100vh - 162px);
   overflow-y: auto;
   z-index: 100;
@@ -2606,8 +2623,9 @@ p.section-break {
 #manuscript-chrome {
   position: fixed;
   top: 52px;
-  left: 0;
-  width: 290px;
+  /* left: set by JS (positionGutters) so this info header sits directly above
+     the outline in the same left band. */
+  width: var(--gutter-band-width);
   z-index: 100;
   padding: 16px 12px 12px 18px;
   display: flex;
@@ -2674,21 +2692,26 @@ p.section-break {
 #manuscript-chrome .push-button-container { position: relative; flex: none; }
 
 /* ============================================================
-   Narrow layout (≤1100px) — MUST be last in the file (equal-specificity
-   rules win by source order; these override the desktop
-   #controls / #manuscript-chrome / #outline-margin / .pagedjs_*
-   rules defined earlier).
+   Narrow layout — MUST be last in the file (equal-specificity rules win by
+   source order; these override the desktop #controls / #manuscript-chrome /
+   #outline-margin / .pagedjs_* rules defined earlier).
 
-   Breakpoint = 1100px, not 640px: the desktop layout needs a 290px left
-   gutter + a 576px page + a 290px right gutter ≈ 1156px to not overlap, so
-   anything below ~1100px must use this compact layout — not just phones.
-   The left gutter collapses, so the manuscript chrome (info) and the outline
-   relocate into a SECOND horizontal bar directly under the top bar: info in
-   the left 1/3, outline in the right 2/3. (The page itself only gets scaled
-   to fit at ≤768px — see renderer.applyResponsiveScaling; between 769–1100px
-   the 576px sheet still fits beside the bars.)
+   Breakpoint = 1240px = 2 × (--gutter-band-width + --horizontal-gap) +
+   PAGE_WIDTH = 2×(300+32) + 576. This is exactly the DESIGN RULE: desktop only
+   when the centered page plus BOTH page-anchored gutter bands (outline left,
+   sticky notes right) fit; the moment the outline band can't fit beside the
+   page, we're "mobile". Keep in sync with :root's gutter vars and
+   annotations.js DESKTOP_MIN_WIDTH. (Breakpoint is 1239px — exclusive — so the
+   exact 1240px fit still counts as desktop.)
+
+   Below it, the left gutter can't hold the outline, so the manuscript chrome
+   (info) and the outline relocate into a SECOND horizontal bar under the top
+   bar: info in the left 1/3, outline in the right 2/3. NOTE: annotations.js
+   sets an inline `left` on #manuscript-chrome / #outline-margin (the desktop
+   mirror positioning), so these must use `left: … !important` to win here.
+   (The page is scaled to fit at ≤768px — see renderer.applyResponsiveScaling.)
    ============================================================ */
-@media (max-width: 1100px) {
+@media (max-width: 1239px) {
   /* --- top bar: fixed short height so the second bar butts flush against it
          (no book showing through a gap). Smaller controls let it shrink. --- */
   #controls {
@@ -2708,25 +2731,27 @@ p.section-break {
   #global-search { width: min(190px, 32vw); }
   #controls #logout-btn { font-size: 11px; padding: 4px 8px; }
 
-  /* --- second bar, left third: the info (name + updated line + push) --- */
+  /* --- second bar, left third: the info panel (name + updated line + push),
+         centered both axes so it reads as a tidy little panel --- */
   #manuscript-chrome {
     top: 40px;
-    left: 0;
+    left: 0 !important;          /* beat the inline left JS sets for desktop */
     width: 33.333%;
     height: 104px;               /* ~2.6x the 40px top bar */
     box-sizing: border-box;
-    padding: 6px 8px 6px 12px;
+    padding: 6px 8px;
     flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 4px;
+    align-items: center;         /* horizontal center */
+    justify-content: center;     /* vertical center */
+    gap: 5px;
     background: #fff;
     border-right: 1px solid #e3e0d8;
     border-bottom: 1px solid #e3e0d8;
     overflow: hidden;
   }
-  #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; }
-  #mc-info { font-size: 9px; }
+  #manuscript-chrome .mc-left { align-items: center; text-align: center; }
+  #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
+  #mc-info { font-size: 9px; text-align: center; }
   #manuscript-chrome #push-button-container { margin-top: 2px; }
 
   /* --- second bar, right two-thirds: the outline (only when there's real
@@ -2734,7 +2759,7 @@ p.section-break {
   #outline-margin.has-outline {
     display: block !important;
     top: 40px;
-    left: 33.333%;
+    left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 104px;
     max-height: 104px;

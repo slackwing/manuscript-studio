@@ -85,8 +85,13 @@ async function testSpacing(windowWidth, windowHeight, testName) {
   console.log(`  Top margin (viewport to annotations): ${EXPECTED_TOP_MARGIN}px`);
   console.log('');
 
+  // The page-to-sticky horizontal-gap invariant only holds on the DESKTOP
+  // layout — the two page-anchored gutters. Below the 1240px breakpoint
+  // (2×(300 band + 32 gap) + 576 page; see book.css "Gutter layout") the
+  // outline + info move to a second bar and the sticky gutter no longer sits
+  // beside the page, so the smallest case must be a real desktop width.
   const testCases = [
-    { width: 1024, height: 768, name: 'small' },
+    { width: 1280, height: 800, name: 'small-desktop' },
     { width: 1440, height: 900, name: 'medium' },
     { width: 1920, height: 1080, name: 'large' },
     { width: 2560, height: 1440, name: 'xlarge' }

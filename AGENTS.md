@@ -141,6 +141,24 @@ both widths** — reasoning about cascade order blind is how this slipped
 through. See `tests/`-adjacent Playwright screenshotting, or intercept
 book.css against a deployed manuscript.
 
+### N13 — The gutter layout is a symmetric, page-anchored design
+
+The book page is centered; the **outline** (left) and **sticky notes** (right)
+live in two mirror-image gutters, each `--horizontal-gap` (32px) from the page
+edge, each a `--gutter-band-width` (300px) band. Both left/right offsets are
+computed in ONE place — `annotations.js initAnnotationMargin → positionGutters`
+— from `SPACING` (PAGE_WIDTH/HORIZONTAL_GAP/GUTTER_BAND). Don't hardcode a
+competing `left`/`right` in CSS; the CSS only sets width + look.
+
+The desktop↔mobile **breakpoint is DERIVED, not arbitrary**: desktop only when
+the page + both bands + both gaps fit → `2×(300+32)+576 = 1240px` (the @media is
+`max-width: 1239px`). The rule is literally "if the outline band can't fit
+beside the page, go to the mobile second-bar." If you change the band width or
+gap, update: `:root` vars in book.css, `SPACING`/`DESKTOP_MIN_WIDTH` in
+annotations.js, the `@media` value, and the smallest case in
+`spacing-invariants-test.js` (its horizontal-gap invariant only holds ≥
+breakpoint). `tests/test-responsive-layout.js` asserts the mirror + breakpoint.
+
 ---
 
 ## 1. Core principles
