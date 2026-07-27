@@ -161,7 +161,9 @@ const {
         // A split paragraph clones its <p> across fragments, so >= 2.
         paragraphs: phs.length,
         transparent: first ? first.color === 'rgba(0, 0, 0, 0)' : false,
-        suggestedBlueHatch: first ? /2a6fb0/.test(first.backgroundImage) : false,
+        // The suggested hatch is a SOLID light blue (#94b7d8), not the old
+        // translucent #2a6fb0 (stroke-opacity doubled to darker bands on overlap).
+        suggestedBlueHatch: first ? /94b7d8/.test(first.backgroundImage) : false,
         maxGap: +maxGap.toFixed(3),
         overlayText: chip ? chip.textContent : '',
         overlayVisible: chip ? getComputedStyle(chip).visibility !== 'hidden' : false,

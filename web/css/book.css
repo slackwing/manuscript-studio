@@ -2310,6 +2310,9 @@ p.section-break {
   pointer-events: none;
   z-index: 5;
   overflow: hidden;
+  /* Breathing room above the top-anchored chip so it doesn't hug the
+     placeholder's top edge. */
+  padding-top: 18px;
 }
 .cmd-placeholder .ph-chip-block {
   font-family: "Helvetica", sans-serif;
@@ -2324,10 +2327,13 @@ p.section-break {
 }
 
 /* A suggested placeholder can't show blue text (filler is invisible by
-   contract), so the blue affordance moves into the hatch itself. */
+   contract), so the blue affordance moves into the hatch itself. Uses a SOLID
+   light blue (#94b7d8 = the old 50%-opacity #2a6fb0 flattened on white), NOT
+   stroke-opacity — where two hatched line-boxes overlap vertically, stacked
+   translucent strokes doubled up into darker bands; a solid stroke can't. */
 .cmd-suggested .ph,
 .sentence.has-suggestion .ph {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6.4' height='6.4'%3E%3Cpath d='M-1.6,1.6 L1.6,-1.6 M-1.6,8 L8,-1.6 M4.8,8 L8,4.8' stroke='%232a6fb0' stroke-opacity='0.5' stroke-width='1'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6.4' height='6.4'%3E%3Cpath d='M-1.6,1.6 L1.6,-1.6 M-1.6,8 L8,-1.6 M4.8,8 L8,4.8' stroke='%2394b7d8' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 /* The phase-nudge spacer must never paint anything of its own. */
