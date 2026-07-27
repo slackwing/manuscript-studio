@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=9';
+import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=10';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=15';
+  link.href = 'scratchpad/scratchpad.css?v=16';
   document.head.appendChild(link);
 }
 
@@ -81,11 +81,13 @@ export const ScratchpadModal = {
 
     this._currentId = scratchpadId;
     // The open pad rides the URL so reload restores it (replaceState — a
-    // modal is not a navigation). Preserve a &sketch= deep-link if present so
-    // it isn't clobbered before scrollToSketchWidget reads it.
+    // modal is not a navigation). Preserve a &snippet=&sketch= deep-link if
+    // present so it isn't clobbered before scrollToSketchWidget reads it.
     const url = new URL(window.location.href);
-    const sketchM = (url.hash || '').match(/[#&]sketch=(\d+)/);
-    url.hash = `scratchpad=${scratchpadId}` + (sketchM ? `&sketch=${sketchM[1]}` : '');
+    const snM = (url.hash || '').match(/[#&]snippet=([a-z0-9]+)/i);
+    const ordM = (url.hash || '').match(/[#&]sketch=(\d+)/);
+    url.hash = `scratchpad=${scratchpadId}` +
+      (snM && ordM ? `&snippet=${snM[1]}&sketch=${ordM[1]}` : '');
     history.replaceState(null, '', url);
     // Landing-page recency stamp (fire-and-forget; cards sort by this).
     fetch(`api/scratchpads/${scratchpadId}/opened`, {
@@ -95,20 +97,20 @@ export const ScratchpadModal = {
     window.WriteSysScratchpad = this.editor; // test / power-user hook
     window.dispatchEvent(new CustomEvent('scratchpad-modal-opened', { detail: { scratchpadId } }));
 
-    // Deep link: #scratchpad=N&sketch=ID scrolls to that sketch's widget (the
-    // peer preview's "navigate to source"). Retry briefly while widgets mount.
-    const m = (window.location.hash || '').match(/[#&]sketch=(\d+)/);
-    if (m) this.scrollToSketchWidget(parseInt(m[1], 10));
+    // Deep link: #scratchpad=N&snippet=ID&sketch=ORDINAL scrolls to that
+    // sketch's widget (the peer preview's "navigate to source"). Identity is
+    // (snippet, ordinal). Retry briefly while widgets mount.
+    if (snM && ordM) this.scrollToSketchWidget(snM[1], parseInt(ordM[1], 10));
   },
 
-  // Scroll the open scratchpad to the widget whose sketch id matches (its
-  // NodeView sets data-sketch-id / data-variation-id on the dom).
-  scrollToSketchWidget(sketchId) {
-    if (!(sketchId > 0)) return;
+  // Scroll the open scratchpad to the widget for (snippet, ordinal). The
+  // NodeView tags each widget with data-snippet-id + data-ordinal.
+  scrollToSketchWidget(snippetId, ordinal) {
+    if (!snippetId || !(ordinal > 0)) return;
     let tries = 0;
     const tick = () => {
       const el = this.overlay && this.overlay.querySelector(
-        `.sn-widget[data-sketch-id="${sketchId}"], .sn-widget[data-variation-id="${sketchId}"]`);
+        `.sn-widget[data-snippet-id="${CSS.escape(snippetId)}"][data-ordinal="${ordinal}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('sn-flash');

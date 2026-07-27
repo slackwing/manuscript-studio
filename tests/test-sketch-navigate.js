@@ -33,7 +33,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('.sn-goto-source').first().click();
   await page.waitForTimeout(800);
   const hash = await page.evaluate(() => window.location.hash);
-  check('hash carries scratchpad + sketch (deep link)', /scratchpad=\d+&sketch=/.test(hash), hash);
+  check('hash carries scratchpad + snippet + ordinal (deep link)', /scratchpad=\d+&snippet=[a-z0-9]+&sketch=\d+/.test(hash), hash);
   // The flash class lands on A's widget.
   const flashed = await page.evaluate((vid) => {
     const w = document.querySelector(`.sn-widget[data-sketch-id="${vid}"]`);

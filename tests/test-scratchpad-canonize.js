@@ -145,12 +145,13 @@ function noisyPng(w, h) {
     await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2, null, { timeout: 10000 });
     const bWidget = page.locator(`.sn-widget[data-sketch-id="${varB}"]`);
 
-    // B's tabs: B first (its own sketch), a separator, then A as a sibling.
+    // B's tabs: B first (its own sketch), a "PREVIEW RELATED:" label, then A.
     await bWidget.locator('.sn-tab-self').waitFor({ timeout: 10000 });
     check('B tab shown first (self)', (await bWidget.locator('.sn-tab-self').textContent()).trim() === 'B');
-    check('separator + sibling A present',
-      await bWidget.locator('.sn-tab-sep').count() === 1
-      && (await bWidget.locator('.sn-tab').allTextContents()).join('').includes('A'));
+    check('preview-related label + sibling A present',
+      await bWidget.locator('.sn-tab-label').count() === 1
+      && (await bWidget.locator('.sn-tab-label').textContent()).toLowerCase().includes('preview related')
+      && (await bWidget.locator('.sn-tab-peer').allTextContents()).join('').includes('A'));
 
     // Click A's sibling tab → read-only PEER preview with navigate-to-source.
     await bWidget.locator('.sn-tab', { hasText: 'A' }).first().click();

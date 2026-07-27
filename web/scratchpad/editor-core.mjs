@@ -295,9 +295,9 @@ class SnippetView {
     const defs = [];
     defs.push({ key: 'self', letter: this.letter(), self: true });
     const others = (this.ctx.siblings || []).filter(s => s.sketch_id !== this.sketchId);
-    if (others.length) defs.push({ sep: true });
+    if (others.length) defs.push({ label: 'Preview related:' });
     for (const s of others) {
-      defs.push({ key: s.sketch_id, letter: letterOf(s.ordinal) });
+      defs.push({ key: s.sketch_id, ordinal: s.ordinal, letter: letterOf(s.ordinal) });
     }
     if (this.canonized()) defs.push({ key: 'canon', letter: 'Canon', canon: true });
     return defs;
@@ -306,6 +306,10 @@ class SnippetView {
   build() {
     const v = this.ctx.sketch;
     const sn = this.ctx.snippet;
+    // Identity for navigate-to-source: (snippet, ordinal). The global sketch_id
+    // stays as data-variation-id/data-sketch-id for the PM node + back-compat.
+    this.dom.dataset.snippetId = sn.snippet_id;
+    if (v.ordinal != null) this.dom.dataset.ordinal = String(v.ordinal);
     this.dom.classList.toggle('sn-canon', this.canonized());
     const state = this.frozen() ? 'frozen' : 'draft';
     const status = `Manuscript Snippet · ${this.letter()} · ${state}`;
@@ -371,9 +375,11 @@ class SnippetView {
   }
 
   tabButtonHTML(d) {
-    if (d.sep) return `<span class="sn-tab-sep" aria-hidden="true"></span>`;
+    if (d.label) return `<span class="sn-tab-label">${esc(d.label)}</span>`;
     const active = (d.self && this.tab === 'self') || (d.canon && this.tab === 'canon') || d.key === this.tab;
-    const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '', d.self ? 'sn-tab-self' : ''].filter(Boolean).join(' ');
+    const isPeer = !d.self && !d.canon;
+    const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '',
+      d.self ? 'sn-tab-self' : '', isPeer ? 'sn-tab-peer' : ''].filter(Boolean).join(' ');
     const title = d.canon ? 'Canon — the version placed into the book'
       : d.self ? `Sketch ${d.letter} (this widget's sketch)`
       : `Sketch ${d.letter} (preview; click to view)`;
@@ -523,11 +529,13 @@ class SnippetView {
     if (this.tab !== sketchId) return; // switched away while loading
     const letter = esc(letterOf(ctx.sketch.ordinal));
     this.body.innerHTML = `
-      <div class="sn-note">Previewing sketch ${letter}. <a href="#" class="sn-goto-source">Click here to navigate to source.</a></div>
+      <div class="sn-note"><strong>Previewing sketch ${letter}.</strong> <a href="#" class="sn-goto-source">Click here to navigate to source.</a></div>
       <div class="sn-render sn-peer"></div>`;
+    const snippetId = ctx.sketch.snippet_id;
+    const ordinal = ctx.sketch.ordinal;
     this.body.querySelector('.sn-goto-source').addEventListener('click', (e) => {
       e.preventDefault();
-      this.gotoSketchSource(sketchId);
+      this.gotoSketchSource(sketchId, snippetId, ordinal);
     });
     const host = this.body.querySelector('.sn-render');
     if (ctx.sketch.text.trim()) renderBookText(host, ctx.sketch.text);
@@ -535,13 +543,14 @@ class SnippetView {
   }
 
   // Navigate to a sketch's home widget: ask the server which scratchpad hosts
-  // it, then set the URL hash to open that scratchpad and scroll to the widget
-  // (#scratchpad=N&sketch=ID). modal.mjs handles the hash.
-  async gotoSketchSource(sketchId) {
+  // it, then set the URL hash to open that scratchpad and scroll to the widget.
+  // Identity is (snippet, ordinal) — NOT the global sketch_id — so the URL is
+  // human-readable and stable: #scratchpad=N&snippet=ID&sketch=<ordinal>.
+  async gotoSketchSource(sketchId, snippetId, ordinal) {
     let spID = 0;
     try { spID = (await sketchApi.home(sketchId)).scratchpad_id | 0; } catch (e) { /* fall through */ }
     if (spID > 0) {
-      window.location.hash = `#scratchpad=${spID}&sketch=${sketchId}`;
+      window.location.hash = `#scratchpad=${spID}&snippet=${encodeURIComponent(snippetId)}&sketch=${ordinal}`;
     } else {
       alert('That sketch has no home scratchpad on record yet.');
     }

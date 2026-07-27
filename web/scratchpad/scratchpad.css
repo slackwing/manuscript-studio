@@ -247,23 +247,31 @@
 .sn-tabs .sn-tab svg { vertical-align: -1px; margin-right: 2px; opacity: 0.7; }
 /* This widget's own sketch is shown first, subtly emphasized. */
 .sn-tabs .sn-tab-self { border-color: #b8b0a0; }
-/* Separator between this sketch and the sibling previews. */
-.sn-tab-sep {
-  display: inline-block;
-  width: 1px;
-  align-self: stretch;
-  margin: 2px 5px;
-  background: #d0c8b8;
+/* "PREVIEW RELATED:" label before the sibling tabs — the status all-caps font. */
+.sn-tab-label {
+  align-self: center;
+  margin: 0 6px 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font: 9px "Helvetica", sans-serif;
+  color: #8a8378;
+  white-space: nowrap;
 }
 .sn-tabs .sn-tab-canon { color: #2a6fb0; font-weight: 700; }
 .sn-tabs .sn-tab-canon.active { background: #e8f0f8; border-color: #a8c4dd; }
-/* A sibling shown as a read-only PREVIEW: disabled-looking, no caret. */
+/* An ACTIVE peer (preview) tab reads as disabled — a grey square, not the
+   white the self tab uses — so it's clear you're previewing a sibling. */
+.sn-tabs .sn-tab-peer.active { background: #ddd8cc; border-color: #c2baa8; }
+/* A sibling shown as a read-only PREVIEW: darker (disabled) background, but
+   full-strength text (not lightened), and genuinely non-interactive. */
 .sn-render.sn-peer {
-  opacity: 0.72;
-  background: #f3f1ec;
+  background: #e7e2d6;
   cursor: default;
-  user-select: text;      /* selectable to read/copy, but not editable */
+  user-select: text;         /* selectable to read/copy… */
+  pointer-events: none;      /* …but no caret / not editable / not clickable */
 }
+/* Keep the navigate-to-source link clickable even though the preview body is
+   pointer-events:none (the link lives in the note above it, which is fine). */
 .sn-goto-source { color: #2a6fb0; text-decoration: underline; cursor: pointer; }
 /* Brief highlight when navigate-to-source lands on a widget. */
 .sn-widget.sn-flash { animation: sn-flash-kf 1.6s ease; }

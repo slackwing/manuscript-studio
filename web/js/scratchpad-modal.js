@@ -10,7 +10,7 @@ const WriteSysScratchpadModal = {
 
   async _load() {
     if (!this._mod) {
-      this._mod = await import(new URL('scratchpad/modal.mjs?v=8', document.baseURI).href);
+      this._mod = await import(new URL('scratchpad/modal.mjs?v=9', document.baseURI).href);
     }
     return this._mod;
   },
@@ -32,11 +32,12 @@ const WriteSysScratchpadModal = {
     const h = window.location.hash || '';
     const sp = h.match(/[#&]scratchpad=(\d+)/);
     if (!sp) return;
-    const sketchM = h.match(/[#&]sketch=(\d+)/);
+    const snM = h.match(/[#&]snippet=([a-z0-9]+)/i);
+    const ordM = h.match(/[#&]sketch=(\d+)/);
     const spid = parseInt(sp[1], 10);
     if (this._mod && this._mod.ScratchpadModal.currentId() === spid) {
       // Same pad already open — just scroll to the sketch, if any.
-      if (sketchM) this._mod.ScratchpadModal.scrollToSketchWidget(parseInt(sketchM[1], 10));
+      if (snM && ordM) this._mod.ScratchpadModal.scrollToSketchWidget(snM[1], parseInt(ordM[1], 10));
     } else {
       this.open(spid);
     }
