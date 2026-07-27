@@ -257,7 +257,7 @@
    preview tabs it introduces). */
 .sn-tab-label {
   align-self: center;
-  margin: 0 4px 0 12px;
+  margin: 0 4px 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font: 9px "Helvetica", sans-serif;
@@ -273,13 +273,14 @@
    and sits on top, so this bg is what shows through. */
 .sn-render { background: #fff; }
 /* A sibling shown as a read-only PREVIEW: darker (disabled) background, but
-   full-strength text (not lightened), and genuinely non-interactive. The
-   shadow render is transparent so THIS grey shows through. */
+   full-strength text (not lightened). It ABSORBS clicks (cursor:default; a JS
+   handler swallows them) so there's no caret and — critically — the click does
+   NOT fall through to the ProseMirror editor behind it (which would move the PM
+   caret and scroll the pad). Text stays selectable to read/copy. */
 .sn-render.sn-peer {
   background: #e7e2d6;
   cursor: default;
-  user-select: text;         /* selectable to read/copy… */
-  pointer-events: none;      /* …but no caret / not editable / not clickable */
+  user-select: text;
 }
 /* Keep the navigate-to-source link clickable even though the preview body is
    pointer-events:none (the link lives in the note above it, which is fine). */

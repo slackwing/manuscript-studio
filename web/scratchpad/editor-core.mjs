@@ -538,6 +538,10 @@ class SnippetView {
       this.gotoSketchSource(sketchId, snippetId, ordinal);
     });
     const host = this.body.querySelector('.sn-render');
+    // Swallow mousedown so a click doesn't place a caret / fall through to the
+    // ProseMirror editor behind the widget (which would move the PM selection
+    // and scroll the pad). Text stays selectable via drag (that's mousemove).
+    host.addEventListener('mousedown', (e) => { e.preventDefault(); });
     if (ctx.sketch.text.trim()) renderBookText(host, ctx.sketch.text);
     else host.innerHTML = '<div class="sn-empty">Empty sketch.</div>';
   }
