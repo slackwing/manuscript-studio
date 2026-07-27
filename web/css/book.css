@@ -2809,7 +2809,13 @@ p.section-break {
     /* small top/bottom breathing room; the horizontal fit is handled by the
        scale + left-hug, so no big side padding. */
     padding: 10px 0 !important;
-    align-items: flex-start !important;    /* was center → page drifted off-screen */
+    /* Left-hug ONLY while the page is scaled to fill the width (≤768px, a
+       phone): with transform-origin:top-left, centering would push the scaled
+       sheet off-screen. See the ≥769px override below — there the page is NOT
+       scaled, so it must CENTER (otherwise it glues to the left in a wide window
+       with a big empty grey area on the right — the "in-between looks broken"
+       report). */
+    align-items: flex-start !important;
     /* keep grey backdrop + inter-page gap (do NOT zero them) */
   }
   /* the page keeps its shadow + border (the book-page look) — inherited from
@@ -2829,4 +2835,14 @@ p.section-break {
      mobile notes UI comes later); it's positioned for the desktop gutter, so
      on mobile it just juts off-screen right. Hide it so it can't add width. */
   #annotation-margin { display: none !important; }
+}
+
+/* In the wider part of the compact layout (769–1239px: too narrow for the
+   desktop side gutters, but wider than a phone) the page is NOT scaled — it's a
+   full-size 576px sheet. CENTER it, so it sits mid-viewport with even grey
+   margins instead of glued to the left with a big empty area on the right (the
+   "in-between looks broken" report). Below 769px the page IS scaled to fill the
+   width, so it stays left-hugged (see the rule above). */
+@media (min-width: 769px) and (max-width: 1239px) {
+  .pagedjs_pages { align-items: center !important; }
 }

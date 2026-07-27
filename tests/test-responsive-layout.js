@@ -108,6 +108,15 @@ function overlaps(a, b) {
     check('chrome + outline no overlap', !overlaps(m.chrome, m.outline),
       JSON.stringify({ chrome: m.chrome, outline: m.outline }));
     check('no horizontal overflow', m.docWidth <= m.winWidth + 1, `doc=${m.docWidth} win=${m.winWidth}`);
+    // In this wide-mobile range the (unscaled) page must be CENTERED, not glued
+    // to the left with a big empty area on the right.
+    if (m.page) {
+      const leftMargin = m.page.x;
+      const rightMargin = m.winWidth - m.page.right;
+      check('page is centered (even margins), not left-glued',
+        Math.abs(leftMargin - rightMargin) <= 4 && leftMargin > 20,
+        JSON.stringify({ leftMargin: Math.round(leftMargin), rightMargin: Math.round(rightMargin) }));
+    }
   }
 
   // ---- Tablet (900): second-bar layout. ----
