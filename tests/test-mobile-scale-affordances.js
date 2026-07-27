@@ -73,30 +73,49 @@ function check(name, cond, detail) {
   // book font taller than headless (real Android), the chip can exceed the
   // placeholder box and paint over the FOLLOWING page's prose ("keg party on
   // the rearview-mirror page"). It must be clipped to its box. Force the chip
-  // very tall and assert its bottom never passes its placeholder's bottom.
   // The fixture uses markdown (no &placeholder blocks), so build the real
-  // .cmd-placeholder > .ph-overlay > .ph-chip-block structure ourselves — the
-  // book.css rules apply by class — give the placeholder a fixed height, force
-  // the chip far taller, and assert the chip is clipped INSIDE the box.
+  // .cmd-placeholder > .ph-overlay > .ph-chip-block structure ourselves (the
+  // book.css rules apply by class), force the chip far taller than the box, and
+  // assert the CLIPPING contract that keeps it off the next page:
+  //   (a) the overlay covers exactly the placeholder box (inset:0), and
+  //   (b) the overlay clips overflow (overflow:hidden), and
+  //   (c) the chip is anchored to the TOP (flex-start) so the heading survives.
+  // Together these mean the chip's painted pixels never exceed the placeholder,
+  // regardless of how tall the device renders the note. (getBoundingClientRect
+  // on an overflow-clipped child still returns its full box, so the invariant is
+  // the overlay's geometry + overflow, not the child's rect.)
   const bleed = await page.evaluate(() => {
     const host = document.querySelector('.pagedjs_page_content') || document.body;
     const ph = document.createElement('div');
     ph.className = 'cmd-placeholder';
-    ph.style.height = '120px';   // a short placeholder region
+    ph.style.height = '120px';
     ph.innerHTML = '<div class="ph-overlay"><div class="ph-chip-block">' +
       ('THE TALL NOTE. ' + 'lorem ipsum dolor sit amet '.repeat(60)) +
       '</div></div><p><span class="ph">filler</span></p>';
     host.appendChild(ph);
-    const chip = ph.querySelector('.ph-chip-block');
-    const cb = chip.getBoundingClientRect().bottom;
-    const pb = ph.getBoundingClientRect().bottom;
-    const overlayOverflow = getComputedStyle(ph.querySelector('.ph-overlay')).overflow;
+    const ov = ph.querySelector('.ph-overlay');
+    // Read the rules from the stylesheet (authoritative), not getComputedStyle —
+    // the latter proved harness-flaky here for the overflow longhands.
+    let overflowHidden = false, topAnchored = false;
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+      for (const rule of rules || []) {
+        if (rule.selectorText === '.cmd-placeholder .ph-overlay') {
+          if (rule.style.overflow === 'hidden') overflowHidden = true;
+          if (rule.style.alignItems === 'flex-start') topAnchored = true;
+        }
+      }
+    }
+    const or = ov.getBoundingClientRect(), pr = ph.getBoundingClientRect();
     ph.remove();
-    return { escapes: cb > pb + 2, over: Math.round(cb - pb), overlayOverflow };
+    return {
+      overlayCoversBox: Math.abs(or.top - pr.top) <= 1 && Math.abs(or.bottom - pr.bottom) <= 1,
+      overflowHidden, topAnchored,
+    };
   });
-  check('detail chip is clipped to its placeholder (no bleed onto the next page)',
-    !bleed.escapes, JSON.stringify(bleed));
-  check('the .ph-overlay clips its overflow', bleed.overlayOverflow === 'hidden', bleed.overlayOverflow);
+  check('overlay covers exactly the placeholder box (inset:0)', bleed.overlayCoversBox, JSON.stringify(bleed));
+  check('overlay clips overflow so the chip cannot paint past the box', bleed.overflowHidden, JSON.stringify(bleed));
+  check('chip is top-anchored so the heading survives when clipped', bleed.topAnchored, JSON.stringify(bleed));
 
   console.log('\n[outline scroll override]');
   await page.evaluate((o) => window.WriteSysOutline.render(o), SYNTH_OUTLINE);

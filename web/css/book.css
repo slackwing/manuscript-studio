@@ -2295,24 +2295,20 @@ p.section-break {
 .cmd-placeholder {
   position: relative;
 }
+/* The details chip overlays its placeholder region. It's anchored TOP and
+   clipped (overflow:hidden) so a chip taller than its box — which happens when a
+   device renders the book font taller than headless Chromium does (real Android)
+   — keeps its "THE KEG PARTY." heading + start visible and NEVER paints past the
+   placeholder onto the next page. (align-items:flex-start, not `safe center`,
+   because the latter clipped to the tail on some devices.) */
 .cmd-placeholder .ph-overlay {
   position: absolute;
   inset: 0;
   display: flex;
-  /* `safe center` centers the chip when it fits, but falls back to start-
-     alignment when it's TALLER than the box — so an over-tall chip keeps its
-     "THE KEG PARTY." heading + start visible (clipped at the bottom) instead of
-     being clipped at BOTH ends by plain centering. */
-  align-items: safe center;
+  align-items: flex-start;
   justify-content: center;
   pointer-events: none;
   z-index: 5;
-  /* Clip to the placeholder box. Without this, if the chip renders TALLER than
-     the placeholder region — which happens when the device substitutes a taller
-     book font (real Android Chrome, not headless) — the chip overflows DOWNWARD
-     and paints over the prose on the following page(s) ("keg party on the
-     rearview-mirror page"). Clipping keeps the chip inside its own region; the
-     chip's own max-height:100% keeps its text within the box too. */
   overflow: hidden;
 }
 .cmd-placeholder .ph-chip-block {
@@ -2325,12 +2321,6 @@ p.section-break {
   border: 1px solid #c9c2b2;
   padding: 6px 10px;
   max-width: 22em;
-  /* Never taller than the placeholder region it annotates (belt to the
-     overlay's overflow:hidden suspenders); its own text is clipped, not the
-     surrounding page. */
-  max-height: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
 }
 
 /* A suggested placeholder can't show blue text (filler is invisible by
