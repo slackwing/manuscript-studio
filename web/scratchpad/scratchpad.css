@@ -217,7 +217,7 @@
   background: #fbfaf7;
   /* Inset left & right so a snippet doesn't run the full scratchpad width —
      it reads as a distinct block within the prose. */
-  margin: 0 22px 0.9em;
+  margin: 0 66px 0.9em;
   /* The editor surface is white-space: pre-wrap — without this, the
      widget template's own newlines/indentation render as blank strips
      (and paint grey when the node is selected). */

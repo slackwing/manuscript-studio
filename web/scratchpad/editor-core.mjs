@@ -295,7 +295,7 @@ class SnippetView {
     const defs = [];
     defs.push({ key: 'self', letter: this.letter(), self: true });
     const others = (this.ctx.siblings || []).filter(s => s.sketch_id !== this.sketchId);
-    if (others.length) defs.push({ label: 'Preview related:' });
+    if (others.length) defs.push({ label: 'Related:' });
     for (const s of others) {
       defs.push({ key: s.sketch_id, ordinal: s.ordinal, letter: letterOf(s.ordinal) });
     }
