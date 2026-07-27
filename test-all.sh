@@ -54,6 +54,7 @@ FAST_TESTS=(
   test-canon-render-pipeline
   test-cheatsheet
   test-responsive-layout
+  test-mobile-scale-affordances
 )
 
 SLOW_TESTS=(

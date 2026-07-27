@@ -2774,6 +2774,9 @@ p.section-break {
   #outline-margin .outline-nav { font-size: 11px; line-height: 1.35; }
   #outline-margin .outline-title { margin-bottom: 0.2em; }
   #outline-margin .outline-part { margin-top: 0.3em; }
+  /* The caret inherits the nav font-size (now 11px) — too small to spot on a
+     phone. Bump it so the reading-position marker is easy to see. */
+  #outline-margin .outline-caret { font-size: 16px; }
 
   /* --- fit the reading page to the viewport width while KEEPING the book-page
          look. The sheet is scaled by renderer.applyResponsiveScaling (transform

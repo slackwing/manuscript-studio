@@ -22,6 +22,13 @@ const WriteSysImportScratchpad = {
     if (!r || !r.currentMigrationID) return;
     const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
 
+    // The page may be transform-scaled on mobile. getBoundingClientRect() is
+    // SCREEN px, but these affordances are appended INTO pageArea and positioned
+    // in its own (unscaled) coord space — so convert screen deltas by ÷scale, or
+    // they land at the wrong height / on the wrong page. 1 on desktop.
+    const scale = (window.WriteSysPlaceholder && window.WriteSysPlaceholder.pageScale)
+      ? window.WriteSysPlaceholder.pageScale() : 1;
+
     document.querySelectorAll('.pagedjs_page').forEach(page => {
       const pageArea = page.querySelector('.pagedjs_page_content');
       if (!pageArea) return;
@@ -43,7 +50,7 @@ const WriteSysImportScratchpad = {
         const rect = p.getBoundingClientRect();
         const zone = document.createElement('div');
         zone.className = 'import-zone';
-        zone.style.top = `${Math.max(0, rect.top - pageRect.top - 9)}px`;
+        zone.style.top = `${Math.max(0, (rect.top - pageRect.top) / scale - 9)}px`;
         zone.innerHTML = '<button type="button" class="import-tab" title="Import from scratchpad (canonize)">+</button><span class="import-rule"></span>';
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
@@ -79,7 +86,7 @@ const WriteSysImportScratchpad = {
         btn.className = 'ph-fill-btn';
         btn.textContent = '⧉';
         btn.title = `Fill placeholder #${slug} from scratchpad (canonize)`;
-        btn.style.top = `${rect.top - pageRect.top + 2}px`;
+        btn.style.top = `${(rect.top - pageRect.top) / scale + 2}px`;
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           this.openModal({ mode: 'replace', sentenceId, slug });

@@ -154,12 +154,29 @@ const WriteSysPlaceholder = {
     document.documentElement.style.setProperty('--ph-pad', pad.toFixed(2) + 'px');
   },
 
+  // Current scale applied to the paged container (renderer.applyResponsiveScaling
+  // sets transform: scale(N) on mobile). getClientRects() returns SCREEN px, but
+  // the hatch tile (TILE) and margins live in the element's OWN (unscaled) coord
+  // space, so screen deltas must be divided by this before tile math. 1 on
+  // desktop (no transform).
+  pageScale() {
+    const c = document.querySelector('.pagedjs_pages');
+    if (!c) return 1;
+    const t = getComputedStyle(c).transform;
+    if (!t || t === 'none') return 1;
+    const m = t.match(/matrix\(([^)]+)\)/);
+    if (!m) return 1;
+    const a = parseFloat(m[1].split(',')[0]);
+    return (a > 0.01 && a <= 1.5) ? a : 1;
+  },
+
   // Phase nudge: shift each inline placeholder's start onto the next tile
   // boundary so its first fragment's diagonals mesh with the rows below.
   // The nudge itself reflows justification, so measure-and-repeat; bail out
   // whenever the placeholder doesn't actually wrap (single fragment).
   nudge() {
     const TILE = this.TILE;
+    const scale = this.pageScale();   // 1 on desktop; <1 when the page is scaled (mobile)
     document.querySelectorAll('.pagedjs_pages .ph').forEach(ph => {
       let sp = ph.previousElementSibling;
       if (sp && !sp.classList.contains('ph-nudge')) sp = null;
@@ -167,7 +184,10 @@ const WriteSysPlaceholder = {
       for (let i = 0; i < 4; i++) {
         const r = rectsOf();
         if (r.length < 2) break;
-        let off = (((r[1].left - r[0].left) % TILE) + TILE) % TILE;
+        // getClientRects() is SCREEN px; convert the delta to the page's own
+        // coord space (÷scale) so the tile math matches the un-scaled TILE.
+        const deltaLeft = (r[1].left - r[0].left) / scale;
+        let off = ((deltaLeft % TILE) + TILE) % TILE;
         if (off < 0.35 || off > TILE - 0.35) break;
         if (!sp) {
           sp = document.createElement('span');
@@ -176,6 +196,8 @@ const WriteSysPlaceholder = {
         }
         // Take the shorter path: right by off, or left by off - TILE. Small
         // negative margins hide in justified word-spacing just as well.
+        // `off` is already in element space, and marginLeft is too, so no
+        // re-scaling here.
         const shift = off <= TILE / 2 ? off : off - TILE;
         const cur = parseFloat(sp.style.marginLeft) || 0;
         sp.style.marginLeft = (cur + shift).toFixed(2) + 'px';

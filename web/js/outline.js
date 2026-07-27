@@ -216,7 +216,19 @@ const WriteSysOutline = {
   attachScrollTracking() {
     if (this._scrollBound) return;
     this._scrollBound = true;
-    const onScroll = () => {
+    // When the outline is a short scrollable bar (mobile), the user may want to
+    // browse it independently of the reading position. So: scrolling the
+    // OUTLINE itself sets a "user browsing" flag that stops the caret from
+    // yanking the outline back (updateCaret respects _userScrolledOutline);
+    // scrolling the PAGES clears it, so the outline resumes following the caret.
+    const onScroll = (e) => {
+      const inOutline = this.el && e.target && (e.target === this.el || (e.target.contains && this.el.contains(e.target)) || (this.el.contains && e.target.nodeType === 1 && this.el.contains(e.target)));
+      if (inOutline) {
+        this._userScrolledOutline = true;   // browsing the outline — don't fight it
+        return;                              // caret needn't recompute on an outline scroll
+      }
+      // A page/window scroll: the reading position moved, so re-follow it.
+      this._userScrolledOutline = false;
       if (this._rafPending) return;
       this._rafPending = true;
       requestAnimationFrame(() => { this._rafPending = false; this.updateCaret(); });
@@ -261,7 +273,10 @@ const WriteSysOutline = {
     // the caret drifts off-screen as you scroll the book. This is a no-op when
     // the container doesn't overflow.
     const active = this.itemNodes[activeIdx];
-    if (this.el.scrollHeight > this.el.clientHeight + 1) {
+    // Only pull the outline back to the caret when the user isn't actively
+    // browsing the outline (set in attachScrollTracking). A page scroll clears
+    // that flag, so following resumes.
+    if (!this._userScrolledOutline && this.el.scrollHeight > this.el.clientHeight + 1) {
       const cTop = this.el.scrollTop;
       const cBot = cTop + this.el.clientHeight;
       const rTop = active.offsetTop;
