@@ -67,6 +67,37 @@ function check(name, cond, detail) {
     nudge.ok, JSON.stringify(nudge));
   check('nudge saw the same sub-1 scale as the page', nudge.scale > 0 && nudge.scale < 1, `scale=${nudge.scale}`);
 
+  console.log('\n[placeholder detail chip never bleeds onto the next page]');
+  // The block-placeholder detail chip (.ph-chip-block in .ph-overlay) is a
+  // fixed annotation over the placeholder region. On devices that render the
+  // book font taller than headless (real Android), the chip can exceed the
+  // placeholder box and paint over the FOLLOWING page's prose ("keg party on
+  // the rearview-mirror page"). It must be clipped to its box. Force the chip
+  // very tall and assert its bottom never passes its placeholder's bottom.
+  // The fixture uses markdown (no &placeholder blocks), so build the real
+  // .cmd-placeholder > .ph-overlay > .ph-chip-block structure ourselves — the
+  // book.css rules apply by class — give the placeholder a fixed height, force
+  // the chip far taller, and assert the chip is clipped INSIDE the box.
+  const bleed = await page.evaluate(() => {
+    const host = document.querySelector('.pagedjs_page_content') || document.body;
+    const ph = document.createElement('div');
+    ph.className = 'cmd-placeholder';
+    ph.style.height = '120px';   // a short placeholder region
+    ph.innerHTML = '<div class="ph-overlay"><div class="ph-chip-block">' +
+      ('THE TALL NOTE. ' + 'lorem ipsum dolor sit amet '.repeat(60)) +
+      '</div></div><p><span class="ph">filler</span></p>';
+    host.appendChild(ph);
+    const chip = ph.querySelector('.ph-chip-block');
+    const cb = chip.getBoundingClientRect().bottom;
+    const pb = ph.getBoundingClientRect().bottom;
+    const overlayOverflow = getComputedStyle(ph.querySelector('.ph-overlay')).overflow;
+    ph.remove();
+    return { escapes: cb > pb + 2, over: Math.round(cb - pb), overlayOverflow };
+  });
+  check('detail chip is clipped to its placeholder (no bleed onto the next page)',
+    !bleed.escapes, JSON.stringify(bleed));
+  check('the .ph-overlay clips its overflow', bleed.overlayOverflow === 'hidden', bleed.overlayOverflow);
+
   console.log('\n[outline scroll override]');
   await page.evaluate((o) => window.WriteSysOutline.render(o), SYNTH_OUTLINE);
   await page.evaluate(() => window.dispatchEvent(new Event('resize')));
