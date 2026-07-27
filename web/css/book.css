@@ -831,96 +831,10 @@ p.section-break {
   #outline-margin { display: none !important; }
 }
 
-/* ============================================================
-   Mobile (≤640px): the left gutter collapses, so the manuscript
-   chrome (info) and outline relocate into a SECOND horizontal bar
-   directly under the top bar. Left 1/3 = info, right 2/3 = outline.
-   ============================================================ */
-@media (max-width: 640px) {
-  /* --- top bar: fixed, short height so the second bar butts exactly against
-         it (no book-showing-through gap). box-sizing:border-box makes height
-         inclusive of padding. Smaller controls let it shrink further. --- */
-  #controls {
-    box-sizing: border-box;
-    height: 40px;
-    padding: 0 10px;
-    gap: 8px;
-  }
-  /* Wordmark on ONE line: shrink it and forbid the wrap that split it into
-     "manuscript / studio". */
-  #brand { font-size: 15px; white-space: nowrap; }
-  #controls #gs-input {
-    font-size: 12px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-  #global-search { width: min(190px, 32vw); }
-  #controls #logout-btn { font-size: 11px; padding: 4px 8px; }
-
-  /* --- second bar: info (left 1/3) + outline (right 2/3), flush under the
-         40px top bar --- */
-  #manuscript-chrome {
-    top: 40px;
-    left: 0;
-    width: 33.333%;
-    height: 104px;               /* ~2.2x the top bar */
-    box-sizing: border-box;
-    padding: 6px 8px 6px 12px;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 4px;
-    background: #fff;
-    border-right: 1px solid #e3e0d8;
-    border-bottom: 1px solid #e3e0d8;
-    overflow: hidden;
-  }
-  #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; }
-  #mc-info { font-size: 9px; }
-  #manuscript-chrome #push-button-container { margin-top: 2px; }
-
-  #outline-margin.has-outline {
-    /* Right two-thirds of the second bar (only when there's real structure —
-       an outline-less manuscript shows no empty bar). */
-    display: block !important;
-    top: 40px;
-    left: 33.333%;
-    width: 66.667%;
-    height: 104px;
-    max-height: 104px;
-    box-sizing: border-box;
-    padding: 6px 10px 6px 10px;
-    background: #fff;
-    border-bottom: 1px solid #e3e0d8;
-    overflow-y: auto;
-  }
-  /* Compact the outline to fit the short bar. The reading-position caret stays
-     (JS auto-scrolls the active row into view — see outline.js updateActive). */
-  #outline-margin .outline-nav { font-size: 11px; line-height: 1.35; }
-  #outline-margin .outline-title { margin-bottom: 0.2em; }
-  #outline-margin .outline-part { margin-top: 0.3em; }
-
-  /* --- maximize the reading page: the sheet is scaled to fill the viewport
-         width (renderer.applyResponsiveScaling); here we kill the grey gutter
-         padding and the page's shadow/border so nothing steals width.
-         (A dedicated mobile sticky-note UI comes later.) --- */
-  #app-container {
-    /* Top clearance for BOTH fixed bars. Kept off .pagedjs_pages because that
-       container carries the scale transform + compensating negative margins —
-       clearance here on the untransformed wrapper stays stable. */
-    padding-top: 144px;   /* 40 top bar + 104 second bar */
-  }
-  .pagedjs_pages {
-    margin-top: 0 !important;
-    padding: 0 !important;
-    gap: 0 !important;
-    background: #fff;
-  }
-  .pagedjs_page {
-    box-shadow: none !important;
-    border: none !important;
-  }
-}
+/* NOTE: the mobile (≤640px) layout lives at the very END of this file, after
+   all the base #controls / #manuscript-chrome / #outline-margin / .pagedjs_*
+   rules it overrides — CSS resolves equal-specificity conflicts by source
+   order, so the mobile block MUST come last to win. */
 
 .annotation-margin-inner {
   position: relative;
@@ -2760,3 +2674,96 @@ p.section-break {
 }
 #manuscript-chrome .push-btn-icon { display: inline-flex; }
 #manuscript-chrome .push-button-container { position: relative; flex: none; }
+
+/* ============================================================
+   Mobile (≤640px) — MUST be last in the file (equal-specificity
+   rules win by source order; these override the desktop
+   #controls / #manuscript-chrome / #outline-margin / .pagedjs_*
+   rules defined earlier).
+
+   The left gutter collapses, so the manuscript chrome (info) and
+   the outline relocate into a SECOND horizontal bar directly under
+   the top bar: info in the left 1/3, outline in the right 2/3.
+   ============================================================ */
+@media (max-width: 640px) {
+  /* --- top bar: fixed short height so the second bar butts flush against it
+         (no book showing through a gap). Smaller controls let it shrink. --- */
+  #controls {
+    box-sizing: border-box;
+    height: 40px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  /* Wordmark on ONE line: shrink it and forbid the wrap that split it into
+     "manuscript / studio". */
+  #brand { font-size: 15px; white-space: nowrap; }
+  #controls #gs-input {
+    font-size: 12px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  #global-search { width: min(190px, 32vw); }
+  #controls #logout-btn { font-size: 11px; padding: 4px 8px; }
+
+  /* --- second bar, left third: the info (name + updated line + push) --- */
+  #manuscript-chrome {
+    top: 40px;
+    left: 0;
+    width: 33.333%;
+    height: 104px;               /* ~2.6x the 40px top bar */
+    box-sizing: border-box;
+    padding: 6px 8px 6px 12px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 4px;
+    background: #fff;
+    border-right: 1px solid #e3e0d8;
+    border-bottom: 1px solid #e3e0d8;
+    overflow: hidden;
+  }
+  #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; }
+  #mc-info { font-size: 9px; }
+  #manuscript-chrome #push-button-container { margin-top: 2px; }
+
+  /* --- second bar, right two-thirds: the outline (only when there's real
+         structure — an outline-less manuscript shows no empty bar) --- */
+  #outline-margin.has-outline {
+    display: block !important;
+    top: 40px;
+    left: 33.333%;
+    width: 66.667%;
+    height: 104px;
+    max-height: 104px;
+    box-sizing: border-box;
+    padding: 6px 10px 6px 10px;
+    background: #fff;
+    border-bottom: 1px solid #e3e0d8;
+    overflow-y: auto;
+  }
+  /* Compact the outline to fit the short bar. The reading-position caret stays
+     (outline.js updateActive scrolls the active row into view on overflow). */
+  #outline-margin .outline-nav { font-size: 11px; line-height: 1.35; }
+  #outline-margin .outline-title { margin-bottom: 0.2em; }
+  #outline-margin .outline-part { margin-top: 0.3em; }
+
+  /* --- maximize the reading page. The sheet is scaled to the viewport width
+         by renderer.applyResponsiveScaling (transform + transform-origin:
+         top left). Here we (a) clear the top space for BOTH fixed bars via
+         #app-container padding — NOT .pagedjs_pages, which carries the scale
+         transform — and (b) make .pagedjs_pages hug the left instead of
+         flex-centering, so the scaled page sits at the gutter, not off-screen.
+         (A dedicated mobile sticky-note UI comes later.) --- */
+  #app-container { padding-top: 144px; }   /* 40 top bar + 104 second bar */
+  .pagedjs_pages {
+    margin-top: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    align-items: flex-start !important;    /* was center → page drifted off-screen */
+    background: #fff;
+  }
+  .pagedjs_page {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
