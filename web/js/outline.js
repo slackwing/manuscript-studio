@@ -255,10 +255,24 @@ const WriteSysOutline = {
     this.itemNodes.forEach((n, i) => n.classList.toggle('active', i === activeIdx));
 
     if (activeIdx < 0) { this.caretEl.style.opacity = '0'; return; }
+    // Keep the active row visible. On desktop the outline fills the tall left
+    // gutter so it never scrolls; on mobile it's a short horizontal bar (#outline
+    // -margin scrolls internally), so the active row must be nudged into view or
+    // the caret drifts off-screen as you scroll the book. This is a no-op when
+    // the container doesn't overflow.
+    const active = this.itemNodes[activeIdx];
+    if (this.el.scrollHeight > this.el.clientHeight + 1) {
+      const cTop = this.el.scrollTop;
+      const cBot = cTop + this.el.clientHeight;
+      const rTop = active.offsetTop;
+      const rBot = rTop + active.offsetHeight;
+      if (rTop < cTop) this.el.scrollTop = rTop - 6;
+      else if (rBot > cBot) this.el.scrollTop = rBot - this.el.clientHeight + 6;
+    }
     // Glide the caret to vertically center on the active row (both measured
     // relative to the nav so translateY is nav-local).
     const navTop = this.el.querySelector('.outline-nav').getBoundingClientRect().top;
-    const rowRect = this.itemNodes[activeIdx].getBoundingClientRect();
+    const rowRect = active.getBoundingClientRect();
     const y = (rowRect.top + rowRect.height / 2) - navTop;
     this.caretEl.style.opacity = '1';
     this.caretEl.style.transform = `translateY(${y}px)`;

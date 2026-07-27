@@ -837,19 +837,33 @@ p.section-break {
    directly under the top bar. Left 1/3 = info, right 2/3 = outline.
    ============================================================ */
 @media (max-width: 640px) {
-  /* --- top bar: smaller wordmark, shorter --- */
-  #controls { padding: 6px 12px; }
-  #brand { font-size: 17px; }
-  #controls #gs-input { padding-top: 5px; padding-bottom: 5px; }
-  #global-search { width: min(200px, 34vw); }
+  /* --- top bar: fixed, short height so the second bar butts exactly against
+         it (no book-showing-through gap). box-sizing:border-box makes height
+         inclusive of padding. Smaller controls let it shrink further. --- */
+  #controls {
+    box-sizing: border-box;
+    height: 40px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  /* Wordmark on ONE line: shrink it and forbid the wrap that split it into
+     "manuscript / studio". */
+  #brand { font-size: 15px; white-space: nowrap; }
+  #controls #gs-input {
+    font-size: 12px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  #global-search { width: min(190px, 32vw); }
+  #controls #logout-btn { font-size: 11px; padding: 4px 8px; }
 
-  /* --- second bar: info (left 1/3) + outline (right 2/3) --- */
+  /* --- second bar: info (left 1/3) + outline (right 2/3), flush under the
+         40px top bar --- */
   #manuscript-chrome {
-    /* Left third of the second bar. Sits just below the (now ~44px) top bar. */
-    top: 44px;
+    top: 40px;
     left: 0;
     width: 33.333%;
-    height: 110px;               /* ~2.5x the top bar */
+    height: 104px;               /* ~2.2x the top bar */
     box-sizing: border-box;
     padding: 6px 8px 6px 12px;
     flex-direction: column;
@@ -858,6 +872,7 @@ p.section-break {
     gap: 4px;
     background: #fff;
     border-right: 1px solid #e3e0d8;
+    border-bottom: 1px solid #e3e0d8;
     overflow: hidden;
   }
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; }
@@ -868,25 +883,43 @@ p.section-break {
     /* Right two-thirds of the second bar (only when there's real structure —
        an outline-less manuscript shows no empty bar). */
     display: block !important;
-    top: 44px;
+    top: 40px;
     left: 33.333%;
     width: 66.667%;
-    height: 110px;
-    max-height: 110px;
+    height: 104px;
+    max-height: 104px;
     box-sizing: border-box;
     padding: 6px 10px 6px 10px;
     background: #fff;
     border-bottom: 1px solid #e3e0d8;
     overflow-y: auto;
   }
-  /* Compact the outline to fit the short bar. */
+  /* Compact the outline to fit the short bar. The reading-position caret stays
+     (JS auto-scrolls the active row into view — see outline.js updateActive). */
   #outline-margin .outline-nav { font-size: 11px; line-height: 1.35; }
   #outline-margin .outline-title { margin-bottom: 0.2em; }
   #outline-margin .outline-part { margin-top: 0.3em; }
-  #outline-margin .outline-caret { display: none; }  /* no room for the glide caret */
 
-  /* Push the paged content clear of BOTH bars (44px top + 110px second). */
-  .pagedjs_pages { margin-top: 158px !important; }
+  /* --- maximize the reading page: the sheet is scaled to fill the viewport
+         width (renderer.applyResponsiveScaling); here we kill the grey gutter
+         padding and the page's shadow/border so nothing steals width.
+         (A dedicated mobile sticky-note UI comes later.) --- */
+  #app-container {
+    /* Top clearance for BOTH fixed bars. Kept off .pagedjs_pages because that
+       container carries the scale transform + compensating negative margins —
+       clearance here on the untransformed wrapper stays stable. */
+    padding-top: 144px;   /* 40 top bar + 104 second bar */
+  }
+  .pagedjs_pages {
+    margin-top: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    background: #fff;
+  }
+  .pagedjs_page {
+    box-shadow: none !important;
+    border: none !important;
+  }
 }
 
 .annotation-margin-inner {

@@ -325,17 +325,33 @@ const WriteSysRenderer = {
     if (!pagesContainer) return;
 
     if (window.innerWidth <= 768) {
-      const pageWidth = 600; // 6in @ 96dpi
-      const viewportWidth = window.innerWidth;
-      const scale = (viewportWidth * 0.7) / pageWidth; // 70% leaves border room
+      const pageWidth = 576; // the fixed sheet width (see .pagedjs_page)
+      // Fill the widest available width, leaving only a slight gutter each side
+      // (not the old 70% that wasted ~30% of the screen). transform-origin is
+      // top-LEFT so the scaled sheet hugs the left gutter rather than centering
+      // and drifting; the CSS zeroes .pagedjs_pages padding on mobile.
+      const GUTTER = 12; // px each side
+      const scale = Math.min(1, (window.innerWidth - GUTTER * 2) / pageWidth);
+      // Fit the fixed publishable page to the viewport via transform: scale —
+      // words-per-page must stay identical across viewports (it's a print form),
+      // so we scale the whole sheet rather than reflow. transform doesn't shrink
+      // the layout box, so it leaves phantom empty space below; compensate with
+      // a negative margin-bottom equal to the height the scale removed. Measured
+      // AFTER clearing any prior transform so the natural height is read.
+      pagesContainer.style.transform = "";
+      pagesContainer.style.marginBottom = "";
+      const naturalH = pagesContainer.getBoundingClientRect().height;
       pagesContainer.style.transform = `scale(${scale})`;
-      pagesContainer.style.transformOrigin = "top center";
-      pagesContainer.style.padding = "1em";
+      pagesContainer.style.transformOrigin = "top left";
+      pagesContainer.style.marginLeft = GUTTER + "px";
+      pagesContainer.style.marginBottom = -(naturalH * (1 - scale)) + "px";
       pagesContainer.style.background = "transparent";
       document.body.style.background = "white";
     } else {
       pagesContainer.style.transform = "";
       pagesContainer.style.transformOrigin = "";
+      pagesContainer.style.marginLeft = "";
+      pagesContainer.style.marginBottom = "";
       pagesContainer.style.padding = "2em";
       pagesContainer.style.background = "#f5f5f5";
       document.body.style.background = "";
