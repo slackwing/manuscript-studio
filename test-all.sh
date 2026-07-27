@@ -55,6 +55,10 @@ FAST_TESTS=(
   test-cheatsheet
   test-responsive-layout
   test-mobile-scale-affordances
+  test-sketch-navigate
+  test-sketch-restore
+  test-snippet-editor
+  test-sketch-sibling-refresh
 )
 
 SLOW_TESTS=(

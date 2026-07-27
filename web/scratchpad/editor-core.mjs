@@ -233,8 +233,20 @@ const dirtyVariations = new Set();
 // Every live SnippetView, so a group-level change (e.g. linking a manuscript,
 // which is a property of the snippet GROUP, not one sketch) can refresh every
 // sibling widget showing the same snippet — otherwise siblings hold a stale
-// link chip until the next reload.
+// link chip (or a stale tab list) until the next reload.
 const liveSnippetViews = new Set();
+
+// Refresh every EXISTING widget of the given snippet group except one (usually
+// a just-created sketch, which mounts fresh). Used after a group-level change so
+// siblings pick it up immediately — e.g. a new related sketch appearing in their
+// tab bar, or a manuscript link updating their chip.
+function refreshSnippetSiblings(snippetId, exceptSketchId) {
+  if (!snippetId) return;
+  return Promise.all(Array.from(liveSnippetViews)
+    .filter(v => v.ctx && v.ctx.snippet && v.ctx.snippet.snippet_id === snippetId
+      && v.sketchId !== exceptSketchId)
+    .map(v => v.refresh()));
+}
 
 function renderBookText(host, text) {
   const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
@@ -622,12 +634,10 @@ class SnippetView {
     const snippetId = this.ctx.snippet.snippet_id;
     try {
       await sketchApi.link(snippetId, manuscriptId);
-      // The link belongs to the snippet GROUP: refresh every live widget
-      // showing a sketch of this same snippet so their chips update now, not
-      // only after a reload.
-      await Promise.all(Array.from(liveSnippetViews)
-        .filter(v => v.ctx && v.ctx.snippet && v.ctx.snippet.snippet_id === snippetId)
-        .map(v => v.refresh()));
+      // The link belongs to the snippet GROUP: refresh every live widget of
+      // this snippet (including this one) so their chips update now, not only
+      // after a reload.
+      await refreshSnippetSiblings(snippetId, null);
     } catch (e) {
       alert('Could not update link: ' + e.message);
     }
@@ -884,6 +894,13 @@ function buildSnippetMenu(toolbarEl, getView) {
       schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
     close();
     view.focus();
+    // A new sibling changes the group's sketch list, so every EXISTING widget of
+    // the same snippet must refresh to show the new one in its tab bar (the new
+    // widget just mounted fresh with the full list). Without this, related
+    // widgets don't get the new tab until a reload.
+    const snippetId = (ctx.snippet && ctx.snippet.snippet_id)
+      || (ctx.sketch && ctx.sketch.snippet_id);
+    refreshSnippetSiblings(snippetId, ctx.sketch.sketch_id);
   };
 
   const renderRoot = () => {
@@ -1221,6 +1238,10 @@ export async function createScratchpadEditor(els, scratchpadId) {
       const ctx = await sketchApi.createFrom(sourceId);
       insertBlockSafely(view.state, view.dispatch,
         schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
+      // Existing siblings must show the new sketch in their tab bar now.
+      const snippetId = (ctx.snippet && ctx.snippet.snippet_id)
+        || (ctx.sketch && ctx.sketch.snippet_id);
+      await refreshSnippetSiblings(snippetId, ctx.sketch.sketch_id);
       return ctx;
     },
     pm: { Selection, TextSelection, NodeSelection },
