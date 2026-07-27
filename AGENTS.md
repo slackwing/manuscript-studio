@@ -127,6 +127,20 @@ suggestions, **delete them before calling `cleanupTestAnnotations()`** or
 the FK will block the cascading sentence delete and the test that follows
 yours will run on dirty data.
 
+### N12 — Responsive @media blocks go at the END of book.css
+
+`web/css/book.css` is not organized by component, so the base
+`#controls` / `#manuscript-chrome` / `#outline-margin` / `.pagedjs_*` rules
+live LOW in the file (~line 2600+). A `@media (max-width: …)` override has the
+SAME specificity as the base rule, so CSS breaks the tie by **source order** —
+a media block placed above the base rules it targets silently loses. Put new
+responsive blocks at the very bottom of the file (this already bit the mobile
+layout once: the info chrome kept its desktop width and overlapped the
+outline). When touching responsive CSS, **verify with a real screenshot at
+both widths** — reasoning about cascade order blind is how this slipped
+through. See `tests/`-adjacent Playwright screenshotting, or intercept
+book.css against a deployed manuscript.
+
 ---
 
 ## 1. Core principles
