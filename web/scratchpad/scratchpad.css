@@ -574,3 +574,19 @@
 }
 .sn-widget.sn-canon .sn-tabs button { color: #2a5f96; }
 .sn-widget.sn-canon .sn-tabs button.active { background: #fff; border-color: #a8c4dd; }
+
+/* ---- narrow viewports (mobile) ---- */
+@media (max-width: 640px) {
+  /* Maximize writing width: drop the widget's left/right inset so a snippet
+     spans the full pad. */
+  .sn-widget { margin-left: 0; margin-right: 0; }
+  /* The "Related:" label costs too much room in the tight header — replace the
+     word with a compact vertical-bar separator between the self tab and the
+     sibling previews. */
+  .sn-tab-label { font-size: 0; margin: 0 5px; }
+  .sn-tab-label::before {
+    content: "|";
+    font-size: 12px;
+    color: #c2baa8;
+  }
+}

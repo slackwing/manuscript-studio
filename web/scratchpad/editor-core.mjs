@@ -230,6 +230,11 @@ function listManuscripts() {
 // mirrors which views still hold unsaved text — isDirty() consults it.
 const variationFlushers = new Set();
 const dirtyVariations = new Set();
+// Every live SnippetView, so a group-level change (e.g. linking a manuscript,
+// which is a property of the snippet GROUP, not one sketch) can refresh every
+// sibling widget showing the same snippet — otherwise siblings hold a stale
+// link chip until the next reload.
+const liveSnippetViews = new Set();
 
 function renderBookText(host, text) {
   const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
@@ -246,12 +251,13 @@ class SnippetView {
     this.dom.className = 'sn-widget';
     this.dom.dataset.variationId = String(this.sketchId); // legacy attr (PM node)
     this.dom.dataset.sketchId = String(this.sketchId);     // navigate-to-source target
-    this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Manuscript Snippet · loading…</span></div><div class="sn-body"></div>';
+    this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Snippet · loading…</span></div><div class="sn-body"></div>';
     this.tab = 'self';       // 'self' | 'canon' | other variationId (number)
     this.mode = 'preview';   // self tab only: 'preview' | 'edit'
     this.peerCache = {};     // variationId → context (parent/child tabs)
     this.dirty = false;
     this.flush = async () => true;
+    liveSnippetViews.add(this);
     this.load();
   }
 
@@ -261,7 +267,7 @@ class SnippetView {
     } catch (e) {
       this.dom.innerHTML = `
         <div class="sn-header">
-          <span class="sn-status">Manuscript Snippet · unavailable</span>
+          <span class="sn-status">Snippet · unavailable</span>
           <span class="sn-tabs"></span>
           <span class="sn-actions"><button type="button" data-act="remove" class="sn-trash" title="Remove widget">${TRASH_SVG}</button></span>
         </div>
@@ -312,7 +318,7 @@ class SnippetView {
     if (v.ordinal != null) this.dom.dataset.ordinal = String(v.ordinal);
     this.dom.classList.toggle('sn-canon', this.canonized());
     const state = this.frozen() ? 'frozen' : 'draft';
-    const status = `Manuscript Snippet · ${this.letter()} · ${state}`;
+    const status = `Snippet · ${this.letter()} · ${state}`;
     const statusHint = `Sketch ${this.letter()} of snippet #${sn.snippet_id}. ` +
       (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). ' : 'Click the preview to edit. ') +
       `Created ${esc((v.created_at || '').slice(0, 10))}.`;
@@ -375,7 +381,9 @@ class SnippetView {
   }
 
   tabButtonHTML(d) {
-    if (d.label) return `<span class="sn-tab-label">${esc(d.label)}</span>`;
+    // On mobile the label text is hidden via CSS and a "|" separator shown
+    // instead (the ::before on .sn-tab-label), so keep the real text here.
+    if (d.label) return `<span class="sn-tab-label" data-sep="|">${esc(d.label)}</span>`;
     const active = (d.self && this.tab === 'self') || (d.canon && this.tab === 'canon') || d.key === this.tab;
     const isPeer = !d.self && !d.canon;
     const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '',
@@ -611,9 +619,15 @@ class SnippetView {
   }
 
   async setLink(manuscriptId) {
+    const snippetId = this.ctx.snippet.snippet_id;
     try {
-      await sketchApi.link(this.ctx.snippet.snippet_id, manuscriptId);
-      await this.refresh();
+      await sketchApi.link(snippetId, manuscriptId);
+      // The link belongs to the snippet GROUP: refresh every live widget
+      // showing a sketch of this same snippet so their chips update now, not
+      // only after a reload.
+      await Promise.all(Array.from(liveSnippetViews)
+        .filter(v => v.ctx && v.ctx.snippet && v.ctx.snippet.snippet_id === snippetId)
+        .map(v => v.refresh()));
     } catch (e) {
       alert('Could not update link: ' + e.message);
     }
@@ -710,6 +724,7 @@ class SnippetView {
     this.closeLinkPicker();
     variationFlushers.delete(this.flush);
     dirtyVariations.delete(this);
+    liveSnippetViews.delete(this);
   }
   stopEvent() { return true; }
   ignoreMutation() { return true; }

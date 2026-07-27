@@ -22,7 +22,9 @@ const WriteSysScratchRender = {
          affordances are neutralized — this view is read-only. */
       .scratch-book {
         font-family: var(--book-font, Georgia, serif);
-        font-size: 12pt;
+        /* Fixed (not viewport-fluid), but smaller than the book's 12pt so a
+           snippet reads as a compact working excerpt inside the pad. */
+        font-size: 10.5pt;
         line-height: 1.6;
         color: #1a1a1a;
         background: transparent;   /* let the host's bg show (white for self,
