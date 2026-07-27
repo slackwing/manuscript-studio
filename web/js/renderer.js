@@ -345,8 +345,11 @@ const WriteSysRenderer = {
       pagesContainer.style.transformOrigin = "top left";
       pagesContainer.style.marginLeft = GUTTER + "px";
       pagesContainer.style.marginBottom = -(naturalH * (1 - scale)) + "px";
+      // Keep the grey book backdrop so each scaled sheet still reads as a page
+      // (transparent here erased that look). The container is scaled, so paint
+      // the grey on the BODY — it fills the whole viewport regardless of scale.
       pagesContainer.style.background = "transparent";
-      document.body.style.background = "white";
+      document.body.style.background = "#f5f5f5";
     } else {
       pagesContainer.style.transform = "";
       pagesContainer.style.transformOrigin = "";

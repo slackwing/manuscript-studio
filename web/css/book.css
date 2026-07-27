@@ -730,7 +730,12 @@ p.section-break {
   z-index: 100;
   padding: 0 12px 12px 16px;
   display: none;
+  /* Scrollable but with NO visible scrollbar, in every view (desktop gutter
+     and the mobile second bar). Firefox + WebKit/Blink. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+#outline-margin::-webkit-scrollbar { width: 0; height: 0; display: none; }
 #outline-margin.has-outline {
   display: block;
 }
@@ -2745,23 +2750,27 @@ p.section-break {
   #outline-margin .outline-title { margin-bottom: 0.2em; }
   #outline-margin .outline-part { margin-top: 0.3em; }
 
-  /* --- maximize the reading page. The sheet is scaled to the viewport width
-         by renderer.applyResponsiveScaling (transform + transform-origin:
-         top left). Here we (a) clear the top space for BOTH fixed bars via
-         #app-container padding — NOT .pagedjs_pages, which carries the scale
-         transform — and (b) make .pagedjs_pages hug the left instead of
-         flex-centering, so the scaled page sits at the gutter, not off-screen.
-         (A dedicated mobile sticky-note UI comes later.) --- */
+  /* --- fit the reading page to the viewport width while KEEPING the book-page
+         look. The sheet is scaled by renderer.applyResponsiveScaling (transform
+         + transform-origin: top left). Here we:
+         (a) clear the top space for BOTH fixed bars via #app-container padding
+             — NOT .pagedjs_pages, which carries the scale transform;
+         (b) hug the left instead of flex-centering, so the scaled sheet sits at
+             the gutter rather than drifting off-screen;
+         (c) PRESERVE the grey backdrop, inter-page gap, page border and drop
+             shadow so each sheet still reads as a physical book page. (An early
+             version stripped all of these to "maximize" width — that made the
+             pages stop looking like pages. Don't do that again; a dedicated
+             mobile UI comes later.) --- */
   #app-container { padding-top: 144px; }   /* 40 top bar + 104 second bar */
   .pagedjs_pages {
     margin-top: 0 !important;
-    padding: 0 !important;
-    gap: 0 !important;
+    /* small top/bottom breathing room; the horizontal fit is handled by the
+       scale + left-hug, so no big side padding. */
+    padding: 10px 0 !important;
     align-items: flex-start !important;    /* was center → page drifted off-screen */
-    background: #fff;
+    /* keep grey backdrop + inter-page gap (do NOT zero them) */
   }
-  .pagedjs_page {
-    box-shadow: none !important;
-    border: none !important;
-  }
+  /* the page keeps its shadow + border (the book-page look) — inherited from
+     the base .pagedjs_page rule; nothing overridden here. */
 }
