@@ -101,7 +101,7 @@ function noisyPng(w, h) {
     // click flips into the monospace editor; blur returns to preview.
     await page.waitForSelector('.sn-widget .sn-render .sn-empty', { timeout: 10000 });
     const draftStatus = await page.textContent('.sn-widget .sn-status');
-    check('status reads Manuscript Snippet · A · draft', /Manuscript Snippet · A · draft/.test(draftStatus), draftStatus.trim());
+    check('status reads Snippet · A · draft', /Snippet · A · draft/.test(draftStatus), draftStatus.trim());
     await page.click('.sn-widget .sn-render');
     await page.waitForSelector('.sn-widget .sn-text', { timeout: 5000 });
     await page.fill('.sn-widget .sn-text', BLOCK_TEXT);
@@ -145,12 +145,12 @@ function noisyPng(w, h) {
     await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2, null, { timeout: 10000 });
     const bWidget = page.locator(`.sn-widget[data-sketch-id="${varB}"]`);
 
-    // B's tabs: B first (its own sketch), a "PREVIEW RELATED:" label, then A.
+    // B's tabs: B first (its own sketch), a "Related:" label, then A.
     await bWidget.locator('.sn-tab-self').waitFor({ timeout: 10000 });
     check('B tab shown first (self)', (await bWidget.locator('.sn-tab-self').textContent()).trim() === 'B');
-    check('preview-related label + sibling A present',
+    check('related label + sibling A present',
       await bWidget.locator('.sn-tab-label').count() === 1
-      && (await bWidget.locator('.sn-tab-label').textContent()).toLowerCase().includes('preview related')
+      && (await bWidget.locator('.sn-tab-label').textContent()).toLowerCase().includes('related')
       && (await bWidget.locator('.sn-tab-peer').allTextContents()).join('').includes('A'));
 
     // Click A's sibling tab → read-only PEER preview with navigate-to-source.

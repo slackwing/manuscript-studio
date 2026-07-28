@@ -74,6 +74,26 @@ const coreNodes = {
     }],
     toDOM: n => ['div', { 'data-variation-id': String(n.attrs.variationId) }],
   },
+  // A note ANCHOR (NOTES_PLAN.md Phase 2): a small colored square placed at the
+  // start of a highlighted range. Inline atom carrying the note_id + color; the
+  // note's content lives in the DB (the `note` table). This node IS the anchor —
+  // deleting it soft-deletes the note. Clicking it opens the floating note.
+  noteAnchor: {
+    group: 'inline', inline: true, atom: true, selectable: false,
+    attrs: { noteId: { default: 0 }, color: { default: 'yellow' } },
+    parseDOM: [{
+      tag: 'span[data-note-id]',
+      getAttrs: dom => ({
+        noteId: parseInt(dom.getAttribute('data-note-id'), 10) || 0,
+        color: dom.getAttribute('data-note-color') || 'yellow',
+      }),
+    }],
+    toDOM: n => ['span', {
+      'data-note-id': String(n.attrs.noteId),
+      'data-note-color': n.attrs.color,
+      class: 'sn-note-anchor color-' + n.attrs.color,
+    }],
+  },
   text: { group: 'inline' },
   hard_break: {
     group: 'inline', inline: true, selectable: false,
@@ -85,6 +105,24 @@ const coreNodes = {
 const marks = {
   strong: { parseDOM: [{ tag: 'strong' }, { tag: 'b' }], toDOM: () => ['strong', 0] },
   em: { parseDOM: [{ tag: 'em' }, { tag: 'i' }], toDOM: () => ['em', 0] },
+  // A note HIGHLIGHT (NOTES_PLAN.md Phase 2): the background tint over the text a
+  // note anchors, in the note's color. Reuses the shared --highlight-{color}
+  // vars (same tints as manuscript sentence highlights).
+  noteHighlight: {
+    attrs: { color: { default: 'yellow' }, noteId: { default: 0 } },
+    parseDOM: [{
+      tag: 'span[data-note-hl]',
+      getAttrs: dom => ({
+        color: dom.getAttribute('data-note-hl') || 'yellow',
+        noteId: parseInt(dom.getAttribute('data-note-hl-id'), 10) || 0,
+      }),
+    }],
+    toDOM: m => ['span', {
+      'data-note-hl': m.attrs.color,
+      'data-note-hl-id': String(m.attrs.noteId),
+      class: 'sn-note-hl color-' + m.attrs.color,
+    }, 0],
+  },
 };
 
 const base = new Schema({ nodes: coreNodes, marks });
@@ -799,6 +837,228 @@ function insertBlockSafely(state, dispatch, node) {
   return true;
 }
 
+// ---- Scratchpad notes (NOTES_PLAN.md Phase 2) ----------------------------
+// A note is created from a text selection in a color: POST a scratchpad note,
+// wrap the range in the noteHighlight mark, drop a noteAnchor square at its
+// start, and open the floating note. The anchor node IS the note's anchor; the
+// note content lives in the DB.
+
+const NOTE_COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
+
+// The active editor view (set in createScratchpadEditor) so the module-level
+// note helpers can read/edit the doc.
+let activeView = null;
+
+// Create a scratchpad note from the current selection in `color`.
+async function createNoteFromSelection(color) {
+  const view = activeView;
+  if (!view || !window.WriteSysNoteAPI) return;
+  const { from, to, empty } = view.state.selection;
+  if (empty) return; // nothing selected → no-op (buttons are disabled anyway)
+  let created;
+  try {
+    created = await window.WriteSysNoteAPI.create({ color, ctx: { scratchpad_id: currentScratchpadId } });
+  } catch (e) { console.error('create scratchpad note failed', e); return; }
+  const noteId = created && created.note_id;
+  if (!noteId) return;
+  const sc = view.state.schema;
+  const hl = sc.marks.noteHighlight.create({ color, noteId });
+  const anchor = sc.nodes.noteAnchor.create({ noteId, color });
+  // Wrap the range in the (note-id-tagged) highlight, then insert the anchor
+  // square at its start.
+  let tr = view.state.tr.addMark(from, to, hl);
+  tr = tr.insert(from, anchor); // anchor lands just before the highlighted text
+  view.dispatch(tr);
+  view.focus();
+  // Open the float on the just-inserted anchor.
+  const note = { noteId, note_id: noteId, color, body: null, priority: 'none', flagged: false, tags: [] };
+  requestAnimationFrame(() => {
+    const el = view.dom.querySelector(`.sn-note-anchor[data-note-id="${noteId}"]`);
+    if (el) openNoteFloatFor(note, el);
+  });
+}
+
+// Recolor a note's anchor node + its highlight run in the doc (both carry the
+// note id, so we can target precisely and leave other notes alone).
+function recolorNoteInDoc(noteId, color) {
+  const view = activeView; if (!view) return;
+  const sc = view.state.schema;
+  let tr = view.state.tr;
+  view.state.doc.descendants((node, pos) => {
+    if (node.type === sc.nodes.noteAnchor && node.attrs.noteId === noteId) {
+      tr = tr.setNodeMarkup(pos, undefined, { noteId, color });
+    }
+    if (node.isText) {
+      const hl = node.marks.find(m => m.type === sc.marks.noteHighlight && m.attrs.noteId === noteId);
+      if (hl) {
+        tr = tr.removeMark(pos, pos + node.nodeSize, hl)
+               .addMark(pos, pos + node.nodeSize, sc.marks.noteHighlight.create({ color, noteId }));
+      }
+    }
+  });
+  view.dispatch(tr);
+}
+
+// Remove a note's anchor + highlight from the doc (used on complete / delete).
+function removeNoteFromDoc(noteId) {
+  const view = activeView; if (!view) return;
+  const sc = view.state.schema;
+  let tr = view.state.tr;
+  // Strip highlight marks first (positions unaffected by mark removal), then
+  // delete the anchor node last-to-first so positions stay valid.
+  const anchorRanges = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.isText) {
+      const hl = node.marks.find(m => m.type === sc.marks.noteHighlight && m.attrs.noteId === noteId);
+      if (hl) tr = tr.removeMark(pos, pos + node.nodeSize, hl);
+    }
+    if (node.type === sc.nodes.noteAnchor && node.attrs.noteId === noteId) {
+      anchorRanges.push([pos, pos + node.nodeSize]);
+    }
+  });
+  anchorRanges.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => { tr = tr.delete(a, b); });
+  view.dispatch(tr);
+}
+function removeNoteAnchorFromDoc(noteId) { removeNoteFromDoc(noteId); }
+
+// Undo/delete: soft-delete the note (recoverable) AND strip its anchor +
+// highlight from the doc.
+function softDeleteNoteAndAnchor(noteId) {
+  if (window.WriteSysNoteAPI) window.WriteSysNoteAPI.remove(noteId);
+  removeNoteFromDoc(noteId);
+  closeNoteFloat();
+}
+
+// NodeView for a note anchor: the little colored square. Clicking it opens the
+// floating note; hovering shows an undo (×) that turns the text back to plain
+// (removes anchor + highlight) and soft-deletes the note.
+class NoteAnchorView {
+  constructor(node, view, getPos) {
+    this.node = node;
+    this.dom = document.createElement('span');
+    this.dom.className = 'sn-note-anchor color-' + node.attrs.color;
+    this.dom.dataset.noteId = String(node.attrs.noteId);
+    this.dom.dataset.noteColor = node.attrs.color;
+    this.dom.contentEditable = 'false';
+    this.dom.title = 'Note — click to open';
+    // The square glyph + a hover undo.
+    this.dom.innerHTML = '<span class="sn-note-anchor-sq"></span><span class="sn-note-anchor-undo" title="Remove note">×</span>';
+    this.dom.querySelector('.sn-note-anchor-sq').addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      this.open();
+    });
+    this.dom.querySelector('.sn-note-anchor-undo').addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      softDeleteNoteAndAnchor(node.attrs.noteId);
+    });
+  }
+  async open() {
+    const noteId = this.node.attrs.noteId;
+    // Load the current note (color/body/tags) for the float.
+    let note = { noteId, note_id: noteId, color: this.node.attrs.color, body: null, priority: 'none', flagged: false, tags: [] };
+    // The float edits optimistically; a GET would be nicer but the tags/body
+    // come back via the widget's own saves. Open with what the doc knows.
+    openNoteFloatFor(note, this.dom);
+  }
+  stopEvent() { return true; }
+  ignoreMutation() { return true; }
+}
+
+// Sweep: if a note's anchor was removed from the doc by a BULK edit (select-all
+// delete, paragraph delete) rather than the undo button, soft-delete the note so
+// it doesn't dangle. Compares the anchor ids currently in the doc against the set
+// we've seen; any that vanished get soft-deleted. Debounced via the save cycle.
+let _seenAnchorIds = new Set();
+function sweepOrphanNotes() {
+  const view = activeView; if (!view) return;
+  const sc = view.state.schema;
+  const present = new Set();
+  view.state.doc.descendants((node) => {
+    if (node.type === sc.nodes.noteAnchor && node.attrs.noteId) present.add(node.attrs.noteId);
+  });
+  // Any id we saw before but is gone now → orphaned → soft-delete.
+  for (const id of _seenAnchorIds) {
+    if (!present.has(id) && window.WriteSysNoteAPI) {
+      window.WriteSysNoteAPI.remove(id).catch(() => {});
+    }
+  }
+  _seenAnchorIds = present;
+}
+
+// The single floating note element (only one open at a time).
+let openNoteFloat = null;
+function closeNoteFloat() {
+  if (openNoteFloat) { openNoteFloat.remove(); openNoteFloat = null; }
+  document.removeEventListener('mousedown', onFloatOutside, true);
+}
+function onFloatOutside(e) {
+  if (openNoteFloat && !openNoteFloat.contains(e.target)
+      && !(e.target.closest && e.target.closest('.sn-note-anchor'))) {
+    closeNoteFloat();
+  }
+}
+
+// Open the floating note for a given note object, positioned below `anchorEl`.
+function openNoteFloatFor(note, anchorEl) {
+  closeNoteFloat();
+  if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
+  const api = window.WriteSysNoteAPI;
+  const float = document.createElement('div');
+  float.className = 'sn-note-float';
+  const widget = window.WriteSysNoteWidget.buildNoteElement(note, {
+    onSaveText: (text) => { note.body = text.trim() || null; api.update(note.noteId, { body: note.body }); },
+    onColor: (color) => {
+      note.color = color;
+      api.update(note.noteId, { color });
+      // Recolor the anchor + its highlight in the doc.
+      recolorNoteInDoc(note.noteId, color);
+      openNoteFloatFor(note, anchorEl); // re-render palette (shows other 5)
+    },
+    onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; api.update(note.noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
+    onFlag: () => { note.flagged = !note.flagged; api.update(note.noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
+    onDelete: () => { softDeleteNoteAndAnchor(note.noteId); },
+    onComplete: () => { api.complete(note.noteId); removeNoteAnchorFromDoc(note.noteId); closeNoteFloat(); },
+    onAddTag: async (name) => { try { const r = await api.addTag(note.noteId, name); note.tags = (r && r.tags) || note.tags; } catch (e) {} },
+    onRemoveTag: async (tagId) => { try { await api.removeTag(note.noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); } catch (e) {} },
+  }, {});
+  float.appendChild(widget);
+  document.body.appendChild(float);
+  openNoteFloat = float;
+  // Position below the anchor.
+  const r = anchorEl.getBoundingClientRect();
+  float.style.position = 'absolute';
+  float.style.top = (window.scrollY + r.bottom + 6) + 'px';
+  float.style.left = (window.scrollX + r.left) + 'px';
+  setTimeout(() => document.addEventListener('mousedown', onFloatOutside, true), 0);
+}
+
+// The right-aligned 6-color note bar. Each square creates a note from the
+// current selection; all are disabled when nothing is selected. Registers the
+// group in `dyn` so updateToolbar() can toggle the disabled state per state.
+// Module list of note-color groups; updateToolbar() toggles their disabled look
+// (empty selection → can't create a note).
+const noteColorGroups = [];
+function buildNoteColorBar(toolbarEl, getView) {
+  const group = document.createElement('span');
+  group.className = 'sn-note-colorbar';
+  NOTE_COLORS.forEach(color => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sn-note-colorbtn color-' + color;
+    btn.title = 'Note (' + color + ') — select text first';
+    btn.style.backgroundColor = 'var(--highlight-' + color + ')';
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (getView().state.selection.empty) return;
+      createNoteFromSelection(color);
+    });
+    group.appendChild(btn);
+  });
+  toolbarEl.appendChild(group);
+  group._getView = getView;
+  noteColorGroups.push(group);
+}
+
 function insertTableOfSize(state, dispatch, rows, cols) {
   const { table, table_row, table_cell } = schema.nodes;
   const mkRow = () => table_row.create(null,
@@ -1048,6 +1308,10 @@ export async function createScratchpadEditor(els, scratchpadId) {
   const data = await fetchJSON(`api/scratchpads/${scratchpadId}`, {}, false);
   const pad = data.scratchpad;
   els.titleInput.value = pad.title;
+  // Fresh per editor instance (the modal can open/close repeatedly).
+  noteColorGroups.length = 0;
+  _seenAnchorIds = new Set();
+  closeNoteFloat();
 
   let view = null;
   let saveTimer = null;
@@ -1153,6 +1417,9 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { sep: true },
     { label: '↶', title: 'Undo', run: undo },
     { label: '↷', title: 'Redo', run: redo },
+    // Right-aligned note-color section (NOTES_PLAN.md Phase 2): 6 colored squares
+    // that create a note from the current selection.
+    { noteColors: true },
   ];
   els.toolbarEl.innerHTML = '';
   const btns = [];
@@ -1164,6 +1431,10 @@ export async function createScratchpadEditor(els, scratchpadId) {
     }
     if (it.snippetMenu) {
       buildSnippetMenu(els.toolbarEl, () => view);
+      continue;
+    }
+    if (it.noteColors) {
+      buildNoteColorBar(els.toolbarEl, () => view, dyn);
       continue;
     }
     if (it.sep) {
@@ -1193,6 +1464,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
       if (b._item.active) b.classList.toggle('active', b._item.active(view.state));
     });
     dyn.forEach(el => el.classList.toggle('tb-hidden', !el._item.show(view.state)));
+    // Note-color squares are disabled when there's no selection to note.
+    noteColorGroups.forEach(g => g.classList.toggle('sn-note-colorbar-disabled', view.state.selection.empty));
   };
 
   // ---- editor ----
@@ -1221,15 +1494,17 @@ export async function createScratchpadEditor(els, scratchpadId) {
     state,
     nodeViews: {
       snippet: (node, v, getPos) => new SnippetView(node, v, getPos),
+      noteAnchor: (node, v, getPos) => new NoteAnchorView(node, v, getPos),
     },
     dispatchTransaction(tr) {
       if (destroyed) return;
       const newState = view.state.apply(tr);
       view.updateState(newState);
-      if (tr.docChanged) scheduleSave();
+      if (tr.docChanged) { scheduleSave(); sweepOrphanNotes(); }
       updateToolbar();
     },
   });
+  activeView = view;
   updateToolbar();
   setSaveState('saved');
 
@@ -1285,6 +1560,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
       els.titleInput.removeEventListener('input', onTitleInput);
       els.imageInput.removeEventListener('change', onImage);
       if (saveState !== 'saved') await saveNow();
+      closeNoteFloat();
+      if (activeView === view) activeView = null;
       view.destroy();
       view = null;
     },

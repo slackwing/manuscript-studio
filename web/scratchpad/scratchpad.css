@@ -593,3 +593,73 @@
     color: #c2baa8;
   }
 }
+
+/* ---- Scratchpad notes (NOTES_PLAN.md Phase 2) ---- */
+
+/* The 6-color note bar, pushed to the right of the toolbar. */
+.sn-note-colorbar {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding-left: 6px;
+}
+.sn-note-colorbtn {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  padding: 0;
+}
+.sn-note-colorbtn:hover { outline: 2px solid rgba(0, 0, 0, 0.15); }
+.sn-note-colorbar-disabled { opacity: 0.4; }
+.sn-note-colorbar-disabled .sn-note-colorbtn { cursor: default; }
+
+/* The inline highlight over noted text — reuses the manuscript --highlight-*. */
+.sn-note-hl.color-yellow { background: var(--highlight-yellow); }
+.sn-note-hl.color-green  { background: var(--highlight-green); }
+.sn-note-hl.color-blue   { background: var(--highlight-blue); }
+.sn-note-hl.color-purple { background: var(--highlight-purple); }
+.sn-note-hl.color-red    { background: var(--highlight-red); }
+.sn-note-hl.color-orange { background: var(--highlight-orange); }
+
+/* The little rounded-square anchor placed at the start of a noted range. */
+.sn-note-anchor {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: baseline;
+  cursor: pointer;
+  user-select: none;
+  margin-right: 2px;
+  position: relative;
+}
+.sn-note-anchor-sq {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+.sn-note-anchor.color-yellow .sn-note-anchor-sq { background: var(--highlight-yellow); }
+.sn-note-anchor.color-green  .sn-note-anchor-sq { background: var(--highlight-green); }
+.sn-note-anchor.color-blue   .sn-note-anchor-sq { background: var(--highlight-blue); }
+.sn-note-anchor.color-purple .sn-note-anchor-sq { background: var(--highlight-purple); }
+.sn-note-anchor.color-red    .sn-note-anchor-sq { background: var(--highlight-red); }
+.sn-note-anchor.color-orange .sn-note-anchor-sq { background: var(--highlight-orange); }
+/* Hover undo: a small × after the square, revealed on hover. */
+.sn-note-anchor-undo {
+  display: none;
+  font: 11px/1 "Helvetica", sans-serif;
+  color: #b33b3a;
+  margin-left: 2px;
+  cursor: pointer;
+}
+.sn-note-anchor:hover .sn-note-anchor-undo { display: inline; }
+
+/* The floating note (reuses the sticky-note widget). */
+.sn-note-float {
+  z-index: 21000;
+  width: 260px;
+  filter: drop-shadow(0 8px 22px rgba(20, 16, 8, 0.35));
+}

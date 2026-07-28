@@ -60,6 +60,7 @@ FAST_TESTS=(
   test-snippet-editor
   test-sketch-sibling-refresh
   test-snippet-no-scroll-jump
+  test-scratchpad-notes
 )
 
 SLOW_TESTS=(
