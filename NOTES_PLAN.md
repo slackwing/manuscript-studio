@@ -1,6 +1,11 @@
 # NOTES_PLAN.md — Notes everywhere
 
-Status: **PLANNING** (not started). Author-reviewed decisions captured below.
+Status: **PHASES 1a–3 SHIPPED** (2026-07-28). annotation→note rename (prod data
+preserved: 52 notes), nullable context columns, reusable note-api/note-widget,
+scratchpad notes (highlight→colored note+anchor+float), and the landing Notes
+section are all live and test-covered. Future: filters/sort on the Notes grid;
+optional full core-widget/adapter unification of the manuscript margin; manuscript
+notes (manuscript_id only) + free notes UI. Original plan + decisions below.
 
 ## Vision
 
