@@ -1451,6 +1451,24 @@ p.section-break {
   overflow: visible;  /* Allow circles to extend beyond note bounds */
 }
 
+/* Collapsed "card" mode (NOTES_PLAN.md): the landing grid shows notes as
+   compact cards — a color swatch + a clipped preview of the body — that expand
+   to the full sticky note on click (note-widget.js buildNoteElement collapsed).
+   The controls (tags, priority/flag) hide; the textarea clips to a few lines and
+   is read-only-looking. */
+.sticky-note-collapsed { cursor: pointer; }
+.sticky-note-collapsed .sticky-bottom-controls,
+.sticky-note-collapsed .priority-flag-container { display: none !important; }
+.sticky-note-collapsed .note-input {
+  height: auto !important;
+  max-height: 4.5em;
+  overflow: hidden;
+  resize: none;
+  pointer-events: none;   /* the card click expands; don't focus the textarea */
+  background: transparent;
+  border: none;
+}
+
 /* Color-specific backgrounds */
 .sticky-note.color-yellow { background: var(--sticky-yellow); }
 .sticky-note.color-green { background: var(--sticky-green); }

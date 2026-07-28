@@ -175,6 +175,20 @@ swatch + clipped text + tiny context line) that expands to the full sticky note
 on click. The manuscript margin uses the always-expanded form (today's look);
 the landing grid uses collapsed-by-default.
 
+**BUILD DECISION (during 1c):** The manuscript margin's note flow (cache,
+rainbow bars, grey/never-mind, gutter math) is deeply intertwined and fully
+test-covered. Rewriting it into an adapter-over-core-widget carries high risk
+for little immediate benefit. So 1c is scoped PRAGMATICALLY: (a) `note-api.js`
+is a PURE CRUD wrapper over `/api/notes/*` (no cache/callbacks) that Phase 2 &
+3 use directly; (b) a standalone `buildNoteElement(note, handlers)` renders the
+sticky DOM (extracted so the scratchpad float + landing card reuse the EXACT
+same markup/CSS) with a `collapsed` option; (c) the manuscript margin
+(`notes.js`) is LEFT AS-IS and keeps its own working API+cache logic. Full
+core-widget/adapter unification can happen later if the duplication bites; for
+now the reusable pieces (api + buildNoteElement + CSS) are enough to build
+scratchpad notes and the landing grid without destabilizing the margin. All
+existing note tests stay green because notes.js is untouched.
+
 ### Phase 2 — Scratchpad notes
 
 Depends on 1a–1c. No server schema change beyond phase 1b (anchor lives in the
