@@ -25,5 +25,6 @@
     <include file="changelog/016-variation-soft-delete.xml"/>
     <include file="changelog/017-variation-to-sketch.xml"/>
     <include file="changelog/018-annotation-to-note.xml"/>
+    <include file="changelog/019-note-context-columns.xml"/>
 
 </databaseChangeLog>

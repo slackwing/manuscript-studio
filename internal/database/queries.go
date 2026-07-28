@@ -1040,11 +1040,16 @@ func (db *DB) MigrateNotes(ctx context.Context, items []NoteMigrationItem) (int,
 	}
 	defer tx.Rollback(ctx)
 
-	// Same per-note flow as UpdateNote, batched in one tx.
+	// Same per-note flow as UpdateNote, batched in one tx. The
+	// `sentence_id IS NOT NULL` guard means ONLY sentence notes migrate — a
+	// scratchpad/free note (null sentence_id) is never repointed by a manuscript
+	// re-migration. (Items only ever come from GetActiveNotesForSentence, which
+	// already can't return null-sentence notes, so this is defense-in-depth.)
 	updateNote := `
 		UPDATE note
 		SET sentence_id = $1, updated_at = NOW()
 		WHERE note_id = $2
+		  AND sentence_id IS NOT NULL
 		  AND deleted_at IS NULL
 		  AND completed_at IS NULL
 	`

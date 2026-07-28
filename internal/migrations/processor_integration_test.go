@@ -331,6 +331,49 @@ func TestMigration_LastSentenceDeleted_FallsBackward(t *testing.T) {
 	}
 }
 
+// A scratchpad/free note (null sentence_id) is NOT a sentence note and must be
+// left completely untouched by a manuscript re-migration — its sentence_id stays
+// NULL, so it never gets repointed at a sentence it doesn't belong to.
+// (Phase 1b, NOTES_PLAN.md: notes can exist without a sentence.)
+func TestMigration_SentencelessNote_Untouched(t *testing.T) {
+	f := newFixture(t)
+	v1 := "First sentence stays. The doomed sentence vanishes. Last sentence stays."
+	v2 := "First sentence stays. Last sentence stays."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1-sless", v1)
+	// A real sentence note (proves the migration DOES run and move things).
+	doomed := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The doomed")
+	sentNoteID := insertNote(t, f.ctx, f.db, doomed, f.username, "sentence note")
+
+	// A sentence-less note inserted directly (scratchpad-note kind; created via
+	// SQL because CreateNote derives origin from a sentence).
+	body := "a scratchpad note with no sentence"
+	var slessID int
+	if err := f.pool.QueryRow(f.ctx, `
+		INSERT INTO note (sentence_id, user_id, color, body, priority, flagged, position)
+		VALUES (NULL, $1, 'green', $2, 'none', false, 'a0')
+		RETURNING note_id
+	`, f.username, body).Scan(&slessID); err != nil {
+		t.Fatalf("insert sentence-less note: %v", err)
+	}
+
+	runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2-sless", v2)
+
+	// The sentence note moved (its sentence was deleted → it must not be null and
+	// must not still point at the doomed sentence).
+	if got := getNoteSentenceID(t, f.ctx, f.pool, sentNoteID); got == doomed || got == "" {
+		t.Fatalf("sentence note not migrated correctly: got %q", got)
+	}
+	// The sentence-less note is untouched: sentence_id still NULL.
+	var slessSentence *string
+	if err := f.pool.QueryRow(f.ctx, `SELECT sentence_id FROM note WHERE note_id = $1`, slessID).Scan(&slessSentence); err != nil {
+		t.Fatalf("read sentence-less note: %v", err)
+	}
+	if slessSentence != nil {
+		t.Fatalf("sentence-less note was migrated! sentence_id became %q (should stay NULL)", *slessSentence)
+	}
+}
+
 // A split sentence should carry the note onto whichever half matches best.
 func TestMigration_SentenceSplit(t *testing.T) {
 	f := newFixture(t)

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Phase 1b (NOTES_PLAN.md): a note becomes a user-owned entity that can
+         optionally live in a context. Add nullable manuscript_id + scratchpad_id
+         FKs, relax sentence_id to nullable, and backfill manuscript_id for the
+         existing sentence notes (so the landing grid can show context without a
+         runtime join). No note is deleted or moved; sentence notes keep their
+         sentence_id and gain a manuscript_id.
+
+         Note kinds after this:
+           sentence note   → manuscript_id + sentence_id set (today's note)
+           manuscript note → manuscript_id only          (future)
+           scratchpad note → scratchpad_id only          (phase 2)
+           free note       → all null                     (future) -->
+    <changeSet id="019-note-context-columns" author="claude">
+        <sql>
+            -- New nullable context columns.
+            ALTER TABLE note ADD COLUMN manuscript_id INTEGER
+                REFERENCES manuscript(manuscript_id) ON DELETE SET NULL;
+            ALTER TABLE note ADD COLUMN scratchpad_id INTEGER
+                REFERENCES scratchpad(scratchpad_id) ON DELETE SET NULL;
+
+            -- A note no longer requires a sentence.
+            ALTER TABLE note ALTER COLUMN sentence_id DROP NOT NULL;
+
+            -- Backfill manuscript_id for existing sentence notes from the
+            -- sentence -&gt; migration -&gt; manuscript chain (the authoritative
+            -- link is the sentence row's migration, not the id string).
+            UPDATE note n
+            SET manuscript_id = m.manuscript_id
+            FROM sentence s
+            JOIN migration m ON m.migration_id = s.migration_id
+            WHERE n.sentence_id IS NOT NULL
+              AND s.sentence_id = n.sentence_id
+              AND n.manuscript_id IS NULL;
+
+            -- Indexes for the landing-grid / context queries.
+            CREATE INDEX idx_note_manuscript ON note(manuscript_id) WHERE manuscript_id IS NOT NULL;
+            CREATE INDEX idx_note_scratchpad ON note(scratchpad_id) WHERE scratchpad_id IS NOT NULL;
+            -- User-owned recency ordering for the landing grid (active notes).
+            CREATE INDEX idx_note_user_updated ON note(user_id, updated_at DESC) WHERE deleted_at IS NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
