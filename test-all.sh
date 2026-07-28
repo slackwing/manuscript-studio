@@ -59,6 +59,7 @@ FAST_TESTS=(
   test-sketch-restore
   test-snippet-editor
   test-sketch-sibling-refresh
+  test-snippet-no-scroll-jump
 )
 
 SLOW_TESTS=(

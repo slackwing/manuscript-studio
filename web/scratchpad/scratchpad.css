@@ -274,6 +274,9 @@
 /* The (self) preview/edit surface is white; the shadow render is transparent
    and sits on top, so this bg is what shows through. */
 .sn-render { background: #fff; }
+/* A FROZEN sketch's own preview wears a light blue so it reads as read-only at
+   a glance (matching the snowflake/canon blue family). */
+.sn-render.sn-frozen { background: #eef4fb; }
 /* A sibling shown as a read-only PREVIEW: darker (disabled) background, but
    full-strength text (not lightened). It ABSORBS clicks (cursor:default; a JS
    handler swallows them) so there's no caret and — critically — the click does

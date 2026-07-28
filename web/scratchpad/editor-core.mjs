@@ -298,7 +298,30 @@ class SnippetView {
     } catch (e) { /* keep the stale view rather than blanking */ }
     if (!keepTab) this.tab = 'self';
     else this.tab = tab;
-    this.build();
+    this.preserveScroll(() => this.build());
+  }
+
+  // The scrollable host for this widget (the modal body). Rebuilding the widget's
+  // DOM, or focusing an element inside it, makes the browser re-anchor scroll and
+  // jump — usually to the top of the widget. Everything that tears down and
+  // rebuilds the widget (build/renderBody/setTab/toggleFreeze) runs through
+  // preserveScroll so the reader stays put. This is the single, root-cause fix
+  // for "clicking a snippet scrolls me to the top."
+  scrollHost() {
+    return this.dom.closest('.spm-editor') || this.dom.closest('[data-scroll-host]') || null;
+  }
+  // Snapshot scrollTop, run fn (which may replace DOM / move focus), then restore
+  // the scroll position — both synchronously and once more after layout settles,
+  // since focus()/textarea auto-grow can nudge it a frame later.
+  preserveScroll(fn) {
+    const host = this.scrollHost();
+    if (!host) return fn();
+    const top = host.scrollTop;
+    const r = fn();
+    const restore = () => { if (host.scrollTop !== top) host.scrollTop = top; };
+    restore();
+    requestAnimationFrame(restore);
+    return r;
   }
 
   canonized() { return this.ctx.snippet.canon_sketch_id > 0; }
@@ -416,17 +439,22 @@ class SnippetView {
   }
 
   renderBody() {
-    if (this.tab === 'self') {
-      return this.mode === 'edit' ? this.renderEdit() : this.renderSelfPreview();
-    }
-    if (this.tab === 'canon') return this.renderCanon(false);
-    return this.renderPeer(this.tab);
+    // All body re-renders (enter edit, blur→preview, switch tab, peer preview)
+    // replace DOM and may move focus; preserve the reader's scroll position so
+    // none of them jump the pad to the top of the widget.
+    return this.preserveScroll(() => {
+      if (this.tab === 'self') {
+        return this.mode === 'edit' ? this.renderEdit() : this.renderSelfPreview();
+      }
+      if (this.tab === 'canon') return this.renderCanon(false);
+      return this.renderPeer(this.tab);
+    });
   }
 
   renderSelfPreview() {
     this.ta = null;
     const frozen = this.frozen();
-    this.body.innerHTML = `<div class="sn-render${frozen ? '' : ' sn-clickable'}" title="${frozen ? 'Frozen — unfreeze (snowflake) to edit' : 'Click to edit'}"></div>`;
+    this.body.innerHTML = `<div class="sn-render${frozen ? ' sn-frozen' : ' sn-clickable'}" title="${frozen ? 'Frozen — unfreeze (snowflake) to edit' : 'Click to edit'}"></div>`;
     const host = this.body.firstChild;
     const text = this.ctx.sketch.text;
     if (text.trim()) {
@@ -528,7 +556,10 @@ class SnippetView {
     wrap.appendChild(ta);
     this.body.appendChild(wrap);
     this.ta = ta;
-    ta.focus();
+    // preventScroll: focusing the textarea would otherwise scroll it into view
+    // (jumping to the top of the snippet) — the main "click-to-edit scrolls me
+    // up" trigger. preserveScroll (around renderBody) is the backstop.
+    ta.focus({ preventScroll: true });
     ta.setSelectionRange(ta.value.length, ta.value.length);
     autoGrow();
   }
