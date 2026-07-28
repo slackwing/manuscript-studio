@@ -69,7 +69,9 @@ type Sentence struct {
 
 type Note struct {
 	NoteID       int        `json:"note_id"`
-	SentenceID   string     `json:"sentence_id"`
+	SentenceID   string     `json:"sentence_id"`   // "" when the note has no sentence (DB col is nullable)
+	ManuscriptID *int       `json:"manuscript_id"` // nullable context
+	ScratchpadID *int       `json:"scratchpad_id"` // nullable context
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Body         *string    `json:"body"`

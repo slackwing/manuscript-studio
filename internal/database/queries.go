@@ -955,6 +955,55 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 	return nil
 }
 
+// CreateScratchpadNote creates a note homed in a scratchpad (NOTES_PLAN.md
+// Phase 2). Unlike CreateNote it has NO sentence: no fractional position scoped
+// to a sentence, and NO note_version row (versioning/history is a manuscript
+// migration concept; note_version requires a sentence, and scratchpad notes
+// never migrate). Sets scratchpad_id; sentence_id/manuscript_id stay NULL.
+func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scratchpadID int) error {
+	// Position is per-context; scratchpad notes rarely need cross-note ordering,
+	// but keep the column populated (append after the max in this scratchpad).
+	var maxPosition string
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(position), '') FROM note WHERE scratchpad_id = $1`, scratchpadID,
+	).Scan(&maxPosition); err != nil {
+		return fmt.Errorf("failed to get max position: %w", err)
+	}
+	nextPosition, err := fractional.GeneratePositionBetween(maxPosition, "")
+	if err != nil {
+		return fmt.Errorf("failed to compute next position: %w", err)
+	}
+
+	err = db.Pool.QueryRow(ctx, `
+		INSERT INTO note (user_id, color, body, priority, flagged, position, scratchpad_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING note_id, created_at, updated_at
+	`,
+		note.UserID, note.Color, note.Body, note.Priority, note.Flagged, nextPosition, scratchpadID,
+	).Scan(&note.NoteID, &note.CreatedAt, &note.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create scratchpad note: %w", err)
+	}
+	note.Position = nextPosition
+	note.ScratchpadID = &scratchpadID
+	return nil
+}
+
+// UpdateScratchpadNote mutates a scratchpad note's mutable fields directly (no
+// version row — see CreateScratchpadNote). Only touches notes with the given id.
+func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *string, body *string, priority *string, flagged *bool) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE note SET
+			color    = COALESCE($2, color),
+			body     = CASE WHEN $3::boolean THEN $4 ELSE body END,
+			priority = COALESCE($5, priority),
+			flagged  = COALESCE($6, flagged),
+			updated_at = NOW()
+		WHERE note_id = $1 AND scratchpad_id IS NOT NULL AND deleted_at IS NULL
+	`, noteID, color, body != nil, body, priority, flagged)
+	return err
+}
+
 // UpdateNote mutates the head row and appends a new version.
 func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, version *models.NoteVersion) error {
 	tx, err := db.Pool.Begin(ctx)
@@ -1567,7 +1616,7 @@ func (db *DB) SetLastManuscriptName(ctx context.Context, username, manuscriptNam
 
 func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {
 	query := `
-		SELECT note_id, sentence_id, user_id, color, body,
+		SELECT note_id, COALESCE(sentence_id, ''), manuscript_id, scratchpad_id, user_id, color, body,
 		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at
 		FROM note
 		WHERE note_id = $1
@@ -1579,6 +1628,8 @@ func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error)
 	err := db.Pool.QueryRow(ctx, query, noteID).Scan(
 		&a.NoteID,
 		&a.SentenceID,
+		&a.ManuscriptID,
+		&a.ScratchpadID,
 		&a.UserID,
 		&a.Color,
 		&a.Body,

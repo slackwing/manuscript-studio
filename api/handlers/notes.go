@@ -20,11 +20,12 @@ type NoteHandlers struct {
 }
 
 type CreateNoteRequest struct {
-	SentenceID string  `json:"sentence_id"`
-	Color      string  `json:"color"`
-	Body       *string `json:"body"`
-	Priority   string  `json:"priority"`
-	Flagged    bool    `json:"flagged"`
+	SentenceID   string  `json:"sentence_id"`
+	ScratchpadID *int    `json:"scratchpad_id"` // set → a scratchpad note (no sentence)
+	Color        string  `json:"color"`
+	Body         *string `json:"body"`
+	Priority     string  `json:"priority"`
+	Flagged      bool    `json:"flagged"`
 }
 
 type UpdateNoteRequest struct {
@@ -61,8 +62,12 @@ func (h *NoteHandlers) requireOwnedNote(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return nil
 	}
-	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, existing.SentenceID) {
-		return nil
+	// Sentence notes additionally require manuscript access. A scratchpad/free
+	// note (no sentence) is gated by user ownership alone (checked above).
+	if existing.SentenceID != "" {
+		if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, existing.SentenceID) {
+			return nil
+		}
 	}
 	return existing
 }
@@ -128,11 +133,8 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.Color == "" || req.SentenceID == "" {
-		http.Error(w, "Missing required fields: color, sentence_id", http.StatusBadRequest)
-		return
-	}
-	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, req.SentenceID) {
+	if req.Color == "" {
+		http.Error(w, "Missing required field: color", http.StatusBadRequest)
 		return
 	}
 
@@ -145,6 +147,45 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 	priority := req.Priority
 	if priority == "" {
 		priority = "none"
+	}
+
+	// --- Scratchpad note: no sentence, no version row. Ownership is on the
+	//     scratchpad. (NOTES_PLAN.md Phase 2.) ---
+	if req.ScratchpadID != nil {
+		s, err := h.DB.GetScratchpad(ctx, *req.ScratchpadID)
+		if err != nil {
+			http.Error(w, "Failed to load scratchpad", http.StatusInternalServerError)
+			return
+		}
+		if s == nil || s.UserID != session.Username {
+			http.Error(w, "Not found", http.StatusNotFound) // don't leak existence
+			return
+		}
+		note := &models.Note{
+			UserID:   session.Username,
+			Color:    req.Color,
+			Body:     req.Body,
+			Priority: priority,
+			Flagged:  req.Flagged,
+		}
+		if err := h.DB.CreateScratchpadNote(ctx, note, *req.ScratchpadID); err != nil {
+			log.Printf("notes: create on scratchpad %d: %v", *req.ScratchpadID, err)
+			http.Error(w, "Failed to create note", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{"note_id": note.NoteID})
+		return
+	}
+
+	// --- Sentence note (today's path) ---
+	if req.SentenceID == "" {
+		http.Error(w, "Missing required fields: color, and one of sentence_id / scratchpad_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, req.SentenceID) {
+		return
 	}
 
 	note := &models.Note{
@@ -170,7 +211,7 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"note_id": note.NoteID,
-		"version":       version.Version,
+		"version": version.Version,
 	})
 }
 
@@ -218,6 +259,19 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.Flagged != nil {
 		existing.Flagged = *req.Flagged
+	}
+
+	// A scratchpad note has no version history (no sentence origin) — update it
+	// directly. Sentence notes append a version row (audit + migration lineage).
+	if existing.ScratchpadID != nil {
+		if err := h.DB.UpdateScratchpadNote(ctx, noteID, req.Color, req.Body, req.Priority, req.Flagged); err != nil {
+			log.Printf("notes: update scratchpad note %d: %v", noteID, err)
+			http.Error(w, "Failed to update note", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(existing)
+		return
 	}
 
 	version := &models.NoteVersion{
