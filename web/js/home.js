@@ -71,6 +71,21 @@ const WriteSysHome = {
     </div>`;
   },
 
+  // A note card (NOTES_PLAN.md Phase 3): a compact colored card showing a
+  // clipped preview of the body + its context (manuscript / scratchpad / none).
+  noteCard(n) {
+    const ctx = n.context || 'no context';
+    const flag = n.flagged ? '<span class="note-card-flag" title="Flagged">⚑</span>' : '';
+    const pri = (n.priority && n.priority !== 'none') ? `<span class="note-card-pri">${this.esc(n.priority)}</span>` : '';
+    return `<div class="card card-note color-${this.esc(n.color)}" data-note-id="${n.note_id}"
+              ${n.scratchpad_id ? `data-scratchpad-id="${n.scratchpad_id}"` : ''}
+              ${n.manuscript_id ? `data-manuscript-id="${n.manuscript_id}"` : ''}
+              tabindex="0" role="button" title="Open note in context">
+      <p class="card-note-body">${this.esc(n.body || '(empty note)')}</p>
+      <p class="card-meta"><span class="note-card-ctx">${this.esc(ctx)}</span>${pri}${flag}</p>
+    </div>`;
+  },
+
   section(title, count, cardsHTML, opts = {}) {
     return `<section class="home-section">
       <div class="home-section-head">
@@ -88,6 +103,7 @@ const WriteSysHome = {
     const view = this.view();
     const ms = this.data.manuscripts || [];
     const sp = this.data.scratchpads || [];
+    const nt = this.data.notes || [];
     let html = '';
     if (view === 'manuscripts') {
       html = `<a class="home-back" href="home.html">← Home</a>` +
@@ -95,15 +111,34 @@ const WriteSysHome = {
     } else if (view === 'scratchpads') {
       html = `<a class="home-back" href="home.html">← Home</a>` +
         this.section('All scratchpads', sp.length, sp.map(s => this.scratchpadCard(s)).join(''), { newBtn: true });
+    } else if (view === 'notes') {
+      html = `<a class="home-back" href="home.html">← Home</a>` +
+        this.section('All notes', nt.length, nt.map(n => this.noteCard(n)).join(''));
     } else {
       html = this.section('Manuscripts', ms.length,
         ms.slice(0, this.RECENT).map(m => this.manuscriptCard(m)).join(''),
         ms.length > this.RECENT ? { seeAll: 'manuscripts' } : {})
         + this.section('Scratchpads', sp.length,
           sp.slice(0, this.RECENT).map(s => this.scratchpadCard(s)).join(''),
-          { newBtn: true, ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) });
+          { newBtn: true, ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
+        + this.section('Notes', nt.length,
+          nt.slice(0, this.RECENT).map(n => this.noteCard(n)).join(''),
+          nt.length > this.RECENT ? { seeAll: 'notes' } : {});
     }
     root.innerHTML = html;
+
+    // Note card → open in context. Scratchpad note: open the pad (later: scroll
+    // to the anchor). Manuscript note: go to the book.
+    root.querySelectorAll('.card-note').forEach(card => {
+      const open = () => {
+        const padId = card.dataset.scratchpadId;
+        const mId = card.dataset.manuscriptId;
+        if (padId && window.WriteSysScratchpadModal) window.WriteSysScratchpadModal.open(parseInt(padId, 10));
+        else if (mId) window.location.href = `./?manuscript_id=${mId}`;
+      };
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+    });
 
     root.querySelectorAll('a[data-view]').forEach(a => {
       a.addEventListener('click', (e) => {

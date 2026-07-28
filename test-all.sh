@@ -61,6 +61,7 @@ FAST_TESTS=(
   test-sketch-sibling-refresh
   test-snippet-no-scroll-jump
   test-scratchpad-notes
+  test-home-notes
 )
 
 SLOW_TESTS=(

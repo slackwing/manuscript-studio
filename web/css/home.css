@@ -164,3 +164,32 @@ body.home-page {
   text-decoration: none;
 }
 .home-back:hover { text-decoration: underline; }
+
+/* ---- Note cards (NOTES_PLAN.md Phase 3) ---- */
+/* A note card wears its color as its background (reusing the sticky tints) and
+   shows a clipped body + a context line. Clicking opens it in context. */
+.card-note { cursor: pointer; }
+.card-note.color-yellow { background: var(--sticky-yellow); }
+.card-note.color-green  { background: var(--sticky-green); }
+.card-note.color-blue   { background: var(--sticky-blue); }
+.card-note.color-purple { background: var(--sticky-purple); }
+.card-note.color-red    { background: var(--sticky-red); }
+.card-note.color-orange { background: var(--sticky-orange); }
+.card-note-body {
+  flex: 1;
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #2a2a2a;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.note-card-ctx { font-style: italic; color: #6b6b6b; }
+.note-card-pri {
+  font-size: 10px; font-weight: 600; color: #7a5c00;
+  background: rgba(255, 255, 255, 0.55); border-radius: 4px; padding: 1px 5px;
+}
+.note-card-flag { color: #b33b3a; margin-left: auto; }

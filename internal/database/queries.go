@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/slackwing/manuscript-studio/internal/fractional"
 	"github.com/slackwing/manuscript-studio/internal/models"
@@ -1612,6 +1613,57 @@ func (db *DB) SetLastManuscriptName(ctx context.Context, username, manuscriptNam
 		return fmt.Errorf("set last manuscript: %w", err)
 	}
 	return nil
+}
+
+// HomeNote is a note plus a display context, for the landing grid.
+type HomeNote struct {
+	NoteID       int
+	Color        string
+	Body         *string
+	Priority     string
+	Flagged      bool
+	UpdatedAt    time.Time
+	ManuscriptID *int
+	ScratchpadID *int
+	SentenceID   string
+	Context      string // manuscript display name, scratchpad title, or ""
+}
+
+// ListNotesForHome returns a user's most-recently-touched active notes with a
+// display context. Scratchpad notes show the scratchpad title; manuscript/
+// sentence notes show the manuscript's display name (falls back to name).
+func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) ([]HomeNote, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT n.note_id, n.color, n.body, n.priority, n.flagged, n.updated_at,
+		       n.manuscript_id, n.scratchpad_id, COALESCE(n.sentence_id, ''),
+		       COALESCE(
+		           NULLIF(sp.title, ''),
+		           NULLIF(m.display_name, ''),
+		           ''
+		       ) AS context
+		FROM note n
+		LEFT JOIN scratchpad sp ON sp.scratchpad_id = n.scratchpad_id
+		LEFT JOIN manuscript  m ON m.manuscript_id  = n.manuscript_id
+		WHERE n.user_id = $1
+		  AND n.deleted_at IS NULL
+		  AND n.completed_at IS NULL
+		ORDER BY n.updated_at DESC
+		LIMIT $2
+	`, username, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list notes for home: %w", err)
+	}
+	defer rows.Close()
+	var out []HomeNote
+	for rows.Next() {
+		var h HomeNote
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.Flagged, &h.UpdatedAt,
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context); err != nil {
+			return nil, fmt.Errorf("scan home note: %w", err)
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {

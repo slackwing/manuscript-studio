@@ -43,6 +43,21 @@ type homeScratchpad struct {
 	Canonized    int       `json:"canonized_count"`
 }
 
+// A note card for the landing grid (NOTES_PLAN.md Phase 3): the note itself plus
+// a short human context ("The Wildfire", a scratchpad title, or "").
+type homeNote struct {
+	NoteID       int       `json:"note_id"`
+	Color        string    `json:"color"`
+	Body         string    `json:"body"`
+	Priority     string    `json:"priority"`
+	Flagged      bool      `json:"flagged"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Context      string    `json:"context"`               // display label
+	ManuscriptID *int      `json:"manuscript_id,omitempty"`
+	ScratchpadID *int      `json:"scratchpad_id,omitempty"`
+	SentenceID   string    `json:"sentence_id,omitempty"`
+}
+
 func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	session, err := auth.GetSession(r)
@@ -119,10 +134,29 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 		scratchpads = append(scratchpads, hs)
 	}
 
+	// Recent notes (NOTES_PLAN.md Phase 3). Best-effort: a failure here shows an
+	// empty Notes section, not a broken page.
+	notes := make([]homeNote, 0)
+	if rows, err := h.DB.ListNotesForHome(ctx, session.Username, 60); err == nil {
+		for _, n := range rows {
+			hn := homeNote{
+				NoteID: n.NoteID, Color: n.Color, Priority: n.Priority, Flagged: n.Flagged,
+				UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
+				SentenceID: n.SentenceID,
+			}
+			if n.Body != nil {
+				hn.Body = *n.Body
+			}
+			hn.Context = n.Context
+			notes = append(notes, hn)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"manuscripts": manuscripts,
 		"scratchpads": scratchpads,
+		"notes":       notes,
 	})
 }
 
