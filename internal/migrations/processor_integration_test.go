@@ -3,7 +3,7 @@ package migrations
 // Integration tests for Processor.Run against real Postgres.
 //
 // Motivation: the Playwright e2e suite only exercises bootstrap — the
-// annotation-repointing migrate path once shipped as `_ = newVersion` and
+// note-repointing migrate path once shipped as `_ = newVersion` and
 // nothing caught it.
 //
 // Connects to localhost:5433 by default; override via MANUSCRIPT_STUDIO_TEST_DB_URL.
@@ -72,15 +72,15 @@ func uniqueManuscript(t *testing.T, ctx context.Context, db *database.DB) (manus
 func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manuscriptID int) {
 	t.Helper()
 	stmts := []string{
-		`DELETE FROM annotation_tag WHERE annotation_id IN (
-			SELECT annotation_id FROM annotation WHERE sentence_id IN (
+		`DELETE FROM note_tag WHERE note_id IN (
+			SELECT note_id FROM note WHERE sentence_id IN (
 				SELECT sentence_id FROM sentence WHERE migration_id IN (
 					SELECT migration_id FROM migration WHERE manuscript_id = $1)))`,
-		`DELETE FROM annotation_version WHERE annotation_id IN (
-			SELECT annotation_id FROM annotation WHERE sentence_id IN (
+		`DELETE FROM note_version WHERE note_id IN (
+			SELECT note_id FROM note WHERE sentence_id IN (
 				SELECT sentence_id FROM sentence WHERE migration_id IN (
 					SELECT migration_id FROM migration WHERE manuscript_id = $1)))`,
-		`DELETE FROM annotation WHERE sentence_id IN (
+		`DELETE FROM note WHERE sentence_id IN (
 			SELECT sentence_id FROM sentence WHERE migration_id IN (
 				SELECT migration_id FROM migration WHERE manuscript_id = $1))`,
 		`DELETE FROM suggested_change WHERE sentence_id IN (
@@ -100,7 +100,7 @@ func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manus
 	}
 }
 
-// The annotation table FKs to user.username, so every test annotation needs a user.
+// The note table FKs to user.username, so every test note needs a user.
 func ensureUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, username string) {
 	t.Helper()
 	_, err := pool.Exec(ctx, `
@@ -126,49 +126,49 @@ func runProcessor(t *testing.T, ctx context.Context, p *Processor, db *database.
 	return id
 }
 
-// Creates an annotation + its version row via the same DB helper the API uses.
-func insertAnnotation(t *testing.T, ctx context.Context, db *database.DB, sentenceID, username, note string) int {
+// Creates an note + its version row via the same DB helper the API uses.
+func insertNote(t *testing.T, ctx context.Context, db *database.DB, sentenceID, username, note string) int {
 	t.Helper()
-	a := &models.Annotation{
+	a := &models.Note{
 		SentenceID: sentenceID,
 		UserID:     username,
 		Color:      "yellow",
-		Note:       &note,
+		Body:       &note,
 		Priority:   "none",
 		Flagged:    false,
 	}
-	v := &models.AnnotationVersion{
+	v := &models.NoteVersion{
 		SentenceID: sentenceID,
 		Color:      "yellow",
-		Note:       &note,
+		Body:       &note,
 		Priority:   "none",
 		Flagged:    false,
 		CreatedBy:  username,
 	}
-	if err := db.CreateAnnotation(ctx, a, v); err != nil {
-		t.Fatalf("CreateAnnotation: %v", err)
+	if err := db.CreateNote(ctx, a, v); err != nil {
+		t.Fatalf("CreateNote: %v", err)
 	}
-	return a.AnnotationID
+	return a.NoteID
 }
 
-func getAnnotationSentenceID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, annotationID int) string {
+func getNoteSentenceID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, noteID int) string {
 	t.Helper()
 	var sid string
-	if err := pool.QueryRow(ctx, `SELECT sentence_id FROM annotation WHERE annotation_id = $1`, annotationID).Scan(&sid); err != nil {
-		t.Fatalf("read annotation: %v", err)
+	if err := pool.QueryRow(ctx, `SELECT sentence_id FROM note WHERE note_id = $1`, noteID).Scan(&sid); err != nil {
+		t.Fatalf("read note: %v", err)
 	}
 	return sid
 }
 
-func getLatestVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, annotationID int) (version int, sentenceID string, confidence *float64) {
+func getLatestVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, noteID int) (version int, sentenceID string, confidence *float64) {
 	t.Helper()
 	if err := pool.QueryRow(ctx, `
 		SELECT version, sentence_id, migration_confidence
-		FROM annotation_version
-		WHERE annotation_id = $1
+		FROM note_version
+		WHERE note_id = $1
 		ORDER BY version DESC
 		LIMIT 1
-	`, annotationID).Scan(&version, &sentenceID, &confidence); err != nil {
+	`, noteID).Scan(&version, &sentenceID, &confidence); err != nil {
 		t.Fatalf("read latest version: %v", err)
 	}
 	return
@@ -225,7 +225,7 @@ func newFixture(t *testing.T) *fixture {
 }
 
 // Bootstrap, then re-run with byte-identical content but a different commit
-// hash. Sentence ids change (hash includes commit); annotations must follow.
+// hash. Sentence ids change (hash includes commit); notes must follow.
 func TestMigration_BootstrapThenNoOp(t *testing.T) {
 	f := newFixture(t)
 	content := "Sentence one is here. Sentence two follows. Sentence three is last."
@@ -233,7 +233,7 @@ func TestMigration_BootstrapThenNoOp(t *testing.T) {
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "commitA", content)
 
 	s2 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Sentence two")
-	annID := insertAnnotation(t, f.ctx, f.db, s2, f.username, "this one")
+	annID := insertNote(t, f.ctx, f.db, s2, f.username, "this one")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "commitB", content)
 	s2New := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Sentence two")
@@ -241,9 +241,9 @@ func TestMigration_BootstrapThenNoOp(t *testing.T) {
 	if s2New == s2 {
 		t.Fatal("expected new sentence id (different commit), got same")
 	}
-	got := getAnnotationSentenceID(t, f.ctx, f.pool, annID)
+	got := getNoteSentenceID(t, f.ctx, f.pool, annID)
 	if got != s2New {
-		t.Fatalf("annotation should now point to new sentence id %s, got %s", s2New, got)
+		t.Fatalf("note should now point to new sentence id %s, got %s", s2New, got)
 	}
 
 	v, sidV, conf := getLatestVersion(t, f.ctx, f.pool, annID)
@@ -258,7 +258,7 @@ func TestMigration_BootstrapThenNoOp(t *testing.T) {
 	}
 }
 
-// A one-word edit should match with high similarity and carry the annotation.
+// A one-word edit should match with high similarity and carry the note.
 func TestMigration_SentenceEdited(t *testing.T) {
 	f := newFixture(t)
 	v1 := "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. The five boxing wizards jump quickly."
@@ -266,7 +266,7 @@ func TestMigration_SentenceEdited(t *testing.T) {
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", v1)
 	target := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The quick brown fox")
-	annID := insertAnnotation(t, f.ctx, f.db, target, f.username, "fox sentence")
+	annID := insertNote(t, f.ctx, f.db, target, f.username, "fox sentence")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", v2)
 	newTarget := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "The quick brown fox")
@@ -274,9 +274,9 @@ func TestMigration_SentenceEdited(t *testing.T) {
 	if newTarget == target {
 		t.Fatal("text changed, sentence id should have changed too")
 	}
-	got := getAnnotationSentenceID(t, f.ctx, f.pool, annID)
+	got := getNoteSentenceID(t, f.ctx, f.pool, annID)
 	if got != newTarget {
-		t.Fatalf("annotation didn't follow the edit: pointing at %s, want %s", got, newTarget)
+		t.Fatalf("note didn't follow the edit: pointing at %s, want %s", got, newTarget)
 	}
 	_, _, conf := getLatestVersion(t, f.ctx, f.pool, annID)
 	if conf == nil {
@@ -288,7 +288,7 @@ func TestMigration_SentenceEdited(t *testing.T) {
 	}
 }
 
-// Deleted sentence, no fuzzy match → annotation falls forward to the next
+// Deleted sentence, no fuzzy match → note falls forward to the next
 // surviving sentence, never orphans.
 func TestMigration_SentenceDeleted_FallsForward(t *testing.T) {
 	f := newFixture(t)
@@ -297,21 +297,21 @@ func TestMigration_SentenceDeleted_FallsForward(t *testing.T) {
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "before-delete", v1)
 	doomed := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The doomed")
-	annID := insertAnnotation(t, f.ctx, f.db, doomed, f.username, "annotation on doomed")
+	annID := insertNote(t, f.ctx, f.db, doomed, f.username, "note on doomed")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "after-delete", v2)
 	wantNext := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Last sentence")
 
-	got := getAnnotationSentenceID(t, f.ctx, f.pool, annID)
+	got := getNoteSentenceID(t, f.ctx, f.pool, annID)
 	if got == doomed {
-		t.Fatalf("annotation orphaned at deleted sentence %s", doomed)
+		t.Fatalf("note orphaned at deleted sentence %s", doomed)
 	}
 	if got != wantNext {
 		t.Fatalf("expected fallback to following sentence %s, got %s", wantNext, got)
 	}
 }
 
-// Tail deletion has no forward anchor, so the annotation falls backward to
+// Tail deletion has no forward anchor, so the note falls backward to
 // the previous surviving sentence.
 func TestMigration_LastSentenceDeleted_FallsBackward(t *testing.T) {
 	f := newFixture(t)
@@ -320,18 +320,18 @@ func TestMigration_LastSentenceDeleted_FallsBackward(t *testing.T) {
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1-trailing", v1)
 	doomed := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The trailing")
-	annID := insertAnnotation(t, f.ctx, f.db, doomed, f.username, "trailing note")
+	annID := insertNote(t, f.ctx, f.db, doomed, f.username, "trailing note")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2-trailing", v2)
 	wantPrev := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Anchor sentence")
 
-	got := getAnnotationSentenceID(t, f.ctx, f.pool, annID)
+	got := getNoteSentenceID(t, f.ctx, f.pool, annID)
 	if got != wantPrev {
 		t.Fatalf("expected fallback to previous surviving sentence %s, got %s", wantPrev, got)
 	}
 }
 
-// A split sentence should carry the annotation onto whichever half matches best.
+// A split sentence should carry the note onto whichever half matches best.
 func TestMigration_SentenceSplit(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Anchor at the start. The protagonist walked into the dim hallway and considered the strange door before her. Anchor at the end."
@@ -339,23 +339,23 @@ func TestMigration_SentenceSplit(t *testing.T) {
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "pre-split", v1)
 	original := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The protagonist")
-	annID := insertAnnotation(t, f.ctx, f.db, original, f.username, "split me")
+	annID := insertNote(t, f.ctx, f.db, original, f.username, "split me")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "post-split", v2)
 	half1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "The protagonist")
 	half2 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "She considered")
 
-	got := getAnnotationSentenceID(t, f.ctx, f.pool, annID)
+	got := getNoteSentenceID(t, f.ctx, f.pool, annID)
 	if got != half1 && got != half2 {
-		t.Fatalf("annotation should land on one half of the split (%s or %s), got %s", half1, half2, got)
+		t.Fatalf("note should land on one half of the split (%s or %s), got %s", half1, half2, got)
 	}
 	// half1 shares the leading clause verbatim, so it's the expected winner.
 	if got != half1 {
-		t.Logf("note: split annotation landed on second half (%s) rather than first (%s)", half2, half1)
+		t.Logf("note: split note landed on second half (%s) rather than first (%s)", half2, half1)
 	}
 }
 
-// Two merged sentences: both annotations land on the merged result.
+// Two merged sentences: both notes land on the merged result.
 func TestMigration_SentencesMerged(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Anchor at the start. The dog barked loudly. The cat hissed back. Anchor at the end."
@@ -364,24 +364,24 @@ func TestMigration_SentencesMerged(t *testing.T) {
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "pre-merge", v1)
 	dog := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The dog")
 	cat := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The cat")
-	annDog := insertAnnotation(t, f.ctx, f.db, dog, f.username, "dog note")
-	annCat := insertAnnotation(t, f.ctx, f.db, cat, f.username, "cat note")
+	annDog := insertNote(t, f.ctx, f.db, dog, f.username, "dog note")
+	annCat := insertNote(t, f.ctx, f.db, cat, f.username, "cat note")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "post-merge", v2)
 	merged := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "The dog barked loudly and")
 
-	gotDog := getAnnotationSentenceID(t, f.ctx, f.pool, annDog)
-	gotCat := getAnnotationSentenceID(t, f.ctx, f.pool, annCat)
+	gotDog := getNoteSentenceID(t, f.ctx, f.pool, annDog)
+	gotCat := getNoteSentenceID(t, f.ctx, f.pool, annCat)
 	if gotDog != merged {
-		t.Errorf("dog annotation should land on merged sentence %s, got %s", merged, gotDog)
+		t.Errorf("dog note should land on merged sentence %s, got %s", merged, gotDog)
 	}
 	if gotCat != merged {
-		t.Errorf("cat annotation should land on merged sentence %s, got %s", merged, gotCat)
+		t.Errorf("cat note should land on merged sentence %s, got %s", merged, gotCat)
 	}
 }
 
 // Load-bearing check that the matcher uses normalized text (not position):
-// prepending a sentence shouldn't break annotations on later ones.
+// prepending a sentence shouldn't break notes on later ones.
 func TestMigration_PrefixSentenceAdded(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Body sentence one stays. Body sentence two stays. Body sentence three stays."
@@ -389,20 +389,20 @@ func TestMigration_PrefixSentenceAdded(t *testing.T) {
 
 	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "pre-prepend", v1)
 	target := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Body sentence two")
-	annID := insertAnnotation(t, f.ctx, f.db, target, f.username, "stable")
+	annID := insertNote(t, f.ctx, f.db, target, f.username, "stable")
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "post-prepend", v2)
 	newTarget := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Body sentence two")
 
-	got := getAnnotationSentenceID(t, f.ctx, f.pool, annID)
+	got := getNoteSentenceID(t, f.ctx, f.pool, annID)
 	if got != newTarget {
-		t.Fatalf("positional shift broke annotation: pointing at %s, want %s", got, newTarget)
+		t.Fatalf("positional shift broke note: pointing at %s, want %s", got, newTarget)
 	}
 }
 
-// Weaker stand-in for atomicity: bootstrap with N annotations, then edit every
-// sentence. On success, every annotation must have moved.
-func TestMigration_AllAnnotationsMoveTogether(t *testing.T) {
+// Weaker stand-in for atomicity: bootstrap with N notes, then edit every
+// sentence. On success, every note must have moved.
+func TestMigration_AllNotesMoveTogether(t *testing.T) {
 	f := newFixture(t)
 	v1 := "Alpha sentence here. Bravo sentence here. Charlie sentence here. Delta sentence here. Echo sentence here."
 	v2 := "Alpha line here. Bravo line here. Charlie line here. Delta line here. Echo line here."
@@ -413,16 +413,16 @@ func TestMigration_AllAnnotationsMoveTogether(t *testing.T) {
 	annIDs := make([]int, len(prefixes))
 	for i, p := range prefixes {
 		sid := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, p)
-		annIDs[i] = insertAnnotation(t, f.ctx, f.db, sid, f.username, p+" note")
+		annIDs[i] = insertNote(t, f.ctx, f.db, sid, f.username, p+" note")
 	}
 
 	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "after-bulk", v2)
 
 	for i, p := range prefixes {
 		want := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, p)
-		got := getAnnotationSentenceID(t, f.ctx, f.pool, annIDs[i])
+		got := getNoteSentenceID(t, f.ctx, f.pool, annIDs[i])
 		if got != want {
-			t.Errorf("annotation %d (%s): got sentence %s, want %s", annIDs[i], p, got, want)
+			t.Errorf("note %d (%s): got sentence %s, want %s", annIDs[i], p, got, want)
 		}
 	}
 }

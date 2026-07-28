@@ -31,7 +31,7 @@ const { loginAsTestUser } = require('./test-utils');
     await page.evaluate(() => {
       // Manually create an annotation for testing
       const annotation = {
-        annotation_id: 9999,
+        note_id: 9999,
         sentence_id: 1,
         color: 'yellow',
         note: 'Test note to show trash icon',
@@ -40,9 +40,9 @@ const { loginAsTestUser } = require('./test-utils');
         tags: []
       };
 
-      if (window.WriteSysAnnotations) {
-        window.WriteSysAnnotations.annotations = [annotation];
-        window.WriteSysAnnotations.renderStickyNotes();
+      if (window.WriteSysNotes) {
+        window.WriteSysNotes.notes = [annotation];
+        window.WriteSysNotes.renderStickyNotes();
       }
     });
 

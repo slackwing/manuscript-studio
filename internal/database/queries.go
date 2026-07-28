@@ -680,11 +680,11 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 	return sentences, nil
 }
 
-func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username string) ([]models.Annotation, error) {
+func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	query := `
-		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
+		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
 		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
-		FROM annotation a
+		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
 		  AND a.user_id = $2
@@ -695,19 +695,19 @@ func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username s
 
 	rows, err := db.Pool.Query(ctx, query, commitHash, username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query annotations by commit: %w", err)
+		return nil, fmt.Errorf("failed to query notes by commit: %w", err)
 	}
 	defer rows.Close()
 
-	var annotations []models.Annotation
+	var notes []models.Note
 	for rows.Next() {
-		var a models.Annotation
+		var a models.Note
 		err := rows.Scan(
-			&a.AnnotationID,
+			&a.NoteID,
 			&a.SentenceID,
 			&a.UserID,
 			&a.Color,
-			&a.Note,
+			&a.Body,
 			&a.Priority,
 			&a.Flagged,
 			&a.Position,
@@ -717,53 +717,53 @@ func (db *DB) GetAnnotationsByCommit(ctx context.Context, commitHash, username s
 			&a.CompletedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan annotation: %w", err)
+			return nil, fmt.Errorf("failed to scan note: %w", err)
 		}
-		annotations = append(annotations, a)
+		notes = append(notes, a)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating annotations: %w", err)
+		return nil, fmt.Errorf("error iterating notes: %w", err)
 	}
 
-	// Tags are needed for the in-memory annotation cache the frontend reads
+	// Tags are needed for the in-memory note cache the frontend reads
 	// per-sentence-click. Loading them here keeps clicks free of network
-	// roundtrips. Per-annotation query — N+1 in shape, but the manuscript
-	// has at most a few hundred annotations and each tag list is tiny.
-	for i := range annotations {
-		tags, err := db.GetTagsForAnnotation(ctx, annotations[i].AnnotationID)
+	// roundtrips. Per-note query — N+1 in shape, but the manuscript
+	// has at most a few hundred notes and each tag list is tiny.
+	for i := range notes {
+		tags, err := db.GetTagsForNote(ctx, notes[i].NoteID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get tags for annotation %d: %w", annotations[i].AnnotationID, err)
+			return nil, fmt.Errorf("failed to get tags for note %d: %w", notes[i].NoteID, err)
 		}
-		annotations[i].Tags = tags
+		notes[i].Tags = tags
 	}
 
-	return annotations, nil
+	return notes, nil
 }
 
-func getAnnotationOriginInfo(ctx context.Context, tx pgx.Tx, annotationID int) (originSentenceID, originCommitHash, createdBy string, originMigrationID *int, err error) {
+func getNoteOriginInfo(ctx context.Context, tx pgx.Tx, noteID int) (originSentenceID, originCommitHash, createdBy string, originMigrationID *int, err error) {
 	query := `
 		SELECT
 			MIN(origin_sentence_id),
 			MIN(origin_migration_id),
 			MIN(origin_commit_hash),
 			MIN(created_by)
-		FROM annotation_version
-		WHERE annotation_id = $1
+		FROM note_version
+		WHERE note_id = $1
 	`
-	err = tx.QueryRow(ctx, query, annotationID).Scan(&originSentenceID, &originMigrationID, &originCommitHash, &createdBy)
+	err = tx.QueryRow(ctx, query, noteID).Scan(&originSentenceID, &originMigrationID, &originCommitHash, &createdBy)
 	return
 }
 
 // Read sentence_id_history from the given version and append newSentenceID.
-func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, version int, newSentenceID string) ([]byte, error) {
+func getSentenceHistory(ctx context.Context, tx pgx.Tx, noteID int, version int, newSentenceID string) ([]byte, error) {
 	query := `
 		SELECT sentence_id_history
-		FROM annotation_version
-		WHERE annotation_id = $1 AND version = $2
+		FROM note_version
+		WHERE note_id = $1 AND version = $2
 	`
 	var historyJSON []byte
-	if err := tx.QueryRow(ctx, query, annotationID, version).Scan(&historyJSON); err != nil {
+	if err := tx.QueryRow(ctx, query, noteID, version).Scan(&historyJSON); err != nil {
 		return nil, fmt.Errorf("failed to get sentence history: %w", err)
 	}
 
@@ -772,7 +772,7 @@ func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, versio
 		// A corrupt history row must surface, not be silently replaced by a
 		// fresh one-element chain — that would destroy the audit trail.
 		if err := json.Unmarshal(historyJSON, &history); err != nil {
-			return nil, fmt.Errorf("corrupt sentence_id_history for annotation %d version %d: %w", annotationID, version, err)
+			return nil, fmt.Errorf("corrupt sentence_id_history for note %d version %d: %w", noteID, version, err)
 		}
 	}
 	history = append(history, newSentenceID)
@@ -783,10 +783,10 @@ func getSentenceHistory(ctx context.Context, tx pgx.Tx, annotationID int, versio
 	return newHistoryJSON, nil
 }
 
-func insertAnnotationVersion(ctx context.Context, tx pgx.Tx, version *models.AnnotationVersion, historyJSON []byte) error {
+func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersion, historyJSON []byte) error {
 	query := `
-		INSERT INTO annotation_version (
-			annotation_id, version, sentence_id, color, note, priority, flagged,
+		INSERT INTO note_version (
+			note_id, version, sentence_id, color, body, priority, flagged,
 			migration_confidence, origin_sentence_id, origin_migration_id, origin_commit_hash,
 			sentence_id_history, created_by
 		)
@@ -794,11 +794,11 @@ func insertAnnotationVersion(ctx context.Context, tx pgx.Tx, version *models.Ann
 		RETURNING created_at
 	`
 	return tx.QueryRow(ctx, query,
-		version.AnnotationID,
+		version.NoteID,
 		version.Version,
 		version.SentenceID,
 		version.Color,
-		version.Note,
+		version.Body,
 		version.Priority,
 		version.Flagged,
 		version.MigrationConfidence,
@@ -810,11 +810,11 @@ func insertAnnotationVersion(ctx context.Context, tx pgx.Tx, version *models.Ann
 	).Scan(&version.CreatedAt)
 }
 
-func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username string) ([]models.Annotation, error) {
+func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
-		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
+		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
 		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
-		FROM annotation a
+		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.user_id = $2
 		  AND a.deleted_at IS NULL
@@ -824,20 +824,20 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 
 	rows, err := db.Pool.Query(ctx, query, sentenceID, username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query annotations by sentence: %w", err)
+		return nil, fmt.Errorf("failed to query notes by sentence: %w", err)
 	}
 	defer rows.Close()
 
-	annotations := []models.Annotation{} // non-nil so JSON encodes [] not null
+	notes := []models.Note{} // non-nil so JSON encodes [] not null
 
 	for rows.Next() {
-		var a models.Annotation
+		var a models.Note
 		err := rows.Scan(
-			&a.AnnotationID,
+			&a.NoteID,
 			&a.SentenceID,
 			&a.UserID,
 			&a.Color,
-			&a.Note,
+			&a.Body,
 			&a.Priority,
 			&a.Flagged,
 			&a.Position,
@@ -847,35 +847,35 @@ func (db *DB) GetAnnotationsBySentence(ctx context.Context, sentenceID, username
 			&a.CompletedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan annotation: %w", err)
+			return nil, fmt.Errorf("failed to scan note: %w", err)
 		}
 
-		tags, err := db.GetTagsForAnnotation(ctx, a.AnnotationID)
+		tags, err := db.GetTagsForNote(ctx, a.NoteID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get tags for annotation %d: %w", a.AnnotationID, err)
+			return nil, fmt.Errorf("failed to get tags for note %d: %w", a.NoteID, err)
 		}
 		a.Tags = tags
 
-		annotations = append(annotations, a)
+		notes = append(notes, a)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating annotations: %w", err)
+		return nil, fmt.Errorf("error iterating notes: %w", err)
 	}
 
-	return annotations, nil
+	return notes, nil
 }
 
-// createAnnotationMu serializes position assignment across concurrent
+// createNoteMu serializes position assignment across concurrent
 // creates: MAX(position) + increment is not atomic, and the schema has no
 // unique constraint on (sentence_id, position) to catch a duplicate.
 // Single-instance server, so a process-level mutex is sufficient.
-var createAnnotationMu sync.Mutex
+var createNoteMu sync.Mutex
 
-// CreateAnnotation writes the annotation and its first version row.
-func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotation, version *models.AnnotationVersion) error {
-	createAnnotationMu.Lock()
-	defer createAnnotationMu.Unlock()
+// CreateNote writes the note and its first version row.
+func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models.NoteVersion) error {
+	createNoteMu.Lock()
+	defer createNoteMu.Unlock()
 
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
@@ -884,12 +884,12 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	defer tx.Rollback(ctx)
 
 	// Append after the current max via the fractional indexer —
-	// ReorderAnnotation writes extended-precision / carried-prefix positions
+	// ReorderNote writes extended-precision / carried-prefix positions
 	// (e.g. "a00015", "b0000") that a fixed "a%04d" parse would misread and
 	// collide with.
 	var maxPosition string
-	queryMaxPos := `SELECT COALESCE(MAX(position), '') FROM annotation WHERE sentence_id = $1`
-	if err := tx.QueryRow(ctx, queryMaxPos, annotation.SentenceID).Scan(&maxPosition); err != nil {
+	queryMaxPos := `SELECT COALESCE(MAX(position), '') FROM note WHERE sentence_id = $1`
+	if err := tx.QueryRow(ctx, queryMaxPos, note.SentenceID).Scan(&maxPosition); err != nil {
 		return fmt.Errorf("failed to get max position: %w", err)
 	}
 
@@ -899,53 +899,53 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	}
 
 	query1 := `
-		INSERT INTO annotation (sentence_id, user_id, color, note, priority, flagged, position)
+		INSERT INTO note (sentence_id, user_id, color, body, priority, flagged, position)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING annotation_id, created_at, updated_at
+		RETURNING note_id, created_at, updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
-		annotation.SentenceID,
-		annotation.UserID,
-		annotation.Color,
-		annotation.Note,
-		annotation.Priority,
-		annotation.Flagged,
+		note.SentenceID,
+		note.UserID,
+		note.Color,
+		note.Body,
+		note.Priority,
+		note.Flagged,
 		nextPosition,
 	).Scan(
-		&annotation.AnnotationID,
-		&annotation.CreatedAt,
-		&annotation.UpdatedAt,
+		&note.NoteID,
+		&note.CreatedAt,
+		&note.UpdatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create annotation: %w", err)
+		return fmt.Errorf("failed to create note: %w", err)
 	}
 
-	annotation.Position = nextPosition
+	note.Position = nextPosition
 
-	// Sentence's commit_hash and migration_id become the annotation's origin.
+	// Sentence's commit_hash and migration_id become the note's origin.
 	var commitHash string
 	var migrationID int
 	query_commit := `SELECT commit_hash, migration_id FROM sentence WHERE sentence_id = $1 LIMIT 1`
-	if err := tx.QueryRow(ctx, query_commit, annotation.SentenceID).Scan(&commitHash, &migrationID); err != nil {
+	if err := tx.QueryRow(ctx, query_commit, note.SentenceID).Scan(&commitHash, &migrationID); err != nil {
 		return fmt.Errorf("failed to get commit hash and migration_id for sentence: %w", err)
 	}
 
 	historyJSON, _ := json.Marshal([]string{})
 
-	version.AnnotationID = annotation.AnnotationID
+	version.NoteID = note.NoteID
 	version.Version = 1
-	version.SentenceID = annotation.SentenceID
-	version.Color = annotation.Color
-	version.Note = annotation.Note
-	version.Priority = annotation.Priority
-	version.Flagged = annotation.Flagged
-	version.OriginSentenceID = annotation.SentenceID
+	version.SentenceID = note.SentenceID
+	version.Color = note.Color
+	version.Body = note.Body
+	version.Priority = note.Priority
+	version.Flagged = note.Flagged
+	version.OriginSentenceID = note.SentenceID
 	version.OriginMigrationID = &migrationID
 	version.OriginCommitHash = commitHash
-	version.CreatedBy = annotation.UserID
+	version.CreatedBy = note.UserID
 
-	if err := insertAnnotationVersion(ctx, tx, version, historyJSON); err != nil {
-		return fmt.Errorf("failed to create annotation version: %w", err)
+	if err := insertNoteVersion(ctx, tx, version, historyJSON); err != nil {
+		return fmt.Errorf("failed to create note version: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -955,8 +955,8 @@ func (db *DB) CreateAnnotation(ctx context.Context, annotation *models.Annotatio
 	return nil
 }
 
-// UpdateAnnotation mutates the head row and appends a new version.
-func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation *models.Annotation, version *models.AnnotationVersion) error {
+// UpdateNote mutates the head row and appends a new version.
+func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, version *models.NoteVersion) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -964,53 +964,53 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 	defer tx.Rollback(ctx)
 
 	query1 := `
-		UPDATE annotation
-		SET sentence_id = $1, color = $2, note = $3, priority = $4, flagged = $5, updated_at = NOW()
-		WHERE annotation_id = $6
+		UPDATE note
+		SET sentence_id = $1, color = $2, body = $3, priority = $4, flagged = $5, updated_at = NOW()
+		WHERE note_id = $6
 		RETURNING updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
-		annotation.SentenceID,
-		annotation.Color,
-		annotation.Note,
-		annotation.Priority,
-		annotation.Flagged,
-		annotationID,
-	).Scan(&annotation.UpdatedAt)
+		note.SentenceID,
+		note.Color,
+		note.Body,
+		note.Priority,
+		note.Flagged,
+		noteID,
+	).Scan(&note.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf("failed to update annotation: %w", err)
+		return fmt.Errorf("failed to update note: %w", err)
 	}
 
 	var maxVersion int
-	query2 := `SELECT COALESCE(MAX(version), 0) FROM annotation_version WHERE annotation_id = $1`
-	if err := tx.QueryRow(ctx, query2, annotationID).Scan(&maxVersion); err != nil {
+	query2 := `SELECT COALESCE(MAX(version), 0) FROM note_version WHERE note_id = $1`
+	if err := tx.QueryRow(ctx, query2, noteID).Scan(&maxVersion); err != nil {
 		return fmt.Errorf("failed to get max version: %w", err)
 	}
 
-	originSentenceID, originCommitHash, createdBy, originMigrationID, err := getAnnotationOriginInfo(ctx, tx, annotationID)
+	originSentenceID, originCommitHash, createdBy, originMigrationID, err := getNoteOriginInfo(ctx, tx, noteID)
 	if err != nil {
 		return fmt.Errorf("failed to get origin info: %w", err)
 	}
 
-	newHistoryJSON, err := getSentenceHistory(ctx, tx, annotationID, maxVersion, annotation.SentenceID)
+	newHistoryJSON, err := getSentenceHistory(ctx, tx, noteID, maxVersion, note.SentenceID)
 	if err != nil {
 		return err
 	}
 
-	version.AnnotationID = annotationID
+	version.NoteID = noteID
 	version.Version = maxVersion + 1
-	version.SentenceID = annotation.SentenceID
-	version.Color = annotation.Color
-	version.Note = annotation.Note
-	version.Priority = annotation.Priority
-	version.Flagged = annotation.Flagged
+	version.SentenceID = note.SentenceID
+	version.Color = note.Color
+	version.Body = note.Body
+	version.Priority = note.Priority
+	version.Flagged = note.Flagged
 	version.OriginSentenceID = originSentenceID
 	version.OriginMigrationID = originMigrationID
 	version.OriginCommitHash = originCommitHash
 	version.CreatedBy = createdBy
 
-	if err := insertAnnotationVersion(ctx, tx, version, newHistoryJSON); err != nil {
-		return fmt.Errorf("failed to create annotation version: %w", err)
+	if err := insertNoteVersion(ctx, tx, version, newHistoryJSON); err != nil {
+		return fmt.Errorf("failed to create note version: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1020,16 +1020,16 @@ func (db *DB) UpdateAnnotation(ctx context.Context, annotationID int, annotation
 	return nil
 }
 
-// AnnotationMigrationItem: one annotation to repoint to a new sentence.
-type AnnotationMigrationItem struct {
-	AnnotationID  int
+// NoteMigrationItem: one note to repoint to a new sentence.
+type NoteMigrationItem struct {
+	NoteID  int
 	NewSentenceID string
 	Confidence    float64
 }
 
-// MigrateAnnotations is all-or-nothing: error means zero rows committed.
-// Each item produces one annotation UPDATE and one annotation_version INSERT.
-func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigrationItem) (int, error) {
+// MigrateNotes is all-or-nothing: error means zero rows committed.
+// Each item produces one note UPDATE and one note_version INSERT.
+func (db *DB) MigrateNotes(ctx context.Context, items []NoteMigrationItem) (int, error) {
 	if len(items) == 0 {
 		return 0, nil
 	}
@@ -1040,11 +1040,11 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	}
 	defer tx.Rollback(ctx)
 
-	// Same per-annotation flow as UpdateAnnotation, batched in one tx.
-	updateAnnotation := `
-		UPDATE annotation
+	// Same per-note flow as UpdateNote, batched in one tx.
+	updateNote := `
+		UPDATE note
 		SET sentence_id = $1, updated_at = NOW()
-		WHERE annotation_id = $2
+		WHERE note_id = $2
 		  AND deleted_at IS NULL
 		  AND completed_at IS NULL
 	`
@@ -1053,47 +1053,47 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 		// Read latest version first so copied-forward fields + history are authoritative.
 		var (
 			color      string
-			note       *string
+			body       *string
 			priority   string
 			flagged    bool
 			maxVersion int
 		)
 		if err := tx.QueryRow(ctx, `
-			SELECT color, note, priority, flagged, version
-			FROM annotation_version
-			WHERE annotation_id = $1
+			SELECT color, body, priority, flagged, version
+			FROM note_version
+			WHERE note_id = $1
 			ORDER BY version DESC
 			LIMIT 1
-		`, item.AnnotationID).Scan(&color, &note, &priority, &flagged, &maxVersion); err != nil {
-			return 0, fmt.Errorf("annotation %d: get latest version: %w", item.AnnotationID, err)
+		`, item.NoteID).Scan(&color, &body, &priority, &flagged, &maxVersion); err != nil {
+			return 0, fmt.Errorf("note %d: get latest version: %w", item.NoteID, err)
 		}
 
-		tag, err := tx.Exec(ctx, updateAnnotation, item.NewSentenceID, item.AnnotationID)
+		tag, err := tx.Exec(ctx, updateNote, item.NewSentenceID, item.NoteID)
 		if err != nil {
-			return 0, fmt.Errorf("annotation %d: update sentence_id: %w", item.AnnotationID, err)
+			return 0, fmt.Errorf("note %d: update sentence_id: %w", item.NoteID, err)
 		}
 		if tag.RowsAffected() == 0 {
 			// Hard fail so the whole migration rolls back rather than desyncing versions.
-			return 0, fmt.Errorf("annotation %d: not found or already deleted", item.AnnotationID)
+			return 0, fmt.Errorf("note %d: not found or already deleted", item.NoteID)
 		}
 
-		originSentenceID, originCommitHash, createdBy, originMigrationID, err := getAnnotationOriginInfo(ctx, tx, item.AnnotationID)
+		originSentenceID, originCommitHash, createdBy, originMigrationID, err := getNoteOriginInfo(ctx, tx, item.NoteID)
 		if err != nil {
-			return 0, fmt.Errorf("annotation %d: get origin info: %w", item.AnnotationID, err)
+			return 0, fmt.Errorf("note %d: get origin info: %w", item.NoteID, err)
 		}
 
-		newHistoryJSON, err := getSentenceHistory(ctx, tx, item.AnnotationID, maxVersion, item.NewSentenceID)
+		newHistoryJSON, err := getSentenceHistory(ctx, tx, item.NoteID, maxVersion, item.NewSentenceID)
 		if err != nil {
-			return 0, fmt.Errorf("annotation %d: %w", item.AnnotationID, err)
+			return 0, fmt.Errorf("note %d: %w", item.NoteID, err)
 		}
 
 		conf := item.Confidence
-		newVersion := &models.AnnotationVersion{
-			AnnotationID:        item.AnnotationID,
+		newVersion := &models.NoteVersion{
+			NoteID:        item.NoteID,
 			Version:             maxVersion + 1,
 			SentenceID:          item.NewSentenceID,
 			Color:               color,
-			Note:                note,
+			Body:                body,
 			Priority:            priority,
 			Flagged:             flagged,
 			MigrationConfidence: &conf,
@@ -1102,8 +1102,8 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 			OriginCommitHash:    originCommitHash,
 			CreatedBy:           createdBy,
 		}
-		if err := insertAnnotationVersion(ctx, tx, newVersion, newHistoryJSON); err != nil {
-			return 0, fmt.Errorf("annotation %d: insert version: %w", item.AnnotationID, err)
+		if err := insertNoteVersion(ctx, tx, newVersion, newHistoryJSON); err != nil {
+			return 0, fmt.Errorf("note %d: insert version: %w", item.NoteID, err)
 		}
 	}
 
@@ -1113,68 +1113,68 @@ func (db *DB) MigrateAnnotations(ctx context.Context, items []AnnotationMigratio
 	return len(items), nil
 }
 
-func (db *DB) SoftDeleteAnnotation(ctx context.Context, annotationID int) error {
+func (db *DB) SoftDeleteNote(ctx context.Context, noteID int) error {
 	query := `
-		UPDATE annotation
+		UPDATE note
 		SET deleted_at = NOW()
-		WHERE annotation_id = $1
+		WHERE note_id = $1
 		  AND deleted_at IS NULL
 	`
-	result, err := db.Pool.Exec(ctx, query, annotationID)
+	result, err := db.Pool.Exec(ctx, query, noteID)
 	if err != nil {
-		return fmt.Errorf("failed to soft delete annotation: %w", err)
+		return fmt.Errorf("failed to soft delete note: %w", err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("annotation not found or already deleted")
+		return fmt.Errorf("note not found or already deleted")
 	}
 
 	return nil
 }
 
-func (db *DB) CompleteAnnotation(ctx context.Context, annotationID int) error {
+func (db *DB) CompleteNote(ctx context.Context, noteID int) error {
 	query := `
-		UPDATE annotation
+		UPDATE note
 		SET completed_at = NOW()
-		WHERE annotation_id = $1
+		WHERE note_id = $1
 		  AND deleted_at IS NULL
 		  AND completed_at IS NULL
 	`
-	result, err := db.Pool.Exec(ctx, query, annotationID)
+	result, err := db.Pool.Exec(ctx, query, noteID)
 	if err != nil {
-		return fmt.Errorf("failed to complete annotation: %w", err)
+		return fmt.Errorf("failed to complete note: %w", err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("annotation not found or already completed")
+		return fmt.Errorf("note not found or already completed")
 	}
 
 	return nil
 }
 
-func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) (*models.AnnotationVersion, error) {
+func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.NoteVersion, error) {
 	query := `
 		SELECT
-			annotation_id, version, sentence_id, color, note, priority, flagged,
+			note_id, version, sentence_id, color, body, priority, flagged,
 			sentence_id_history, migration_confidence,
 			origin_sentence_id, origin_migration_id, origin_commit_hash, created_at, created_by
-		FROM annotation_version
-		WHERE annotation_id = $1
+		FROM note_version
+		WHERE note_id = $1
 		ORDER BY version DESC
 		LIMIT 1
 	`
 
-	var av models.AnnotationVersion
+	var av models.NoteVersion
 	var historyJSON []byte
 
-	err := db.Pool.QueryRow(ctx, query, annotationID).Scan(
-		&av.AnnotationID,
+	err := db.Pool.QueryRow(ctx, query, noteID).Scan(
+		&av.NoteID,
 		&av.Version,
 		&av.SentenceID,
 		&av.Color,
-		&av.Note,
+		&av.Body,
 		&av.Priority,
 		&av.Flagged,
 		&historyJSON,
@@ -1186,7 +1186,7 @@ func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) 
 		&av.CreatedBy,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get annotation version: %w", err)
+		return nil, fmt.Errorf("failed to get note version: %w", err)
 	}
 
 	if err := json.Unmarshal(historyJSON, &av.SentenceIDHistory); err != nil {
@@ -1196,11 +1196,11 @@ func (db *DB) GetLatestAnnotationVersion(ctx context.Context, annotationID int) 
 	return &av, nil
 }
 
-func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID string) ([]models.Annotation, error) {
+func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
-		SELECT a.annotation_id, a.sentence_id, a.user_id, a.color, a.note,
+		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
 		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
-		FROM annotation a
+		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
@@ -1208,19 +1208,19 @@ func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID st
 
 	rows, err := db.Pool.Query(ctx, query, sentenceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query annotations: %w", err)
+		return nil, fmt.Errorf("failed to query notes: %w", err)
 	}
 	defer rows.Close()
 
-	var annotations []models.Annotation
+	var notes []models.Note
 	for rows.Next() {
-		var a models.Annotation
+		var a models.Note
 		err := rows.Scan(
-			&a.AnnotationID,
+			&a.NoteID,
 			&a.SentenceID,
 			&a.UserID,
 			&a.Color,
-			&a.Note,
+			&a.Body,
 			&a.Priority,
 			&a.Flagged,
 			&a.Position,
@@ -1230,19 +1230,19 @@ func (db *DB) GetActiveAnnotationsForSentence(ctx context.Context, sentenceID st
 			&a.CompletedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan annotation: %w", err)
+			return nil, fmt.Errorf("failed to scan note: %w", err)
 		}
-		annotations = append(annotations, a)
+		notes = append(notes, a)
 	}
 
 	// A connection drop mid-iteration would otherwise return a PARTIAL list
 	// as success — the migration processor would silently strand the missing
-	// annotations on old sentences.
+	// notes on old sentences.
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating annotations: %w", err)
+		return nil, fmt.Errorf("error iterating notes: %w", err)
 	}
 
-	return annotations, nil
+	return notes, nil
 }
 
 func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID int) (*models.Tag, error) {
@@ -1283,54 +1283,54 @@ func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID in
 	return &tag, nil
 }
 
-// AddTagToAnnotation is idempotent; creates the tag if missing.
-func (db *DB) AddTagToAnnotation(ctx context.Context, annotationID int, tagName string, migrationID int) error {
+// AddTagToNote is idempotent; creates the tag if missing.
+func (db *DB) AddTagToNote(ctx context.Context, noteID int, tagName string, migrationID int) error {
 	tag, err := db.GetOrCreateTag(ctx, tagName, migrationID)
 	if err != nil {
 		return err
 	}
 
 	query := `
-		INSERT INTO annotation_tag (annotation_id, tag_id)
+		INSERT INTO note_tag (note_id, tag_id)
 		VALUES ($1, $2)
-		ON CONFLICT (annotation_id, tag_id) DO NOTHING
+		ON CONFLICT (note_id, tag_id) DO NOTHING
 	`
-	_, err = db.Pool.Exec(ctx, query, annotationID, tag.TagID)
+	_, err = db.Pool.Exec(ctx, query, noteID, tag.TagID)
 	if err != nil {
-		return fmt.Errorf("failed to add tag to annotation: %w", err)
+		return fmt.Errorf("failed to add tag to note: %w", err)
 	}
 
 	return nil
 }
 
-func (db *DB) RemoveTagFromAnnotation(ctx context.Context, annotationID int, tagID int) error {
+func (db *DB) RemoveTagFromNote(ctx context.Context, noteID int, tagID int) error {
 	query := `
-		DELETE FROM annotation_tag
-		WHERE annotation_id = $1 AND tag_id = $2
+		DELETE FROM note_tag
+		WHERE note_id = $1 AND tag_id = $2
 	`
-	result, err := db.Pool.Exec(ctx, query, annotationID, tagID)
+	result, err := db.Pool.Exec(ctx, query, noteID, tagID)
 	if err != nil {
-		return fmt.Errorf("failed to remove tag from annotation: %w", err)
+		return fmt.Errorf("failed to remove tag from note: %w", err)
 	}
 
 	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("tag not found on annotation")
+		return fmt.Errorf("tag not found on note")
 	}
 
 	return nil
 }
 
-func (db *DB) GetTagsForAnnotation(ctx context.Context, annotationID int) ([]models.Tag, error) {
+func (db *DB) GetTagsForNote(ctx context.Context, noteID int) ([]models.Tag, error) {
 	query := `
 		SELECT t.tag_id, t.tag_name, t.migration_id, t.created_at
 		FROM tag t
-		JOIN annotation_tag at ON t.tag_id = at.tag_id
-		WHERE at.annotation_id = $1
+		JOIN note_tag at ON t.tag_id = at.tag_id
+		WHERE at.note_id = $1
 		ORDER BY t.tag_name
 	`
 
-	rows, err := db.Pool.Query(ctx, query, annotationID)
+	rows, err := db.Pool.Query(ctx, query, noteID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tags: %w", err)
 	}
@@ -1394,15 +1394,15 @@ func (db *DB) GetAllTagsForMigration(ctx context.Context, migrationID int) ([]mo
 	return tags, nil
 }
 
-// ReorderAnnotation assigns a fractional-index position for the target slot.
-func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceID string, newIndex int) error {
+// ReorderNote assigns a fractional-index position for the target slot.
+func (db *DB) ReorderNote(ctx context.Context, noteID int, sentenceID string, newIndex int) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	query := `SELECT position FROM annotation WHERE sentence_id = $1 AND deleted_at IS NULL AND completed_at IS NULL ORDER BY position`
+	query := `SELECT position FROM note WHERE sentence_id = $1 AND deleted_at IS NULL AND completed_at IS NULL ORDER BY position`
 	rows, err := tx.Query(ctx, query, sentenceID)
 	if err != nil {
 		return fmt.Errorf("failed to query positions: %w", err)
@@ -1427,10 +1427,10 @@ func (db *DB) ReorderAnnotation(ctx context.Context, annotationID int, sentenceI
 		return fmt.Errorf("failed to calculate new position: %w", err)
 	}
 
-	updateQuery := `UPDATE annotation SET position = $1, updated_at = NOW() WHERE annotation_id = $2`
-	_, err = tx.Exec(ctx, updateQuery, newPosition, annotationID)
+	updateQuery := `UPDATE note SET position = $1, updated_at = NOW() WHERE note_id = $2`
+	_, err = tx.Exec(ctx, updateQuery, newPosition, noteID)
 	if err != nil {
-		return fmt.Errorf("failed to update annotation position: %w", err)
+		return fmt.Errorf("failed to update note position: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1560,23 +1560,23 @@ func (db *DB) SetLastManuscriptName(ctx context.Context, username, manuscriptNam
 	return nil
 }
 
-func (db *DB) GetAnnotationByID(ctx context.Context, annotationID int) (*models.Annotation, error) {
+func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {
 	query := `
-		SELECT annotation_id, sentence_id, user_id, color, note,
+		SELECT note_id, sentence_id, user_id, color, body,
 		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at
-		FROM annotation
-		WHERE annotation_id = $1
+		FROM note
+		WHERE note_id = $1
 		  AND deleted_at IS NULL
 		  AND completed_at IS NULL
 	`
 
-	var a models.Annotation
-	err := db.Pool.QueryRow(ctx, query, annotationID).Scan(
-		&a.AnnotationID,
+	var a models.Note
+	err := db.Pool.QueryRow(ctx, query, noteID).Scan(
+		&a.NoteID,
 		&a.SentenceID,
 		&a.UserID,
 		&a.Color,
-		&a.Note,
+		&a.Body,
 		&a.Priority,
 		&a.Flagged,
 		&a.Position,
@@ -1589,7 +1589,7 @@ func (db *DB) GetAnnotationByID(ctx context.Context, annotationID int) (*models.
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get annotation: %w", err)
+		return nil, fmt.Errorf("failed to get note: %w", err)
 	}
 
 	return &a, nil

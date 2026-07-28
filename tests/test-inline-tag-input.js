@@ -5,7 +5,7 @@
  *
  * In the current UI, the `.new-tag` chip only has a working click handler
  * on a real (persisted) sticky note — the chip inside an uncreated-note
- * is a visual template (see setupNoteEventListeners in web/js/annotations.js).
+ * is a visual template (see setupNoteEventListeners in web/js/notes.js).
  * Each sub-test therefore:
  *   1. Selects a fresh sentence (dynamically by index)
  *   2. Creates an annotation so a real sticky note exists
@@ -13,7 +13,7 @@
  *   4. Exercises one interaction (Enter / Space / Tab / blur / Escape / empty)
  *
  * Notes on what we assert:
- *   - The POST /annotations/{id}/tags endpoint currently returns 201 Created
+ *   - The POST /notes/{id}/tags endpoint currently returns 201 Created
  *     with an empty body, and the frontend calls response.json() on it,
  *     which throws and surfaces a "Failed to add tag" alert. The chip is
  *     therefore not re-rendered on the create path even though the tag IS
@@ -62,7 +62,7 @@ async function openTagInputOnRealNote(page) {
   // sub-test can assert that a POST was actually issued.
   const tagPostResponses = [];
   page.on('response', r => {
-    if (r.request().method() === 'POST' && /\/annotations\/\d+\/tags$/.test(r.url())) {
+    if (r.request().method() === 'POST' && /\/notes\/\d+\/tags$/.test(r.url())) {
       tagPostResponses.push({ status: r.status(), url: r.url() });
     }
   });
@@ -104,7 +104,7 @@ async function openTagInputOnRealNote(page) {
       }
       const last = popLastPost();
       if (!last) {
-        throw new Error(`Expected POST /annotations/.../tags after ${key}; none observed`);
+        throw new Error(`Expected POST /notes/.../tags after ${key}; none observed`);
       }
       // 201 (current empty-body response) and 2xx responses are acceptable.
       // The handler is known to accept the request; we just need confirmation

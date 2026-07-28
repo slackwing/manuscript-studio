@@ -352,7 +352,7 @@ func TestComputeMigrationMap(t *testing.T) {
 }
 
 // Regression: duplicate normalized texts must pair by document order, not by
-// map iteration order — otherwise annotations and previous_sentence_id
+// map iteration order — otherwise notes and previous_sentence_id
 // chains hop between identical sentences on every migration.
 func TestComputeSentenceDiffDuplicatePairingIsOrdinal(t *testing.T) {
 	oldTexts := map[string]string{

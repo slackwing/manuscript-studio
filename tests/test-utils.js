@@ -83,24 +83,24 @@ let TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
  * scratchpads/images. Sentences and migrations stay (they only change when
  * the manuscript itself changes; see resetTestManuscript).
  */
-async function cleanupTestAnnotations() {
+async function cleanupTestNotes() {
   try {
     psql(`
-      DELETE FROM annotation_tag WHERE annotation_id IN (
-        SELECT annotation_id FROM annotation WHERE sentence_id IN (
+      DELETE FROM note_tag WHERE note_id IN (
+        SELECT note_id FROM note WHERE sentence_id IN (
           SELECT sentence_id FROM sentence WHERE migration_id IN (
             SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
           )
         )
       );
-      DELETE FROM annotation_version WHERE annotation_id IN (
-        SELECT annotation_id FROM annotation WHERE sentence_id IN (
+      DELETE FROM note_version WHERE note_id IN (
+        SELECT note_id FROM note WHERE sentence_id IN (
           SELECT sentence_id FROM sentence WHERE migration_id IN (
             SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
           )
         )
       );
-      DELETE FROM annotation WHERE sentence_id IN (
+      DELETE FROM note WHERE sentence_id IN (
         SELECT sentence_id FROM sentence WHERE migration_id IN (
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
         )
@@ -143,7 +143,7 @@ async function cleanupTestAnnotations() {
  */
 async function resetTestManuscript() {
   try {
-    await cleanupTestAnnotations();
+    await cleanupTestNotes();
     if (TEST_MANUSCRIPT_ID > 0) {
       psql(`
         DELETE FROM command_slug WHERE migration_id IN (
@@ -258,7 +258,9 @@ module.exports = {
   TEST_PASSWORD,
   SYSTEM_TOKEN,
   WORKER,
-  cleanupTestAnnotations,
+  cleanupTestNotes,
+  // Back-compat alias while individual test files migrate to cleanupTestNotes.
+  cleanupTestAnnotations: cleanupTestNotes,
   resetTestManuscript,
   cleanupTestSessions,
   loginAsTestUser,

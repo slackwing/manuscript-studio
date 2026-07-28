@@ -39,7 +39,7 @@ type MigrationResult struct {
 	AdditionsCount      int    `json:"additions_count"`
 	DeletionsCount      int    `json:"deletions_count"`
 	ChangesCount        int    `json:"changes_count"`
-	AnnotationsMigrated int    `json:"annotations_migrated"`
+	NotesMigrated int    `json:"notes_migrated"`
 	Message             string `json:"message"`
 	// UnresolvedReferences are &reference#slug targets with no matching slug
 	// in this migration — dangling links. Surfaced (warned), never fatal.
@@ -131,7 +131,7 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 	}, nil
 }
 
-// migrate handles a commit with a prior migration to carry annotations from.
+// migrate handles a commit with a prior migration to carry notes from.
 func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName string, parent *models.Migration, newSentences []models.Sentence, newSentenceIDs []string, newSentenceMap map[string]string) (*MigrationResult, error) {
 	oldSentences, err := db.GetSentencesByMigration(ctx, parent.MigrationID)
 	if err != nil {
@@ -176,9 +176,9 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 
 	// Must run before MarkMigrationDone: on failure, deferred MarkMigrationError
 	// keeps new sentence rows tied to a non-done migration so they won't be "current".
-	annotationsMigrated, err := p.migrateAnnotations(ctx, db, log, plan)
+	notesMigrated, err := p.migrateNotes(ctx, db, log, plan)
 	if err != nil {
-		return nil, fmt.Errorf("annotation migration: %w", err)
+		return nil, fmt.Errorf("note migration: %w", err)
 	}
 
 	suggestionsMigrated, err := migrateSuggestions(ctx, db, plan)
@@ -225,7 +225,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 
 	log.Info("migrate complete",
 		slog.Int("sentences", len(newSentences)),
-		slog.Int("annotations_migrated", annotationsMigrated),
+		slog.Int("notes_migrated", notesMigrated),
 		slog.Int("suggestions_migrated", suggestionsMigrated),
 		slog.Int("suggestions_pruned_noop", suggestionsPruned),
 		slog.Int("unresolved_references", len(unresolved)),
@@ -237,28 +237,28 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		AdditionsCount:       len(diff.Added),
 		DeletionsCount:       len(diff.Deleted),
 		ChangesCount:         len(diff.Deleted),
-		AnnotationsMigrated:  annotationsMigrated,
-		Message:              fmt.Sprintf("Migration complete: %d sentences, %d annotations migrated", len(newSentences), annotationsMigrated),
+		NotesMigrated:  notesMigrated,
+		Message:              fmt.Sprintf("Migration complete: %d sentences, %d notes migrated", len(newSentences), notesMigrated),
 		UnresolvedReferences: unresolved,
 	}, nil
 }
 
-// migrateAnnotations runs the planned moves in one all-or-nothing tx.
-func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log *slog.Logger, plan map[string]plannedMove) (int, error) {
-	var items []database.AnnotationMigrationItem
+// migrateNotes runs the planned moves in one all-or-nothing tx.
+func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog.Logger, plan map[string]plannedMove) (int, error) {
+	var items []database.NoteMigrationItem
 	sources := 0
 	for oldID, move := range plan {
-		annots, err := db.GetActiveAnnotationsForSentence(ctx, oldID)
+		annots, err := db.GetActiveNotesForSentence(ctx, oldID)
 		if err != nil {
-			return 0, fmt.Errorf("get annotations for %s: %w", oldID, err)
+			return 0, fmt.Errorf("get notes for %s: %w", oldID, err)
 		}
 		if len(annots) == 0 {
 			continue
 		}
 		sources++
 		for _, a := range annots {
-			items = append(items, database.AnnotationMigrationItem{
-				AnnotationID:  a.AnnotationID,
+			items = append(items, database.NoteMigrationItem{
+				NoteID:  a.NoteID,
 				NewSentenceID: move.NewSentenceID,
 				Confidence:    move.Confidence,
 			})
@@ -266,22 +266,22 @@ func (p *Processor) migrateAnnotations(ctx context.Context, db *database.DB, log
 	}
 
 	if len(items) == 0 {
-		log.Info("no annotations needed migration")
+		log.Info("no notes needed migration")
 		return 0, nil
 	}
-	log.Info("migrating annotations",
-		slog.Int("annotations", len(items)),
+	log.Info("migrating notes",
+		slog.Int("notes", len(items)),
 		slog.Int("source_sentences", sources),
 	)
-	migrated, err := db.MigrateAnnotations(ctx, items)
+	migrated, err := db.MigrateNotes(ctx, items)
 	if err != nil {
 		return 0, fmt.Errorf("atomic write rolled back: %w", err)
 	}
-	log.Info("annotation migration committed", slog.Int("migrated", migrated))
+	log.Info("note migration committed", slog.Int("migrated", migrated))
 	return migrated, nil
 }
 
-// plannedMove: where annotations on a given old sentence should land.
+// plannedMove: where notes on a given old sentence should land.
 type plannedMove struct {
 	NewSentenceID string
 	Confidence    float64

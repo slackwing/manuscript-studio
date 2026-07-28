@@ -105,7 +105,7 @@ func max(a, b int) int {
 //
 // oldOrder/newOrder carry the document order of the IDs so duplicate texts
 // pair first↔first, second↔second. Building the per-norm lists from map
-// iteration made those pairings random per run, which let annotation and
+// iteration made those pairings random per run, which let note and
 // previous_sentence_id chains hop between identical sentences on every
 // migration. Pass nil to fall back to sorted-ID order (still deterministic,
 // but not ordinal-aware).

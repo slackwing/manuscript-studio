@@ -31,7 +31,7 @@ type Server struct {
 	sessionStore       *auth.SessionStore
 	authHandlers       *handlers.AuthHandlers
 	migrationHandlers  *handlers.MigrationHandlers
-	annotationHandlers *handlers.AnnotationHandlers
+	noteHandlers *handlers.NoteHandlers
 	suggestionHandlers *handlers.SuggestionHandlers
 	scratchpadHandlers *handlers.ScratchpadHandlers
 	sketchHandlers    *handlers.SketchHandlers
@@ -58,7 +58,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			DB:     dbWrapper,
 			Config: cfg,
 		},
-		annotationHandlers: &handlers.AnnotationHandlers{
+		noteHandlers: &handlers.NoteHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
@@ -255,17 +255,17 @@ func (s *Server) setupRouter() {
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
 			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)
 
-			r.Get("/annotations/{commit_hash}", s.annotationHandlers.HandleGetAnnotationsByCommit)
-			r.Get("/annotations/sentence/{sentence_id}", s.annotationHandlers.HandleGetAnnotationsBySentence)
-			r.Post("/annotations", s.annotationHandlers.HandleCreateAnnotation)
-			r.Put("/annotations/{annotation_id}", s.annotationHandlers.HandleUpdateAnnotation)
-			r.Put("/annotations/{annotation_id}/reorder", s.annotationHandlers.HandleReorderAnnotation)
-			r.Delete("/annotations/{annotation_id}", s.annotationHandlers.HandleDeleteAnnotation)
-			r.Post("/annotations/{annotation_id}/complete", s.annotationHandlers.HandleCompleteAnnotation)
+			r.Get("/notes/{commit_hash}", s.noteHandlers.HandleGetNotesByCommit)
+			r.Get("/notes/sentence/{sentence_id}", s.noteHandlers.HandleGetNotesBySentence)
+			r.Post("/notes", s.noteHandlers.HandleCreateNote)
+			r.Put("/notes/{note_id}", s.noteHandlers.HandleUpdateNote)
+			r.Put("/notes/{note_id}/reorder", s.noteHandlers.HandleReorderNote)
+			r.Delete("/notes/{note_id}", s.noteHandlers.HandleDeleteNote)
+			r.Post("/notes/{note_id}/complete", s.noteHandlers.HandleCompleteNote)
 
-			r.Get("/annotations/{annotation_id}/tags", s.annotationHandlers.HandleGetTagsForAnnotation)
-			r.Post("/annotations/{annotation_id}/tags", s.annotationHandlers.HandleAddTagToAnnotation)
-			r.Delete("/annotations/{annotation_id}/tags/{tag_id}", s.annotationHandlers.HandleRemoveTagFromAnnotation)
+			r.Get("/notes/{note_id}/tags", s.noteHandlers.HandleGetTagsForNote)
+			r.Post("/notes/{note_id}/tags", s.noteHandlers.HandleAddTagToNote)
+			r.Delete("/notes/{note_id}/tags/{tag_id}", s.noteHandlers.HandleRemoveTagFromNote)
 		})
 
 		// Admin endpoints rate-limit per Authorization header, or per remote IP

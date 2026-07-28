@@ -9,7 +9,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
   // Collect console messages
   page.on('console', msg => {
     const text = msg.text();
-    if (text.includes('[deleteAnnotation]') || text.includes('[refreshRainbowBars]') || text.includes('rainbow')) {
+    if (text.includes('[deleteNote]') || text.includes('[refreshRainbowBars]') || text.includes('rainbow')) {
       console.log(`BROWSER: ${text}`);
     }
   });

@@ -29,7 +29,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
       const input = page.locator('.sticky-note:not(.uncreated-note) .tag-input').first();
       await input.type(tagName, { delay: 5 });
       const responsePromise = page.waitForResponse(
-        r => /\/api\/annotations\/\d+\/tags$/.test(r.url()) && r.request().method() === 'POST',
+        r => /\/api\/notes\/\d+\/tags$/.test(r.url()) && r.request().method() === 'POST',
         { timeout: 8000 }
       );
       await input.press('Enter');

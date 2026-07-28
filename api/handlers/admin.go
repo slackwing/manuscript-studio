@@ -438,7 +438,7 @@ func (h *AdminHandlers) ResegmentOnSegmenterChange(ctx context.Context) {
 // manuscriptMigrationLocks serializes migration goroutines per manuscript.
 // Concurrent runs (webhook push + manual sync for different commits) would
 // otherwise race on the shared git clone (index.lock) and both carry
-// annotations forward from the same parent migration.
+// notes forward from the same parent migration.
 var manuscriptMigrationLocks sync.Map // manuscriptID → *sync.Mutex
 
 func lockManuscriptMigrations(manuscriptID int) (unlock func()) {

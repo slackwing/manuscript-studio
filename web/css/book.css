@@ -1,21 +1,21 @@
 /* Spacing constants - critical invariants tested in spacing-invariants-test.js */
 :root {
   --page-gap: 2em;              /* Vertical gap between pages (32px) */
-  --annotation-top: 150px;       /* Top margin from viewport to annotations */
-  --annotation-width: 272px;     /* Fixed width of annotation container (240 + 32px page gap) */
+  --note-top: 150px;       /* Top margin from viewport to notes */
+  --note-width: 272px;     /* Fixed width of note container (240 + 32px page gap) */
 
   /* ── Gutter layout (the two page-anchored side bands) ───────────────────
      The book page is centered; each side has a gutter the outline (left) and
      the sticky notes (right) live in. They are MIRROR IMAGES: both sit
      --horizontal-gap from the page edge and reserve a --gutter-band-width band.
-     The dynamic left/right offsets are computed in annotations.js
-     (initAnnotationMargin → positionGutters) from the SAME numbers, so there is
+     The dynamic left/right offsets are computed in notes.js
+     (initNoteMargin → positionGutters) from the SAME numbers, so there is
      one source of truth — do not hardcode a competing left/right here.
 
      Desktop only when the page + both bands + both gaps fit:
        2 × (band + gap) + page = 2×(300+32) + 576 = 1240px.
      Below 1240px the layout switches to the mobile second-bar (see the @media
-     block at the end of this file). Keep these three numbers, annotations.js
+     block at the end of this file). Keep these three numbers, notes.js
      SPACING, and that breakpoint in sync. */
   --horizontal-gap: 32px;        /* gap from page edge to gutter content, BOTH sides */
   --gutter-band-width: 300px;    /* reserved band each side (outline / sticky mirror) */
@@ -63,7 +63,7 @@
   --outline-orange: #E6A85C;
 
   /* Neutral colors */
-  --sticky-default: #e8e8e8;     /* Default grey (no annotation) */
+  --sticky-default: #e8e8e8;     /* Default grey (no note) */
 
   /* Color circle dimensions and spacing */
   --circle-size: 22px;           /* Inner circle size (excluding border) */
@@ -664,7 +664,7 @@ p.section-break {
   margin-top: 1em;
 }
 
-/* Sentence spans (for annotation) */
+/* Sentence spans (for notes) */
 .sentence {
   cursor: pointer;
   position: relative;
@@ -686,7 +686,7 @@ p.section-break {
 }
 
 /* Note-focus tint. .highlight-{color} is only added while a sticky
-   note's textarea has the typing caret (see annotations.applyFocusHighlight).
+   note's textarea has the typing caret (see notes.applyFocusHighlight).
    It overrides .selected and hover via source order — no specificity tricks. */
 .sentence.highlight-yellow {
   background-color: var(--highlight-yellow) !important;
@@ -723,19 +723,19 @@ p.section-break {
   display: none !important;
 }
 
-/* Annotation margin container - floats in right grey margin */
-#annotation-margin {
+/* Note margin container - floats in right grey margin */
+#note-margin {
   position: fixed;
-  top: var(--annotation-top);
+  top: var(--note-top);
   right: 0;
   z-index: 100;
   pointer-events: none; /* Allow clicks through to page */
   overflow: visible;
 }
 
-/* Left-margin document outline navigator. The MIRROR of the right annotation
+/* Left-margin document outline navigator. The MIRROR of the right note
    margin: same band width, same gap from the page edge. `left` is set in JS
-   (annotations.js positionGutters) so it tracks the centered page — don't pin
+   (notes.js positionGutters) so it tracks the centered page — don't pin
    it here. Only shown when there's structure. */
 #outline-margin {
   position: fixed;
@@ -851,9 +851,9 @@ p.section-break {
    rules it overrides — CSS resolves equal-specificity conflicts by source
    order, so the mobile block MUST come last to win. */
 
-.annotation-margin-inner {
+.note-margin-inner {
   position: relative;
-  width: var(--annotation-width);
+  width: var(--note-width);
   pointer-events: auto; /* Re-enable clicks on actual content */
 }
 
@@ -1196,8 +1196,8 @@ p.section-break {
   transform: scale(1.1);
 }
 
-/* Annotation item styling */
-.annotation-item {
+/* Note item styling */
+.note-item {
   font-family: "Helvetica", sans-serif;
   font-size: 11px;
   padding: 8px 12px;
@@ -1210,17 +1210,17 @@ p.section-break {
   transition: all 0.2s ease;
 }
 
-.annotation-item:hover {
+.note-item:hover {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   transform: translateX(-2px);
 }
 
-.annotation-item.yellow { border-left-color: #FFF3A3; background-color: rgba(255, 243, 163, 0.1); }
-.annotation-item.green { border-left-color: #C3FDB8; background-color: rgba(195, 253, 184, 0.1); }
-.annotation-item.blue { border-left-color: #AEDFF7; background-color: rgba(174, 223, 247, 0.1); }
-.annotation-item.purple { border-left-color: #E0BBE4; background-color: rgba(224, 187, 228, 0.1); }
-.annotation-item.red { border-left-color: #FFCCCB; background-color: rgba(255, 204, 203, 0.1); }
-.annotation-item.orange { border-left-color: #FFD8A8; background-color: rgba(255, 216, 168, 0.1); }
+.note-item.yellow { border-left-color: #FFF3A3; background-color: rgba(255, 243, 163, 0.1); }
+.note-item.green { border-left-color: #C3FDB8; background-color: rgba(195, 253, 184, 0.1); }
+.note-item.blue { border-left-color: #AEDFF7; background-color: rgba(174, 223, 247, 0.1); }
+.note-item.purple { border-left-color: #E0BBE4; background-color: rgba(224, 187, 228, 0.1); }
+.note-item.red { border-left-color: #FFCCCB; background-color: rgba(255, 204, 203, 0.1); }
+.note-item.orange { border-left-color: #FFD8A8; background-color: rgba(255, 216, 168, 0.1); }
 
 /* Priority/Flag section - always on separate line */
 .priority-flag-container {
@@ -1417,7 +1417,7 @@ p.section-break {
   transition: all 0.1s cubic-bezier(0.4, 0.0, 0.2, 1);
 
   /* Make scrollable when content overflows */
-  max-height: calc(100vh - var(--annotation-top) - 32px); /* Leave 32px bottom padding */
+  max-height: calc(100vh - var(--note-top) - 32px); /* Leave 32px bottom padding */
   overflow-y: auto;
 
   /* Add left padding to prevent animation from being cut off */
@@ -1762,7 +1762,7 @@ p.section-break {
 }
 
 /* Down-arrow button below the gradient uncreated note: jump to the next
-   sentence with annotations. */
+   sentence with notes. */
 .next-annotated-sentence-btn {
   align-self: center;
   display: inline-flex;
@@ -2209,8 +2209,8 @@ p.section-break {
 /* Print styles */
 @media print {
   #controls,
-  #annotation-sidebar,
-  #annotation-margin {
+  #note-sidebar,
+  #note-margin {
     display: none;
   }
 
@@ -2714,12 +2714,12 @@ p.section-break {
    when the centered page plus BOTH page-anchored gutter bands (outline left,
    sticky notes right) fit; the moment the outline band can't fit beside the
    page, we're "mobile". Keep in sync with :root's gutter vars and
-   annotations.js DESKTOP_MIN_WIDTH. (Breakpoint is 1239px — exclusive — so the
+   notes.js DESKTOP_MIN_WIDTH. (Breakpoint is 1239px — exclusive — so the
    exact 1240px fit still counts as desktop.)
 
    Below it, the left gutter can't hold the outline, so the manuscript chrome
    (info) and the outline relocate into a SECOND horizontal bar under the top
-   bar: info in the left 1/3, outline in the right 2/3. NOTE: annotations.js
+   bar: info in the left 1/3, outline in the right 2/3. NOTE: notes.js
    sets an inline `left` on #manuscript-chrome / #outline-margin (the desktop
    mirror positioning), so these must use `left: … !important` to win here.
    (The page is scaled to fit at ≤768px — see renderer.applyResponsiveScaling.)
@@ -2823,7 +2823,7 @@ p.section-break {
 
   /* --- kill horizontal document overflow. `transform: scale()` shrinks the
          page VISUALLY but NOT its layout/scroll width, so the un-scaled 576px
-         sheet (plus the desktop-positioned #annotation-margin, which sits far
+         sheet (plus the desktop-positioned #note-margin, which sits far
          off to the right on mobile) made the document wider than the viewport.
          On a real device the browser then zooms out to fit the whole width —
          the "starts zoomed in, scrolls right, gap on the right edge" bug.
@@ -2834,7 +2834,7 @@ p.section-break {
   /* The sticky-note margin isn't part of the mobile layout yet (a dedicated
      mobile notes UI comes later); it's positioned for the desktop gutter, so
      on mobile it just juts off-screen right. Hide it so it can't add width. */
-  #annotation-margin { display: none !important; }
+  #note-margin { display: none !important; }
 }
 
 /* In the wider part of the compact layout (769–1239px: too narrow for the

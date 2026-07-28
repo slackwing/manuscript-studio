@@ -25,7 +25,7 @@ const { loginAsTestUser } = require('./test-utils');
     await page.evaluate(() => {
       const annotations = [
         {
-          annotation_id: 9991,
+          note_id: 9991,
           sentence_id: 1,
           color: 'yellow',
           note: 'First note',
@@ -34,7 +34,7 @@ const { loginAsTestUser } = require('./test-utils');
           tags: []
         },
         {
-          annotation_id: 9992,
+          note_id: 9992,
           sentence_id: 1,
           color: 'blue',
           note: 'Second note',
@@ -44,9 +44,9 @@ const { loginAsTestUser } = require('./test-utils');
         }
       ];
 
-      if (window.WriteSysAnnotations) {
-        window.WriteSysAnnotations.annotations = annotations;
-        window.WriteSysAnnotations.renderStickyNotes();
+      if (window.WriteSysNotes) {
+        window.WriteSysNotes.notes = annotations;
+        window.WriteSysNotes.renderStickyNotes();
       }
     });
 

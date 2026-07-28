@@ -46,16 +46,16 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
 
     // Get the annotation ID via the API
     const apiUrl = 'http://localhost:5001';
-    const annotationsResp = await fetch(`${apiUrl}/api/annotations/sentence/${sentenceId}`, {
+    const annotationsResp = await fetch(`${apiUrl}/api/notes/sentence/${sentenceId}`, {
       headers: { 'Cookie': cookieHeader }
     });
     const annotationsData = await annotationsResp.json();
 
-    if (!annotationsData.annotations || annotationsData.annotations.length === 0) {
+    if (!annotationsData.notes || annotationsData.notes.length === 0) {
       console.log('✗ No annotation found for sentence');
       process.exit(1);
     }
-    const annotationId = annotationsData.annotations[0].annotation_id;
+    const annotationId = annotationsData.notes[0].note_id;
     console.log(`✓ Annotation created with ID: ${annotationId}`);
 
     // Get migration ID
@@ -67,7 +67,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
     console.log(`✓ Using migration ID: ${migrationId}`);
 
     // Test 1: Add a tag
-    const addTagResp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
+    const addTagResp = await fetch(`${apiUrl}/api/notes/${annotationId}/tags`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader, 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ tag_name: 'test-tag', migration_id: migrationId })
@@ -80,7 +80,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
     }
 
     // Test 2: Get tags for annotation
-    const getTagsResp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
+    const getTagsResp = await fetch(`${apiUrl}/api/notes/${annotationId}/tags`, {
       headers: { 'Cookie': cookieHeader }
     });
     const getTagsData = await getTagsResp.json();
@@ -92,13 +92,13 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
     }
 
     // Test 3: Add another tag
-    const addTag2Resp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
+    const addTag2Resp = await fetch(`${apiUrl}/api/notes/${annotationId}/tags`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Cookie': cookieHeader, 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ tag_name: 'second-tag', migration_id: migrationId })
     });
     if (addTag2Resp.ok) {
-      const getTagsResp2 = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
+      const getTagsResp2 = await fetch(`${apiUrl}/api/notes/${annotationId}/tags`, {
         headers: { 'Cookie': cookieHeader }
       });
       const getTagsData2 = await getTagsResp2.json();
@@ -110,7 +110,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
 
     // Test 4: Remove a tag
     const tagId = getTagsData.tags[0].tag_id;
-    const removeTagResp = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags/${tagId}`, {
+    const removeTagResp = await fetch(`${apiUrl}/api/notes/${annotationId}/tags/${tagId}`, {
       method: 'DELETE',
       headers: { 'Cookie': cookieHeader, 'X-CSRF-Token': csrfToken }
     });
@@ -122,7 +122,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
     }
 
     // Test 5: Verify tag was removed
-    const getTagsResp3 = await fetch(`${apiUrl}/api/annotations/${annotationId}/tags`, {
+    const getTagsResp3 = await fetch(`${apiUrl}/api/notes/${annotationId}/tags`, {
       headers: { 'Cookie': cookieHeader }
     });
     const getTagsData3 = await getTagsResp3.json();

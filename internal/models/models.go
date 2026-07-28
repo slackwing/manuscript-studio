@@ -67,12 +67,12 @@ type Sentence struct {
 	PreviousSentenceID *string   `json:"previous_sentence_id"` // null on bootstrap or new insertions
 }
 
-type Annotation struct {
-	AnnotationID int        `json:"annotation_id"`
+type Note struct {
+	NoteID       int        `json:"note_id"`
 	SentenceID   string     `json:"sentence_id"`
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
-	Note         *string    `json:"note"`
+	Body         *string    `json:"body"`
 	Priority     string     `json:"priority"` // 'none', 'P0', 'P1', 'P2', 'P3'
 	Flagged      bool       `json:"flagged"`
 	Position     string     `json:"position"` // fractional index
@@ -90,10 +90,10 @@ type Tag struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-type AnnotationTag struct {
-	AnnotationID int       `json:"annotation_id"`
-	TagID        int       `json:"tag_id"`
-	CreatedAt    time.Time `json:"created_at"`
+type NoteTag struct {
+	NoteID    int       `json:"note_id"`
+	TagID     int       `json:"tag_id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type SuggestedChange struct {
@@ -105,12 +105,12 @@ type SuggestedChange struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-type AnnotationVersion struct {
-	AnnotationID        int       `json:"annotation_id"`
+type NoteVersion struct {
+	NoteID              int       `json:"note_id"`
 	Version             int       `json:"version"`
 	SentenceID          string    `json:"sentence_id"`
 	Color               string    `json:"color"`
-	Note                *string   `json:"note"`
+	Body                *string   `json:"body"`
 	Priority            string    `json:"priority"`
 	Flagged             bool      `json:"flagged"`
 	SentenceIDHistory   []string  `json:"sentence_id_history"`

@@ -101,7 +101,7 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 
 // HandleGetManuscriptByMigration returns manuscript content for a migration.
 // Repo/file come from the manuscript row + config; client supplies no params.
-// Annotations for the logged-in user ship inline so rainbow bars render on
+// Notes for the logged-in user ship inline so rainbow bars render on
 // first paint without a follow-up fetch.
 func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -141,14 +141,14 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	annotations, err := h.DB.GetAnnotationsByCommit(ctx, migration.CommitHash, session.Username)
+	notes, err := h.DB.GetNotesByCommit(ctx, migration.CommitHash, session.Username)
 	if err != nil {
-		log.Printf("migrations: get annotations for commit %s: %v", migration.CommitHash, err)
-		http.Error(w, "Failed to get annotations", http.StatusInternalServerError)
+		log.Printf("migrations: get notes for commit %s: %v", migration.CommitHash, err)
+		http.Error(w, "Failed to get notes", http.StatusInternalServerError)
 		return
 	}
-	if annotations == nil {
-		annotations = []models.Annotation{}
+	if notes == nil {
+		notes = []models.Note{}
 	}
 
 	// Book-wide settings from &meta commands, for the renderer.
@@ -164,7 +164,7 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"commit_hash": migration.CommitHash,
 		"sentences":   sentenceInfos,
-		"annotations": annotations,
+		"notes": notes,
 		"settings":    settings.Values,
 	})
 }

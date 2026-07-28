@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- "Annotation" is renamed to "note" (NOTES_PLAN.md): notes are entities
+         owned by the user that can optionally be placed in a context. This
+         changeset is a PURE RENAME of the annotation tables/columns/indexes/
+         constraints in place — every live row survives (prod has real notes on
+         The Wildfire). No column is dropped and no data is transformed here;
+         phase 1b (019) adds the nullable manuscript_id/scratchpad_id context
+         columns and relaxes sentence_id.
+
+         Postgres keeps old object names across a table/column rename, so we
+         rename the constraints and indexes explicitly too, to keep future
+         migrations reading cleanly (same discipline as 017-variation-to-sketch).
+
+         The `tag` table keeps its name (tags aren't renamed); only the
+         annotation_tag junction becomes note_tag. Note that the existing
+         `annotation.note` column (the note body TEXT) would collide in name with
+         the table after rename — Postgres allows a column named the same as its
+         table, but to avoid confusion in code we rename the body column to
+         `body`. -->
+    <changeSet id="018-annotation-to-note" author="claude">
+        <sql>
+            -- ---- Rename tables ----
+            ALTER TABLE annotation RENAME TO note;
+            ALTER TABLE annotation_version RENAME TO note_version;
+            ALTER TABLE annotation_tag RENAME TO note_tag;
+
+            -- ---- Rename the PK/FK id column everywhere it appears ----
+            ALTER TABLE note RENAME COLUMN annotation_id TO note_id;
+            ALTER TABLE note_version RENAME COLUMN annotation_id TO note_id;
+            ALTER TABLE note_tag RENAME COLUMN annotation_id TO note_id;
+
+            -- The note-body column collided with the new table name; make it `body`.
+            ALTER TABLE note RENAME COLUMN note TO body;
+            ALTER TABLE note_version RENAME COLUMN note TO body;
+
+            -- ---- Rename primary-key constraints ----
+            ALTER TABLE note RENAME CONSTRAINT annotation_pkey TO note_pkey;
+            ALTER TABLE note_version RENAME CONSTRAINT pk_annotation_version TO pk_note_version;
+            ALTER TABLE note_tag RENAME CONSTRAINT pk_annotation_tag TO pk_note_tag;
+
+            -- ---- Rename CHECK constraints ----
+            ALTER TABLE note RENAME CONSTRAINT chk_annotation_color TO chk_note_color;
+            ALTER TABLE note RENAME CONSTRAINT chk_annotation_priority TO chk_note_priority;
+
+            -- ---- Rename foreign-key constraints ----
+            ALTER TABLE note_version RENAME CONSTRAINT fk_annotation_version_annotation TO fk_note_version_note;
+            ALTER TABLE note_version RENAME CONSTRAINT fk_annotation_version_sentence TO fk_note_version_sentence;
+            ALTER TABLE note_version RENAME CONSTRAINT fk_annotation_version_origin_sentence TO fk_note_version_origin_sentence;
+            ALTER TABLE note_version RENAME CONSTRAINT fk_annotation_version_origin_migration TO fk_note_version_origin_migration;
+            ALTER TABLE note_tag RENAME CONSTRAINT fk_annotation_tag_annotation TO fk_note_tag_note;
+            ALTER TABLE note_tag RENAME CONSTRAINT fk_annotation_tag_tag TO fk_note_tag_tag;
+
+            -- ---- Rename indexes ----
+            ALTER INDEX idx_annotation_sentence            RENAME TO idx_note_sentence;
+            ALTER INDEX idx_annotation_user                RENAME TO idx_note_user;
+            ALTER INDEX idx_annotation_sentence_user       RENAME TO idx_note_sentence_user;
+            ALTER INDEX idx_annotation_position            RENAME TO idx_note_position;
+            ALTER INDEX idx_annotation_sentence_user_active RENAME TO idx_note_sentence_user_active;
+            ALTER INDEX idx_annotation_deleted_at          RENAME TO idx_note_deleted_at;
+            ALTER INDEX idx_annotation_completed_at        RENAME TO idx_note_completed_at;
+            ALTER INDEX idx_annotation_version_annotation  RENAME TO idx_note_version_note;
+            ALTER INDEX idx_annotation_version_sentence    RENAME TO idx_note_version_sentence;
+            ALTER INDEX idx_annotation_version_created_at  RENAME TO idx_note_version_created_at;
+            ALTER INDEX idx_annotation_tag_annotation      RENAME TO idx_note_tag_note;
+            ALTER INDEX idx_annotation_tag_tag             RENAME TO idx_note_tag_tag;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

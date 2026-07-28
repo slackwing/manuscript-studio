@@ -45,7 +45,7 @@ function psql(sql) {
 
   const annotationPuts = [];
   page.on('request', r => {
-    if (r.method() === 'PUT' && /\/api\/annotations\/\d+/.test(r.url())) {
+    if (r.method() === 'PUT' && /\/api\/notes\/\d+/.test(r.url())) {
       annotationPuts.push(r.url());
     }
   });
@@ -86,12 +86,12 @@ function psql(sql) {
     await page.waitForTimeout(2500);
 
     const annId = await page.evaluate(() => {
-      const a = window.WriteSysAnnotations && window.WriteSysAnnotations.annotations[0];
-      return a ? a.annotation_id : null;
+      const a = window.WriteSysNotes && window.WriteSysNotes.notes[0];
+      return a ? a.note_id : null;
     });
     assert(!!annId, `Annotation created (id ${annId})`);
 
-    const versionsBefore = psql(`SELECT COUNT(*) FROM annotation_version WHERE annotation_id=${annId}`);
+    const versionsBefore = psql(`SELECT COUNT(*) FROM note_version WHERE note_id=${annId}`);
     const putsBefore = annotationPuts.length;
 
     // Focus the note, then blur without editing.
@@ -103,7 +103,7 @@ function psql(sql) {
 
     assert(annotationPuts.length === putsBefore,
       `No PUT fired on focus+blur without edits (got ${annotationPuts.length - putsBefore} extra)`);
-    const versionsAfter = psql(`SELECT COUNT(*) FROM annotation_version WHERE annotation_id=${annId}`);
+    const versionsAfter = psql(`SELECT COUNT(*) FROM note_version WHERE note_id=${annId}`);
     assert(versionsAfter === versionsBefore,
       `No new version row appended (before ${versionsBefore}, after ${versionsAfter})`);
 
@@ -114,14 +114,14 @@ function psql(sql) {
     await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await page.waitForTimeout(1500);
     assert(annotationPuts.length > putsBefore, 'Edit + blur still PUTs the new text');
-    const savedNote = psql(`SELECT note FROM annotation WHERE annotation_id=${annId}`);
+    const savedNote = psql(`SELECT body FROM note WHERE note_id=${annId}`);
     assert(savedNote === 'a stable note now edited',
       `Edited note persisted (got "${savedNote}")`);
 
     // ---- Fix 2: clicking another sentence during the create POST ----
 
     // Delay the create POST so we can switch sentences mid-flight.
-    await page.route('**/api/annotations', async route => {
+    await page.route('**/api/notes', async route => {
       if (route.request().method() === 'POST') {
         await new Promise(r => setTimeout(r, 1500));
       }
@@ -137,14 +137,14 @@ function psql(sql) {
     await page.locator(`.sentence[data-sentence-id="${raceSidB}"]`).first().click();
     // Let the POST resolve and everything settle.
     await page.waitForTimeout(3000);
-    await page.unroute('**/api/annotations');
+    await page.unroute('**/api/notes');
 
     const race = await page.evaluate(({ a, b }) => {
-      const cache = (window.WriteSysRenderer && window.WriteSysRenderer.currentAnnotations) || [];
-      const created = cache.find(x => (x.note || '').startsWith('z'));
+      const cache = (window.WriteSysRenderer && window.WriteSysRenderer.currentNotes) || [];
+      const created = cache.find(x => (x.body || '').startsWith('z'));
       return {
         createdSentenceId: created ? created.sentence_id : null,
-        currentSentenceId: window.WriteSysAnnotations.currentSentenceId,
+        currentSentenceId: window.WriteSysNotes.currentSentenceId,
         realNotesInPanel: document.querySelectorAll('#sticky-notes-container .sticky-note:not(.uncreated-note)').length,
         cachedForB: cache.filter(x => x.sentence_id === b).length,
       };
@@ -157,7 +157,7 @@ function psql(sql) {
     assert(race.currentSentenceId === raceSidB && race.realNotesInPanel === 0,
       `Panel for the newly-clicked sentence shows no stray note (got ${race.realNotesInPanel})`);
 
-    const dbSentence = psql(`SELECT sentence_id FROM annotation WHERE note='z' AND deleted_at IS NULL`);
+    const dbSentence = psql(`SELECT sentence_id FROM note WHERE body='z' AND deleted_at IS NULL`);
     assert(dbSentence === raceSidA,
       `Server row points at the original sentence (got "${dbSentence}")`);
 

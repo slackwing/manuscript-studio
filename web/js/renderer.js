@@ -1,7 +1,7 @@
 const WriteSysRenderer = {
   apiBaseUrl: 'api',
   currentSentences: [],
-  currentAnnotations: [],
+  currentNotes: [],
   currentMigrationID: null,
   currentCommitHash: null,
   currentSegmenter: null,
@@ -172,7 +172,7 @@ const WriteSysRenderer = {
         // renderManuscript (WriteSysOutline.refresh), so nothing to fetch here.
       ]);
       this.currentSentences = data.sentences;
-      this.currentAnnotations = data.annotations;
+      this.currentNotes = data.notes;
       // data.settings is the committed-only baseline; applyEffectiveSettings
       // overlays suggestions so a suggested &meta takes effect in preview.
       this.committedSettings = data.settings || {};
@@ -233,11 +233,11 @@ const WriteSysRenderer = {
     const tempContainer = document.createElement('div');
     tempContainer.innerHTML = this.renderSentencesToHTML(this.currentSentences);
 
-    // Sentence backgrounds are now driven by note focus (not annotation
+    // Sentence backgrounds are now driven by note focus (not note
     // presence): a sentence stays unfilled by default, picks up its
     // selected-grey on click, and tints to a note's color only while
     // that note's textarea has the typing caret. Side-bars (rainbow)
-    // still convey the annotation set at a glance — see addRainbowBars().
+    // still convey the note set at a glance — see addRainbowBars().
 
     // Suggestions are now rendered inline by renderSentencesToHTML (the
     // fragment model — SUGGESTION_RENDER_PLAN.md), so the old applyToSpans
@@ -785,10 +785,10 @@ const WriteSysRenderer = {
 
         this.currentSelectedSentenceId = sentenceId;
 
-        if (window.WriteSysAnnotations) {
+        if (window.WriteSysNotes) {
           // sentenceMap has the full text; the clicked span may be a fragment.
           const fullText = this.sentenceMap[sentenceId] || span.textContent;
-          window.WriteSysAnnotations.showAnnotationsForSentence(sentenceId, fullText);
+          window.WriteSysNotes.showNotesForSentence(sentenceId, fullText);
 
           // Pulse the first note (which owns the sentence's color).
           setTimeout(() => {
@@ -837,26 +837,26 @@ const WriteSysRenderer = {
       .getPropertyValue(`--highlight-${colorName}`).trim();
   },
 
-  getRainbowBarAnnotations(annotations) {
-    if (annotations.length === 0) return [];
+  getRainbowBarNotes(notes) {
+    if (notes.length === 0) return [];
 
-    const colors = annotations.map(a => a.color);
+    const colors = notes.map(a => a.color);
     const barColors = rainbowSlice(colors, { skip: 0, maxSize: 5 });
 
-    const barAnnotations = [];
+    const barNotes = [];
     let searchStartIndex = 0;
 
     barColors.forEach(colorName => {
-      for (let i = searchStartIndex; i < annotations.length; i++) {
-        if (annotations[i].color === colorName) {
-          barAnnotations.push(annotations[i]);
+      for (let i = searchStartIndex; i < notes.length; i++) {
+        if (notes[i].color === colorName) {
+          barNotes.push(notes[i]);
           searchStartIndex = i + 1;
           break;
         }
       }
     });
 
-    return barAnnotations;
+    return barNotes;
   },
 
   calculateRainbowBarPosition(sentenceRect, pageRect) {
@@ -866,7 +866,7 @@ const WriteSysRenderer = {
     };
   },
 
-  createRainbowBar(annotation, index, sentenceId) {
+  createRainbowBar(note, index, sentenceId) {
     const bar = document.createElement('div');
     bar.className = 'rainbow-bar';
     bar.style.position = 'absolute';
@@ -874,18 +874,18 @@ const WriteSysRenderer = {
     bar.style.left = `${index * 0.5}em`;
     bar.style.width = '0.5em';
     bar.style.height = '100%';
-    bar.style.backgroundColor = this.getColorValue(annotation.color) || '#ccc';
+    bar.style.backgroundColor = this.getColorValue(note.color) || '#ccc';
     bar.style.pointerEvents = 'auto';
     bar.style.cursor = 'pointer';
 
-    const annId = annotation.annotation_id || annotation.id;
-    bar.dataset.annotationId = annId;
+    const noteId = note.note_id || note.id;
+    bar.dataset.annotationId = noteId;
     bar.dataset.sentenceId = sentenceId;
-    bar.dataset.color = annotation.color;
+    bar.dataset.color = note.color;
 
     bar.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.handleRainbowBarClick(sentenceId, annId, annotation.color);
+      this.handleRainbowBarClick(sentenceId, noteId, note.color);
     });
 
     // Mirror sentence-hover behaviour: hovering a bar previews which
@@ -905,29 +905,29 @@ const WriteSysRenderer = {
     return bar;
   },
 
-  // Sidebar bars for sentences with multiple annotations.
+  // Sidebar bars for sentences with multiple notes.
   addRainbowBars() {
     document.querySelectorAll('.rainbow-bar-container').forEach(el => el.remove());
 
-    if (!this.currentAnnotations || this.currentAnnotations.length === 0) {
+    if (!this.currentNotes || this.currentNotes.length === 0) {
       return;
     }
 
-    const annotationsBySentence = {};
-    this.currentAnnotations.forEach(annotation => {
-      if (!annotation.color) return;
-      const sentenceId = annotation.sentence_id;
-      if (!annotationsBySentence[sentenceId]) {
-        annotationsBySentence[sentenceId] = [];
+    const notesBySentence = {};
+    this.currentNotes.forEach(note => {
+      if (!note.color) return;
+      const sentenceId = note.sentence_id;
+      if (!notesBySentence[sentenceId]) {
+        notesBySentence[sentenceId] = [];
       }
-      annotationsBySentence[sentenceId].push(annotation);
+      notesBySentence[sentenceId].push(note);
     });
 
-    Object.keys(annotationsBySentence).forEach(sentenceId => {
-      const annotations = annotationsBySentence[sentenceId];
-      const barAnnotations = this.getRainbowBarAnnotations(annotations);
+    Object.keys(notesBySentence).forEach(sentenceId => {
+      const notes = notesBySentence[sentenceId];
+      const barNotes = this.getRainbowBarNotes(notes);
 
-      if (barAnnotations.length === 0) return;
+      if (barNotes.length === 0) return;
 
       const sentenceFragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
 
@@ -947,13 +947,13 @@ const WriteSysRenderer = {
         container.style.position = 'absolute';
         container.style.top = `${position.top}px`;
         container.style.left = 'calc(100% + 5px)';
-        container.style.width = `${barAnnotations.length * 0.5}em`;
+        container.style.width = `${barNotes.length * 0.5}em`;
         container.style.height = `${position.height}px`;
         container.style.pointerEvents = 'none';
         container.style.zIndex = '10';
 
-        barAnnotations.forEach((annotation, index) => {
-          const bar = this.createRainbowBar(annotation, index, sentenceId);
+        barNotes.forEach((note, index) => {
+          const bar = this.createRainbowBar(note, index, sentenceId);
           container.appendChild(bar);
         });
 
@@ -967,8 +967,8 @@ const WriteSysRenderer = {
     }
   },
 
-  handleRainbowBarClick(sentenceId, annotationId, color) {
-    console.log(`Rainbow bar clicked: sentence=${sentenceId}, annotation=${annotationId}, color=${color}`);
+  handleRainbowBarClick(sentenceId, noteId, color) {
+    console.log(`Rainbow bar clicked: sentence=${sentenceId}, note=${noteId}, color=${color}`);
 
     if (this.currentSelectedSentenceId) {
       document.querySelectorAll(`.sentence[data-sentence-id="${this.currentSelectedSentenceId}"]`).forEach(fragment => {
@@ -982,13 +982,13 @@ const WriteSysRenderer = {
 
     this.currentSelectedSentenceId = sentenceId;
 
-    if (window.WriteSysAnnotations) {
+    if (window.WriteSysNotes) {
       const fullText = this.sentenceMap[sentenceId] || '';
-      window.WriteSysAnnotations.showAnnotationsForSentence(sentenceId, fullText);
+      window.WriteSysNotes.showNotesForSentence(sentenceId, fullText);
 
       // Wait for notes to render before we scroll/flash.
       setTimeout(() => {
-        this.scrollToAndHighlightAnnotation(annotationId);
+        this.scrollToAndHighlightNote(noteId);
       }, 300);
     }
   },
@@ -1003,10 +1003,10 @@ const WriteSysRenderer = {
     setTimeout(() => target.classList.remove('flash-highlight'), 1200);
   },
 
-  scrollToAndHighlightAnnotation(annotationId) {
-    const noteElement = document.querySelector(`.sticky-note[data-annotation-id="${annotationId}"]`);
+  scrollToAndHighlightNote(noteId) {
+    const noteElement = document.querySelector(`.sticky-note[data-annotation-id="${noteId}"]`);
     if (!noteElement) {
-      console.warn(`Note element not found for annotation ${annotationId}`);
+      console.warn(`Note element not found for note ${noteId}`);
       return;
     }
 
@@ -1018,9 +1018,9 @@ const WriteSysRenderer = {
     }, 600); // matches CSS animation
   },
 
-  // Re-render the per-sentence rainbow bars from the in-memory annotation
-  // cache. Annotation mutations (create/delete/complete) keep
-  // currentAnnotations in sync via the annotations module's _cacheAdd /
+  // Re-render the per-sentence rainbow bars from the in-memory note
+  // cache. Note mutations (create/delete/complete) keep
+  // currentNotes in sync via the notes module's _cacheAdd /
   // _cacheRemove + in-place property edits — so we don't need a refetch
   // here. Refetching would also corrupt the shared-object invariant the
   // sentence-click cache read depends on.

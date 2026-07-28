@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
   // Collect console messages
   page.on('console', msg => {
     const text = msg.text();
-    if (text.includes('[refreshRainbowBars]') || text.includes('[deleteAnnotation]') || text.includes('rainbow')) {
+    if (text.includes('[refreshRainbowBars]') || text.includes('[deleteNote]') || text.includes('rainbow')) {
       console.log(`BROWSER: ${text}`);
     }
   });
