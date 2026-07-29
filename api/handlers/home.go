@@ -134,6 +134,15 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 		scratchpads = append(scratchpads, hs)
 	}
 
+	// Manuscript display names come from config (displayNameFor), the single
+	// source of truth the rest of the app uses — the DB display_name column is
+	// often empty (e.g. The Wildfire), and the repo basename ("darkfeather") is
+	// wrong. Map manuscript_id → the resolved name we already built above.
+	manuscriptName := make(map[int]string, len(manuscripts))
+	for _, m := range manuscripts {
+		manuscriptName[m.ManuscriptID] = m.DisplayName
+	}
+
 	// Recent notes (NOTES_PLAN.md Phase 3). Best-effort: a failure here shows an
 	// empty Notes section, not a broken page.
 	notes := make([]homeNote, 0)
@@ -148,6 +157,12 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 				hn.Body = *n.Body
 			}
 			hn.Context = n.Context
+			// A manuscript-backed note's context is its manuscript's config name.
+			if n.ManuscriptID != nil {
+				if name, ok := manuscriptName[*n.ManuscriptID]; ok && name != "" {
+					hn.Context = name
+				}
+			}
 			notes = append(notes, hn)
 		}
 	}
