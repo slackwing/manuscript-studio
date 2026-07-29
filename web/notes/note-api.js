@@ -64,6 +64,11 @@
       return jsonOrThrow(resp);
     },
 
+    async get(noteId) {
+      const resp = await authFetch(`${BASE}/id/${noteId}`, { method: 'GET' });
+      return jsonOrThrow(resp); // the full note {note_id, color, body, priority, flagged, tags, ...}
+    },
+
     async tags(noteId) {
       const resp = await authFetch(`${BASE}/${noteId}/tags`, { method: 'GET' });
       return jsonOrThrow(resp); // { tags: [...] }

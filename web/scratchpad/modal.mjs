@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=19';
+import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=20';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=24';
+  link.href = 'scratchpad/scratchpad.css?v=25';
   document.head.appendChild(link);
 }
 
@@ -115,7 +115,7 @@ export const ScratchpadModal = {
     let tries = 0;
     const tick = () => {
       const el = this.overlay && this.overlay.querySelector(
-        `.sn-note-anchor[data-note-id="${CSS.escape(String(noteId))}"]`);
+        `.sn-note-ref[data-note-id="${CSS.escape(String(noteId))}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('sn-note-anchor-flash');

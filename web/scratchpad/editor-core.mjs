@@ -74,25 +74,30 @@ const coreNodes = {
     }],
     toDOM: n => ['div', { 'data-variation-id': String(n.attrs.variationId) }],
   },
-  // A note ANCHOR (NOTES_PLAN.md Phase 2): a small colored square placed at the
-  // start of a highlighted range. Inline atom carrying the note_id + color; the
-  // note's content lives in the DB (the `note` table). This node IS the anchor —
-  // deleting it soft-deletes the note. Clicking it opens the floating note.
-  noteAnchor: {
+  // A note REFERENCE (NOTES_PLAN.md Phase 2, atomic rework): ONE inline atom that
+  // holds the whole noted run — a small colored square + the (verbatim, snapshot)
+  // highlighted text. The doc stores ONLY the note_id and the text; the COLOR is
+  // NOT in the doc — the NodeView sources it from the note data (client cache),
+  // so recoloring a note is a pure note-row update with no doc edit. This node
+  // IS the anchor (deleting it soft-deletes the note). The text is uneditable
+  // (it's an atom); it looks like normal highlighted prose.
+  noteRef: {
     group: 'inline', inline: true, atom: true, selectable: false,
-    attrs: { noteId: { default: 0 }, color: { default: 'yellow' } },
+    attrs: { noteId: { default: 0 }, text: { default: '' } },
     parseDOM: [{
-      tag: 'span[data-note-id]',
+      tag: 'span[data-note-ref]',
       getAttrs: dom => ({
-        noteId: parseInt(dom.getAttribute('data-note-id'), 10) || 0,
-        color: dom.getAttribute('data-note-color') || 'yellow',
+        noteId: parseInt(dom.getAttribute('data-note-ref'), 10) || 0,
+        text: dom.getAttribute('data-note-text') || dom.textContent || '',
       }),
     }],
+    // toDOM is the persistence/copy form (color not encoded); the live look is
+    // rendered by NoteRefView.
     toDOM: n => ['span', {
-      'data-note-id': String(n.attrs.noteId),
-      'data-note-color': n.attrs.color,
-      class: 'sn-note-anchor color-' + n.attrs.color,
-    }],
+      'data-note-ref': String(n.attrs.noteId),
+      'data-note-text': n.attrs.text,
+      class: 'sn-note-ref',
+    }, n.attrs.text],
   },
   text: { group: 'inline' },
   hard_break: {
@@ -105,24 +110,9 @@ const coreNodes = {
 const marks = {
   strong: { parseDOM: [{ tag: 'strong' }, { tag: 'b' }], toDOM: () => ['strong', 0] },
   em: { parseDOM: [{ tag: 'em' }, { tag: 'i' }], toDOM: () => ['em', 0] },
-  // A note HIGHLIGHT (NOTES_PLAN.md Phase 2): the background tint over the text a
-  // note anchors, in the note's color. Reuses the shared --highlight-{color}
-  // vars (same tints as manuscript sentence highlights).
-  noteHighlight: {
-    attrs: { color: { default: 'yellow' }, noteId: { default: 0 } },
-    parseDOM: [{
-      tag: 'span[data-note-hl]',
-      getAttrs: dom => ({
-        color: dom.getAttribute('data-note-hl') || 'yellow',
-        noteId: parseInt(dom.getAttribute('data-note-hl-id'), 10) || 0,
-      }),
-    }],
-    toDOM: m => ['span', {
-      'data-note-hl': m.attrs.color,
-      'data-note-hl-id': String(m.attrs.noteId),
-      class: 'sn-note-hl color-' + m.attrs.color,
-    }, 0],
-  },
+  // (The old noteHighlight mark is gone — the noteRef atom now carries the whole
+  // noted run and sources its color from the note data, so color is no longer
+  // stored in the doc.)
 };
 
 const base = new Schema({ nodes: coreNodes, marks });
@@ -837,11 +827,11 @@ function insertBlockSafely(state, dispatch, node) {
   return true;
 }
 
-// ---- Scratchpad notes (NOTES_PLAN.md Phase 2) ----------------------------
-// A note is created from a text selection in a color: POST a scratchpad note,
-// wrap the range in the noteHighlight mark, drop a noteAnchor square at its
-// start, and open the floating note. The anchor node IS the note's anchor; the
-// note content lives in the DB.
+// ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
+// Creating a note from a selection replaces the selected text with ONE atomic
+// noteRef node (square + verbatim text). The doc stores note_id + text only —
+// the COLOR is sourced from the note data (client cache), so recolor is a pure
+// note-row update with no doc edit, and there's one source of truth.
 
 const NOTE_COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
 
@@ -849,182 +839,178 @@ const NOTE_COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
 // note helpers can read/edit the doc.
 let activeView = null;
 
+// ---- Client note cache -----------------------------------------------------
+// The doc stores only note_id + text; the COLOR (and body/tags/priority/flag)
+// live on the note row. This cache holds the note data so the NoteRefView can
+// render the right color WITHOUT a color in the doc, and so recolor is a pure
+// note-row update. Keyed by note_id → { color, body, priority, flagged, tags }.
+const noteCache = new Map();
+// note_id → Set of NoteRefView instances, so a recolor re-renders every view of
+// that note instantly.
+const noteRefViews = new Map();
+function registerNoteRefView(noteId, view) {
+  if (!noteRefViews.has(noteId)) noteRefViews.set(noteId, new Set());
+  noteRefViews.get(noteId).add(view);
+}
+function unregisterNoteRefView(noteId, view) {
+  const s = noteRefViews.get(noteId);
+  if (s) { s.delete(view); if (!s.size) noteRefViews.delete(noteId); }
+}
+function noteColorOf(noteId) {
+  const n = noteCache.get(noteId);
+  return (n && n.color) || 'yellow';
+}
+// Ensure the cache has this note; fetch it if missing. Returns the cached note.
+async function ensureNoteCached(noteId) {
+  if (noteCache.get(noteId)) return noteCache.get(noteId);
+  try {
+    const n = await window.WriteSysNoteAPI.get(noteId);
+    if (n) {
+      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [] };
+      noteCache.set(noteId, cached);
+      return cached;
+    }
+  } catch (e) { /* fall through */ }
+  return noteCache.get(noteId) || null;
+}
+
 // Create a scratchpad note from the current selection in `color`.
 async function createNoteFromSelection(color) {
   const view = activeView;
   if (!view || !window.WriteSysNoteAPI) return;
   const { from, to, empty } = view.state.selection;
   if (empty) return; // nothing selected → no-op (buttons are disabled anyway)
-  // Snapshot the highlighted text as the note's starting body, so the note
-  // shows WHAT it's about (incl. on the landing page). The user can add below;
-  // this snapshot does NOT re-sync if the doc text is later edited.
-  const snapshot = view.state.doc.textBetween(from, to, ' ').trim();
-  const body = snapshot || null;
+  // Snapshot the highlighted text: it becomes BOTH the note body (so the note
+  // shows what it's about, incl. on the landing page) AND the verbatim text the
+  // atomic noteRef renders inline. The snapshot doesn't re-sync on doc edits.
+  const snapshot = view.state.doc.textBetween(from, to, ' ');
+  const trimmed = snapshot.trim();
+  const body = trimmed || null;
   let created;
   try {
     created = await window.WriteSysNoteAPI.create({ color, body, ctx: { scratchpad_id: currentScratchpadId } });
   } catch (e) { console.error('create scratchpad note failed', e); return; }
   const noteId = created && created.note_id;
   if (!noteId) return;
+  noteCache.set(noteId, { color, body, priority: 'none', flagged: false, tags: [] });
   const sc = view.state.schema;
-  const hl = sc.marks.noteHighlight.create({ color, noteId });
-  const anchor = sc.nodes.noteAnchor.create({ noteId, color });
-  // Wrap the range in the (note-id-tagged) highlight, then insert the anchor
-  // square at its start.
-  let tr = view.state.tr.addMark(from, to, hl);
-  tr = tr.insert(from, anchor); // anchor lands just before the highlighted text
+  // Replace the selected text with ONE atomic noteRef holding the snapshot text.
+  const ref = sc.nodes.noteRef.create({ noteId, text: snapshot });
+  const tr = view.state.tr.replaceRangeWith(from, to, ref);
   view.dispatch(tr);
   view.focus();
-  // Open the float on the just-inserted anchor (seeded with the snapshot body).
-  const note = { noteId, note_id: noteId, color, body, priority: 'none', flagged: false, tags: [] };
+  // Open the float on the just-inserted ref.
   requestAnimationFrame(() => {
-    const el = view.dom.querySelector(`.sn-note-anchor[data-note-id="${noteId}"]`);
-    if (el) openNoteFloatFor(note, el);
+    const el = view.dom.querySelector(`.sn-note-ref[data-note-id="${noteId}"]`);
+    if (el) openNoteFloatFor(noteId, el);
   });
 }
 
-// Recolor a note's anchor node + its highlight run in the doc (both carry the
-// note id, so we can target precisely and leave other notes alone).
-function recolorNoteInDoc(noteId, color) {
-  const view = activeView; if (!view) return;
-  const sc = view.state.schema;
-  let tr = view.state.tr;
-  view.state.doc.descendants((node, pos) => {
-    if (node.type === sc.nodes.noteAnchor && node.attrs.noteId === noteId) {
-      tr = tr.setNodeMarkup(pos, undefined, { noteId, color });
-    }
-    if (node.isText) {
-      const hl = node.marks.find(m => m.type === sc.marks.noteHighlight && m.attrs.noteId === noteId);
-      if (hl) {
-        tr = tr.removeMark(pos, pos + node.nodeSize, hl)
-               .addMark(pos, pos + node.nodeSize, sc.marks.noteHighlight.create({ color, noteId }));
-      }
-    }
-  });
-  view.dispatch(tr);
+// Recolor a note: update the note row + cache, then re-render every noteRef view
+// of it. NO doc edit — the color isn't in the doc.
+function recolorNote(noteId, color) {
+  const cached = noteCache.get(noteId) || {};
+  cached.color = color;
+  noteCache.set(noteId, cached);
+  if (window.WriteSysNoteAPI) window.WriteSysNoteAPI.update(noteId, { color }).catch(() => {});
+  const s = noteRefViews.get(noteId);
+  if (s) s.forEach(v => v.applyColor(color));
 }
 
-// Remove a note's anchor + highlight from the doc (used on complete / delete).
+// Remove a note's ref node from the doc. Returns true if found. Removing the
+// node triggers its NodeView destroy() (which soft-deletes unless suppressed).
 function removeNoteFromDoc(noteId) {
-  const view = activeView; if (!view) return;
+  const view = activeView; if (!view) return false;
   const sc = view.state.schema;
-  let tr = view.state.tr;
-  // Strip highlight marks first (positions unaffected by mark removal), then
-  // delete the anchor node last-to-first so positions stay valid.
-  const anchorRanges = [];
+  const ranges = [];
   view.state.doc.descendants((node, pos) => {
-    if (node.isText) {
-      const hl = node.marks.find(m => m.type === sc.marks.noteHighlight && m.attrs.noteId === noteId);
-      if (hl) tr = tr.removeMark(pos, pos + node.nodeSize, hl);
-    }
-    if (node.type === sc.nodes.noteAnchor && node.attrs.noteId === noteId) {
-      anchorRanges.push([pos, pos + node.nodeSize]);
-    }
+    if (node.type === sc.nodes.noteRef && node.attrs.noteId === noteId) ranges.push([pos, pos + node.nodeSize]);
   });
-  anchorRanges.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => { tr = tr.delete(a, b); });
+  if (!ranges.length) return false;
+  let tr = view.state.tr;
+  ranges.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => { tr = tr.delete(a, b); });
   view.dispatch(tr);
+  return true;
 }
-function removeNoteAnchorFromDoc(noteId) { removeNoteFromDoc(noteId); }
 
-// Delete a note by removing its anchor from the doc — the anchor NodeView's
-// destroy() soft-deletes the DB row (deterministic, event-driven). Also strips
-// the highlight and closes the float. Used by the float's trash.
+// Delete a note via the doc — removing the ref triggers destroy() → soft-delete.
 function deleteNoteViaDoc(noteId) {
-  removeNoteFromDoc(noteId); // triggers NoteAnchorView.destroy() → soft-delete
+  removeNoteFromDoc(noteId);
   closeNoteFloat();
 }
 
-// The red trash glyph, reused from the sticky-note widget so the note delete
-// affordance is visually consistent everywhere.
-const TRASH_SVG_NOTE = '<svg width="12" height="12" viewBox="0 0 20 20"><path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>';
-
-// Set true while the editor is being torn down (modal close) so anchor
-// NodeView.destroy() does NOT soft-delete the notes — only a genuine in-doc
-// removal should.
+// Set true while the editor is being torn down (modal close) so ref
+// NodeView.destroy() does NOT soft-delete the notes.
 let editorTearingDown = false;
-
-// Note ids whose anchor is being removed for a reason OTHER than deletion (e.g.
-// "complete" removes the anchor but the note isn't deleted). destroy() consults
-// this so it skips the soft-delete for those.
-const suppressAnchorDelete = new Set();
-
-// Remove a note's anchor WITHOUT soft-deleting it (used by "complete").
-function removeNoteAnchorNoDelete(noteId) {
-  suppressAnchorDelete.add(noteId);
+// Note ids whose ref is being removed for a reason OTHER than deletion (e.g.
+// "complete"). destroy() consults this and skips the soft-delete.
+const suppressNoteDelete = new Set();
+function removeNoteRefNoDelete(noteId) {
+  suppressNoteDelete.add(noteId);
   removeNoteFromDoc(noteId);
-  // Cleared next tick, after the destroy() that this removal triggers has run.
-  setTimeout(() => suppressAnchorDelete.delete(noteId), 0);
+  setTimeout(() => suppressNoteDelete.delete(noteId), 0);
 }
 
-// NodeView for a note anchor: the little colored square. Clicking it opens the
-// floating note. Hovering reveals a red trash (floating upper-right, no text
-// push) that soft-deletes the note (two-click confirm). DELETION IS DETERMINISTIC
-// AND EVENT-DRIVEN — no sweep: destroy() fires when the anchor node actually
-// leaves the doc (incl. bulk edits), and soft-deletes then (unless the editor is
-// tearing down).
-class NoteAnchorView {
+// The red trash glyph, reused from the sticky-note widget for visual consistency.
+const TRASH_SVG_NOTE = '<svg width="12" height="12" viewBox="0 0 20 20"><path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+// NodeView for the atomic noteRef: a colored square + the verbatim highlighted
+// text, looking like normal highlighted prose but UNEDITABLE (atom). The COLOR
+// comes from the note cache (not the doc). Clicking the square opens the float;
+// hovering reveals a floating red trash (two-click confirm). Deletion is
+// deterministic: destroy() fires when the node leaves the doc.
+class NoteRefView {
   constructor(node, view, getPos) {
     this.node = node;
+    this.noteId = node.attrs.noteId;
     this.dom = document.createElement('span');
-    this.dom.className = 'sn-note-anchor color-' + node.attrs.color;
-    this.dom.dataset.noteId = String(node.attrs.noteId);
-    this.dom.dataset.noteColor = node.attrs.color;
+    this.dom.className = 'sn-note-ref color-' + noteColorOf(this.noteId);
+    this.dom.dataset.noteId = String(this.noteId);
     this.dom.contentEditable = 'false';
-    this.dom.title = 'Note — click to open';
+    this.dom.title = 'Note — click the square to open';
     this.dom.innerHTML =
-      '<span class="sn-note-anchor-sq"></span>' +
-      '<span class="sn-note-anchor-trash" title="Delete note">' + TRASH_SVG_NOTE + '</span>';
-    this.dom.querySelector('.sn-note-anchor-sq').addEventListener('mousedown', (e) => {
+      '<span class="sn-note-ref-sq"></span>' +
+      '<span class="sn-note-ref-text"></span>' +
+      '<span class="sn-note-ref-trash" title="Delete note">' + TRASH_SVG_NOTE + '</span>';
+    // Text via textContent (never innerHTML) — XSS-safe.
+    this.dom.querySelector('.sn-note-ref-text').textContent = node.attrs.text;
+    registerNoteRefView(this.noteId, this);
+    // If the color isn't cached yet (e.g. doc loaded from disk), fetch + apply.
+    if (!noteCache.get(this.noteId)) {
+      ensureNoteCached(this.noteId).then(n => { if (n) this.applyColor(n.color); });
+    }
+    this.dom.querySelector('.sn-note-ref-sq').addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      this.open();
+      openNoteFloatFor(this.noteId, this.dom);
     });
-    // Two-click confirm on the trash (matches the sticky-note trash).
-    const trash = this.dom.querySelector('.sn-note-anchor-trash');
+    // Two-click confirm on the trash.
+    const trash = this.dom.querySelector('.sn-note-ref-trash');
     let clickCount = 0, resetTimer = null;
     trash.addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
       if (clickCount === 0) {
-        trash.classList.add('confirming');
-        trash.title = 'Click again to delete';
-        clickCount = 1;
+        trash.classList.add('confirming'); trash.title = 'Click again to delete'; clickCount = 1;
         resetTimer = setTimeout(() => { trash.classList.remove('confirming'); trash.title = 'Delete note'; clickCount = 0; }, 2000);
       } else {
         clearTimeout(resetTimer);
-        // Deletion via the doc: removing the anchor triggers destroy() which
-        // soft-deletes the note. Also strip the highlight.
-        removeNoteFromDoc(node.attrs.noteId);
-        closeNoteFloat();
+        deleteNoteViaDoc(this.noteId);
       }
     });
   }
-  destroy() {
-    // The anchor left the doc. Soft-delete the note UNLESS this is editor
-    // teardown (modal close) or a non-delete removal like "complete".
-    const id = this.node.attrs.noteId;
-    if (!editorTearingDown && !suppressAnchorDelete.has(id) && window.WriteSysNoteAPI && id) {
-      window.WriteSysNoteAPI.remove(id).catch(() => {});
-    }
+  applyColor(color) {
+    this.dom.className = 'sn-note-ref color-' + (color || 'yellow');
   }
-  async open() {
-    const noteId = this.node.attrs.noteId;
-    // Load the current note (color/body/tags) for the float.
-    let note = { noteId, note_id: noteId, color: this.node.attrs.color, body: null, priority: 'none', flagged: false, tags: [] };
-    // The float edits optimistically; a GET would be nicer but the tags/body
-    // come back via the widget's own saves. Open with what the doc knows.
-    openNoteFloatFor(note, this.dom);
+  destroy() {
+    unregisterNoteRefView(this.noteId, this);
+    if (!editorTearingDown && !suppressNoteDelete.has(this.noteId) && window.WriteSysNoteAPI && this.noteId) {
+      window.WriteSysNoteAPI.remove(this.noteId).catch(() => {});
+    }
   }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
 }
 
-// NOTE: an earlier "orphan sweep" auto-soft-deleted notes whose anchor left the
-// doc. It was DANGEROUS — it silently deleted real notes (a created note
-// vanished from the landing page). Removed. Deletion now happens ONLY through
-// the explicit, confirmed paths (the anchor's trash and the float's trash). A
-// note whose anchor is bulk-deleted from the doc simply becomes context-less in
-// the landing grid — never silently gone.
-
-// The single floating note element (only one open at a time).
+// ---- The floating note (only one open at a time) ---------------------------
 let openNoteFloat = null;
 function closeNoteFloat() {
   if (openNoteFloat) { openNoteFloat.remove(); openNoteFloat = null; }
@@ -1032,38 +1018,44 @@ function closeNoteFloat() {
 }
 function onFloatOutside(e) {
   if (openNoteFloat && !openNoteFloat.contains(e.target)
-      && !(e.target.closest && e.target.closest('.sn-note-anchor'))) {
+      && !(e.target.closest && e.target.closest('.sn-note-ref'))) {
     closeNoteFloat();
   }
 }
 
-// Open the floating note for a given note object, positioned below `anchorEl`.
-function openNoteFloatFor(note, anchorEl) {
+// Open the floating note for a note id, positioned below `anchorEl`. Fetches the
+// CURRENT note (body/color/tags) so the reopened float always shows saved data.
+async function openNoteFloatFor(noteId, anchorEl) {
   closeNoteFloat();
   if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
   const api = window.WriteSysNoteAPI;
+  const fetched = await ensureNoteCached(noteId);
+  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', flagged: false, tags: [] };
+  const note = {
+    noteId, note_id: noteId,
+    color: cached.color, body: cached.body,
+    priority: cached.priority || 'none', flagged: !!cached.flagged, tags: cached.tags || [],
+  };
+  if (openNoteFloat) return; // a newer open superseded us while fetching
   const float = document.createElement('div');
   float.className = 'sn-note-float';
   const widget = window.WriteSysNoteWidget.buildNoteElement(note, {
-    onSaveText: (text) => { note.body = text.trim() || null; api.update(note.noteId, { body: note.body }); },
+    onSaveText: (text) => { note.body = text.trim() || null; cached.body = note.body; api.update(noteId, { body: note.body }); },
     onColor: (color) => {
       note.color = color;
-      api.update(note.noteId, { color });
-      // Recolor the anchor + its highlight in the doc.
-      recolorNoteInDoc(note.noteId, color);
-      openNoteFloatFor(note, anchorEl); // re-render palette (shows other 5)
+      recolorNote(noteId, color); // updates row + cache + all ref views (no doc edit)
+      openNoteFloatFor(noteId, anchorEl); // re-render palette (shows other 5)
     },
-    onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; api.update(note.noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
-    onFlag: () => { note.flagged = !note.flagged; api.update(note.noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
-    onDelete: () => { deleteNoteViaDoc(note.noteId); },
-    onComplete: () => { api.complete(note.noteId); removeNoteAnchorNoDelete(note.noteId); closeNoteFloat(); },
-    onAddTag: async (name) => { try { const r = await api.addTag(note.noteId, name); note.tags = (r && r.tags) || note.tags; } catch (e) {} },
-    onRemoveTag: async (tagId) => { try { await api.removeTag(note.noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); } catch (e) {} },
+    onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; cached.priority = note.priority; api.update(noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
+    onFlag: () => { note.flagged = !note.flagged; cached.flagged = note.flagged; api.update(noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
+    onDelete: () => { deleteNoteViaDoc(noteId); },
+    onComplete: () => { api.complete(noteId); removeNoteRefNoDelete(noteId); closeNoteFloat(); },
+    onAddTag: async (name) => { try { const r = await api.addTag(noteId, name); note.tags = (r && r.tags) || note.tags; cached.tags = note.tags; } catch (e) {} },
+    onRemoveTag: async (tagId) => { try { await api.removeTag(noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); cached.tags = note.tags; } catch (e) {} },
   }, {});
   float.appendChild(widget);
   document.body.appendChild(float);
   openNoteFloat = float;
-  // Position below the anchor.
   const r = anchorEl.getBoundingClientRect();
   float.style.position = 'absolute';
   float.style.top = (window.scrollY + r.bottom + 6) + 'px';
@@ -1532,7 +1524,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     state,
     nodeViews: {
       snippet: (node, v, getPos) => new SnippetView(node, v, getPos),
-      noteAnchor: (node, v, getPos) => new NoteAnchorView(node, v, getPos),
+      noteRef: (node, v, getPos) => new NoteRefView(node, v, getPos),
     },
     dispatchTransaction(tr) {
       if (destroyed) return;

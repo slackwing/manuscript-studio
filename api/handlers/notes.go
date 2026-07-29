@@ -125,6 +125,32 @@ func (h *NoteHandlers) HandleGetNotesBySentence(w http.ResponseWriter, r *http.R
 	})
 }
 
+// HandleGetNoteByID returns a single owned note (with tags) — the client note
+// cache reads this so the atomic noteRef widget + float source truth from the DB
+// (NOTES_PLAN.md Phase 2 rework: color lives on the note, not in the doc).
+func (h *NoteHandlers) HandleGetNoteByID(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	note := h.requireOwnedNote(w, r, noteID, session.Username)
+	if note == nil {
+		return
+	}
+	if tags, err := h.DB.GetTagsForNote(ctx, noteID); err == nil {
+		note.Tags = tags
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(note)
+}
+
 func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

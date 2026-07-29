@@ -255,8 +255,9 @@ func (s *Server) setupRouter() {
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
 			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)
 
-			r.Get("/notes/{commit_hash}", s.noteHandlers.HandleGetNotesByCommit)
+			r.Get("/notes/id/{note_id}", s.noteHandlers.HandleGetNoteByID)
 			r.Get("/notes/sentence/{sentence_id}", s.noteHandlers.HandleGetNotesBySentence)
+			r.Get("/notes/{commit_hash}", s.noteHandlers.HandleGetNotesByCommit)
 			r.Post("/notes", s.noteHandlers.HandleCreateNote)
 			r.Put("/notes/{note_id}", s.noteHandlers.HandleUpdateNote)
 			r.Put("/notes/{note_id}/reorder", s.noteHandlers.HandleReorderNote)

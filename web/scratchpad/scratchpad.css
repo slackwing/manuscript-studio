@@ -616,46 +616,49 @@
 .sn-note-colorbar-disabled { opacity: 0.4; }
 .sn-note-colorbar-disabled .sn-note-colorbtn { cursor: default; }
 
-/* The inline highlight over noted text — reuses the manuscript --highlight-*. */
-.sn-note-hl.color-yellow { background: var(--highlight-yellow); }
-.sn-note-hl.color-green  { background: var(--highlight-green); }
-.sn-note-hl.color-blue   { background: var(--highlight-blue); }
-.sn-note-hl.color-purple { background: var(--highlight-purple); }
-.sn-note-hl.color-red    { background: var(--highlight-red); }
-.sn-note-hl.color-orange { background: var(--highlight-orange); }
-
-/* The little rounded-square anchor placed at the start of a noted range. */
-.sn-note-anchor {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: baseline;
-  cursor: pointer;
-  user-select: none;
-  margin-right: 2px;
+/* The atomic noteRef: a colored square + the verbatim text, rendered inline so
+   it reads like normal HIGHLIGHTED prose (same font/size as the surrounding
+   text — it inherits). The whole thing is one uneditable atom. Its color comes
+   from the note data (JS applies color-<c>), reusing the manuscript
+   --highlight-* tints. */
+.sn-note-ref {
   position: relative;
+  cursor: default;
+  user-select: none;
 }
-.sn-note-anchor-sq {
+/* The text run gets the highlight background. */
+.sn-note-ref-text { border-radius: 2px; padding: 0 1px; }
+.sn-note-ref.color-yellow .sn-note-ref-text { background: var(--highlight-yellow); }
+.sn-note-ref.color-green  .sn-note-ref-text { background: var(--highlight-green); }
+.sn-note-ref.color-blue   .sn-note-ref-text { background: var(--highlight-blue); }
+.sn-note-ref.color-purple .sn-note-ref-text { background: var(--highlight-purple); }
+.sn-note-ref.color-red    .sn-note-ref-text { background: var(--highlight-red); }
+.sn-note-ref.color-orange .sn-note-ref-text { background: var(--highlight-orange); }
+/* The little rounded square before the text (click to open the note). */
+.sn-note-ref-sq {
   display: inline-block;
   width: 11px;
   height: 11px;
   border-radius: 3px;
   border: 1px solid rgba(0, 0, 0, 0.2);
+  margin-right: 3px;
+  vertical-align: -1px;
+  cursor: pointer;
 }
-.sn-note-anchor.color-yellow .sn-note-anchor-sq { background: var(--highlight-yellow); }
-.sn-note-anchor.color-green  .sn-note-anchor-sq { background: var(--highlight-green); }
-.sn-note-anchor.color-blue   .sn-note-anchor-sq { background: var(--highlight-blue); }
-.sn-note-anchor.color-purple .sn-note-anchor-sq { background: var(--highlight-purple); }
-.sn-note-anchor.color-red    .sn-note-anchor-sq { background: var(--highlight-red); }
-.sn-note-anchor.color-orange .sn-note-anchor-sq { background: var(--highlight-orange); }
-/* Hover trash: the red trash glyph FLOATS to the upper-right of the square
-   (position:absolute so it never pushes the surrounding text), revealed on
-   hover. Two-click confirm turns it darker red. */
-.sn-note-anchor-trash {
+.sn-note-ref.color-yellow .sn-note-ref-sq { background: var(--highlight-yellow); }
+.sn-note-ref.color-green  .sn-note-ref-sq { background: var(--highlight-green); }
+.sn-note-ref.color-blue   .sn-note-ref-sq { background: var(--highlight-blue); }
+.sn-note-ref.color-purple .sn-note-ref-sq { background: var(--highlight-purple); }
+.sn-note-ref.color-red    .sn-note-ref-sq { background: var(--highlight-red); }
+.sn-note-ref.color-orange .sn-note-ref-sq { background: var(--highlight-orange); }
+/* Hover trash: red trash glyph FLOATS to the upper-right of the square
+   (position:absolute so it never pushes text). Two-click confirm. */
+.sn-note-ref-trash {
   display: none;
   position: absolute;
-  left: 100%;
+  left: 8px;
   bottom: 100%;
-  margin: 0 0 -2px 1px;
+  margin-bottom: -2px;
   color: #b33b3a;
   cursor: pointer;
   background: #fff;
@@ -666,11 +669,11 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
   z-index: 5;
 }
-.sn-note-anchor-trash svg { display: block; }
-.sn-note-anchor:hover .sn-note-anchor-trash { display: inline-flex; }
-.sn-note-anchor-trash.confirming { color: #fff; background: #b33b3a; border-color: #b33b3a; }
-/* Flash when a deep-link (landing Notes grid) scrolls to this anchor. */
-.sn-note-anchor-flash .sn-note-anchor-sq { animation: sn-anchor-flash-kf 1.6s ease; }
+.sn-note-ref-trash svg { display: block; }
+.sn-note-ref:hover .sn-note-ref-trash { display: inline-flex; }
+.sn-note-ref-trash.confirming { color: #fff; background: #b33b3a; border-color: #b33b3a; }
+/* Flash when a deep-link (landing Notes grid) scrolls to this ref. */
+.sn-note-anchor-flash .sn-note-ref-sq { animation: sn-anchor-flash-kf 1.6s ease; }
 @keyframes sn-anchor-flash-kf {
   0%, 100% { box-shadow: none; }
   20% { box-shadow: 0 0 0 4px rgba(42, 111, 176, 0.55); }
