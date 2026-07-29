@@ -580,6 +580,13 @@ class SnippetView {
         return false;
       }
     };
+    // Exactly ONE flusher per view at a time. renderEdit() runs on every
+    // enter-edit / tab-switch / rebuild, each making a fresh `save` closure that
+    // captures its OWN snapshot of the text. Without removing the previous one,
+    // stale closures accumulate in variationFlushers, and the next doc-save
+    // fires ALL of them at once — a race where an OLD snapshot can land last and
+    // clobber current work (data-loss bug). Drop this view's prior flusher first.
+    if (this.flush) variationFlushers.delete(this.flush);
     this.flush = save;
     variationFlushers.add(save);
     ta.addEventListener('input', () => {
