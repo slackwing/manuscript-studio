@@ -190,9 +190,9 @@ body.home-page {
 .note-card-ctx { font-style: italic; color: #6b6b6b; }
 
 /* The note card mounts the SHARED note component (buildNoteElement, read-only +
-   card variant) inside the .card frame. The card already provides the colored
-   background, rounded corners and padding, so the inner sticky-note resets its
-   own frame chrome and just contributes the body + chips. */
+   card variant) inside the .card frame. The card provides the colored
+   background, rounded corners and padding; the inner sticky-note resets its own
+   frame chrome and lays out as: body (grows) · chips · context (bottom). */
 .card-note { padding: 14px; }
 .card-note .sticky-note-card {
   background: transparent;
@@ -201,13 +201,11 @@ body.home-page {
   border-radius: 0;
   flex: 1;
   min-height: 0;
-  gap: 6px;
+  gap: 5px;
   overflow: hidden;
 }
-/* Context line pinned to the bottom of the square, below the note content. */
-.card-note .card-meta { margin: 8px 0 0; }
-/* Clamped preview body — same Caveat handwriting as the live note, just capped
-   with an ellipsis (no expand). */
+/* Body grows and clamps; chips + context are compact and never clipped. */
+.card-note .note-container { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .card-note .note-readonly-body {
   font-family: "Caveat", "Helvetica", sans-serif;
   font-size: 18px;
@@ -216,25 +214,37 @@ body.home-page {
   white-space: pre-wrap;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
 }
-/* The read-only card never shows the color circle / trash / complete; keep the
-   priority-flag row tight and the tags row compact. */
-.card-note .sticky-note-card .priority-flag-container { margin-top: 4px; }
-.card-note .sticky-note-card .tags-container { margin: 0; }
+/* No horizontal rule above the chips on a card (the live note has one to
+   separate controls; a card doesn't need it). */
+.card-note .sticky-bottom-controls { border-top: none; padding-top: 0; margin: 0; flex: 0 0 auto; }
+.card-note .tags-container { margin: 0; }
+.card-note .priority-flag-container { flex: 0 0 auto; margin-top: 3px; }
+.card-note .card-meta { margin: 6px 0 0; flex: 0 0 auto; }
 
-/* Compact rectangular "miniature" chips for the card look (vs. the round chips
-   used in the margin / float). Driven by the .sticky-note-card variant. */
+/* Compact SMALL SQUARE chips for the card look (vs. the round pills the margin
+   and float use). Fully reset the base chip's fixed circle sizing. */
 .sticky-note-card .tag-chip,
 .sticky-note-card .priority-chip {
+  width: auto;
+  height: auto;
+  min-width: 0;
   border-radius: 3px;
-  padding: 1px 5px;
+  padding: 1px 6px;
   font-size: 10px;
-  background: rgba(255, 255, 255, 0.55);
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.6);
   border: none;
   color: #4a4a4a;
 }
 .sticky-note-card .priority-chip { font-weight: 600; color: #7a5c00; }
-.sticky-note-card .flag-chip { color: #b33b3a; }
-.sticky-note-card .tags-list { gap: 4px; }
+.sticky-note-card .flag-chip {
+  width: auto; height: auto;
+  color: #b33b3a;
+  margin-left: 2px;
+}
+.sticky-note-card .flag-chip svg { width: 12px; height: 12px; }
+.sticky-note-card .tags-list { gap: 4px; align-items: center; }
+.sticky-note-card .priority-flag-chips { gap: 4px; }
