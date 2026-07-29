@@ -299,9 +299,16 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Failed to create note", http.StatusInternalServerError)
 			return
 		}
+		// Return the inherited manuscript (from a linked pad) so the just-opened
+		// float shows its chip immediately, without a re-fetch.
+		resp := map[string]interface{}{"note_id": note.NoteID}
+		if note.ManuscriptID != nil {
+			resp["manuscript_id"] = *note.ManuscriptID
+			resp["manuscript_name"] = manuscriptDisplayName(ctx, h.DB, h.Config, *note.ManuscriptID)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"note_id": note.NoteID})
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 

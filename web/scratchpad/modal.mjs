@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=25';
+import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=26';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=29';
+  link.href = 'scratchpad/scratchpad.css?v=30';
   document.head.appendChild(link);
 }
 
@@ -159,7 +159,8 @@ export const ScratchpadModal = {
         el.appendChild(rm);
         rm.onclick = async (e) => {
           e.stopPropagation();
-          try { await put(0); linkedId = null; linkedName = ''; render(); } catch (err) {}
+          try { await put(0); linkedId = null; linkedName = ''; render(); }
+          catch (err) { alert('Could not unlink scratchpad: ' + err.message); }
         };
         el.onclick = null;
       } else {
@@ -167,7 +168,9 @@ export const ScratchpadModal = {
         el.title = HINT;
         el.onclick = () => {
           window.WriteSysNoteWidget.openManuscriptPicker(el, async (mid) => {
-            try { const d = await put(mid); linkedId = d.linked_manuscript_id || null; linkedName = d.linked_manuscript_name || ''; render(); } catch (err) {}
+            // Don't leave the UI showing "linked" if the write failed — surface it.
+            try { const d = await put(mid); linkedId = d.linked_manuscript_id || null; linkedName = d.linked_manuscript_name || ''; render(); }
+            catch (err) { alert('Could not link scratchpad: ' + err.message); }
           });
         };
       }

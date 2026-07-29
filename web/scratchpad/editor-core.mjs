@@ -955,7 +955,14 @@ async function createNoteFromSelection(color) {
   } catch (e) { console.error('create scratchpad note failed', e); return; }
   const noteId = created && created.note_id;
   if (!noteId) return;
-  noteCache.set(noteId, { color, body, priority: 'none', flagged: false, tags: [] });
+  // Seed the cache incl. any manuscript INHERITED from a linked pad (the server
+  // returns it), so the float that opens right now shows the manuscript chip
+  // without waiting for a re-fetch.
+  noteCache.set(noteId, {
+    color, body, priority: 'none', flagged: false, tags: [],
+    manuscript_id: created.manuscript_id || null,
+    manuscript_name: created.manuscript_name || '',
+  });
   const sc = view.state.schema;
   // Replace the selected text with ONE atomic noteRef holding the snapshot text.
   const ref = sc.nodes.noteRef.create({ noteId, text: snapshot });

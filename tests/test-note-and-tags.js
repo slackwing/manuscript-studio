@@ -167,19 +167,15 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       failed++;
     }
 
-    // Manuscript chip: a sentence note is in its manuscript, so the margin
-    // shows a READ-ONLY manuscript chip (name shown, no × to unlink).
+    // Manuscript chip: a sentence note is trivially in its manuscript, so the
+    // margin does NOT show a manuscript chip (showManuscriptChip:false flag).
     await page.locator('.sentence').first().click();
     await page.waitForTimeout(800);
-    const chip = await page.evaluate(() => {
-      const n = document.querySelector('.sticky-note[data-annotation-id]');
-      const mc = n && n.querySelector('.manuscript-chip');
-      return mc ? { readonly: mc.classList.contains('readonly'), name: (mc.querySelector('.manuscript-chip-name') || {}).textContent, hasRemove: !!mc.querySelector('.manuscript-chip-remove') } : null;
-    });
-    if (chip && chip.readonly && chip.name && !chip.hasRemove) {
-      console.log(`✓ margin note shows a read-only manuscript chip (${chip.name}, no unlink)`);
+    const marginChips = await page.locator('.sticky-note[data-annotation-id] .manuscript-chip').count();
+    if (marginChips === 0) {
+      console.log('✓ margin note shows NO manuscript chip (flagged off in manuscript view)');
     } else {
-      console.log('✗ margin note should show a read-only manuscript chip', JSON.stringify(chip));
+      console.log(`✗ margin note should show no manuscript chip (found ${marginChips})`);
       failed++;
     }
 

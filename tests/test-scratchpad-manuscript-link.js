@@ -65,8 +65,22 @@ async function makeNote(page, text) {
   const chipName = await linkEl.locator('.spm-link-name').textContent().catch(() => '');
   check('pad link shows the manuscript name', (chipName || '').trim() === (pickedName || '').trim(), `chip="${chipName}"`);
 
-  // (3) A note made AFTER linking → inherits the manuscript.
-  const postNote = await makeNote(page, 'After the link.');
+  // (3) A note made AFTER linking → inherits the manuscript, and the float that
+  //     opens right away SHOWS the manuscript chip (seeded from the create
+  //     response — the earlier bug was the first note's float showing no chip).
+  const pm = page.locator('.spm-editor .ProseMirror');
+  await pm.click();
+  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter');
+  await page.keyboard.type('After the link.');
+  await page.keyboard.press('Home');
+  await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
+  await page.waitForTimeout(150);
+  await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
+  await page.waitForTimeout(700);
+  const floatChip = await page.locator('.sn-note-float .manuscript-chip.linked').count();
+  check('first note after linking shows its manuscript chip immediately (float)', floatChip === 1, `chips=${floatChip}`);
+  const postNote = await page.locator('.sn-note-ref').last().getAttribute('data-note-id');
+  await page.locator('.spm-title').click(); await page.waitForTimeout(200); // close float
   const postMid = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${postNote}`).trim();
   check('post-link note INHERITS the manuscript', /^[0-9]+$/.test(postMid), `manuscript_id=${postMid}`);
 

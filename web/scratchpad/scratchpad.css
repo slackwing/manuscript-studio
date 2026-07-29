@@ -40,9 +40,13 @@
   border-bottom: 1px solid #e4ded1;
 }
 .spm-title {
-  /* Sized to content (capped) so the link chip can sit right after the title,
-     like a snippet's linker. A flex spacer pushes status/buttons to the right. */
+  /* Size the title input to its CONTENT so the link chip sits right after the
+     text (snippet-linker style), not after a fixed-width input box. A flex
+     spacer then pushes status/buttons to the right. field-sizing:content is the
+     shrink-to-fit; the width fallback keeps older engines reasonable. */
   flex: 0 1 auto;
+  field-sizing: content;
+  width: auto;
   min-width: 60px;
   max-width: 60%;
   font: 700 17px Georgia, serif;

@@ -180,6 +180,9 @@
   //   - The unlinked-but-linkable state (bare glyph → picker) shows only where
   //     onLinkManuscript is wired.
   function appendManuscriptChip(noteEl, list, note, handlers) {
+    // Location flag: the manuscript margin sets showManuscriptChip:false — a
+    // sentence note is trivially in its manuscript, so the chip is noise there.
+    if (handlers.showManuscriptChip === false) return;
     const canLink = !!handlers.onLinkManuscript;
     const canUnlink = !!handlers.onUnlinkManuscript;
     if (!note.manuscript_id && !canLink) return; // nothing to show
