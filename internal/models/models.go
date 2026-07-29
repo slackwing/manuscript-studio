@@ -68,10 +68,13 @@ type Sentence struct {
 }
 
 type Note struct {
-	NoteID       int        `json:"note_id"`
-	SentenceID   string     `json:"sentence_id"`   // "" when the note has no sentence (DB col is nullable)
-	ManuscriptID *int       `json:"manuscript_id"` // nullable context
-	ScratchpadID *int       `json:"scratchpad_id"` // nullable context
+	NoteID   int    `json:"note_id"`
+	SentenceID   string `json:"sentence_id"`   // "" when the note has no sentence (DB col is nullable)
+	ManuscriptID *int   `json:"manuscript_id"` // nullable context
+	// ManuscriptName is NOT stored — the handler fills it from config at response
+	// time (single source of truth, no denormalized drift). Empty when unlinked.
+	ManuscriptName string `json:"manuscript_name,omitempty"`
+	ScratchpadID   *int   `json:"scratchpad_id"` // nullable context
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Body         *string    `json:"body"`

@@ -1689,3 +1689,17 @@ func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error)
 
 	return &a, nil
 }
+
+// SetNoteManuscript links (or, with manuscriptID nil, unlinks) a note to a
+// manuscript. Only the manuscript_id context column changes — the note's
+// sentence/scratchpad context is untouched. Ownership/access is enforced by the
+// handler before this runs.
+func (db *DB) SetNoteManuscript(ctx context.Context, noteID int, manuscriptID *int) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE note SET manuscript_id = $1, updated_at = NOW() WHERE note_id = $2`,
+		manuscriptID, noteID)
+	if err != nil {
+		return fmt.Errorf("failed to set note manuscript: %w", err)
+	}
+	return nil
+}

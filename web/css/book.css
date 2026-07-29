@@ -1145,6 +1145,85 @@ p.section-break {
   font-style: italic;
 }
 
+/* Manuscript-link chip — the last chip on every note (all views). Marked with
+   the link glyph so it reads as a link, not a tag. Linked: named + ×. Unlinked:
+   just the glyph, click to pick a manuscript. */
+.tag-chip.manuscript-chip {
+  gap: 4px;
+  background: #dcebfa;
+  color: #2a6fb0;
+}
+.tag-chip.manuscript-chip:hover { background: #cfe3f6; }
+.tag-chip.manuscript-chip.unlinked {
+  cursor: pointer;
+  background: transparent;
+  border: 1px dashed #9cc3e6;
+  color: #6a9bc4;
+  padding: 4px 8px;
+}
+.tag-chip.manuscript-chip.unlinked:hover {
+  border-color: #2a6fb0;
+  color: #2a6fb0;
+}
+.manuscript-chip-icon { display: inline-flex; align-items: center; }
+.manuscript-chip-icon svg { display: block; }
+.manuscript-chip-name { line-height: 1; }
+.manuscript-chip-remove {
+  cursor: pointer;
+  font-weight: bold;
+  color: #5a8fbf;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.manuscript-chip-remove:hover { color: #b33b3a; }
+
+/* Manuscript picker popover (shared by every note's link chip). */
+.note-linkpop {
+  /* Above the scratchpad overlay (20000) and the note float (21000) so the
+     picker is clickable when opened from a float. */
+  z-index: 22000;
+  width: 220px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  font-family: "Helvetica", sans-serif;
+}
+.note-linkpop-q {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  outline: none;
+  margin-bottom: 4px;
+}
+.note-linkpop-q:focus { border-color: #2a6fb0; }
+.note-linkpop-list { max-height: 220px; overflow-y: auto; }
+.note-linkpop-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.note-linkpop-list button:hover { background: #eef4fb; color: #2a6fb0; }
+.note-linkpop-empty {
+  display: block;
+  padding: 8px;
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+
 /* Trash icon for deletion */
 .trash-icon {
   display: flex;

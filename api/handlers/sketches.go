@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -363,19 +364,24 @@ func (h *SketchHandlers) HandleCanonizeSketch(w http.ResponseWriter, r *http.Req
 }
 
 func (h *SketchHandlers) manuscriptDisplayName(r *http.Request, manuscriptID int) string {
-	m, err := h.DB.GetManuscriptByID(r.Context(), manuscriptID)
+	return manuscriptDisplayName(r.Context(), h.DB, h.Config, manuscriptID)
+}
+
+// manuscriptDisplayName resolves a manuscript's human name the way the whole app
+// does: the DB display_name if set, else the config NAME (title-cased), never
+// the repo basename (the-wildfire lives in slackwing/darkfeather, so
+// filepath.Base would wrongly show "darkfeather.git"). Shared by every handler
+// that surfaces a manuscript label (sketch link, note link, landing context).
+func manuscriptDisplayName(ctx context.Context, db *database.DB, cfg *config.Config, manuscriptID int) string {
+	m, err := db.GetManuscriptByID(ctx, manuscriptID)
 	if err != nil || m == nil {
 		return ""
 	}
 	if m.DisplayName != "" {
 		return m.DisplayName
 	}
-	// Fall back to the manuscript's config NAME (title-cased), NOT the repo
-	// basename — a manuscript may live in a repo whose name differs entirely
-	// (e.g. the-wildfire lives in slackwing/darkfeather, so filepath.Base would
-	// wrongly show "darkfeather.git").
-	for i := range h.Config.Manuscripts {
-		mc := &h.Config.Manuscripts[i]
+	for i := range cfg.Manuscripts {
+		mc := &cfg.Manuscripts[i]
 		if mc.Repository.CloneURL() == m.RepoPath && mc.Repository.Path == m.FilePath {
 			return displayNameFor("", mc.Name)
 		}

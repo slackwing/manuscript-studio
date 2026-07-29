@@ -7,13 +7,15 @@
  * is what the scratchpad float (Phase 2) and the landing card (Phase 3) mount,
  * so all three read as one component.
  *
- * The manuscript margin (js/notes.js) still uses its own createStickyNoteElement
- * for now (its never-mind/cache coupling is battle-tested); this is the shared
- * path for the NEW contexts.
+ * Every context — manuscript margin, scratchpad float, landing card — mounts
+ * THIS component, so a feature added here lands identically everywhere.
+ * Location differences are expressed as handlers/flags, never forks.
  *
- *   note      — { note_id, color, body, priority, flagged, tags:[{tag_id,tag_name}] }
+ *   note      — { note_id, color, body, priority, flagged, tags:[{tag_id,tag_name}],
+ *                 manuscript_id, manuscript_name }
  *   handlers  — { onSaveText(text), onColor(color), onPriority(p), onFlag(),
  *                 onDelete(), onComplete(), onAddTag(name), onRemoveTag(tagId),
+ *                 onLinkManuscript(id), onUnlinkManuscript(),
  *                 onFocus(), onBlur() }  (all optional)
  *   opts      — { collapsed:false, colors:[...], showComplete:true }
  *
@@ -23,6 +25,73 @@
 (function () {
   const COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
   const esc = (s) => String(s == null ? '' : s);
+
+  // Link glyph shown on the manuscript-link chip (matches the snippet linker).
+  const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
+
+  // The user's manuscripts, fetched once per page from /api/home (the same list
+  // the snippet linker and global search use). Cached; a failure resets so a
+  // later open retries. [{id, name}]
+  let manuscriptsPromise = null;
+  function listManuscripts() {
+    if (!manuscriptsPromise) {
+      manuscriptsPromise = fetch('api/home', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('home ' + r.status))))
+        .then((d) => (d.manuscripts || []).map((m) => ({ id: m.manuscript_id, name: m.display_name || m.name })));
+      manuscriptsPromise.catch(() => { manuscriptsPromise = null; });
+    }
+    return manuscriptsPromise;
+  }
+
+  // A small search-and-pick popover anchored to `anchorEl`. Calls onPick(id) with
+  // the chosen manuscript_id. Shared by every note's link chip (one picker, so
+  // the linking UX is identical in margin / float / landing).
+  function openManuscriptPicker(anchorEl, onPick) {
+    document.querySelectorAll('.note-linkpop').forEach((el) => el.remove());
+    const pop = document.createElement('div');
+    pop.className = 'note-linkpop';
+    pop.innerHTML =
+      '<input type="text" class="note-linkpop-q" placeholder="Search manuscripts…" autocomplete="off">' +
+      '<div class="note-linkpop-list"><span class="note-linkpop-empty">Loading…</span></div>';
+    document.body.appendChild(pop);
+    const r = anchorEl.getBoundingClientRect();
+    pop.style.position = 'absolute';
+    pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+    pop.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 240)) + 'px';
+
+    const close = () => { document.removeEventListener('mousedown', outside, true); pop.remove(); };
+    const outside = (e) => { if (!pop.contains(e.target)) close(); };
+    setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
+
+    const q = pop.querySelector('.note-linkpop-q');
+    const list = pop.querySelector('.note-linkpop-list');
+    q.focus();
+    listManuscripts().then((all) => {
+      if (!pop.isConnected) return;
+      const render = () => {
+        const needle = q.value.trim().toLowerCase();
+        const hits = all.filter((m) => m.name.toLowerCase().includes(needle));
+        list.innerHTML = hits.length
+          ? hits.map((m) => `<button type="button" data-mid="${m.id}"></button>`).join('')
+          : '<span class="note-linkpop-empty">No matches</span>';
+        // textContent (not innerHTML) for names — XSS-safe.
+        const btns = list.querySelectorAll('button[data-mid]');
+        hits.forEach((m, i) => { btns[i].textContent = m.name; });
+      };
+      render();
+      q.addEventListener('input', render);
+      q.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') close();
+        if (e.key === 'Enter') { const b = list.querySelector('button[data-mid]'); if (b) b.click(); }
+      });
+      list.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-mid]');
+        if (!b) return;
+        close();
+        onPick(parseInt(b.dataset.mid, 10));
+      });
+    }).catch(() => { list.innerHTML = '<span class="note-linkpop-empty">Could not load manuscripts</span>'; });
+  }
 
   function buildPalette(note, handlers) {
     const palette = document.createElement('div');
@@ -65,11 +134,15 @@
     return circle;
   }
 
-  function renderTags(noteEl, tags, handlers) {
+  // Renders the tag chips + the "+ tag" add chip + the manuscript-link chip
+  // (always last). Takes the whole `note` so the link chip can read
+  // manuscript_id / manuscript_name. handlers may carry onLinkManuscript /
+  // onUnlinkManuscript; without them the link chip is omitted.
+  function renderTags(noteEl, note, handlers) {
     const list = noteEl.querySelector('.tags-list');
     if (!list) return;
     list.innerHTML = '';
-    (tags || []).forEach((tag) => {
+    (note.tags || []).forEach((tag) => {
       const chip = document.createElement('div');
       chip.className = 'tag-chip';
       chip.dataset.tagId = tag.tag_id;
@@ -87,6 +160,55 @@
     add.className = 'tag-chip new-tag';
     add.textContent = '+ tag';
     list.appendChild(add);
+    appendManuscriptChip(noteEl, list, note, handlers);
+  }
+
+  // The manuscript-link chip — always the LAST chip, marked with the link glyph.
+  //   linked   → [🔗 The Wildfire ×]   (× unlinks)
+  //   unlinked → [🔗]                  (click opens the manuscript picker)
+  // Present in every view (it's built here), so linking a note to a manuscript
+  // works identically everywhere. Omitted only if the location doesn't wire the
+  // link handlers.
+  function appendManuscriptChip(noteEl, list, note, handlers) {
+    if (!handlers.onLinkManuscript && !handlers.onUnlinkManuscript) return;
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip manuscript-chip';
+    const icon = document.createElement('span');
+    icon.className = 'manuscript-chip-icon';
+    icon.innerHTML = LINK_SVG;
+    chip.appendChild(icon);
+
+    if (note.manuscript_id) {
+      chip.classList.add('linked');
+      const name = document.createElement('span');
+      name.className = 'manuscript-chip-name';
+      name.textContent = note.manuscript_name || 'Manuscript';
+      chip.appendChild(name);
+      const rm = document.createElement('span');
+      rm.className = 'manuscript-chip-remove';
+      rm.textContent = '×';
+      rm.title = 'Unlink from manuscript';
+      chip.appendChild(rm);
+      rm.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (handlers.onUnlinkManuscript) {
+          await handlers.onUnlinkManuscript();
+          renderTags(noteEl, note, handlers);
+        }
+      });
+    } else {
+      chip.classList.add('unlinked');
+      chip.title = 'Link to a manuscript';
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!handlers.onLinkManuscript) return;
+        openManuscriptPicker(chip, async (manuscriptId) => {
+          await handlers.onLinkManuscript(manuscriptId);
+          renderTags(noteEl, note, handlers);
+        });
+      });
+    }
+    list.appendChild(chip);
   }
 
   function updatePriorityFlagUI(noteEl, note) {
@@ -162,7 +284,7 @@
       </div>`;
 
     noteEl.appendChild(buildColorCircle(note, handlers));
-    renderTags(noteEl, note.tags, handlers);
+    renderTags(noteEl, note, handlers);
     updatePriorityFlagUI(noteEl, note);
 
     const ta = noteEl.querySelector('.note-input');
@@ -212,7 +334,7 @@
             // mutates note.tags, and the chips redraw here — no site has to
             // remember to re-render (that drift is how the float lost its live
             // chip update). note is captured in closure.
-            renderTags(noteEl, note.tags, handlers);
+            renderTags(noteEl, note, handlers);
           }
         } else if (e.target.classList.contains('new-tag') || e.target.closest('.new-tag')) {
           startTagInput(noteEl, note, handlers);
@@ -258,7 +380,7 @@
       editable.remove();
       if (name && handlers.onAddTag) {
         await handlers.onAddTag(name);
-        renderTags(noteEl, note.tags, handlers);
+        renderTags(noteEl, note, handlers);
       }
     };
     const cancel = () => { if (done) return; done = true; editable.remove(); };

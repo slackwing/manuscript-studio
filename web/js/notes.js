@@ -316,6 +316,11 @@ const WriteSysNotes = {
       onComplete: () => this.completeNote(note.note_id),
       onAddTag: (name) => this.addTagByName(note, noteEl, name),
       onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
+      // No manuscript-link chip in the margin: a sentence note is already, by
+      // definition, part of this manuscript. The chip exists for sentence-less
+      // notes (scratchpad / free) that need a manuscript association to be
+      // browsable. Omitting the link handlers omits the chip here (flag-style
+      // location differentiation, per the unified-component design).
     }, {});
     noteEl.dataset.annotationId = note.note_id;
     return noteEl;

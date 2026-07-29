@@ -90,6 +90,17 @@
       });
       return jsonOrThrow(resp);
     },
+
+    // Link (manuscriptId != 0) or unlink (0) a note to a manuscript. Returns
+    // { manuscript_id, manuscript_name }.
+    async linkManuscript(noteId, manuscriptId) {
+      const resp = await authFetch(`${BASE}/${noteId}/manuscript`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        body: JSON.stringify({ manuscript_id: manuscriptId }),
+      });
+      return jsonOrThrow(resp);
+    },
   };
 
   if (typeof window !== 'undefined') window.WriteSysNoteAPI = WriteSysNoteAPI;

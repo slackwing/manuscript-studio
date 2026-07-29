@@ -929,7 +929,7 @@ async function ensureNoteCached(noteId) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [] };
+      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '' };
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -1089,7 +1089,10 @@ function closeNoteFloat() {
 }
 function onFloatOutside(e) {
   if (openNoteFloat && !openNoteFloat.contains(e.target)
-      && !(e.target.closest && e.target.closest('.sn-note-ref'))) {
+      && !(e.target.closest && e.target.closest('.sn-note-ref'))
+      // The manuscript picker is a body-level popover that logically belongs to
+      // the float — clicking in it must not close the float.
+      && !(e.target.closest && e.target.closest('.note-linkpop'))) {
     closeNoteFloat();
   }
 }
@@ -1106,6 +1109,7 @@ async function openNoteFloatFor(noteId, anchorEl) {
     noteId, note_id: noteId,
     color: cached.color, body: cached.body,
     priority: cached.priority || 'none', flagged: !!cached.flagged, tags: cached.tags || [],
+    manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
   };
   if (openNoteFloat) return; // a newer open superseded us while fetching
   const float = document.createElement('div');
@@ -1121,9 +1125,11 @@ async function openNoteFloatFor(noteId, anchorEl) {
     onFlag: () => { note.flagged = !note.flagged; cached.flagged = note.flagged; api.update(noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
     onDelete: () => { deleteNoteViaDoc(noteId); },
     onComplete: () => { api.complete(noteId); removeNoteRefNoDelete(noteId); closeNoteFloat(); },
-    // Handlers just mutate note.tags; the shared widget re-renders the chips.
+    // Handlers just mutate note.*; the shared widget re-renders the chips.
     onAddTag: async (name) => { try { const r = await api.addTag(noteId, name); note.tags = (r && r.tags) || note.tags; cached.tags = note.tags; } catch (e) {} },
     onRemoveTag: async (tagId) => { try { await api.removeTag(noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); cached.tags = note.tags; } catch (e) {} },
+    onLinkManuscript: async (mid) => { try { const r = await api.linkManuscript(noteId, mid); note.manuscript_id = r.manuscript_id || null; note.manuscript_name = r.manuscript_name || ''; } catch (e) {} },
+    onUnlinkManuscript: async () => { try { await api.linkManuscript(noteId, 0); note.manuscript_id = null; note.manuscript_name = ''; } catch (e) {} },
   }, {});
   float.appendChild(widget);
   document.body.appendChild(float);

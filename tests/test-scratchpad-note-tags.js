@@ -48,10 +48,10 @@ function psql(sql) {
   await page.locator('.sn-note-float .tag-input').fill('sctag');
   await page.keyboard.press('Enter');
   // Wait for the chip to render (add → API round-trip → shared renderTags).
-  await float.locator('.tag-chip:not(.new-tag)').first().waitFor({ timeout: 4000 }).catch(() => {});
+  await float.locator('.tag-chip[data-tag-id]').first().waitFor({ timeout: 4000 }).catch(() => {});
 
   // Chip shows in the UI.
-  const chipText = await float.locator('.tag-chip:not(.new-tag)').first().textContent().catch(() => '');
+  const chipText = await float.locator('.tag-chip[data-tag-id]').first().textContent().catch(() => '');
   check('tag chip appears on the scratchpad note', /sctag/.test(chipText), chipText);
 
   // It PERSISTED in the DB (the actual bug: this used to 500).
@@ -79,11 +79,11 @@ function psql(sql) {
   await page.waitForTimeout(400);
   await page.locator('.sn-note-ref-sq').first().click();
   await page.waitForTimeout(700);
-  const reChip = await page.locator('.sn-note-float .tag-chip:not(.new-tag)').first().textContent().catch(() => '');
+  const reChip = await page.locator('.sn-note-float .tag-chip[data-tag-id]').first().textContent().catch(() => '');
   check('tag survives reload/reopen', /sctag/.test(reChip), reChip);
 
   // Remove the tag via the chip × → gone from DB.
-  await page.locator('.sn-note-float .tag-chip:not(.new-tag) .tag-chip-remove').first().click();
+  await page.locator('.sn-note-float .tag-chip[data-tag-id] .tag-chip-remove').first().click();
   await page.waitForTimeout(500);
   const afterRm = psql(`SELECT count(*) FROM note_tag WHERE note_id=${noteId}`).trim();
   check('tag removed from note', afterRm === '0', `note_tag count=${afterRm}`);

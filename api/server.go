@@ -261,6 +261,7 @@ func (s *Server) setupRouter() {
 			r.Post("/notes", s.noteHandlers.HandleCreateNote)
 			r.Put("/notes/{note_id}", s.noteHandlers.HandleUpdateNote)
 			r.Put("/notes/{note_id}/reorder", s.noteHandlers.HandleReorderNote)
+			r.Put("/notes/{note_id}/manuscript", s.noteHandlers.HandleLinkNoteManuscript)
 			r.Delete("/notes/{note_id}", s.noteHandlers.HandleDeleteNote)
 			r.Post("/notes/{note_id}/complete", s.noteHandlers.HandleCompleteNote)
 

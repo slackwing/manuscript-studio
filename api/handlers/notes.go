@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -92,11 +93,30 @@ func (h *NoteHandlers) HandleGetNotesByCommit(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Failed to get notes", http.StatusInternalServerError)
 		return
 	}
+	h.fillManuscriptNames(ctx, notes)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"notes": notes,
 	})
+}
+
+// fillManuscriptNames resolves the manuscript label for a slice of notes,
+// caching per manuscript_id so a page of same-manuscript notes hits config once.
+func (h *NoteHandlers) fillManuscriptNames(ctx context.Context, notes []models.Note) {
+	cache := map[int]string{}
+	for i := range notes {
+		if notes[i].ManuscriptID == nil {
+			continue
+		}
+		mid := *notes[i].ManuscriptID
+		name, ok := cache[mid]
+		if !ok {
+			name = manuscriptDisplayName(ctx, h.DB, h.Config, mid)
+			cache[mid] = name
+		}
+		notes[i].ManuscriptName = name
+	}
 }
 
 func (h *NoteHandlers) HandleGetNotesBySentence(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +138,7 @@ func (h *NoteHandlers) HandleGetNotesBySentence(w http.ResponseWriter, r *http.R
 		http.Error(w, "Failed to get notes", http.StatusInternalServerError)
 		return
 	}
+	h.fillManuscriptNames(ctx, notes)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -147,8 +168,77 @@ func (h *NoteHandlers) HandleGetNoteByID(w http.ResponseWriter, r *http.Request)
 	if tags, err := h.DB.GetTagsForNote(ctx, noteID); err == nil {
 		note.Tags = tags
 	}
+	h.fillManuscriptName(ctx, note)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(note)
+}
+
+// fillManuscriptName resolves a linked note's manuscript label from config (the
+// single source of truth), so the note chip shows a name in every view without
+// a denormalized column that could drift.
+func (h *NoteHandlers) fillManuscriptName(ctx context.Context, note *models.Note) {
+	if note == nil || note.ManuscriptID == nil {
+		return
+	}
+	note.ManuscriptName = manuscriptDisplayName(ctx, h.DB, h.Config, *note.ManuscriptID)
+}
+
+// HandleLinkNoteManuscript links (manuscript_id != 0) or unlinks (0) a note to a
+// manuscript. This is what puts a note into "all my Wildfire notes" — the note
+// chip in every view calls it. Mirrors the snippet linker: user must own the
+// note and have access to the target manuscript.
+func (h *NoteHandlers) HandleLinkNoteManuscript(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		ManuscriptID int `json:"manuscript_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	note := h.requireOwnedNote(w, r, noteID, session.Username)
+	if note == nil {
+		return
+	}
+
+	var manuscriptID *int
+	if req.ManuscriptID != 0 {
+		// Linking: the user must have access to the target manuscript.
+		if !requireManuscriptAccess(w, r, h.DB, h.Config, req.ManuscriptID) {
+			return
+		}
+		mid := req.ManuscriptID
+		manuscriptID = &mid
+	}
+
+	if err := h.DB.SetNoteManuscript(ctx, noteID, manuscriptID); err != nil {
+		log.Printf("notes: link %d → manuscript %v: %v", noteID, manuscriptID, err)
+		http.Error(w, "Failed to link note", http.StatusInternalServerError)
+		return
+	}
+
+	note.ManuscriptID = manuscriptID
+	h.fillManuscriptName(ctx, note)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"manuscript_id":   req.ManuscriptID,
+		"manuscript_name": note.ManuscriptName,
+	})
 }
 
 func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) {
