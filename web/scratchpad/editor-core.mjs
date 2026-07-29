@@ -124,16 +124,59 @@ const withTables = withLists.append(tableNodes({
 }));
 export const schema = new Schema({ nodes: withTables, marks: base.spec.marks });
 
-// Drop nodes this schema no longer understands: pre-variations snippet
-// nodes ("book_content", or "snippet" with text-in-attrs and no
-// variationId). The author deleted all snippets before the rearchitecture;
-// this is a belt-and-suspenders guard so a stray legacy doc still opens.
+// Bring a stored doc up to the current schema so it always opens:
+//  - drop pre-variations snippet nodes ("book_content", or "snippet" without a
+//    positive variationId).
+//  - CONVERT the pre-atomic note representation (a `noteAnchor` inline node +
+//    a `noteHighlight` mark on the following text, both tagged with noteId)
+//    into the current atomic `noteRef {noteId, text}` node. Without this, a doc
+//    saved by the old build throws "Unknown node type: noteAnchor" on load.
 function modernizeDoc(json) {
+  // Rewrite one inline-content array: fold legacy anchor + highlighted text into
+  // a single noteRef; strip any orphan noteHighlight mark.
+  const convertInline = (content) => {
+    if (!Array.isArray(content)) return content;
+    const out = [];
+    for (let i = 0; i < content.length; i++) {
+      const node = content[i];
+      if (node && node.type === 'noteAnchor') {
+        const noteId = (node.attrs && node.attrs.noteId) || 0;
+        // Gather the run of following text nodes carrying this note's highlight.
+        let text = '';
+        while (i + 1 < content.length) {
+          const nxt = content[i + 1];
+          const hl = nxt && nxt.type === 'text' && (nxt.marks || []).find(
+            m => m.type === 'noteHighlight' && (m.attrs && m.attrs.noteId) === noteId);
+          if (!hl) break;
+          text += nxt.text || '';
+          i++;
+        }
+        if (noteId > 0) out.push({ type: 'noteRef', attrs: { noteId, text } });
+        else if (text) out.push({ type: 'text', text }); // no id → just keep the text
+        continue;
+      }
+      // A stray text node with a noteHighlight mark but no anchor: drop the mark.
+      if (node && node.type === 'text' && Array.isArray(node.marks)) {
+        const marks = node.marks.filter(m => m.type !== 'noteHighlight');
+        out.push(marks.length ? { ...node, marks } : { ...node, marks: undefined });
+        continue;
+      }
+      out.push(node);
+    }
+    return out;
+  };
+
   const clean = (n) => {
     if (!n || typeof n !== 'object') return null;
     if (n.type === 'book_content') return null;
     if (n.type === 'snippet' && !(n.attrs && n.attrs.variationId > 0)) return null;
     if (Array.isArray(n.content)) {
+      // Convert legacy note representation within this node's inline content
+      // first, then recurse into children.
+      if (n.content.some(c => c && (c.type === 'noteAnchor'
+          || (c.type === 'text' && (c.marks || []).some(m => m.type === 'noteHighlight'))))) {
+        n.content = convertInline(n.content);
+      }
       n.content = n.content.map(clean).filter(Boolean);
     }
     return n;
