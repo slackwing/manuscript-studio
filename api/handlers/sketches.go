@@ -105,9 +105,36 @@ func (h *SketchHandlers) HandleCreateSnippet(w http.ResponseWriter, r *http.Requ
 		writeSketchError(w, err)
 		return
 	}
+	// Live default: a snippet created in a manuscript-linked scratchpad inherits
+	// the manuscript, mirroring notes (Phase C). Only NEW snippets; a "sketch"
+	// sibling reuses an existing snippet, so it already carries the group's link.
+	if req.Mode == "new" || req.Mode == "" {
+		h.inheritScratchpadManuscript(r, session.Username, req.ScratchpadID, ctxOut)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(ctxOut)
+}
+
+// inheritScratchpadManuscript links a just-created snippet to its scratchpad's
+// linked manuscript (if any), so it's browsable without hand-linking — the same
+// live-default behavior notes have. Best-effort: a failure leaves the snippet
+// unlinked rather than failing the create. Updates ctxOut so the response (and
+// thus the just-mounted widget) shows the link immediately.
+func (h *SketchHandlers) inheritScratchpadManuscript(r *http.Request, username string, scratchpadID int, ctxOut *database.SketchContext) {
+	if scratchpadID <= 0 || ctxOut == nil {
+		return
+	}
+	mid, err := h.DB.GetScratchpadLinkedManuscript(r.Context(), scratchpadID)
+	if err != nil || mid == nil {
+		return
+	}
+	name := manuscriptDisplayName(r.Context(), h.DB, h.Config, *mid)
+	if err := h.DB.LinkSnippet(r.Context(), username, ctxOut.Snippet.SnippetID, *mid, name); err != nil {
+		return
+	}
+	ctxOut.Snippet.LinkedManuscriptID = *mid
+	ctxOut.Snippet.LinkedManuscriptName = name
 }
 
 // HandleListSketches: GET /api/sketches?q=… — the Based-on picker (lettered

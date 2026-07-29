@@ -91,6 +91,16 @@ async function makeNote(page, text) {
     !!card && / · /.test(card.context) && card.context.includes(pickedName.trim()),
     card && card.context);
 
+  // (3c) A snippet created in the linked pad also inherits the manuscript and
+  //      shows its link chip immediately (parity with notes).
+  const snipCtx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  await page.waitForTimeout(1000);
+  const snippetId = snipCtx && snipCtx.snippet && snipCtx.snippet.snippet_id;
+  const snipLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM snippet WHERE snippet_id='${snippetId}'`).trim();
+  check('snippet in a linked pad INHERITS the manuscript', /^[0-9]+$/.test(snipLink), `linked=${snipLink}`);
+  const snipChip = await page.locator('.sn-widget .sn-linkchip .sn-linkname').first().textContent().catch(() => '');
+  check('snippet shows its manuscript link chip immediately', (snipChip || '').trim() === pickedName.trim(), `chip="${snipChip}"`);
+
   // The earlier note is still untouched (not retroactively linked).
   const preMid2 = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${preNote}`).trim();
   check('pre-link note STILL has no manuscript (not retroactive)', preMid2 === 'null', `manuscript_id=${preMid2}`);
