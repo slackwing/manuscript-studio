@@ -49,7 +49,19 @@
     circle.className = 'sticky-note-color-circle';
     if (!note.color) circle.classList.add('rainbow');
     else circle.classList.add(`color-${note.color}`);
-    circle.appendChild(buildPalette(note, handlers));
+    const palette = buildPalette(note, handlers);
+    circle.appendChild(palette);
+    // Hover reveals the palette (via the .visible class the CSS keys on). The
+    // 200ms hide delay lets the cursor travel from the circle to the palette.
+    // (This logic used to live only in the manuscript's js/notes.js — porting it
+    // here is what makes the color picker work in EVERY context.)
+    let hideTimer;
+    const show = () => { clearTimeout(hideTimer); palette.classList.add('visible'); };
+    const hideSoon = () => { hideTimer = setTimeout(() => palette.classList.remove('visible'), 200); };
+    circle.addEventListener('mouseenter', show);
+    circle.addEventListener('mouseleave', hideSoon);
+    palette.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    palette.addEventListener('mouseleave', hideSoon);
     return circle;
   }
 
@@ -158,29 +170,40 @@
     autoResize(ta);
 
     // --- events wired to injected handlers ---
+    // onCommit fires on any REAL interaction (blur, priority, flag, tag) — the
+    // manuscript margin uses it to "commit" a just-auto-created note out of its
+    // never-mind window. onInput fires on every keystroke (margin's never-mind
+    // consults it to delete an emptied, uncommitted note). Both are optional so
+    // the scratchpad float simply doesn't pass them.
+    const commit = () => handlers.onCommit && handlers.onCommit();
     let saveTimer;
     ta.addEventListener('focus', () => handlers.onFocus && handlers.onFocus());
     ta.addEventListener('blur', () => handlers.onBlur && handlers.onBlur());
     ta.addEventListener('input', () => {
       autoResize(ta);
+      // Let the owner intercept (never-mind may delete an emptied note); if it
+      // returns true it handled this input and we skip the debounced save.
+      if (handlers.onInput && handlers.onInput(ta.value) === true) { clearTimeout(saveTimer); return; }
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => handlers.onSaveText && handlers.onSaveText(ta.value), 1000);
     });
     ta.addEventListener('blur', () => {
+      commit();
       clearTimeout(saveTimer);
       const normalized = ta.value.trim() || null;
       if (normalized !== (note.body || null)) handlers.onSaveText && handlers.onSaveText(ta.value);
     });
 
     noteEl.querySelectorAll('.priority-chip').forEach((chip) => {
-      chip.addEventListener('click', () => handlers.onPriority && handlers.onPriority(chip.dataset.priority));
+      chip.addEventListener('click', () => { commit(); handlers.onPriority && handlers.onPriority(chip.dataset.priority); });
     });
     const flag = noteEl.querySelector('.flag-chip');
-    if (flag) flag.addEventListener('click', () => handlers.onFlag && handlers.onFlag());
+    if (flag) flag.addEventListener('click', () => { commit(); handlers.onFlag && handlers.onFlag(); });
 
     const tagsList = noteEl.querySelector('.tags-list');
     if (tagsList) {
       tagsList.addEventListener('click', (e) => {
+        commit();
         if (e.target.classList.contains('tag-chip-remove')) {
           const chip = e.target.closest('.tag-chip');
           handlers.onRemoveTag && handlers.onRemoveTag(parseInt(chip.dataset.tagId, 10), chip.dataset.tagName);

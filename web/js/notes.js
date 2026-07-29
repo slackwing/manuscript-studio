@@ -275,64 +275,49 @@ const WriteSysNotes = {
     return btn;
   },
 
+  // The manuscript margin now renders notes through the SHARED note-widget
+  // (web/notes/note-widget.js) — the SAME component the scratchpad float and
+  // landing cards use — so every note feature is delivered identically
+  // everywhere. Margin-specific behavior (never-mind, focus tint, the cache +
+  // rainbow-bar coupling) is wired via handlers/flags, not a forked component.
   createStickyNoteElement(note) {
-    const noteEl = document.createElement('div');
-    noteEl.className = 'sticky-note';
+    let saveTimeout;
+    const W = window.WriteSysNoteWidget;
+    const noteEl = W.buildNoteElement(note, {
+      // Focus/blur tint the sentence in the note's color.
+      onFocus: () => this.applyFocusHighlight(note.sentence_id, note.color),
+      onBlur: () => this.clearFocusHighlight(note.sentence_id),
+      // Never-mind: emptying a just-auto-created, uncommitted note deletes it.
+      // Returning true tells the widget we handled this input (skip its save).
+      onInput: (value) => {
+        if (this.neverMindState.noteId === note.note_id &&
+            !this.neverMindState.isCommitted &&
+            value.trim().length === 0) {
+          clearTimeout(saveTimeout);
+          this.neverMindState.noteId = null;
+          this.neverMindState.isCommitted = false;
+          // deleteNote re-renders the panel; refocus the grey note AFTER that,
+          // or the focus lands on a DOM node that's about to be replaced.
+          this.deleteNote(note.note_id).then(() => {
+            const fresh = document.querySelector('.sticky-note.uncreated-note.first-uncreated .note-input');
+            if (fresh) fresh.focus();
+          });
+          return true;
+        }
+        return false;
+      },
+      // Any real interaction commits the note out of the never-mind window.
+      onCommit: () => this.commitPendingNote(note.note_id),
+      onSaveText: (text) => this.saveNoteText(note.note_id, text),
+      onColor: (color) => this.handleColorSelectionForNote(note.note_id, color),
+      onPriority: (p) => this.handlePriorityClick(note, p, noteEl),
+      onFlag: () => this.handleFlagClick(note, noteEl),
+      onDelete: () => this.deleteNote(note.note_id),
+      onComplete: () => this.completeNote(note.note_id),
+      onAddTag: (name) => this.addTagByName(note, noteEl, name),
+      onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
+    }, {});
     noteEl.dataset.annotationId = note.note_id;
-
-    if (note.color) {
-      noteEl.classList.add(`color-${note.color}`);
-    }
-
-    // Note text always goes via .value, never innerHTML — stored-XSS defense.
-    // See test-xss-annotation.js.
-    noteEl.innerHTML = `
-      <div class="note-container">
-        <textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>
-      </div>
-      <div class="sticky-bottom-controls">
-        <div class="tags-container">
-          <div class="tags-list"></div>
-        </div>
-      </div>
-      <div class="priority-flag-container" style="display: ${note.color ? 'flex' : 'none'}">
-        <div class="priority-flag-chips">
-          <div class="priority-chip" data-priority="P0">P0</div>
-          <div class="priority-chip" data-priority="P1">P1</div>
-          <div class="priority-chip" data-priority="P2">P2</div>
-          <div class="flag-chip" data-flag="true" title="Flag">
-            <svg width="14" height="14" viewBox="0 0 20 20" class="flag-icon">
-              <path class="flag-staff" d="M4 1v18"/>
-              <path class="flag-shape" d="M4 3h10l-2.5 5 2.5 5H4"/>
-            </svg>
-          </div>
-          <div class="note-trash" title="Delete note">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6"
-                    stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="complete-check" title="Mark complete">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M4 10l4 4 8-8"
-                    stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const colorCircle = this.createColorCircleElement(note);
-    noteEl.appendChild(colorCircle);
-
-    this.setupNoteEventListeners(noteEl, note);
-    this.renderTagsForNote(noteEl, note.tags || []);
-    this.updatePriorityFlagUIForNote(noteEl, note);
-
-    const textarea = noteEl.querySelector('.note-input');
-    textarea.value = note.body || '';
-    this.autoResizeTextarea(textarea);
-
     return noteEl;
   },
 
@@ -1087,6 +1072,32 @@ const WriteSysNotes = {
     newTagChip.className = 'tag-chip new-tag';
     newTagChip.textContent = '+ tag';
     tagsList.appendChild(newTagChip);
+  },
+
+  // POST a tag (already-validated name) and re-render. Called by the shared
+  // widget's inline tag input via onAddTag. (The old addNewTag below built its
+  // own inline input; the widget now provides that, so only the POST remains
+  // here — kept as addNewTag too for any direct callers.)
+  async addTagByName(note, noteEl, tagName) {
+    if (!tagName) return;
+    try {
+      const migrationId = window.WriteSysRenderer?.currentMigrationID;
+      if (!migrationId) throw new Error('Migration ID not available');
+      const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${note.note_id}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag_name: tagName, migration_id: migrationId }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      note.tags = data.tags;
+      window.WriteSysNoteWidget.renderTags(noteEl, data.tags, {
+        onAddTag: (name) => this.addTagByName(note, noteEl, name),
+      });
+    } catch (error) {
+      console.error('Failed to add tag:', error);
+      alert(`Failed to add tag: ${error.message}`);
+    }
   },
 
   async addNewTag(note, noteEl) {

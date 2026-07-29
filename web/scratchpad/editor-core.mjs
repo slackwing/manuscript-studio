@@ -882,6 +882,21 @@ const NOTE_COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
 // note helpers can read/edit the doc.
 let activeView = null;
 
+// Preserve the scratchpad's scroll position across an action that might re-anchor
+// it (opening the note float focuses/mutates the DOM). Snapshots .spm-editor's
+// scrollTop, runs fn, restores it now and once more after layout settles. Same
+// root-cause fix as the snippet widget's preserveScroll.
+function preserveScratchpadScroll(fn) {
+  const host = activeView && activeView.dom.closest('.spm-editor');
+  if (!host) return fn();
+  const top = host.scrollTop;
+  const r = fn();
+  const restore = () => { if (host.scrollTop !== top) host.scrollTop = top; };
+  restore();
+  requestAnimationFrame(restore);
+  return r;
+}
+
 // ---- Client note cache -----------------------------------------------------
 // The doc stores only note_id + text; the COLOR (and body/tags/priority/flag)
 // live on the note row. This cache holds the note data so the NoteRefView can
@@ -1024,7 +1039,9 @@ class NoteRefView {
     }
     this.dom.querySelector('.sn-note-ref-sq').addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      openNoteFloatFor(this.noteId, this.dom);
+      // Preserve the scratchpad scroll position: opening the float (focus/async
+      // fetch) can otherwise re-anchor the editor scroll and jump to the top.
+      preserveScratchpadScroll(() => openNoteFloatFor(this.noteId, this.dom));
     });
     // Two-click confirm on the trash.
     const trash = this.dom.querySelector('.sn-note-ref-trash');
@@ -1103,6 +1120,11 @@ async function openNoteFloatFor(noteId, anchorEl) {
   float.style.position = 'absolute';
   float.style.top = (window.scrollY + r.bottom + 6) + 'px';
   float.style.left = (window.scrollX + r.left) + 'px';
+  // buildNoteElement auto-sized the textarea while it was still DETACHED (so
+  // scrollHeight was 0 and it clipped to min-height) — re-size now that it's in
+  // the DOM so the full body shows (matches the manuscript margin).
+  const ta = float.querySelector('.note-input');
+  if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
   setTimeout(() => document.addEventListener('mousedown', onFloatOutside, true), 0);
 }
 
