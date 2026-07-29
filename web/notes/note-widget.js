@@ -391,6 +391,6 @@
     input.addEventListener('blur', commit);
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, renderTags, updatePriorityFlagUI, COLORS };
+  const WriteSysNoteWidget = { buildNoteElement, renderTags, updatePriorityFlagUI, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

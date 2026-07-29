@@ -11,7 +11,7 @@ function ensureCSS() {
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=27';
+  link.href = 'scratchpad/scratchpad.css?v=28';
   document.head.appendChild(link);
 }
 
@@ -48,6 +48,7 @@ export const ScratchpadModal = {
         <div class="spm-header">
           <input id="spm-title" class="spm-title" type="text" placeholder="Untitled" autocomplete="off">
           <span id="spm-status" class="spm-status">Saved</span>
+          <span id="spm-link" class="spm-link" tabindex="0" role="button"></span>
           <button type="button" id="spm-expand" title="Expand">⤢</button>
           <button type="button" id="spm-close" title="Close (Esc)">×</button>
         </div>
@@ -98,6 +99,7 @@ export const ScratchpadModal = {
       headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
     }).catch(() => {});
     window.WriteSysScratchpad = this.editor; // test / power-user hook
+    this.setupManuscriptLink(scratchpadId);
     window.dispatchEvent(new CustomEvent('scratchpad-modal-opened', { detail: { scratchpadId } }));
 
     // Deep link: #scratchpad=N&snippet=ID&sketch=ORDINAL scrolls to that
@@ -107,6 +109,69 @@ export const ScratchpadModal = {
 
     // Deep link from the landing Notes grid: scroll to the note's inline anchor.
     if (opts.noteId) this.scrollToNoteAnchor(opts.noteId);
+  },
+
+  // The scratchpad's manuscript-link control in the header. Linking the pad
+  // makes NEW notes/snippets in it inherit the manuscript by default (live
+  // default, not retroactive). Reuses the shared note-widget manuscript picker.
+  async setupManuscriptLink(scratchpadId) {
+    const el = this.overlay && this.overlay.querySelector('#spm-link');
+    if (!el || !window.WriteSysNoteWidget) return;
+    let linkedId = null, linkedName = '';
+    try {
+      const r = await fetch(`api/scratchpads/${scratchpadId}`, { credentials: 'same-origin' });
+      if (r.ok) {
+        const d = await r.json();
+        linkedId = (d.scratchpad && d.scratchpad.linked_manuscript_id) || null;
+        linkedName = (d.scratchpad && d.scratchpad.linked_manuscript_name) || '';
+      }
+    } catch (e) { /* leave unlinked */ }
+
+    const HINT = 'Link scratchpad to manuscript. Causes all NEW elements (snippets, notes, etc.) in the scratchpad to be linked to the manuscript by default.';
+    const csrf = () => sessionStorage.getItem('csrf_token') || '';
+    const put = async (mid) => {
+      const r = await fetch(`api/scratchpads/${scratchpadId}/link`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        body: JSON.stringify({ manuscript_id: mid }),
+      });
+      return r.ok ? r.json() : Promise.reject(new Error('link ' + r.status));
+    };
+
+    const render = () => {
+      el.innerHTML = '';
+      const icon = document.createElement('span');
+      icon.className = 'spm-link-icon';
+      icon.innerHTML = window.WriteSysNoteWidget.LINK_SVG;
+      el.appendChild(icon);
+      if (linkedId) {
+        el.classList.add('linked');
+        el.title = 'Linked to ' + linkedName + ' — new elements inherit it. Click × to unlink.';
+        const name = document.createElement('span');
+        name.className = 'spm-link-name';
+        name.textContent = linkedName || 'Manuscript';
+        el.appendChild(name);
+        const rm = document.createElement('span');
+        rm.className = 'spm-link-remove';
+        rm.textContent = '×';
+        rm.title = 'Unlink scratchpad';
+        el.appendChild(rm);
+        rm.onclick = async (e) => {
+          e.stopPropagation();
+          try { await put(0); linkedId = null; linkedName = ''; render(); } catch (err) {}
+        };
+        el.onclick = null;
+      } else {
+        el.classList.remove('linked');
+        el.title = HINT;
+        el.onclick = () => {
+          window.WriteSysNoteWidget.openManuscriptPicker(el, async (mid) => {
+            try { const d = await put(mid); linkedId = d.linked_manuscript_id || null; linkedName = d.linked_manuscript_name || ''; render(); } catch (err) {}
+          });
+        };
+      }
+    };
+    render();
   },
 
   // Scroll to a note's inline anchor square and flash it.

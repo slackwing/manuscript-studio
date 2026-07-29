@@ -118,8 +118,64 @@ func (h *ScratchpadHandlers) HandleGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	h.fillLinkedManuscriptName(r, s)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"scratchpad": s})
+}
+
+// fillLinkedManuscriptName resolves the pad's linked-manuscript label from
+// config at response time (single source of truth; no stored name to drift).
+func (h *ScratchpadHandlers) fillLinkedManuscriptName(r *http.Request, s *models.Scratchpad) {
+	if s == nil || s.LinkedManuscriptID == nil {
+		return
+	}
+	s.LinkedManuscriptName = manuscriptDisplayName(r.Context(), h.DB, h.Config, *s.LinkedManuscriptID)
+}
+
+// HandleLinkScratchpad sets (manuscript_id != 0) or clears (0) a scratchpad's
+// manuscript default. New notes/snippets created in the pad afterward inherit
+// it (live default, not retroactive). Mirrors the note/snippet linkers: owns
+// the pad + has access to the target manuscript.
+func (h *ScratchpadHandlers) HandleLinkScratchpad(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok || !h.requireCSRF(w, r) {
+		return
+	}
+	s, ok := h.requireOwnedScratchpad(w, r, session.Username)
+	if !ok {
+		return
+	}
+	var req struct {
+		ManuscriptID int `json:"manuscript_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	var manuscriptID *int
+	if req.ManuscriptID != 0 {
+		if !requireManuscriptAccess(w, r, h.DB, h.Config, req.ManuscriptID) {
+			return
+		}
+		mid := req.ManuscriptID
+		manuscriptID = &mid
+	}
+
+	if err := h.DB.LinkScratchpad(r.Context(), s.ScratchpadID, manuscriptID); err != nil {
+		http.Error(w, "Failed to link scratchpad", http.StatusInternalServerError)
+		return
+	}
+
+	name := ""
+	if manuscriptID != nil {
+		name = manuscriptDisplayName(r.Context(), h.DB, h.Config, *manuscriptID)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"linked_manuscript_id":   req.ManuscriptID,
+		"linked_manuscript_name": name,
+	})
 }
 
 func (h *ScratchpadHandlers) HandleUpdate(w http.ResponseWriter, r *http.Request) {

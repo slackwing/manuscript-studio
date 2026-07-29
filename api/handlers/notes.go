@@ -283,6 +283,10 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 			Body:     req.Body,
 			Priority: priority,
 			Flagged:  req.Flagged,
+			// Live default: a note created in a manuscript-linked pad inherits the
+			// manuscript (Phase C), so it's browsable without hand-linking. Not
+			// retroactive — only affects notes created while the pad is linked.
+			ManuscriptID: s.LinkedManuscriptID,
 		}
 		if err := h.DB.CreateScratchpadNote(ctx, note, *req.ScratchpadID); err != nil {
 			log.Printf("notes: create on scratchpad %d: %v", *req.ScratchpadID, err)

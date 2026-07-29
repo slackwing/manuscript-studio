@@ -49,6 +49,34 @@
   padding: 2px 4px;
 }
 .spm-status { font: 11px "Helvetica", sans-serif; color: #8a8378; }
+
+/* Scratchpad → manuscript link control (Phase C). Unlinked: just the glyph
+   (click to pick). Linked: glyph + name + × (unlink). */
+.spm-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: #9cc3e6;
+  font: 11px "Helvetica", sans-serif;
+  padding: 3px 7px;
+  border-radius: 12px;
+  border: 1px dashed transparent;
+}
+.spm-link:hover { color: #2a6fb0; border-color: #9cc3e6; }
+.spm-link.linked {
+  color: #2a6fb0;
+  background: #dcebfa;
+  border-color: transparent;
+  cursor: default;
+}
+.spm-link.linked:hover { background: #cfe3f6; }
+.spm-link-icon { display: inline-flex; align-items: center; }
+.spm-link-icon svg { display: block; }
+.spm-link-name { line-height: 1; }
+.spm-link-remove { cursor: pointer; font-weight: bold; font-size: 13px; line-height: 1; color: #5a8fbf; padding: 0 1px; }
+.spm-link-remove:hover { color: #b33b3a; }
+
 .spm-header button {
   border: none;
   background: none;

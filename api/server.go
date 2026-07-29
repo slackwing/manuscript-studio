@@ -234,6 +234,7 @@ func (s *Server) setupRouter() {
 			r.Post("/scratchpads", s.scratchpadHandlers.HandleCreate)
 			r.Get("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleGet)
 			r.Put("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleUpdate)
+			r.Put("/scratchpads/{scratchpad_id}/link", s.scratchpadHandlers.HandleLinkScratchpad)
 			r.Delete("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleDelete)
 			r.Post("/scratchpads/{scratchpad_id}/opened", s.scratchpadHandlers.HandleOpened)
 			// Snippets/sketches (VARIATIONS_PLAN.md): content lives in

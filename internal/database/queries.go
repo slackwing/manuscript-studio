@@ -976,7 +976,8 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 // Phase 2). Unlike CreateNote it has NO sentence: no fractional position scoped
 // to a sentence, and NO note_version row (versioning/history is a manuscript
 // migration concept; note_version requires a sentence, and scratchpad notes
-// never migrate). Sets scratchpad_id; sentence_id/manuscript_id stay NULL.
+// never migrate). Sets scratchpad_id; sentence_id stays NULL. manuscript_id is
+// set only if note.ManuscriptID is non-nil (inherited from a linked pad).
 func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scratchpadID int) error {
 	// Position is per-context; scratchpad notes rarely need cross-note ordering,
 	// but keep the column populated (append after the max in this scratchpad).
@@ -992,11 +993,11 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 	}
 
 	err = db.Pool.QueryRow(ctx, `
-		INSERT INTO note (user_id, color, body, priority, flagged, position, scratchpad_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO note (user_id, color, body, priority, flagged, position, scratchpad_id, manuscript_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING note_id, created_at, updated_at
 	`,
-		note.UserID, note.Color, note.Body, note.Priority, note.Flagged, nextPosition, scratchpadID,
+		note.UserID, note.Color, note.Body, note.Priority, note.Flagged, nextPosition, scratchpadID, note.ManuscriptID,
 	).Scan(&note.NoteID, &note.CreatedAt, &note.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create scratchpad note: %w", err)

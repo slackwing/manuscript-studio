@@ -1,0 +1,91 @@
+// Phase C (scratchpad → manuscript link): linking a pad to a manuscript makes
+// NEW notes created in it inherit the manuscript by default (live default, NOT
+// retroactive). The pad's header link control does the linking; unlinking stops
+// future inheritance and leaves existing notes untouched.
+const { chromium } = require('playwright');
+const { execSync } = require('child_process');
+const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const HOME_URL = new URL('home.html', TEST_URL).href;
+function psql(sql) {
+  return execSync(
+    `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
+    { encoding: 'utf8' });
+}
+// Make a scratchpad note from a fresh line and return its note_id.
+async function makeNote(page, text) {
+  const pm = page.locator('.spm-editor .ProseMirror');
+  await pm.click();
+  // Go to end, add a new line, type + select it.
+  await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type(text);
+  await page.keyboard.press('Home');
+  await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
+  await page.waitForTimeout(150);
+  const before = await page.locator('.sn-note-ref').count();
+  await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
+  await page.waitForTimeout(600);
+  // Close the float so it doesn't cover the next selection.
+  await page.locator('.spm-title').click();
+  await page.waitForTimeout(200);
+  const ids = await page.locator('.sn-note-ref').evaluateAll(els => els.map(e => e.getAttribute('data-note-id')));
+  return ids[ids.length - 1];
+}
+
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+  page.on('dialog', d => d.accept());
+  let failed = false;
+  const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
+
+  await cleanupTestNotes();
+  await loginAsTestUser(page);
+  await page.goto(HOME_URL);
+  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.spm-overlay .ProseMirror');
+
+  // (1) A note made BEFORE linking → no manuscript (not retroactive).
+  const preNote = await makeNote(page, 'Before the link.');
+  const preMid = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${preNote}`).trim();
+  check('pre-link note has no manuscript', preMid === 'null', `manuscript_id=${preMid}`);
+
+  // (2) Link the pad via the header control.
+  const linkEl = page.locator('#spm-link');
+  await linkEl.waitFor({ timeout: 4000 });
+  check('unlinked pad shows the link control (not linked)', !(await linkEl.evaluate(e => e.classList.contains('linked'))));
+  await linkEl.click();
+  const pop = page.locator('.note-linkpop');
+  await pop.waitFor({ timeout: 4000 });
+  await page.waitForTimeout(400);
+  const pickedName = await pop.locator('button[data-mid]').first().textContent();
+  await pop.locator('button[data-mid]').first().click();
+  await page.waitForTimeout(600);
+  check('pad header now shows linked state', await linkEl.evaluate(e => e.classList.contains('linked')));
+  const chipName = await linkEl.locator('.spm-link-name').textContent().catch(() => '');
+  check('pad link shows the manuscript name', (chipName || '').trim() === (pickedName || '').trim(), `chip="${chipName}"`);
+
+  // (3) A note made AFTER linking → inherits the manuscript.
+  const postNote = await makeNote(page, 'After the link.');
+  const postMid = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${postNote}`).trim();
+  check('post-link note INHERITS the manuscript', /^[0-9]+$/.test(postMid), `manuscript_id=${postMid}`);
+
+  // The earlier note is still untouched (not retroactively linked).
+  const preMid2 = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${preNote}`).trim();
+  check('pre-link note STILL has no manuscript (not retroactive)', preMid2 === 'null', `manuscript_id=${preMid2}`);
+
+  // (4) Unlink the pad → future notes stop inheriting.
+  await linkEl.locator('.spm-link-remove').click();
+  await page.waitForTimeout(500);
+  check('pad shows unlinked again', !(await linkEl.evaluate(e => e.classList.contains('linked'))));
+  const padLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM scratchpad WHERE scratchpad_id=(SELECT scratchpad_id FROM note WHERE note_id=${postNote})`).trim();
+  check('scratchpad.linked_manuscript_id cleared', padLink === 'null', `pad link=${padLink}`);
+
+  const afterUnlink = await makeNote(page, 'After unlink.');
+  const auMid = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${afterUnlink}`).trim();
+  check('note made after unlink has no manuscript', auMid === 'null', `manuscript_id=${auMid}`);
+
+  await browser.close();
+  console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
+  process.exit(failed ? 1 : 0);
+})();

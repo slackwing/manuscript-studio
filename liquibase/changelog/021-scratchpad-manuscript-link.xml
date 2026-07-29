@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- A scratchpad can optionally be LINKED to a manuscript. The link is a
+         live default, not a bulk stamp: NEW elements created in the pad (notes,
+         and later snippets) inherit the manuscript, so e.g. every note jotted in
+         a Wildfire-linked scratchpad becomes browsable as a Wildfire note
+         without hand-linking each. It does NOT retroactively touch existing
+         content, and does not force anything — an element can be unlinked
+         individually (note-level link chip, Phase B).
+
+         FK ON DELETE SET NULL (like note.manuscript_id): if the manuscript row
+         goes away, the pad simply becomes unlinked. -->
+    <changeSet id="021-scratchpad-manuscript-link" author="claude">
+        <sql>
+            ALTER TABLE scratchpad ADD COLUMN linked_manuscript_id INTEGER
+                REFERENCES manuscript(manuscript_id) ON DELETE SET NULL;
+            CREATE INDEX idx_scratchpad_linked_manuscript
+                ON scratchpad(linked_manuscript_id) WHERE linked_manuscript_id IS NOT NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

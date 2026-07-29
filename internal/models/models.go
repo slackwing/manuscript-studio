@@ -135,7 +135,12 @@ type Scratchpad struct {
 	Title         string          `json:"title"`
 	Doc           json.RawMessage `json:"doc,omitempty"`
 	SchemaVersion int             `json:"schema_version"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
+	// LinkedManuscriptID is the pad's manuscript default (nullable). New notes
+	// created in the pad inherit it. LinkedManuscriptName is NOT stored — the
+	// handler resolves it from config at response time (single source of truth).
+	LinkedManuscriptID   *int   `json:"linked_manuscript_id"`
+	LinkedManuscriptName string `json:"linked_manuscript_name,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 

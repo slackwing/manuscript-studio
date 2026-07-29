@@ -64,10 +64,10 @@ func (db *DB) GetScratchpad(ctx context.Context, id int) (*models.Scratchpad, er
 	var s models.Scratchpad
 	var doc []byte
 	err := db.Pool.QueryRow(ctx, `
-		SELECT scratchpad_id, user_id, title, doc, schema_version, created_at, updated_at
+		SELECT scratchpad_id, user_id, title, doc, schema_version, linked_manuscript_id, created_at, updated_at
 		FROM scratchpad
 		WHERE scratchpad_id = $1 AND deleted_at IS NULL
-	`, id).Scan(&s.ScratchpadID, &s.UserID, &s.Title, &doc, &s.SchemaVersion, &s.CreatedAt, &s.UpdatedAt)
+	`, id).Scan(&s.ScratchpadID, &s.UserID, &s.Title, &doc, &s.SchemaVersion, &s.LinkedManuscriptID, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -76,6 +76,37 @@ func (db *DB) GetScratchpad(ctx context.Context, id int) (*models.Scratchpad, er
 	}
 	s.Doc = json.RawMessage(doc)
 	return &s, nil
+}
+
+// LinkScratchpad sets (or, with manuscriptID nil, clears) a scratchpad's
+// manuscript default. Only the link column changes. Ownership is enforced by
+// the handler.
+func (db *DB) LinkScratchpad(ctx context.Context, id int, manuscriptID *int) error {
+	_, err := db.Pool.Exec(ctx,
+		`UPDATE scratchpad SET linked_manuscript_id = $1, updated_at = NOW()
+		 WHERE scratchpad_id = $2 AND deleted_at IS NULL`,
+		manuscriptID, id)
+	if err != nil {
+		return fmt.Errorf("link scratchpad: %w", err)
+	}
+	return nil
+}
+
+// GetScratchpadLinkedManuscript returns a pad's manuscript default (nil if
+// unlinked or missing). Used to inherit the manuscript onto NEW notes created
+// in the pad.
+func (db *DB) GetScratchpadLinkedManuscript(ctx context.Context, id int) (*int, error) {
+	var mid *int
+	err := db.Pool.QueryRow(ctx,
+		`SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1 AND deleted_at IS NULL`,
+		id).Scan(&mid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get scratchpad linked manuscript: %w", err)
+	}
+	return mid, nil
 }
 
 // UpdateScratchpad saves title + doc (autosave): updates the row and
