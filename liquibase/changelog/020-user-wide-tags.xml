@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Tags become USER-WIDE. Originally a tag was scoped to a single
+         migration (uq_tag_name_migration, migration_id NOT NULL), which meant
+         "idea" on one manuscript version was a different row from "idea" on the
+         next push, and a note with no sentence (scratchpad / free note) had no
+         migration to scope to — so it could not be tagged at all.
+
+         New model: a tag belongs to a USER. "idea" is one tag across every
+         note that user owns, regardless of manuscript / scratchpad / free.
+         This is a clean restructure — there are zero tag and note_tag rows in
+         any environment, so no data is migrated or de-duplicated. -->
+    <changeSet id="020-user-wide-tags-guard" author="claude">
+        <!-- Refuse to run if tag data exists (it would be silently dropped by
+             the column change below). splitStatements=false so the $$-quoted
+             DO block reaches Postgres intact. Precondition-style guard. -->
+        <sql splitStatements="false"><![CDATA[
+            DO $$
+            BEGIN
+                IF (SELECT count(*) FROM tag) > 0 OR (SELECT count(*) FROM note_tag) > 0 THEN
+                    RAISE EXCEPTION 'migration 020 expects zero tag/note_tag rows (found tag=%, note_tag=%); tag data would be lost',
+                        (SELECT count(*) FROM tag), (SELECT count(*) FROM note_tag);
+                END IF;
+            END $$;
+        ]]></sql>
+    </changeSet>
+
+    <changeSet id="020-user-wide-tags" author="claude">
+        <sql>
+            -- Drop the migration scoping.
+            ALTER TABLE tag DROP CONSTRAINT IF EXISTS uq_tag_name_migration;
+            ALTER TABLE tag DROP CONSTRAINT IF EXISTS fk_tag_migration;
+            DROP INDEX IF EXISTS idx_tag_migration;
+            ALTER TABLE tag DROP COLUMN IF EXISTS migration_id;
+
+            -- A tag now belongs to a user. NOT NULL: every tag has an owner.
+            ALTER TABLE tag ADD COLUMN user_id VARCHAR(255) NOT NULL
+                REFERENCES "user"(username) ON DELETE CASCADE;
+
+            -- One namespace per user: "idea" is a single row per owner.
+            ALTER TABLE tag ADD CONSTRAINT uq_tag_name_user UNIQUE (user_id, tag_name);
+            CREATE INDEX idx_tag_user ON tag(user_id);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -110,9 +110,7 @@ async function cleanupTestNotes() {
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
         )
       );
-      DELETE FROM tag WHERE migration_id IN (
-        SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
-      );
+      DELETE FROM tag WHERE user_id = '${TEST_USERNAME}';
       DELETE FROM scratchpad_revision WHERE scratchpad_id IN (
         SELECT scratchpad_id FROM scratchpad WHERE user_id = '${TEST_USERNAME}'
       );

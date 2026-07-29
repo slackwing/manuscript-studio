@@ -1316,17 +1316,20 @@ func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) 
 	return notes, nil
 }
 
-func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID int) (*models.Tag, error) {
+// GetOrCreateTag resolves a tag within a USER's namespace (user-wide tags):
+// "idea" is one row per owner, shared across all their notes regardless of
+// manuscript / scratchpad / free context.
+func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, userID string) (*models.Tag, error) {
 	var tag models.Tag
 	query := `
-		SELECT tag_id, tag_name, migration_id, created_at
+		SELECT tag_id, tag_name, user_id, created_at
 		FROM tag
-		WHERE tag_name = $1 AND migration_id = $2
+		WHERE tag_name = $1 AND user_id = $2
 	`
-	err := db.Pool.QueryRow(ctx, query, tagName, migrationID).Scan(
+	err := db.Pool.QueryRow(ctx, query, tagName, userID).Scan(
 		&tag.TagID,
 		&tag.TagName,
-		&tag.MigrationID,
+		&tag.UserID,
 		&tag.CreatedAt,
 	)
 	if err == nil {
@@ -1337,14 +1340,14 @@ func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID in
 	}
 
 	createQuery := `
-		INSERT INTO tag (tag_name, migration_id)
+		INSERT INTO tag (tag_name, user_id)
 		VALUES ($1, $2)
-		RETURNING tag_id, tag_name, migration_id, created_at
+		RETURNING tag_id, tag_name, user_id, created_at
 	`
-	err = db.Pool.QueryRow(ctx, createQuery, tagName, migrationID).Scan(
+	err = db.Pool.QueryRow(ctx, createQuery, tagName, userID).Scan(
 		&tag.TagID,
 		&tag.TagName,
-		&tag.MigrationID,
+		&tag.UserID,
 		&tag.CreatedAt,
 	)
 	if err != nil {
@@ -1354,9 +1357,9 @@ func (db *DB) GetOrCreateTag(ctx context.Context, tagName string, migrationID in
 	return &tag, nil
 }
 
-// AddTagToNote is idempotent; creates the tag if missing.
-func (db *DB) AddTagToNote(ctx context.Context, noteID int, tagName string, migrationID int) error {
-	tag, err := db.GetOrCreateTag(ctx, tagName, migrationID)
+// AddTagToNote is idempotent; creates the tag (in the user's namespace) if missing.
+func (db *DB) AddTagToNote(ctx context.Context, noteID int, tagName string, userID string) error {
+	tag, err := db.GetOrCreateTag(ctx, tagName, userID)
 	if err != nil {
 		return err
 	}
@@ -1394,7 +1397,7 @@ func (db *DB) RemoveTagFromNote(ctx context.Context, noteID int, tagID int) erro
 
 func (db *DB) GetTagsForNote(ctx context.Context, noteID int) ([]models.Tag, error) {
 	query := `
-		SELECT t.tag_id, t.tag_name, t.migration_id, t.created_at
+		SELECT t.tag_id, t.tag_name, t.user_id, t.created_at
 		FROM tag t
 		JOIN note_tag at ON t.tag_id = at.tag_id
 		WHERE at.note_id = $1
@@ -1413,43 +1416,7 @@ func (db *DB) GetTagsForNote(ctx context.Context, noteID int) ([]models.Tag, err
 		err := rows.Scan(
 			&tag.TagID,
 			&tag.TagName,
-			&tag.MigrationID,
-			&tag.CreatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan tag: %w", err)
-		}
-		tags = append(tags, tag)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating tags: %w", err)
-	}
-
-	return tags, nil
-}
-
-func (db *DB) GetAllTagsForMigration(ctx context.Context, migrationID int) ([]models.Tag, error) {
-	query := `
-		SELECT tag_id, tag_name, migration_id, created_at
-		FROM tag
-		WHERE migration_id = $1
-		ORDER BY tag_name
-	`
-
-	rows, err := db.Pool.Query(ctx, query, migrationID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query tags: %w", err)
-	}
-	defer rows.Close()
-
-	tags := []models.Tag{}
-	for rows.Next() {
-		var tag models.Tag
-		err := rows.Scan(
-			&tag.TagID,
-			&tag.TagName,
-			&tag.MigrationID,
+			&tag.UserID,
 			&tag.CreatedAt,
 		)
 		if err != nil {

@@ -321,45 +321,6 @@ const WriteSysNotes = {
     return noteEl;
   },
 
-  createColorCircleElement(note) {
-    const circle = document.createElement('div');
-    circle.className = 'sticky-note-color-circle';
-
-    // Rainbow gradient for uncommitted notes.
-    if (!note.color) {
-      circle.classList.add('rainbow');
-    } else {
-      circle.classList.add(`color-${note.color}`);
-    }
-
-    const palette = this.createPaletteElement(note);
-    circle.appendChild(palette);
-
-    circle.addEventListener('mouseenter', () => {
-      palette.classList.add('visible');
-    });
-
-    // Delay hide so the cursor can reach the palette.
-    let hideTimeout;
-    circle.addEventListener('mouseleave', () => {
-      hideTimeout = setTimeout(() => {
-        palette.classList.remove('visible');
-      }, 200);
-    });
-
-    palette.addEventListener('mouseenter', () => {
-      clearTimeout(hideTimeout);
-    });
-
-    palette.addEventListener('mouseleave', () => {
-      hideTimeout = setTimeout(() => {
-        palette.classList.remove('visible');
-      }, 200);
-    });
-
-    return circle;
-  },
-
   createPaletteElement(note) {
     const palette = document.createElement('div');
     palette.className = 'sticky-note-palette';
@@ -565,143 +526,6 @@ const WriteSysNotes = {
     });
 
     return palette;
-  },
-
-  setupNoteEventListeners(noteEl, note) {
-    const textarea = noteEl.querySelector('.note-input');
-    let saveTimeout;
-
-    // Caret-in-note → tint the sentence in this note's color. Caret-out
-    // → strip the tint. The "second click on a sentence to edit" flow
-    // is just blur of the note, so this handles it implicitly. If the
-    // user moves caret between two notes on the same sentence, blur
-    // fires for the first and focus for the second; net result is the
-    // new colour, which is the correct end state.
-    textarea.addEventListener('focus', () => {
-      this.applyFocusHighlight(note.sentence_id, note.color);
-    });
-    textarea.addEventListener('blur', () => {
-      this.clearFocusHighlight(note.sentence_id);
-    });
-
-    textarea.addEventListener('input', async () => {
-      this.autoResizeTextarea(textarea);
-
-      // "Never mind": empty an auto-created, uncommitted note → delete.
-      if (this.neverMindState.noteId === note.note_id &&
-          !this.neverMindState.isCommitted &&
-          textarea.value.trim().length === 0) {
-        clearTimeout(saveTimeout);
-        await this.deleteNote(note.note_id);
-        this.neverMindState.noteId = null;
-        this.neverMindState.isCommitted = false;
-        const freshTextarea = document.querySelector(
-          '.sticky-note.uncreated-note.first-uncreated .note-input'
-        );
-        if (freshTextarea) freshTextarea.focus();
-        return;
-      }
-
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => {
-        this.saveNoteText(note.note_id, textarea.value);
-      }, 1000);
-    });
-
-    textarea.addEventListener('blur', () => {
-      this.commitPendingNote(note.note_id);
-
-      clearTimeout(saveTimeout);
-      // Skip the PUT when nothing changed: the server appends a
-      // note_version row on EVERY save, so a bare focus+blur would
-      // bloat history. Compare in normalized form — saveNoteText stores
-      // `value.trim() || null`, and note.body is kept in sync the
-      // same way.
-      const normalized = textarea.value.trim() || null;
-      if (normalized !== (note.body || null)) {
-        this.saveNoteText(note.note_id, textarea.value);
-      }
-    });
-
-    noteEl.querySelectorAll('.priority-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        this.commitPendingNote(note.note_id);
-        const priority = chip.dataset.priority;
-        this.handlePriorityClick(note, priority, noteEl);
-      });
-    });
-
-    const flagChip = noteEl.querySelector('.flag-chip');
-    if (flagChip) {
-      flagChip.addEventListener('click', () => {
-        this.commitPendingNote(note.note_id);
-        this.handleFlagClick(note, noteEl);
-      });
-    }
-
-    const tagsList = noteEl.querySelector('.tags-list');
-    if (tagsList) {
-      tagsList.addEventListener('click', (e) => {
-        this.commitPendingNote(note.note_id);
-
-        if (e.target.classList.contains('tag-chip-remove')) {
-          const tagChip = e.target.closest('.tag-chip');
-          const tagId = parseInt(tagChip.dataset.tagId);
-          const tagName = tagChip.dataset.tagName;
-          this.removeTag(note, tagId, tagName, noteEl);
-        } else if (e.target.classList.contains('new-tag') || e.target.closest('.new-tag')) {
-          this.addNewTag(note, noteEl);
-        }
-      });
-    }
-
-    // Two-click trash with 2s confirmation window.
-    const trash = noteEl.querySelector('.note-trash');
-    if (trash) {
-      let clickCount = 0;
-      let resetTimeout;
-
-      trash.addEventListener('click', (e) => {
-        e.stopPropagation();
-
-        if (clickCount === 0) {
-          trash.classList.add('confirming');
-          clickCount = 1;
-
-          resetTimeout = setTimeout(() => {
-            trash.classList.remove('confirming');
-            clickCount = 0;
-          }, 2000);
-        } else {
-          clearTimeout(resetTimeout);
-          this.deleteNote(note.note_id);
-        }
-      });
-    }
-
-    // Two-click complete with 2s confirmation window.
-    const check = noteEl.querySelector('.complete-check');
-    if (check) {
-      let clickCount = 0;
-      let resetTimeout;
-
-      check.addEventListener('click', (e) => {
-        e.stopPropagation();
-
-        if (clickCount === 0) {
-          check.classList.add('confirming');
-          clickCount = 1;
-
-          resetTimeout = setTimeout(() => {
-            check.classList.remove('confirming');
-            clickCount = 0;
-          }, 2000);
-        } else {
-          clearTimeout(resetTimeout);
-          this.completeNote(note.note_id);
-        }
-      });
-    }
   },
 
   autoResizeTextarea(textarea) {
@@ -1042,152 +866,24 @@ const WriteSysNotes = {
     }
   },
 
-  // Uses createElement + textContent — defense in depth even though tag
-  // names are server-validated.
-  renderTagsForNote(noteEl, tags) {
-    const tagsList = noteEl.querySelector('.tags-list');
-    if (!tagsList) return;
-
-    tagsList.innerHTML = '';
-
-    tags.forEach(tag => {
-      const chip = document.createElement('div');
-      chip.className = 'tag-chip';
-      chip.dataset.tagId = tag.tag_id;
-      chip.dataset.tagName = tag.tag_name;
-
-      const nameSpan = document.createElement('span');
-      nameSpan.textContent = tag.tag_name;
-      chip.appendChild(nameSpan);
-
-      const removeSpan = document.createElement('span');
-      removeSpan.className = 'tag-chip-remove';
-      removeSpan.textContent = '×';
-      chip.appendChild(removeSpan);
-
-      tagsList.appendChild(chip);
-    });
-
-    const newTagChip = document.createElement('div');
-    newTagChip.className = 'tag-chip new-tag';
-    newTagChip.textContent = '+ tag';
-    tagsList.appendChild(newTagChip);
-  },
-
-  // POST a tag (already-validated name) and re-render. Called by the shared
-  // widget's inline tag input via onAddTag. (The old addNewTag below built its
-  // own inline input; the widget now provides that, so only the POST remains
-  // here — kept as addNewTag too for any direct callers.)
+  // Tag add/remove just mutate note.tags; the shared widget owns the chip
+  // re-render (so this path can't drift out of sync). Tags are user-wide now
+  // (migration 020) — no migration_id; the server scopes to the note's owner.
   async addTagByName(note, noteEl, tagName) {
     if (!tagName) return;
     try {
-      const migrationId = window.WriteSysRenderer?.currentMigrationID;
-      if (!migrationId) throw new Error('Migration ID not available');
-      const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${note.note_id}/tags`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag_name: tagName, migration_id: migrationId }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      note.tags = data.tags;
-      window.WriteSysNoteWidget.renderTags(noteEl, data.tags, {
-        onAddTag: (name) => this.addTagByName(note, noteEl, name),
-      });
+      const data = await window.WriteSysNoteAPI.addTag(note.note_id, tagName);
+      note.tags = (data && data.tags) || note.tags;
     } catch (error) {
       console.error('Failed to add tag:', error);
       alert(`Failed to add tag: ${error.message}`);
     }
   },
 
-  async addNewTag(note, noteEl) {
-    const tagsList = noteEl.querySelector('.tags-list');
-    const newTagChip = tagsList.querySelector('.new-tag');
-
-    const editableChip = document.createElement('div');
-    editableChip.className = 'tag-chip editable-tag';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'tag-input';
-    input.placeholder = 'tag-name';
-    input.maxLength = 50;
-
-    editableChip.appendChild(input);
-    tagsList.insertBefore(editableChip, newTagChip);
-    input.focus();
-
-    let cancelled = false;
-
-    const finishTagCreation = async () => {
-      if (cancelled) return;
-
-      const tagName = input.value.trim();
-      editableChip.remove();
-
-      if (!tagName) return;
-
-      const valid = /^[a-z0-9-]+$/.test(tagName);
-      if (!valid) {
-        alert('Invalid tag name. Use only lowercase letters, numbers, and dashes.');
-        return;
-      }
-
-      try {
-        const migrationId = window.WriteSysRenderer?.currentMigrationID;
-        if (!migrationId) {
-          throw new Error('Migration ID not available');
-        }
-
-        const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${note.note_id}/tags`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tag_name: tagName,
-            migration_id: migrationId
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        note.tags = data.tags;
-        this.renderTagsForNote(noteEl, data.tags);
-
-      } catch (error) {
-        console.error('Failed to add tag:', error);
-        alert(`Failed to add tag: ${error.message}`);
-      }
-    };
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab') {
-        e.preventDefault();
-        finishTagCreation();
-      } else if (e.key === 'Escape') {
-        cancelled = true;
-        editableChip.remove();
-      }
-    });
-
-    input.addEventListener('blur', finishTagCreation);
-  },
-
   async removeTag(note, tagId, tagName, noteEl) {
     try {
-      const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${note.note_id}/tags/${tagId}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok && response.status !== 204) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      note.tags = note.tags.filter(t => t.tag_id !== tagId);
-      this.renderTagsForNote(noteEl, note.tags);
-
+      await window.WriteSysNoteAPI.removeTag(note.note_id, tagId);
+      note.tags = (note.tags || []).filter(t => t.tag_id !== tagId);
     } catch (error) {
       console.error('Failed to remove tag:', error);
       alert('Failed to remove tag');

@@ -86,10 +86,10 @@ type Note struct {
 }
 
 type Tag struct {
-	TagID       int       `json:"tag_id"`
-	TagName     string    `json:"tag_name"`
-	MigrationID int       `json:"migration_id"`
-	CreatedAt   time.Time `json:"created_at"`
+	TagID     int       `json:"tag_id"`
+	TagName   string    `json:"tag_name"`
+	UserID    string    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type NoteTag struct {

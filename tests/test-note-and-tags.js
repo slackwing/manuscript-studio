@@ -9,8 +9,8 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   await page.setViewportSize({ width: 1600, height: 1000 });
-  // Dismiss any stray alerts from the frontend (addNewTag has a 201-empty-body
-  // JSON parse bug that triggers an alert; the tag is persisted regardless).
+  // Dismiss any stray alerts (defensive; the tag path now routes through the
+  // shared note-api and no longer alerts on the old 201-empty-body case).
   page.on('dialog', async d => { try { await d.dismiss(); } catch (e) {} });
 
   let failed = 0;

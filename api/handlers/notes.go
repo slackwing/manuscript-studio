@@ -454,10 +454,6 @@ func (h *NoteHandlers) HandleGetTagsForNote(w http.ResponseWriter, r *http.Reque
 
 type AddTagRequest struct {
 	TagName string `json:"tag_name"`
-	// MigrationID is accepted for backward compatibility but ignored; the
-	// tag's migration scope is derived server-side from the note's
-	// sentence so a client can't attach tags to arbitrary migrations.
-	MigrationID int `json:"migration_id"`
 }
 
 // HandleAddTagToNote creates the tag if needed and links it.
@@ -492,21 +488,14 @@ func (h *NoteHandlers) HandleAddTagToNote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	existing := h.requireOwnedNote(w, r, noteID, session.Username)
-	if existing == nil {
+	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
 		return
 	}
 
-	// Scope the tag to the migration the note's sentence belongs to,
-	// never to a client-supplied migration id.
-	migrationID, err := h.DB.GetMigrationIDForSentence(ctx, existing.SentenceID)
-	if err != nil || migrationID == 0 {
-		log.Printf("notes: resolve migration for sentence %s: %v", existing.SentenceID, err)
-		http.Error(w, "Failed to add tag", http.StatusInternalServerError)
-		return
-	}
-
-	if err := h.DB.AddTagToNote(ctx, noteID, req.TagName, migrationID); err != nil {
+	// Tags are user-wide (migration 020): scoped to the note's owner, not to a
+	// manuscript version. This is what lets scratchpad / free notes (which have
+	// no sentence, hence no migration) be tagged at all.
+	if err := h.DB.AddTagToNote(ctx, noteID, req.TagName, session.Username); err != nil {
 		log.Printf("notes: add tag to %d: %v", noteID, err)
 		http.Error(w, "Failed to add tag", http.StatusInternalServerError)
 		return

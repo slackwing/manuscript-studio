@@ -1121,6 +1121,7 @@ async function openNoteFloatFor(noteId, anchorEl) {
     onFlag: () => { note.flagged = !note.flagged; cached.flagged = note.flagged; api.update(noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
     onDelete: () => { deleteNoteViaDoc(noteId); },
     onComplete: () => { api.complete(noteId); removeNoteRefNoDelete(noteId); closeNoteFloat(); },
+    // Handlers just mutate note.tags; the shared widget re-renders the chips.
     onAddTag: async (name) => { try { const r = await api.addTag(noteId, name); note.tags = (r && r.tags) || note.tags; cached.tags = note.tags; } catch (e) {} },
     onRemoveTag: async (tagId) => { try { await api.removeTag(noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); cached.tags = note.tags; } catch (e) {} },
   }, {});

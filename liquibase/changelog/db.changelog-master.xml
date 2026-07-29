@@ -26,5 +26,6 @@
     <include file="changelog/017-variation-to-sketch.xml"/>
     <include file="changelog/018-annotation-to-note.xml"/>
     <include file="changelog/019-note-context-columns.xml"/>
+    <include file="changelog/020-user-wide-tags.xml"/>
 
 </databaseChangeLog>

@@ -202,13 +202,20 @@
 
     const tagsList = noteEl.querySelector('.tags-list');
     if (tagsList) {
-      tagsList.addEventListener('click', (e) => {
+      tagsList.addEventListener('click', async (e) => {
         commit();
         if (e.target.classList.contains('tag-chip-remove')) {
           const chip = e.target.closest('.tag-chip');
-          handlers.onRemoveTag && handlers.onRemoveTag(parseInt(chip.dataset.tagId, 10), chip.dataset.tagName);
+          if (handlers.onRemoveTag) {
+            await handlers.onRemoveTag(parseInt(chip.dataset.tagId, 10), chip.dataset.tagName);
+            // The component owns the re-render: every call site's handler just
+            // mutates note.tags, and the chips redraw here — no site has to
+            // remember to re-render (that drift is how the float lost its live
+            // chip update). note is captured in closure.
+            renderTags(noteEl, note.tags, handlers);
+          }
         } else if (e.target.classList.contains('new-tag') || e.target.closest('.new-tag')) {
-          startTagInput(noteEl, handlers);
+          startTagInput(noteEl, note, handlers);
         }
       });
     }
@@ -229,7 +236,9 @@
   }
 
   // Inline tag input — the manuscript flow, but committing via handlers.onAddTag.
-  function startTagInput(noteEl, handlers) {
+  // After the handler mutates note.tags, the component re-renders its own chips
+  // (one place, so no call site drifts out of sync).
+  function startTagInput(noteEl, note, handlers) {
     const list = noteEl.querySelector('.tags-list');
     const addChip = list.querySelector('.new-tag');
     if (!addChip || list.querySelector('.editable-tag')) return;
@@ -243,11 +252,14 @@
     list.insertBefore(editable, addChip);
     input.focus();
     let done = false;
-    const commit = () => {
+    const commit = async () => {
       if (done) return; done = true;
       const name = input.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
       editable.remove();
-      if (name && handlers.onAddTag) handlers.onAddTag(name);
+      if (name && handlers.onAddTag) {
+        await handlers.onAddTag(name);
+        renderTags(noteEl, note.tags, handlers);
+      }
     };
     const cancel = () => { if (done) return; done = true; editable.remove(); };
     input.addEventListener('keydown', (e) => {
