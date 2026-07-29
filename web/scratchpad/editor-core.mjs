@@ -989,6 +989,9 @@ function recolorNote(noteId, color) {
 
 // Remove a note's ref node from the doc. Returns true if found. Removing the
 // node triggers its NodeView destroy() (which soft-deletes unless suppressed).
+// The ref replaced a selected word, so it often sits BETWEEN two spaces
+// (…one<ref>three…). Deleting only the ref would leave a doubled space, so when
+// the ref is flanked by spaces we take one of them with it.
 function removeNoteFromDoc(noteId) {
   const view = activeView; if (!view) return false;
   const sc = view.state.schema;
@@ -997,8 +1000,21 @@ function removeNoteFromDoc(noteId) {
     if (node.type === sc.nodes.noteRef && node.attrs.noteId === noteId) ranges.push([pos, pos + node.nodeSize]);
   });
   if (!ranges.length) return false;
+  const doc = view.state.doc;
   let tr = view.state.tr;
-  ranges.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => { tr = tr.delete(a, b); });
+  // Delete right-to-left so earlier positions stay valid.
+  ranges.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => {
+    let start = a, end = b;
+    const before = a > 0 ? doc.textBetween(a - 1, a) : '';
+    const after = b < doc.content.size ? doc.textBetween(b, b + 1) : '';
+    // Flanked by spaces → also remove the trailing space (collapse the pair).
+    // Leading edge (only a space after) → remove that space too, so no line
+    // starts with a stray space.
+    if (before === ' ' && after === ' ') end = b + 1;
+    else if (before !== ' ' && after === ' ' && a > 0) end = b + 1;
+    else if (before === ' ' && after !== ' ') start = a - 1;
+    tr = tr.delete(start, end);
+  });
   view.dispatch(tr);
   return true;
 }
@@ -1037,7 +1053,7 @@ class NoteRefView {
     this.dom.className = 'sn-note-ref color-' + noteColorOf(this.noteId);
     this.dom.dataset.noteId = String(this.noteId);
     this.dom.contentEditable = 'false';
-    this.dom.title = 'Note — click the square to open';
+    this.dom.title = 'Note — click to open';
     this.dom.innerHTML =
       '<span class="sn-note-ref-sq"></span>' +
       '<span class="sn-note-ref-text"></span>' +
@@ -1049,18 +1065,24 @@ class NoteRefView {
     if (!noteCache.get(this.noteId)) {
       ensureNoteCached(this.noteId).then(n => { if (n) this.applyColor(n.color); });
     }
-    const sq = this.dom.querySelector('.sn-note-ref-sq');
-    // Fully swallow the pointer sequence so ProseMirror never processes a click
-    // on this atom (which would move the selection and scroll .spm-editor to it
-    // — the "jumps to the top on click" bug). preventDefault+stopPropagation on
-    // BOTH mousedown and click, and a lock-the-scroll guard across the async
-    // float open (the open awaits a fetch, so a one-shot restore isn't enough).
+    // Clicking anywhere on the ref (the square OR the highlighted text) opens
+    // the note — the whole thing reads as one affordance. The trash is excluded
+    // (handled below). Fully swallow the pointer sequence so ProseMirror never
+    // processes a click on this atom (which would move the selection and scroll
+    // .spm-editor to it — the "jumps to the top on click" bug): preventDefault +
+    // stopPropagation on BOTH mousedown and click, plus a lock-the-scroll guard
+    // across the async float open (the open awaits a fetch, so a one-shot
+    // restore isn't enough).
     const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
-    sq.addEventListener('mousedown', (e) => {
+    this.dom.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.sn-note-ref-trash')) return; // trash has its own handler
       swallow(e);
       lockScratchpadScroll(() => openNoteFloatFor(this.noteId, this.dom));
     });
-    sq.addEventListener('click', swallow);
+    this.dom.addEventListener('click', (e) => {
+      if (e.target.closest('.sn-note-ref-trash')) return;
+      swallow(e);
+    });
     // Two-click confirm on the trash.
     const trash = this.dom.querySelector('.sn-note-ref-trash');
     let clickCount = 0, resetTimer = null;

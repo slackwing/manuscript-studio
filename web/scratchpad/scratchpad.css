@@ -652,6 +652,8 @@
 .sn-note-colorbtn:hover { outline: 2px solid rgba(0, 0, 0, 0.15); }
 .sn-note-colorbar-disabled { opacity: 0.4; }
 .sn-note-colorbar-disabled .sn-note-colorbtn { cursor: default; }
+/* Disabled (nothing selected): no hover affordance — it isn't clickable. */
+.sn-note-colorbar-disabled .sn-note-colorbtn:hover { outline: none; }
 
 /* The atomic noteRef: a colored square + the verbatim text, rendered inline so
    it reads like normal HIGHLIGHTED prose (same font/size as the surrounding
