@@ -381,17 +381,23 @@ class SnippetView {
   scrollHost() {
     return this.dom.closest('.spm-editor') || this.dom.closest('[data-scroll-host]') || null;
   }
-  // Snapshot scrollTop, run fn (which may replace DOM / move focus), then restore
-  // the scroll position — both synchronously and once more after layout settles,
-  // since focus()/textarea auto-grow can nudge it a frame later.
+  // Snapshot scrollTop, run fn (which may replace DOM / move focus / grow a
+  // textarea), then PIN the scroll position for a short window. A single
+  // rAF-restore wasn't enough: entering edit swaps in a multi-row textarea that
+  // auto-grows over SEVERAL frames, and each growth nudges scrollTop after the
+  // one-shot restore already ran — the residual "clicking a snippet jumps me to
+  // the top." Pin any scroll back to the snapshot for ~400ms, then release.
   preserveScroll(fn) {
     const host = this.scrollHost();
     if (!host) return fn();
     const top = host.scrollTop;
     const r = fn();
-    const restore = () => { if (host.scrollTop !== top) host.scrollTop = top; };
-    restore();
-    requestAnimationFrame(restore);
+    let active = true;
+    const pin = () => { if (active && host.scrollTop !== top) host.scrollTop = top; };
+    host.addEventListener('scroll', pin, true);
+    const loop = () => { if (!active) return; pin(); requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+    setTimeout(() => { active = false; host.removeEventListener('scroll', pin, true); }, 400);
     return r;
   }
 

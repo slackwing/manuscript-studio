@@ -4,7 +4,7 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=28';
+import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=29';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
@@ -178,22 +178,40 @@ export const ScratchpadModal = {
     render();
   },
 
-  // Scroll to a note's inline anchor square and flash it.
+  // Scroll to a note's inline anchor square and flash it. Snippet widgets around
+  // the note load ASYNC and grow after mounting, which shifts the note's
+  // position — so once found, re-scroll a few times as layout settles, then a
+  // final smooth pass, so we actually land on the note (not short of it).
   scrollToNoteAnchor(noteId) {
     if (!noteId) return;
+    const sel = `.sn-note-ref[data-note-id="${CSS.escape(String(noteId))}"]`;
+    const find = () => this.overlay && this.overlay.querySelector(sel);
     let tries = 0;
-    const tick = () => {
-      const el = this.overlay && this.overlay.querySelector(
-        `.sn-note-ref[data-note-id="${CSS.escape(String(noteId))}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const waitForEl = () => {
+      const el = find();
+      if (el) return this.settleScrollTo(el, () => {
         el.classList.add('sn-note-anchor-flash');
         setTimeout(() => el.classList.remove('sn-note-anchor-flash'), 1600);
-        return;
-      }
-      if (++tries < 30) setTimeout(tick, 200);
+      });
+      if (++tries < 40) setTimeout(waitForEl, 150);
     };
-    setTimeout(tick, 300);
+    setTimeout(waitForEl, 200);
+  },
+
+  // Scroll `el` to center, re-correcting as async content settles (widgets
+  // mounting/growing shift positions for a while after the first scroll). Snaps
+  // instantly a few times, then a final smooth pass, then runs `done`.
+  settleScrollTo(el, done) {
+    let n = 0;
+    const step = () => {
+      if (!el.isConnected) return;
+      const last = n >= 6;
+      el.scrollIntoView({ behavior: last ? 'smooth' : 'auto', block: 'center' });
+      if (last) { if (done) done(); return; }
+      n++;
+      setTimeout(step, 120);
+    };
+    step();
   },
 
   // Scroll the open scratchpad to the widget for (snippet, ordinal). The
