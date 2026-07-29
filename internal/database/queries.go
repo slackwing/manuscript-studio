@@ -931,6 +931,22 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 		return fmt.Errorf("failed to get commit hash and migration_id for sentence: %w", err)
 	}
 
+	// Also stamp the note's manuscript_id (from its sentence's migration) so the
+	// landing Notes grid can show/link context WITHOUT a runtime join — the same
+	// value migration 019 backfilled for pre-existing sentence notes. Without
+	// this, new sentence notes show "no context" and can't open their manuscript.
+	var manuscriptID int
+	if err := tx.QueryRow(ctx,
+		`SELECT manuscript_id FROM migration WHERE migration_id = $1`, migrationID,
+	).Scan(&manuscriptID); err == nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE note SET manuscript_id = $1 WHERE note_id = $2`, manuscriptID, note.NoteID,
+		); err != nil {
+			return fmt.Errorf("failed to set note manuscript_id: %w", err)
+		}
+		note.ManuscriptID = &manuscriptID
+	}
+
 	historyJSON, _ := json.Marshal([]string{})
 
 	version.NoteID = note.NoteID
@@ -1639,6 +1655,10 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		       COALESCE(
 		           NULLIF(sp.title, ''),
 		           NULLIF(m.display_name, ''),
+		           -- fall back to the repo folder name (last path segment,
+		           -- minus a trailing .git) so a manuscript note is never
+		           -- context-less when it has a manuscript_id.
+		           NULLIF(regexp_replace(regexp_replace(m.repo_path, '\.git/?$', ''), '^.*/', ''), ''),
 		           ''
 		       ) AS context
 		FROM note n

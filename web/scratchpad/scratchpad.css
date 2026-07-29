@@ -652,13 +652,16 @@
 .sn-note-ref.color-red    .sn-note-ref-sq { background: var(--highlight-red); }
 .sn-note-ref.color-orange .sn-note-ref-sq { background: var(--highlight-orange); }
 /* Hover trash: red trash glyph FLOATS to the upper-right of the square
-   (position:absolute so it never pushes text). Two-click confirm. */
+   (position:absolute so it never pushes text). Two-click confirm.
+   A transparent ::before extends the HITTABLE area down+left to bridge the gap
+   between the square and the trash bubble, so the trash doesn't vanish while the
+   cursor travels to it. */
 .sn-note-ref-trash {
   display: none;
   position: absolute;
-  left: 8px;
+  left: 6px;
   bottom: 100%;
-  margin-bottom: -2px;
+  margin-bottom: -1px;
   color: #b33b3a;
   cursor: pointer;
   background: #fff;
@@ -670,7 +673,23 @@
   z-index: 5;
 }
 .sn-note-ref-trash svg { display: block; }
-.sn-note-ref:hover .sn-note-ref-trash { display: inline-flex; }
+/* Invisible hit-bridge around the trash bubble so the hover doesn't drop as the
+   cursor travels to it. It grows the trash's hover/click area outward, but must
+   NOT reach down over the square (that would steal the square's click) — the
+   trash sits ABOVE the square, so bottom stays at 0. */
+.sn-note-ref-trash::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  bottom: 0;
+  left: -5px;
+  background: rgba(0, 0, 0, 0);
+}
+/* Show the trash while hovering the ref OR the trash itself (the bridge keeps
+   :hover alive across the small gap). */
+.sn-note-ref:hover .sn-note-ref-trash,
+.sn-note-ref-trash:hover { display: inline-flex; }
 .sn-note-ref-trash.confirming { color: #fff; background: #b33b3a; border-color: #b33b3a; }
 /* Flash when a deep-link (landing Notes grid) scrolls to this ref. */
 .sn-note-anchor-flash .sn-note-ref-sq { animation: sn-anchor-flash-kf 1.6s ease; }

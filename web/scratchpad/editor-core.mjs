@@ -882,19 +882,24 @@ const NOTE_COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
 // note helpers can read/edit the doc.
 let activeView = null;
 
-// Preserve the scratchpad's scroll position across an action that might re-anchor
-// it (opening the note float focuses/mutates the DOM). Snapshots .spm-editor's
-// scrollTop, runs fn, restores it now and once more after layout settles. Same
-// root-cause fix as the snippet widget's preserveScroll.
-function preserveScratchpadScroll(fn) {
+// LOCK the scratchpad's scroll position for a short window while `fn` runs. The
+// note-float open is ASYNC (awaits a fetch) and ProseMirror may re-anchor the
+// editor scroll a few frames later when a click lands on an atom node — a
+// one-shot restore misses that. So we pin .spm-editor's scrollTop: any scroll in
+// the next ~450ms is forced back to the snapshot, then we release. This is the
+// deterministic root fix for "clicking the note jumps to the top."
+function lockScratchpadScroll(fn) {
   const host = activeView && activeView.dom.closest('.spm-editor');
   if (!host) return fn();
   const top = host.scrollTop;
-  const r = fn();
-  const restore = () => { if (host.scrollTop !== top) host.scrollTop = top; };
-  restore();
-  requestAnimationFrame(restore);
-  return r;
+  let active = true;
+  const pin = () => { if (active && host.scrollTop !== top) host.scrollTop = top; };
+  host.addEventListener('scroll', pin, true);
+  // Also pin across frames in case the scroll is set programmatically (no event).
+  const raf = () => { if (!active) return; pin(); requestAnimationFrame(raf); };
+  requestAnimationFrame(raf);
+  setTimeout(() => { active = false; host.removeEventListener('scroll', pin, true); }, 450);
+  return fn();
 }
 
 // ---- Client note cache -----------------------------------------------------
@@ -1037,12 +1042,18 @@ class NoteRefView {
     if (!noteCache.get(this.noteId)) {
       ensureNoteCached(this.noteId).then(n => { if (n) this.applyColor(n.color); });
     }
-    this.dom.querySelector('.sn-note-ref-sq').addEventListener('mousedown', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      // Preserve the scratchpad scroll position: opening the float (focus/async
-      // fetch) can otherwise re-anchor the editor scroll and jump to the top.
-      preserveScratchpadScroll(() => openNoteFloatFor(this.noteId, this.dom));
+    const sq = this.dom.querySelector('.sn-note-ref-sq');
+    // Fully swallow the pointer sequence so ProseMirror never processes a click
+    // on this atom (which would move the selection and scroll .spm-editor to it
+    // — the "jumps to the top on click" bug). preventDefault+stopPropagation on
+    // BOTH mousedown and click, and a lock-the-scroll guard across the async
+    // float open (the open awaits a fetch, so a one-shot restore isn't enough).
+    const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+    sq.addEventListener('mousedown', (e) => {
+      swallow(e);
+      lockScratchpadScroll(() => openNoteFloatFor(this.noteId, this.dom));
     });
+    sq.addEventListener('click', swallow);
     // Two-click confirm on the trash.
     const trash = this.dom.querySelector('.sn-note-ref-trash');
     let clickCount = 0, resetTimer = null;
