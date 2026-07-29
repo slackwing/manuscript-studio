@@ -240,11 +240,18 @@ body.home-page {
   color: #4a4a4a;
 }
 .sticky-note-card .priority-chip { font-weight: 600; color: #7a5c00; }
-.sticky-note-card .flag-chip {
+/* Card flag: just the flag glyph — no circle border, a touch bigger. Override
+   the .active box too (the card only shows the flag when set). */
+.sticky-note-card .flag-chip,
+.sticky-note-card .flag-chip.active {
   width: auto; height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: #b33b3a;
+  padding: 0;
   margin-left: 2px;
 }
-.sticky-note-card .flag-chip svg { width: 12px; height: 12px; }
+.sticky-note-card .flag-chip svg { width: 15px; height: 15px; }
 .sticky-note-card .tags-list { gap: 4px; align-items: center; }
 .sticky-note-card .priority-flag-chips { gap: 4px; }
