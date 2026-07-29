@@ -647,15 +647,34 @@
 .sn-note-anchor.color-purple .sn-note-anchor-sq { background: var(--highlight-purple); }
 .sn-note-anchor.color-red    .sn-note-anchor-sq { background: var(--highlight-red); }
 .sn-note-anchor.color-orange .sn-note-anchor-sq { background: var(--highlight-orange); }
-/* Hover undo: a small × after the square, revealed on hover. */
-.sn-note-anchor-undo {
+/* Hover trash: the red trash glyph FLOATS to the upper-right of the square
+   (position:absolute so it never pushes the surrounding text), revealed on
+   hover. Two-click confirm turns it darker red. */
+.sn-note-anchor-trash {
   display: none;
-  font: 11px/1 "Helvetica", sans-serif;
+  position: absolute;
+  left: 100%;
+  bottom: 100%;
+  margin: 0 0 -2px 1px;
   color: #b33b3a;
-  margin-left: 2px;
   cursor: pointer;
+  background: #fff;
+  border: 1px solid #e4c9c8;
+  border-radius: 3px;
+  padding: 1px 2px;
+  line-height: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  z-index: 5;
 }
-.sn-note-anchor:hover .sn-note-anchor-undo { display: inline; }
+.sn-note-anchor-trash svg { display: block; }
+.sn-note-anchor:hover .sn-note-anchor-trash { display: inline-flex; }
+.sn-note-anchor-trash.confirming { color: #fff; background: #b33b3a; border-color: #b33b3a; }
+/* Flash when a deep-link (landing Notes grid) scrolls to this anchor. */
+.sn-note-anchor-flash .sn-note-anchor-sq { animation: sn-anchor-flash-kf 1.6s ease; }
+@keyframes sn-anchor-flash-kf {
+  0%, 100% { box-shadow: none; }
+  20% { box-shadow: 0 0 0 4px rgba(42, 111, 176, 0.55); }
+}
 
 /* The floating note (reuses the sticky-note widget). */
 .sn-note-float {

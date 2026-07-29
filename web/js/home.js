@@ -80,6 +80,7 @@ const WriteSysHome = {
     return `<div class="card card-note color-${this.esc(n.color)}" data-note-id="${n.note_id}"
               ${n.scratchpad_id ? `data-scratchpad-id="${n.scratchpad_id}"` : ''}
               ${n.manuscript_id ? `data-manuscript-id="${n.manuscript_id}"` : ''}
+              ${n.sentence_id ? `data-sentence-id="${this.esc(n.sentence_id)}"` : ''}
               tabindex="0" role="button" title="Open note in context">
       <p class="card-note-body">${this.esc(n.body || '(empty note)')}</p>
       <p class="card-meta"><span class="note-card-ctx">${this.esc(ctx)}</span>${pri}${flag}</p>
@@ -130,11 +131,18 @@ const WriteSysHome = {
     // Note card → open in context. Scratchpad note: open the pad (later: scroll
     // to the anchor). Manuscript note: go to the book.
     root.querySelectorAll('.card-note').forEach(card => {
+      const noteId = parseInt(card.dataset.noteId, 10);
       const open = () => {
         const padId = card.dataset.scratchpadId;
         const mId = card.dataset.manuscriptId;
-        if (padId && window.WriteSysScratchpadModal) window.WriteSysScratchpadModal.open(parseInt(padId, 10));
-        else if (mId) window.location.href = `./?manuscript_id=${mId}`;
+        if (padId && window.WriteSysScratchpadModal) {
+          // Open the pad and scroll to this note's inline anchor.
+          window.WriteSysScratchpadModal.open(parseInt(padId, 10), { noteId });
+        } else if (mId) {
+          // Manuscript note → open the book and scroll to the noted sentence.
+          const sid = card.dataset.sentenceId;
+          window.location.href = `./?manuscript_id=${mId}` + (sid ? `#note-sentence=${encodeURIComponent(sid)}` : '');
+        }
       };
       card.addEventListener('click', open);
       card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });

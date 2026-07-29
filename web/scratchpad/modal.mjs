@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=18';
+import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=19';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=23';
+  link.href = 'scratchpad/scratchpad.css?v=24';
   document.head.appendChild(link);
 }
 
@@ -20,17 +20,20 @@ export const ScratchpadModal = {
   overlay: null,
   opening: null,
 
-  async open(scratchpadId) {
+  // opts.noteId — after opening, scroll to that note's inline anchor and flash it
+  // (deep-link from the landing Notes grid).
+  async open(scratchpadId, opts) {
     // Serialize opens; close any current pad first (flushes its save).
     while (this.opening) await this.opening;
-    this.opening = this._open(scratchpadId).finally(() => { this.opening = null; });
+    this.opening = this._open(scratchpadId, opts || {}).finally(() => { this.opening = null; });
     return this.opening;
   },
 
   _currentId: 0,
   currentId() { return this.overlay ? this._currentId : 0; },
 
-  async _open(scratchpadId) {
+  async _open(scratchpadId, opts) {
+    opts = opts || {};
     await this.close();
     // close() refuses when a save keeps failing — don't stack a second pad.
     if (this.overlay) return;
@@ -101,6 +104,27 @@ export const ScratchpadModal = {
     // sketch's widget (the peer preview's "navigate to source"). Identity is
     // (snippet, ordinal). Retry briefly while widgets mount.
     if (snM && ordM) this.scrollToSketchWidget(snM[1], parseInt(ordM[1], 10));
+
+    // Deep link from the landing Notes grid: scroll to the note's inline anchor.
+    if (opts.noteId) this.scrollToNoteAnchor(opts.noteId);
+  },
+
+  // Scroll to a note's inline anchor square and flash it.
+  scrollToNoteAnchor(noteId) {
+    if (!noteId) return;
+    let tries = 0;
+    const tick = () => {
+      const el = this.overlay && this.overlay.querySelector(
+        `.sn-note-anchor[data-note-id="${CSS.escape(String(noteId))}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('sn-note-anchor-flash');
+        setTimeout(() => el.classList.remove('sn-note-anchor-flash'), 1600);
+        return;
+      }
+      if (++tries < 30) setTimeout(tick, 200);
+    };
+    setTimeout(tick, 300);
   },
 
   // Scroll the open scratchpad to the widget for (snippet, ordinal). The

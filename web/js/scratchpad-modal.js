@@ -10,14 +10,14 @@ const WriteSysScratchpadModal = {
 
   async _load() {
     if (!this._mod) {
-      this._mod = await import(new URL('scratchpad/modal.mjs?v=10', document.baseURI).href);
+      this._mod = await import(new URL('scratchpad/modal.mjs?v=11', document.baseURI).href);
     }
     return this._mod;
   },
 
-  async open(scratchpadId) {
+  async open(scratchpadId, opts) {
     const mod = await this._load();
-    return mod.ScratchpadModal.open(scratchpadId);
+    return mod.ScratchpadModal.open(scratchpadId, opts);
   },
 
   async close() {

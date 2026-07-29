@@ -855,9 +855,14 @@ async function createNoteFromSelection(color) {
   if (!view || !window.WriteSysNoteAPI) return;
   const { from, to, empty } = view.state.selection;
   if (empty) return; // nothing selected → no-op (buttons are disabled anyway)
+  // Snapshot the highlighted text as the note's starting body, so the note
+  // shows WHAT it's about (incl. on the landing page). The user can add below;
+  // this snapshot does NOT re-sync if the doc text is later edited.
+  const snapshot = view.state.doc.textBetween(from, to, ' ').trim();
+  const body = snapshot || null;
   let created;
   try {
-    created = await window.WriteSysNoteAPI.create({ color, ctx: { scratchpad_id: currentScratchpadId } });
+    created = await window.WriteSysNoteAPI.create({ color, body, ctx: { scratchpad_id: currentScratchpadId } });
   } catch (e) { console.error('create scratchpad note failed', e); return; }
   const noteId = created && created.note_id;
   if (!noteId) return;
@@ -870,8 +875,8 @@ async function createNoteFromSelection(color) {
   tr = tr.insert(from, anchor); // anchor lands just before the highlighted text
   view.dispatch(tr);
   view.focus();
-  // Open the float on the just-inserted anchor.
-  const note = { noteId, note_id: noteId, color, body: null, priority: 'none', flagged: false, tags: [] };
+  // Open the float on the just-inserted anchor (seeded with the snapshot body).
+  const note = { noteId, note_id: noteId, color, body, priority: 'none', flagged: false, tags: [] };
   requestAnimationFrame(() => {
     const el = view.dom.querySelector(`.sn-note-anchor[data-note-id="${noteId}"]`);
     if (el) openNoteFloatFor(note, el);
@@ -921,17 +926,42 @@ function removeNoteFromDoc(noteId) {
 }
 function removeNoteAnchorFromDoc(noteId) { removeNoteFromDoc(noteId); }
 
-// Undo/delete: soft-delete the note (recoverable) AND strip its anchor +
-// highlight from the doc.
-function softDeleteNoteAndAnchor(noteId) {
-  if (window.WriteSysNoteAPI) window.WriteSysNoteAPI.remove(noteId);
-  removeNoteFromDoc(noteId);
+// Delete a note by removing its anchor from the doc — the anchor NodeView's
+// destroy() soft-deletes the DB row (deterministic, event-driven). Also strips
+// the highlight and closes the float. Used by the float's trash.
+function deleteNoteViaDoc(noteId) {
+  removeNoteFromDoc(noteId); // triggers NoteAnchorView.destroy() → soft-delete
   closeNoteFloat();
 }
 
+// The red trash glyph, reused from the sticky-note widget so the note delete
+// affordance is visually consistent everywhere.
+const TRASH_SVG_NOTE = '<svg width="12" height="12" viewBox="0 0 20 20"><path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+// Set true while the editor is being torn down (modal close) so anchor
+// NodeView.destroy() does NOT soft-delete the notes — only a genuine in-doc
+// removal should.
+let editorTearingDown = false;
+
+// Note ids whose anchor is being removed for a reason OTHER than deletion (e.g.
+// "complete" removes the anchor but the note isn't deleted). destroy() consults
+// this so it skips the soft-delete for those.
+const suppressAnchorDelete = new Set();
+
+// Remove a note's anchor WITHOUT soft-deleting it (used by "complete").
+function removeNoteAnchorNoDelete(noteId) {
+  suppressAnchorDelete.add(noteId);
+  removeNoteFromDoc(noteId);
+  // Cleared next tick, after the destroy() that this removal triggers has run.
+  setTimeout(() => suppressAnchorDelete.delete(noteId), 0);
+}
+
 // NodeView for a note anchor: the little colored square. Clicking it opens the
-// floating note; hovering shows an undo (×) that turns the text back to plain
-// (removes anchor + highlight) and soft-deletes the note.
+// floating note. Hovering reveals a red trash (floating upper-right, no text
+// push) that soft-deletes the note (two-click confirm). DELETION IS DETERMINISTIC
+// AND EVENT-DRIVEN — no sweep: destroy() fires when the anchor node actually
+// leaves the doc (incl. bulk edits), and soft-deletes then (unless the editor is
+// tearing down).
 class NoteAnchorView {
   constructor(node, view, getPos) {
     this.node = node;
@@ -941,16 +971,39 @@ class NoteAnchorView {
     this.dom.dataset.noteColor = node.attrs.color;
     this.dom.contentEditable = 'false';
     this.dom.title = 'Note — click to open';
-    // The square glyph + a hover undo.
-    this.dom.innerHTML = '<span class="sn-note-anchor-sq"></span><span class="sn-note-anchor-undo" title="Remove note">×</span>';
+    this.dom.innerHTML =
+      '<span class="sn-note-anchor-sq"></span>' +
+      '<span class="sn-note-anchor-trash" title="Delete note">' + TRASH_SVG_NOTE + '</span>';
     this.dom.querySelector('.sn-note-anchor-sq').addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
       this.open();
     });
-    this.dom.querySelector('.sn-note-anchor-undo').addEventListener('mousedown', (e) => {
+    // Two-click confirm on the trash (matches the sticky-note trash).
+    const trash = this.dom.querySelector('.sn-note-anchor-trash');
+    let clickCount = 0, resetTimer = null;
+    trash.addEventListener('mousedown', (e) => {
       e.preventDefault(); e.stopPropagation();
-      softDeleteNoteAndAnchor(node.attrs.noteId);
+      if (clickCount === 0) {
+        trash.classList.add('confirming');
+        trash.title = 'Click again to delete';
+        clickCount = 1;
+        resetTimer = setTimeout(() => { trash.classList.remove('confirming'); trash.title = 'Delete note'; clickCount = 0; }, 2000);
+      } else {
+        clearTimeout(resetTimer);
+        // Deletion via the doc: removing the anchor triggers destroy() which
+        // soft-deletes the note. Also strip the highlight.
+        removeNoteFromDoc(node.attrs.noteId);
+        closeNoteFloat();
+      }
     });
+  }
+  destroy() {
+    // The anchor left the doc. Soft-delete the note UNLESS this is editor
+    // teardown (modal close) or a non-delete removal like "complete".
+    const id = this.node.attrs.noteId;
+    if (!editorTearingDown && !suppressAnchorDelete.has(id) && window.WriteSysNoteAPI && id) {
+      window.WriteSysNoteAPI.remove(id).catch(() => {});
+    }
   }
   async open() {
     const noteId = this.node.attrs.noteId;
@@ -964,26 +1017,12 @@ class NoteAnchorView {
   ignoreMutation() { return true; }
 }
 
-// Sweep: if a note's anchor was removed from the doc by a BULK edit (select-all
-// delete, paragraph delete) rather than the undo button, soft-delete the note so
-// it doesn't dangle. Compares the anchor ids currently in the doc against the set
-// we've seen; any that vanished get soft-deleted. Debounced via the save cycle.
-let _seenAnchorIds = new Set();
-function sweepOrphanNotes() {
-  const view = activeView; if (!view) return;
-  const sc = view.state.schema;
-  const present = new Set();
-  view.state.doc.descendants((node) => {
-    if (node.type === sc.nodes.noteAnchor && node.attrs.noteId) present.add(node.attrs.noteId);
-  });
-  // Any id we saw before but is gone now → orphaned → soft-delete.
-  for (const id of _seenAnchorIds) {
-    if (!present.has(id) && window.WriteSysNoteAPI) {
-      window.WriteSysNoteAPI.remove(id).catch(() => {});
-    }
-  }
-  _seenAnchorIds = present;
-}
+// NOTE: an earlier "orphan sweep" auto-soft-deleted notes whose anchor left the
+// doc. It was DANGEROUS — it silently deleted real notes (a created note
+// vanished from the landing page). Removed. Deletion now happens ONLY through
+// the explicit, confirmed paths (the anchor's trash and the float's trash). A
+// note whose anchor is bulk-deleted from the doc simply becomes context-less in
+// the landing grid — never silently gone.
 
 // The single floating note element (only one open at a time).
 let openNoteFloat = null;
@@ -1016,8 +1055,8 @@ function openNoteFloatFor(note, anchorEl) {
     },
     onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; api.update(note.noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
     onFlag: () => { note.flagged = !note.flagged; api.update(note.noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
-    onDelete: () => { softDeleteNoteAndAnchor(note.noteId); },
-    onComplete: () => { api.complete(note.noteId); removeNoteAnchorFromDoc(note.noteId); closeNoteFloat(); },
+    onDelete: () => { deleteNoteViaDoc(note.noteId); },
+    onComplete: () => { api.complete(note.noteId); removeNoteAnchorNoDelete(note.noteId); closeNoteFloat(); },
     onAddTag: async (name) => { try { const r = await api.addTag(note.noteId, name); note.tags = (r && r.tags) || note.tags; } catch (e) {} },
     onRemoveTag: async (tagId) => { try { await api.removeTag(note.noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); } catch (e) {} },
   }, {});
@@ -1310,7 +1349,6 @@ export async function createScratchpadEditor(els, scratchpadId) {
   els.titleInput.value = pad.title;
   // Fresh per editor instance (the modal can open/close repeatedly).
   noteColorGroups.length = 0;
-  _seenAnchorIds = new Set();
   closeNoteFloat();
 
   let view = null;
@@ -1500,7 +1538,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       if (destroyed) return;
       const newState = view.state.apply(tr);
       view.updateState(newState);
-      if (tr.docChanged) { scheduleSave(); sweepOrphanNotes(); }
+      if (tr.docChanged) scheduleSave();
       updateToolbar();
     },
   });
@@ -1561,8 +1599,12 @@ export async function createScratchpadEditor(els, scratchpadId) {
       els.imageInput.removeEventListener('change', onImage);
       if (saveState !== 'saved') await saveNow();
       closeNoteFloat();
+      // Anchor NodeViews destroy() during view.destroy(); don't let that
+      // soft-delete the notes (the doc persists them).
+      editorTearingDown = true;
       if (activeView === view) activeView = null;
       view.destroy();
+      editorTearingDown = false;
       view = null;
     },
   };

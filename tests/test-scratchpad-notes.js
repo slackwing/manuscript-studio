@@ -50,29 +50,47 @@ const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98
   const float = await page.locator('.sn-note-float .sticky-note').count();
   check('floating note (sticky-note) opened', float >= 1, `floats=${float}`);
 
+  // The note body is SEEDED with the highlighted text (snapshot), so it shows
+  // what it's about.
+  const seeded = await page.locator('.sn-note-float .note-input').first().inputValue();
+  check('note body seeded with the highlighted text', /Highlight this sentence/.test(seeded), seeded);
+
   await page.screenshot({ path: `${OUT}/scratch-note-created.png` });
 
-  // Type in the note float, expect it to persist.
+  // Add to the note body, expect it to persist.
   const noteInput = page.locator('.sn-note-float .note-input').first();
-  await noteInput.click(); await noteInput.fill('This is my scratchpad note.');
+  await noteInput.click();
+  await noteInput.fill('Highlight this sentence for a note.\n\nMy added thought.');
   await page.waitForTimeout(1400); // debounced save
 
-  // The note exists in the DB as a scratchpad note (no sentence).
   const row = psql(`SELECT color, body, (sentence_id IS NULL) AS no_sentence, (scratchpad_id IS NOT NULL) AS has_pad FROM note WHERE user_id='test' AND scratchpad_id IS NOT NULL AND deleted_at IS NULL ORDER BY note_id DESC LIMIT 1`);
-  check('note persisted as a scratchpad note (color purple, no sentence, has pad)',
+  check('note persisted as a scratchpad note (purple, no sentence, has pad)',
     /purple/.test(row) && /\|t\|t/.test(row.replace(/\s/g, '')), row.trim());
 
   // Click outside → float hides.
   await page.locator('.spm-title').click();
   await page.waitForTimeout(300);
-  const floatAfter = await page.locator('.sn-note-float').count();
-  check('clicking outside hides the float', floatAfter === 0, `floats=${floatAfter}`);
+  check('clicking outside hides the float', (await page.locator('.sn-note-float').count()) === 0);
 
   // Click the anchor square → float reopens.
   await page.locator('.sn-note-anchor .sn-note-anchor-sq').first().click();
   await page.waitForTimeout(400);
-  const floatReopen = await page.locator('.sn-note-float').count();
-  check('clicking the anchor reopens the float', floatReopen >= 1, `floats=${floatReopen}`);
+  check('clicking the anchor reopens the float', (await page.locator('.sn-note-float').count()) >= 1);
+  await page.locator('.spm-title').click(); await page.waitForTimeout(200);
+
+  // KEY: completely change the highlighted text, THEN delete the note via the
+  // anchor trash (two-click) — deletion is anchor-id based, so it still works.
+  await pm.click();
+  // Select the highlighted word run and retype over it.
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('totally different text now');
+  await page.waitForTimeout(300);
+  // The anchor was removed by select-all → its note should be soft-deleted
+  // deterministically (destroy()).
+  await page.waitForTimeout(400);
+  const noteIdRow = psql(`SELECT note_id, deleted_at IS NOT NULL AS del FROM note WHERE user_id='test' AND scratchpad_id IS NOT NULL ORDER BY note_id DESC LIMIT 1`).trim();
+  check('deleting the anchor (via edit) soft-deletes the note deterministically (no sweep)',
+    /\|t$/.test(noteIdRow), noteIdRow);
 
   await browser.close();
   process.exit(failed ? 1 : 0);

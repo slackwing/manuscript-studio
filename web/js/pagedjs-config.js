@@ -52,6 +52,22 @@
           if (window.WriteSysHistory && window.WriteSysRenderer.currentMigrationID) {
             window.WriteSysHistory.loadHistory(window.WriteSysRenderer.currentMigrationID);
           }
+          // Deep link from the landing Notes grid: #note-sentence=<sid> scrolls
+          // to the noted sentence and opens its notes (once, on first render).
+          if (!window.WriteSysRenderer._noteDeepLinkDone) {
+            const m = (window.location.hash || '').match(/[#&]note-sentence=([^&]+)/);
+            if (m) {
+              window.WriteSysRenderer._noteDeepLinkDone = true;
+              const sid = decodeURIComponent(m[1]);
+              setTimeout(() => {
+                window.WriteSysRenderer.scrollToSentence(sid);
+                const frag = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+                if (frag && window.WriteSysNotes) {
+                  frag.click(); // opens the note panel for that sentence
+                }
+              }, 300);
+            }
+          }
         }
 
         console.log(`Paged.js rendered ${pages.length} pages`);
