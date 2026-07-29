@@ -138,7 +138,8 @@
   // (always last). Takes the whole `note` so the link chip can read
   // manuscript_id / manuscript_name. handlers may carry onLinkManuscript /
   // onUnlinkManuscript; without them the link chip is omitted.
-  function renderTags(noteEl, note, handlers) {
+  function renderTags(noteEl, note, handlers, opts) {
+    const readOnly = !!(opts && opts.readOnly);
     const list = noteEl.querySelector('.tags-list');
     if (!list) return;
     list.innerHTML = '';
@@ -150,17 +151,22 @@
       const name = document.createElement('span');
       name.textContent = tag.tag_name;
       chip.appendChild(name);
-      const rm = document.createElement('span');
-      rm.className = 'tag-chip-remove';
-      rm.textContent = '×';
-      chip.appendChild(rm);
+      if (!readOnly) {
+        const rm = document.createElement('span');
+        rm.className = 'tag-chip-remove';
+        rm.textContent = '×';
+        chip.appendChild(rm);
+      }
       list.appendChild(chip);
     });
-    const add = document.createElement('div');
-    add.className = 'tag-chip new-tag';
-    add.textContent = '+ tag';
-    list.appendChild(add);
-    appendManuscriptChip(noteEl, list, note, handlers);
+    if (!readOnly) {
+      const add = document.createElement('div');
+      add.className = 'tag-chip new-tag';
+      add.textContent = '+ tag';
+      list.appendChild(add);
+    }
+    // No manuscript chip on read-only cards — the context line carries it.
+    if (!readOnly) appendManuscriptChip(noteEl, list, note, handlers);
   }
 
   // The manuscript-link chip — always the LAST chip, marked with the link glyph.
@@ -264,16 +270,44 @@
     handlers = handlers || {};
     opts = opts || {};
     const showComplete = opts.showComplete !== false;
+    // Two ORTHOGONAL axes:
+    //   readOnly — not editable (no ×, no +tag, no textarea, no toggles). What.
+    //   card     — the compact landing-card LOOK (miniature rectangular chips,
+    //              clamped preview body). How it presents.
+    // A landing note card sets both; they're independent by design (the "card
+    // style" comes from `card`, not from read-only-ness). The card frame +
+    // context line are added by the caller around this element.
+    const readOnly = !!opts.readOnly;
+    const card = !!opts.card;
 
     const noteEl = document.createElement('div');
     noteEl.className = 'sticky-note';
     if (opts.collapsed) noteEl.classList.add('sticky-note-collapsed');
+    if (readOnly) noteEl.classList.add('sticky-note-readonly');
+    if (card) noteEl.classList.add('sticky-note-card'); // compact-chips + clamp look
     noteEl.dataset.noteId = esc(note.note_id);
     if (note.color) noteEl.classList.add(`color-${note.color}`);
 
+    // The body: an editable textarea live, a clamped preview when read-only.
+    const bodyHtml = readOnly
+      ? `<div class="note-readonly-body"></div>`
+      : `<textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>`;
+    // The action icons (trash/complete) and color circle are edit-only.
+    const actionsHtml = readOnly ? '' : `
+          <div class="note-trash" title="Delete note">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          ${showComplete ? `<div class="complete-check" title="Mark complete">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>` : ''}`;
+
     noteEl.innerHTML = `
       <div class="note-container">
-        <textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>
+        ${bodyHtml}
       </div>
       <div class="sticky-bottom-controls">
         <div class="tags-container"><div class="tags-list"></div></div>
@@ -288,23 +322,33 @@
               <path class="flag-staff" d="M4 1v18"/>
               <path class="flag-shape" d="M4 3h10l-2.5 5 2.5 5H4"/>
             </svg>
-          </div>
-          <div class="note-trash" title="Delete note">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          ${showComplete ? `<div class="complete-check" title="Mark complete">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>` : ''}
+          </div>${actionsHtml}
         </div>
       </div>`;
 
-    noteEl.appendChild(buildColorCircle(note, handlers));
-    renderTags(noteEl, note, handlers);
+    if (!readOnly) noteEl.appendChild(buildColorCircle(note, handlers));
+    renderTags(noteEl, note, handlers, opts);
     updatePriorityFlagUI(noteEl, note);
+
+    if (readOnly) {
+      // Preview body: same Caveat font (via CSS), clamped to a few lines. No
+      // events. Read-only notes carry only priority/flag/tags/context — nothing
+      // interactive — so we return right after populating the preview.
+      noteEl.querySelector('.note-readonly-body').textContent = note.body || '(empty note)';
+      // In read-only the priority/flag are indicators, not toggles: drop the
+      // inactive priority chips so only the set ones show (updatePriorityFlagUI
+      // added .active). A cleaner card: hide unset priority chips + unset flag.
+      noteEl.querySelectorAll('.priority-chip').forEach((c) => { if (!c.classList.contains('active')) c.remove(); });
+      const fl = noteEl.querySelector('.flag-chip');
+      if (fl && !fl.classList.contains('active')) fl.remove();
+      // If nothing remains in the priority/flag row, hide it.
+      const pfc = noteEl.querySelector('.priority-flag-chips');
+      if (pfc && !pfc.querySelector('.priority-chip, .flag-chip.active')) {
+        const cont = noteEl.querySelector('.priority-flag-container');
+        if (cont) cont.style.display = 'none';
+      }
+      return noteEl;
+    }
 
     const ta = noteEl.querySelector('.note-input');
     ta.value = note.body || '';

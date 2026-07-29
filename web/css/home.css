@@ -188,8 +188,53 @@ body.home-page {
   overflow: hidden;
 }
 .note-card-ctx { font-style: italic; color: #6b6b6b; }
-.note-card-pri {
-  font-size: 10px; font-weight: 600; color: #7a5c00;
-  background: rgba(255, 255, 255, 0.55); border-radius: 4px; padding: 1px 5px;
+
+/* The note card mounts the SHARED note component (buildNoteElement, read-only +
+   card variant) inside the .card frame. The card already provides the colored
+   background, rounded corners and padding, so the inner sticky-note resets its
+   own frame chrome and just contributes the body + chips. */
+.card-note { padding: 14px; }
+.card-note .sticky-note-card {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+  overflow: hidden;
 }
-.note-card-flag { color: #b33b3a; margin-left: auto; }
+/* Context line pinned to the bottom of the square, below the note content. */
+.card-note .card-meta { margin: 8px 0 0; }
+/* Clamped preview body — same Caveat handwriting as the live note, just capped
+   with an ellipsis (no expand). */
+.card-note .note-readonly-body {
+  font-family: "Caveat", "Helvetica", sans-serif;
+  font-size: 18px;
+  line-height: 1.25;
+  color: #2a2a2a;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+/* The read-only card never shows the color circle / trash / complete; keep the
+   priority-flag row tight and the tags row compact. */
+.card-note .sticky-note-card .priority-flag-container { margin-top: 4px; }
+.card-note .sticky-note-card .tags-container { margin: 0; }
+
+/* Compact rectangular "miniature" chips for the card look (vs. the round chips
+   used in the margin / float). Driven by the .sticky-note-card variant. */
+.sticky-note-card .tag-chip,
+.sticky-note-card .priority-chip {
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: none;
+  color: #4a4a4a;
+}
+.sticky-note-card .priority-chip { font-weight: 600; color: #7a5c00; }
+.sticky-note-card .flag-chip { color: #b33b3a; }
+.sticky-note-card .tags-list { gap: 4px; }

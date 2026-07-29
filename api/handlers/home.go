@@ -11,6 +11,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
+	"github.com/slackwing/manuscript-studio/internal/models"
 	"github.com/slackwing/manuscript-studio/internal/scratchpad"
 )
 
@@ -56,6 +57,7 @@ type homeNote struct {
 	ManuscriptID *int      `json:"manuscript_id,omitempty"`
 	ScratchpadID *int      `json:"scratchpad_id,omitempty"`
 	SentenceID   string    `json:"sentence_id,omitempty"`
+	Tags         []models.Tag `json:"tags,omitempty"`
 }
 
 // joinContext renders a note's context label from its manuscript and scratchpad,
@@ -165,7 +167,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 			hn := homeNote{
 				NoteID: n.NoteID, Color: n.Color, Priority: n.Priority, Flagged: n.Flagged,
 				UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
-				SentenceID: n.SentenceID,
+				SentenceID: n.SentenceID, Tags: n.Tags,
 			}
 			if n.Body != nil {
 				hn.Body = *n.Body

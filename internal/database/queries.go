@@ -1616,6 +1616,7 @@ type HomeNote struct {
 	SentenceID      string
 	Context         string // fallback manuscript label (repo basename etc.); the handler prefers the config name
 	ScratchpadTitle string // the scratchpad title, if the note lives on one — shown alongside the manuscript
+	Tags            []models.Tag
 }
 
 // ListNotesForHome returns a user's most-recently-touched active notes with a
@@ -1633,7 +1634,15 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		           NULLIF(regexp_replace(regexp_replace(m.repo_path, '\.git/?$', ''), '^.*/', ''), ''),
 		           ''
 		       ) AS context,
-		       COALESCE(sp.title, '') AS scratchpad_title
+		       COALESCE(sp.title, '') AS scratchpad_title,
+		       -- Tags for the card (read-only chips). Aggregated here to avoid an
+		       -- N+1 per note; empty array when none.
+		       COALESCE(
+		           (SELECT json_agg(json_build_object('tag_id', t.tag_id, 'tag_name', t.tag_name) ORDER BY t.tag_name)
+		            FROM note_tag nt JOIN tag t ON t.tag_id = nt.tag_id
+		            WHERE nt.note_id = n.note_id),
+		           '[]'::json
+		       ) AS tags
 		FROM note n
 		LEFT JOIN scratchpad sp ON sp.scratchpad_id = n.scratchpad_id
 		LEFT JOIN manuscript  m ON m.manuscript_id  = n.manuscript_id
@@ -1650,9 +1659,13 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 	var out []HomeNote
 	for rows.Next() {
 		var h HomeNote
+		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.Flagged, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &tagsJSON); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
+		}
+		if len(tagsJSON) > 0 {
+			_ = json.Unmarshal(tagsJSON, &h.Tags) // best-effort; tags are decorative
 		}
 		out = append(out, h)
 	}

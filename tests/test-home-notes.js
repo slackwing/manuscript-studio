@@ -31,11 +31,15 @@ function psql(sql) {
   const headings = await page.locator('.home-section-head h2').allTextContents();
   check('Notes section present on the landing page', headings.some(h => /notes/i.test(h)), headings.join(','));
 
-  // The note card shows body + color + context.
+  // The note card mounts the SHARED note component (read-only + card variant),
+  // so its body/chips come from buildNoteElement. Body + color + context here.
   const card = page.locator('.card-note').first();
   check('a note card is rendered', await page.locator('.card-note').count() >= 1);
-  const bodyText = await card.locator('.card-note-body').textContent().catch(() => '');
+  check('card mounts the shared note component (read-only card variant)',
+    await card.locator('.sticky-note-card.sticky-note-readonly').count() === 1);
+  const bodyText = await card.locator('.note-readonly-body').textContent().catch(() => '');
   check('card shows the note body', /landing-grid note/.test(bodyText), bodyText.trim());
+  check('card body is NOT editable (no textarea)', await card.locator('textarea').count() === 0);
   const isOrange = await card.evaluate(el => el.classList.contains('color-orange')).catch(() => false);
   check('card wears the note color (orange)', isOrange);
   const ctx = await card.locator('.note-card-ctx').textContent().catch(() => '');

@@ -71,20 +71,45 @@ const WriteSysHome = {
     </div>`;
   },
 
-  // A note card (NOTES_PLAN.md Phase 3): a compact colored card showing a
-  // clipped preview of the body + its context (manuscript / scratchpad / none).
-  noteCard(n) {
+  // A note card (NOTES_PLAN.md Phase 3): the SHARED note component in its
+  // read-only card variant, wrapped in the standard card frame + a context line.
+  // The card returns an outer .card element; its note body/tags/priority/flag
+  // come from buildNoteElement, so they always match the real note (font,
+  // chips, everything). Only the frame, the context, and click-to-open are
+  // card-specific. Returns an HTMLElement (not a string) since it composes DOM.
+  noteCardEl(n) {
     const ctx = n.context || 'no context';
-    const flag = n.flagged ? '<span class="note-card-flag" title="Flagged">⚑</span>' : '';
-    const pri = (n.priority && n.priority !== 'none') ? `<span class="note-card-pri">${this.esc(n.priority)}</span>` : '';
-    return `<div class="card card-note color-${this.esc(n.color)}" data-note-id="${n.note_id}"
-              ${n.scratchpad_id ? `data-scratchpad-id="${n.scratchpad_id}"` : ''}
-              ${n.manuscript_id ? `data-manuscript-id="${n.manuscript_id}"` : ''}
-              ${n.sentence_id ? `data-sentence-id="${this.esc(n.sentence_id)}"` : ''}
-              tabindex="0" role="button" title="Open note in context">
-      <p class="card-note-body">${this.esc(n.body || '(empty note)')}</p>
-      <p class="card-meta"><span class="note-card-ctx">${this.esc(ctx)}</span>${pri}${flag}</p>
-    </div>`;
+    const card = document.createElement('div');
+    card.className = `card card-note color-${this.esc(n.color)}`;
+    card.dataset.noteId = n.note_id;
+    if (n.scratchpad_id) card.dataset.scratchpadId = n.scratchpad_id;
+    if (n.manuscript_id) card.dataset.manuscriptId = n.manuscript_id;
+    if (n.sentence_id) card.dataset.sentenceId = n.sentence_id;
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.title = 'Open note in context';
+
+    // The note component, read-only + card look. No handlers → nothing editable.
+    if (window.WriteSysNoteWidget) {
+      const noteEl = window.WriteSysNoteWidget.buildNoteElement(
+        n, {}, { readOnly: true, card: true, showComplete: false });
+      card.appendChild(noteEl);
+    } else {
+      const body = document.createElement('p');
+      body.className = 'card-note-body';
+      body.textContent = n.body || '(empty note)';
+      card.appendChild(body);
+    }
+
+    // Context line under the note content (manuscript · scratchpad).
+    const meta = document.createElement('p');
+    meta.className = 'card-meta';
+    const ctxSpan = document.createElement('span');
+    ctxSpan.className = 'note-card-ctx';
+    ctxSpan.textContent = ctx;
+    meta.appendChild(ctxSpan);
+    card.appendChild(meta);
+    return card;
   },
 
   section(title, count, cardsHTML, opts = {}) {
@@ -95,7 +120,9 @@ const WriteSysHome = {
         <span class="home-spacer"></span>
         ${opts.seeAll ? `<a class="home-seeall" href="home.html?view=${opts.seeAll}" data-view="${opts.seeAll}">See all →</a>` : ''}
       </div>
-      ${cardsHTML ? `<div class="card-grid">${cardsHTML}</div>` : '<div class="home-empty">Nothing here yet.</div>'}
+      ${opts.notes
+        ? '<div class="card-grid" data-note-grid></div>'
+        : (cardsHTML ? `<div class="card-grid">${cardsHTML}</div>` : '<div class="home-empty">Nothing here yet.</div>')}
     </section>`;
   },
 
@@ -105,7 +132,11 @@ const WriteSysHome = {
     const ms = this.data.manuscripts || [];
     const sp = this.data.scratchpads || [];
     const nt = this.data.notes || [];
+    // Note cards are BUILT AS ELEMENTS (they mount the shared note component),
+    // so their sections render an empty grid placeholder here and get populated
+    // after innerHTML is set. `noteList` is the notes to inject for this view.
     let html = '';
+    let noteList = null;
     if (view === 'manuscripts') {
       html = `<a class="home-back" href="home.html">← Home</a>` +
         this.section('All manuscripts', ms.length, ms.map(m => this.manuscriptCard(m)).join(''));
@@ -113,20 +144,30 @@ const WriteSysHome = {
       html = `<a class="home-back" href="home.html">← Home</a>` +
         this.section('All scratchpads', sp.length, sp.map(s => this.scratchpadCard(s)).join(''), { newBtn: true });
     } else if (view === 'notes') {
+      noteList = nt;
       html = `<a class="home-back" href="home.html">← Home</a>` +
-        this.section('All notes', nt.length, nt.map(n => this.noteCard(n)).join(''));
+        this.section('All notes', nt.length, '', { notes: true });
     } else {
+      noteList = nt.slice(0, this.RECENT);
       html = this.section('Manuscripts', ms.length,
         ms.slice(0, this.RECENT).map(m => this.manuscriptCard(m)).join(''),
         ms.length > this.RECENT ? { seeAll: 'manuscripts' } : {})
         + this.section('Scratchpads', sp.length,
           sp.slice(0, this.RECENT).map(s => this.scratchpadCard(s)).join(''),
           { newBtn: true, ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
-        + this.section('Notes', nt.length,
-          nt.slice(0, this.RECENT).map(n => this.noteCard(n)).join(''),
-          nt.length > this.RECENT ? { seeAll: 'notes' } : {});
+        + this.section('Notes', nt.length, '',
+          { notes: true, ...(nt.length > this.RECENT ? { seeAll: 'notes' } : {}) });
     }
     root.innerHTML = html;
+
+    // Populate the note grid with shared-component cards.
+    if (noteList) {
+      const grid = root.querySelector('[data-note-grid]');
+      if (grid) {
+        if (noteList.length) noteList.forEach(n => grid.appendChild(this.noteCardEl(n)));
+        else grid.outerHTML = '<div class="home-empty">Nothing here yet.</div>';
+      }
+    }
 
     // Note card → open in context. Scratchpad note: open the pad (later: scroll
     // to the anchor). Manuscript note: go to the book.
