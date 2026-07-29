@@ -40,7 +40,11 @@
   border-bottom: 1px solid #e4ded1;
 }
 .spm-title {
-  flex: 1;
+  /* Sized to content (capped) so the link chip can sit right after the title,
+     like a snippet's linker. A flex spacer pushes status/buttons to the right. */
+  flex: 0 1 auto;
+  min-width: 60px;
+  max-width: 60%;
   font: 700 17px Georgia, serif;
   border: none;
   outline: none;
@@ -48,6 +52,7 @@
   color: #222;
   padding: 2px 4px;
 }
+.spm-header-spacer { flex: 1 1 auto; }
 .spm-status { font: 11px "Helvetica", sans-serif; color: #8a8378; }
 
 /* Scratchpad → manuscript link control (Phase C). Unlinked: just the glyph

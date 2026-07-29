@@ -1154,6 +1154,10 @@ p.section-break {
   color: #2a6fb0;
 }
 .tag-chip.manuscript-chip:hover { background: #cfe3f6; }
+/* Read-only manuscript chip (a sentence note is inherently in its manuscript —
+   shown as context, but not unlinkable). */
+.tag-chip.manuscript-chip.readonly { cursor: default; }
+.tag-chip.manuscript-chip.readonly:hover { background: #dcebfa; }
 .tag-chip.manuscript-chip.unlinked {
   cursor: pointer;
   background: transparent;

@@ -58,6 +58,20 @@ type homeNote struct {
 	SentenceID   string    `json:"sentence_id,omitempty"`
 }
 
+// joinContext renders a note's context label from its manuscript and scratchpad,
+// showing both when present ("The Wildfire · Journals: 202607"), or whichever
+// one exists, or "".
+func joinContext(manuscript, scratchpad string) string {
+	switch {
+	case manuscript != "" && scratchpad != "":
+		return manuscript + " · " + scratchpad
+	case manuscript != "":
+		return manuscript
+	default:
+		return scratchpad
+	}
+}
+
 func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	session, err := auth.GetSession(r)
@@ -156,13 +170,17 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 			if n.Body != nil {
 				hn.Body = *n.Body
 			}
-			hn.Context = n.Context
-			// A manuscript-backed note's context is its manuscript's config name.
+			// Context can carry BOTH a manuscript and a scratchpad — e.g. a note
+			// on a manuscript-linked scratchpad shows "The Wildfire · Journals".
+			// Prefer the manuscript's config name (single source of truth); fall
+			// back to the DB-derived label the query produced.
+			manuscript := n.Context
 			if n.ManuscriptID != nil {
 				if name, ok := manuscriptName[*n.ManuscriptID]; ok && name != "" {
-					hn.Context = name
+					manuscript = name
 				}
 			}
+			hn.Context = joinContext(manuscript, n.ScratchpadTitle)
 			notes = append(notes, hn)
 		}
 	}

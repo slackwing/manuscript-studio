@@ -70,6 +70,13 @@ async function makeNote(page, text) {
   const postMid = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${postNote}`).trim();
   check('post-link note INHERITS the manuscript', /^[0-9]+$/.test(postMid), `manuscript_id=${postMid}`);
 
+  // (3b) The landing card shows BOTH contexts: "<manuscript> · <scratchpad>".
+  const home = await page.evaluate(async () => (await (await fetch('api/home', { credentials: 'same-origin' })).json()));
+  const card = (home.notes || []).find(n => String(n.note_id) === String(postNote));
+  check('landing card shows both manuscript and scratchpad context',
+    !!card && / · /.test(card.context) && card.context.includes(pickedName.trim()),
+    card && card.context);
+
   // The earlier note is still untouched (not retroactively linked).
   const preMid2 = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${preNote}`).trim();
   check('pre-link note STILL has no manuscript (not retroactive)', preMid2 === 'null', `manuscript_id=${preMid2}`);

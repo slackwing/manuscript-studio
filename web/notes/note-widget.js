@@ -169,8 +169,21 @@
   // Present in every view (it's built here), so linking a note to a manuscript
   // works identically everywhere. Omitted only if the location doesn't wire the
   // link handlers.
+  // The manuscript chip is a CONTEXT display first, a link control second:
+  //   - If the note has a manuscript_id, the chip ALWAYS shows (its manuscript
+  //     is part of what the note is), regardless of location. This is the
+  //     "every manuscript note shows its manuscript" invariant.
+  //   - Whether it can be UNLINKED depends on onUnlinkManuscript being wired.
+  //     A sentence note is inherently in its manuscript, so the margin shows the
+  //     chip read-only (no ×). A scratchpad/free note's link is optional, so the
+  //     float wires unlink and shows the ×.
+  //   - The unlinked-but-linkable state (bare glyph → picker) shows only where
+  //     onLinkManuscript is wired.
   function appendManuscriptChip(noteEl, list, note, handlers) {
-    if (!handlers.onLinkManuscript && !handlers.onUnlinkManuscript) return;
+    const canLink = !!handlers.onLinkManuscript;
+    const canUnlink = !!handlers.onUnlinkManuscript;
+    if (!note.manuscript_id && !canLink) return; // nothing to show
+
     const chip = document.createElement('div');
     chip.className = 'tag-chip manuscript-chip';
     const icon = document.createElement('span');
@@ -184,24 +197,27 @@
       name.className = 'manuscript-chip-name';
       name.textContent = note.manuscript_name || 'Manuscript';
       chip.appendChild(name);
-      const rm = document.createElement('span');
-      rm.className = 'manuscript-chip-remove';
-      rm.textContent = '×';
-      rm.title = 'Unlink from manuscript';
-      chip.appendChild(rm);
-      rm.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (handlers.onUnlinkManuscript) {
+      if (canUnlink) {
+        const rm = document.createElement('span');
+        rm.className = 'manuscript-chip-remove';
+        rm.textContent = '×';
+        rm.title = 'Unlink from manuscript';
+        chip.appendChild(rm);
+        rm.addEventListener('click', async (e) => {
+          e.stopPropagation();
           await handlers.onUnlinkManuscript();
           renderTags(noteEl, note, handlers);
-        }
-      });
+        });
+      } else {
+        // Read-only: the note is inherently in this manuscript.
+        chip.classList.add('readonly');
+        chip.title = 'In ' + (note.manuscript_name || 'this manuscript');
+      }
     } else {
       chip.classList.add('unlinked');
       chip.title = 'Link to a manuscript';
       chip.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!handlers.onLinkManuscript) return;
         openManuscriptPicker(chip, async (manuscriptId) => {
           await handlers.onLinkManuscript(manuscriptId);
           renderTags(noteEl, note, handlers);

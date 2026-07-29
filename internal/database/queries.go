@@ -683,7 +683,7 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	query := `
-		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
+		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
 		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
 		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
@@ -706,6 +706,8 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 		err := rows.Scan(
 			&a.NoteID,
 			&a.SentenceID,
+			&a.ManuscriptID,
+			&a.ScratchpadID,
 			&a.UserID,
 			&a.Color,
 			&a.Body,
@@ -813,7 +815,7 @@ func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersi
 
 func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
-		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
+		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
 		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
 		FROM note a
 		WHERE a.sentence_id = $1
@@ -836,6 +838,8 @@ func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username strin
 		err := rows.Scan(
 			&a.NoteID,
 			&a.SentenceID,
+			&a.ManuscriptID,
+			&a.ScratchpadID,
 			&a.UserID,
 			&a.Color,
 			&a.Body,
@@ -1601,16 +1605,17 @@ func (db *DB) SetLastManuscriptName(ctx context.Context, username, manuscriptNam
 
 // HomeNote is a note plus a display context, for the landing grid.
 type HomeNote struct {
-	NoteID       int
-	Color        string
-	Body         *string
-	Priority     string
-	Flagged      bool
-	UpdatedAt    time.Time
-	ManuscriptID *int
-	ScratchpadID *int
-	SentenceID   string
-	Context      string // manuscript display name, scratchpad title, or ""
+	NoteID          int
+	Color           string
+	Body            *string
+	Priority        string
+	Flagged         bool
+	UpdatedAt       time.Time
+	ManuscriptID    *int
+	ScratchpadID    *int
+	SentenceID      string
+	Context         string // fallback manuscript label (repo basename etc.); the handler prefers the config name
+	ScratchpadTitle string // the scratchpad title, if the note lives on one — shown alongside the manuscript
 }
 
 // ListNotesForHome returns a user's most-recently-touched active notes with a
@@ -1620,15 +1625,15 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 	rows, err := db.Pool.Query(ctx, `
 		SELECT n.note_id, n.color, n.body, n.priority, n.flagged, n.updated_at,
 		       n.manuscript_id, n.scratchpad_id, COALESCE(n.sentence_id, ''),
+		       -- Fallback manuscript label (used only when the note has a
+		       -- manuscript_id but the handler can't resolve a config name):
+		       -- display_name, else the repo folder name (minus a trailing .git).
 		       COALESCE(
-		           NULLIF(sp.title, ''),
 		           NULLIF(m.display_name, ''),
-		           -- fall back to the repo folder name (last path segment,
-		           -- minus a trailing .git) so a manuscript note is never
-		           -- context-less when it has a manuscript_id.
 		           NULLIF(regexp_replace(regexp_replace(m.repo_path, '\.git/?$', ''), '^.*/', ''), ''),
 		           ''
-		       ) AS context
+		       ) AS context,
+		       COALESCE(sp.title, '') AS scratchpad_title
 		FROM note n
 		LEFT JOIN scratchpad sp ON sp.scratchpad_id = n.scratchpad_id
 		LEFT JOIN manuscript  m ON m.manuscript_id  = n.manuscript_id
@@ -1646,7 +1651,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 	for rows.Next() {
 		var h HomeNote
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.Flagged, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
 		out = append(out, h)

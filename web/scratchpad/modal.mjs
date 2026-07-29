@@ -11,7 +11,7 @@ function ensureCSS() {
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=28';
+  link.href = 'scratchpad/scratchpad.css?v=29';
   document.head.appendChild(link);
 }
 
@@ -47,8 +47,9 @@ export const ScratchpadModal = {
       <div class="spm-dialog" role="dialog" aria-label="Scratchpad">
         <div class="spm-header">
           <input id="spm-title" class="spm-title" type="text" placeholder="Untitled" autocomplete="off">
-          <span id="spm-status" class="spm-status">Saved</span>
           <span id="spm-link" class="spm-link" tabindex="0" role="button"></span>
+          <span class="spm-header-spacer"></span>
+          <span id="spm-status" class="spm-status">Saved</span>
           <button type="button" id="spm-expand" title="Expand">⤢</button>
           <button type="button" id="spm-close" title="Close (Esc)">×</button>
         </div>

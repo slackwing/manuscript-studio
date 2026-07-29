@@ -150,6 +150,9 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 	if notes == nil {
 		notes = []models.Note{}
 	}
+	// Fill the manuscript label so the note's manuscript chip shows its name in
+	// the margin (every manuscript note displays its manuscript — read-only).
+	fillNoteManuscriptNames(ctx, h.DB, h.Config, notes)
 
 	// Book-wide settings from &meta commands, for the renderer.
 	ids := make([]string, len(sentences))

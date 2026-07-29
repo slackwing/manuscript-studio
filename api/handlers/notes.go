@@ -101,9 +101,15 @@ func (h *NoteHandlers) HandleGetNotesByCommit(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// fillManuscriptNames resolves the manuscript label for a slice of notes,
-// caching per manuscript_id so a page of same-manuscript notes hits config once.
 func (h *NoteHandlers) fillManuscriptNames(ctx context.Context, notes []models.Note) {
+	fillNoteManuscriptNames(ctx, h.DB, h.Config, notes)
+}
+
+// fillNoteManuscriptNames resolves the manuscript label for a slice of notes,
+// caching per manuscript_id so a page of same-manuscript notes hits config once.
+// Shared so every handler that returns notes (per-sentence, per-commit, and the
+// manuscript-render endpoint) surfaces the manuscript chip's name identically.
+func fillNoteManuscriptNames(ctx context.Context, db *database.DB, cfg *config.Config, notes []models.Note) {
 	cache := map[int]string{}
 	for i := range notes {
 		if notes[i].ManuscriptID == nil {
@@ -112,7 +118,7 @@ func (h *NoteHandlers) fillManuscriptNames(ctx context.Context, notes []models.N
 		mid := *notes[i].ManuscriptID
 		name, ok := cache[mid]
 		if !ok {
-			name = manuscriptDisplayName(ctx, h.DB, h.Config, mid)
+			name = manuscriptDisplayName(ctx, db, cfg, mid)
 			cache[mid] = name
 		}
 		notes[i].ManuscriptName = name
