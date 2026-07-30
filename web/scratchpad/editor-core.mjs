@@ -1002,31 +1002,25 @@ function recolorNote(noteId, color) {
 
 // Remove a note's ref node from the doc. Returns true if found. Removing the
 // node triggers its NodeView destroy() (which soft-deletes unless suppressed).
-// The ref replaced a selected word, so it often sits BETWEEN two spaces
-// (…one<ref>three…). Deleting only the ref would leave a doubled space, so when
-// the ref is flanked by spaces we take one of them with it.
+// The ref wrapped the originally-highlighted text (stored in attrs.text), so we
+// REPLACE the ref with that text — the words come back as plain prose, exactly
+// where they were (no gap, so no space-collapsing needed).
 function removeNoteFromDoc(noteId) {
   const view = activeView; if (!view) return false;
   const sc = view.state.schema;
-  const ranges = [];
+  const found = [];
   view.state.doc.descendants((node, pos) => {
-    if (node.type === sc.nodes.noteRef && node.attrs.noteId === noteId) ranges.push([pos, pos + node.nodeSize]);
+    if (node.type === sc.nodes.noteRef && node.attrs.noteId === noteId) {
+      found.push([pos, pos + node.nodeSize, node.attrs.text || '']);
+    }
   });
-  if (!ranges.length) return false;
-  const doc = view.state.doc;
+  if (!found.length) return false;
   let tr = view.state.tr;
-  // Delete right-to-left so earlier positions stay valid.
-  ranges.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => {
-    let start = a, end = b;
-    const before = a > 0 ? doc.textBetween(a - 1, a) : '';
-    const after = b < doc.content.size ? doc.textBetween(b, b + 1) : '';
-    // Flanked by spaces → also remove the trailing space (collapse the pair).
-    // Leading edge (only a space after) → remove that space too, so no line
-    // starts with a stray space.
-    if (before === ' ' && after === ' ') end = b + 1;
-    else if (before !== ' ' && after === ' ' && a > 0) end = b + 1;
-    else if (before === ' ' && after !== ' ') start = a - 1;
-    tr = tr.delete(start, end);
+  // Right-to-left so earlier positions stay valid as we edit.
+  found.sort((a, b) => b[0] - a[0]).forEach(([a, b, text]) => {
+    tr = text
+      ? tr.replaceWith(a, b, sc.text(text)) // restore the original highlighted text
+      : tr.delete(a, b);                    // no snapshot → just remove the atom
   });
   view.dispatch(tr);
   return true;

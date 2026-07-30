@@ -1,7 +1,7 @@
-// Deleting a scratchpad note's inline ref must not leave a doubled space. The
-// ref replaces a selected word, so it commonly sits between two spaces
-// (one<ref>three); removing only the ref would leave "one  three". The delete
-// collapses the redundant space.
+// Deleting a scratchpad note's inline ref RESTORES the original highlighted
+// text (it's stored in the ref's attrs.text), rather than removing it. So a
+// note on "two" in "one two three", when deleted, leaves the doc as
+// "one two three" again — the words come back as plain prose, no gap.
 const { chromium } = require('playwright');
 const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
@@ -33,7 +33,9 @@ const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
 
   // The ref sits between the two spaces, so textContent shows a gap.
   const before = await page.evaluate(docText);
-  check('ref created between the two flanking spaces', before === 'one  three', JSON.stringify(before));
+  // While the ref is present, its text isn't part of the paragraph's plain
+  // textContent (it's an atom), so we see the gap "one  three".
+  check('ref replaces the highlighted word while present', before === 'one  three', JSON.stringify(before));
 
   // Delete the note via its trash (two-click confirm).
   await page.locator('.spm-title').click(); await page.waitForTimeout(200);
@@ -45,7 +47,8 @@ const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
   await page.waitForTimeout(600);
 
   const after = await page.evaluate(docText);
-  check('delete leaves a single space, not a doubled one', after === 'one three', JSON.stringify(after));
+  check('deleting the note restores the original text (not nothing)', after === 'one two three', JSON.stringify(after));
+  check('no ref remains in the doc', (await page.locator('.sn-note-ref').count()) === 0);
 
   await browser.close();
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
