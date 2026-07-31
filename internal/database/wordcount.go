@@ -40,7 +40,9 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 	// Linked draft snippet words per manuscript (all users). Sibling
 	// variations are alternatives of ONE passage, so each linked,
 	// NON-canonized group contributes exactly one representative: its most
-	// recently updated lettered variation (VARIATIONS_PLAN §6). Canonized
+	// recently updated lettered variation (VARIATIONS_PLAN §6). Superseded
+	// sketches are never the representative — "canonized wins, then most
+	// recent non-superseded". Canonized
 	// groups count via words_effective only — never both.
 	snippetWords := map[int]int{}
 	repRows, err := db.Pool.Query(ctx, `
@@ -49,6 +51,7 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		JOIN LATERAL (
 			SELECT text FROM sketch
 			WHERE snippet_id = s.snippet_id AND ordinal IS NOT NULL AND deleted_at IS NULL
+			  AND state <> 'superseded'
 			ORDER BY updated_at DESC LIMIT 1
 		) v ON true
 		WHERE s.linked_manuscript_id IS NOT NULL AND s.canon_sketch_id IS NULL

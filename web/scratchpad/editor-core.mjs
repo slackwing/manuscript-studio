@@ -257,7 +257,9 @@ export const sketchApi = {
   createFrom: (sourceId) => apiCall('POST', 'api/snippets',
     { mode: 'sketch', source_sketch_id: sourceId, scratchpad_id: currentScratchpadId }),
   saveText: (id, text) => apiCall('PUT', `api/sketches/${id}`, { text }),
-  freeze: (id, frozen) => apiCall('POST', `api/sketches/${id}/freeze`, { frozen }),
+  // ONE lifecycle state (draft | frozen | superseded) — setting frozen or
+  // superseded cancels the other (single column server-side).
+  setState: (id, state) => apiCall('PUT', `api/sketches/${id}/state`, { state }),
   freezeAll: (snippetId) => apiCall('POST', `api/snippets/${snippetId}/freeze-all`),
   link: (snippetId, manuscriptId) => apiCall('PUT', `api/snippets/${snippetId}/link`, { manuscript_id: manuscriptId }),
   canonize: (id, manuscriptId) => apiCall('POST', `api/sketches/${id}/canonize`, { manuscript_id: manuscriptId }),
@@ -300,6 +302,8 @@ const tabMarkupHTML = (value) => {
 const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
 const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';
 const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M8 1v14M1.9 4.5l12.2 7M14.1 4.5l-12.2 7M8 1l-1.8 1.8M8 1l1.8 1.8M8 15l-1.8-1.8M8 15l1.8-1.8M1.9 4.5l.6 2.4M1.9 4.5l2.4-.6M14.1 11.5l-.6-2.4M14.1 11.5l-2.4.6M14.1 4.5l-2.4-.6M14.1 4.5l-.6 2.4M1.9 11.5l2.4.6M1.9 11.5l.6-2.4"/></svg>';
+// Superseded: a plain down arrow (reddens on hover / while set).
+const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
 const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
 
 // The user's accessible manuscripts, for the link picker. One fetch per
@@ -417,8 +421,8 @@ class SnippetView {
     this.dom.dataset.variationId = String(this.sketchId); // legacy attr (PM node)
     this.dom.dataset.sketchId = String(this.sketchId);     // navigate-to-source target
     this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Snippet · loading…</span></div><div class="sn-body"></div>';
-    this.tab = 'self';       // 'self' | 'canon' | other variationId (number)
-    this.mode = 'preview';   // self tab only: 'preview' | 'edit'
+    this.compare = null;     // null | sibling sketch_id (number) | 'canon'
+    this.mode = 'preview';   // 'preview' | 'edit' (the SELF pane, split or not)
     this.peerCache = {};     // variationId → context (parent/child tabs)
     this.dirty = false;
     this.flush = async () => true;
@@ -433,7 +437,7 @@ class SnippetView {
       this.dom.innerHTML = `
         <div class="sn-header">
           <span class="sn-status">Snippet · unavailable</span>
-          <span class="sn-tabs"></span>
+          <span class="sn-save"></span>
           <span class="sn-actions"><button type="button" data-act="remove" class="sn-trash" title="Remove widget">${TRASH_SVG}</button></span>
         </div>
         <div class="sn-body"><div class="sn-note"><span class="sn-error">Sketch ${this.sketchId} could not be loaded (${esc(e.message)}).</span></div></div>`;
@@ -443,21 +447,24 @@ class SnippetView {
     this.build();
   }
 
-  async refresh(keepTab = true) {
-    const tab = this.tab;
+  async refresh() {
+    const compare = this.compare;
     this.peerCache = {};
     try {
       this.ctx = await sketchApi.context(this.sketchId);
     } catch (e) { /* keep the stale view rather than blanking */ }
-    if (!keepTab) this.tab = 'self';
-    else this.tab = tab;
+    // Keep the comparison open across a refresh — unless its target vanished.
+    const still = compare === 'canon'
+      ? this.canonized()
+      : (this.ctx.siblings || []).some(x => x.sketch_id === compare);
+    this.compare = still ? compare : null;
     this.preserveScroll(() => this.build());
   }
 
   // The scrollable host for this widget (the modal body). Rebuilding the widget's
   // DOM, or focusing an element inside it, makes the browser re-anchor scroll and
   // jump — usually to the top of the widget. Everything that tears down and
-  // rebuilds the widget (build/renderBody/setTab/toggleFreeze) runs through
+  // rebuilds the widget (build/renderBody/setCompare/setSketchState) runs through
   // preserveScroll so the reader stays put. This is the single, root-cause fix
   // for "clicking a snippet scrolls me to the top."
   scrollHost() {
@@ -482,24 +489,11 @@ class SnippetView {
   }
 
   canonized() { return this.ctx.snippet.canon_sketch_id > 0; }
-  frozen() { return this.ctx.sketch.frozen; }
+  stateName() { return this.ctx.sketch.state || 'draft'; }
+  frozen() { return this.stateName() === 'frozen'; }
+  superseded() { return this.stateName() === 'superseded'; }
+  readonly() { return this.frozen() || this.superseded(); }
   letter() { return letterOf(this.ctx.sketch.ordinal); }
-
-  // Tab model: THIS sketch first, a separator, then the other sibling sketches
-  // (by letter), then Canon (blue) if any. Sketches are flat siblings — no
-  // lineage — and each widget's home sketch is shown first so you always see
-  // "which one this is".
-  tabDefs() {
-    const defs = [];
-    defs.push({ key: 'self', letter: this.letter(), self: true });
-    const others = (this.ctx.siblings || []).filter(s => s.sketch_id !== this.sketchId);
-    if (others.length) defs.push({ label: 'Related:' });
-    for (const s of others) {
-      defs.push({ key: s.sketch_id, ordinal: s.ordinal, letter: letterOf(s.ordinal) });
-    }
-    if (this.canonized()) defs.push({ key: 'canon', letter: 'Canon', canon: true });
-    return defs;
-  }
 
   build() {
     const v = this.ctx.sketch;
@@ -509,10 +503,13 @@ class SnippetView {
     this.dom.dataset.snippetId = sn.snippet_id;
     if (v.ordinal != null) this.dom.dataset.ordinal = String(v.ordinal);
     this.dom.classList.toggle('sn-canon', this.canonized());
-    const state = this.frozen() ? 'frozen' : 'draft';
-    const status = `Snippet · ${this.letter()} · ${state}`;
+    this.dom.classList.toggle('sn-state-frozen', this.frozen());
+    this.dom.classList.toggle('sn-state-superseded', this.superseded());
+    const status = `Snippet · ${this.letter()} · ${this.stateName()}`;
     const statusHint = `Sketch ${this.letter()} of snippet #${sn.snippet_id}. ` +
-      (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). ' : 'Click the preview to edit. ') +
+      (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). '
+        : this.superseded() ? 'Superseded: no longer the preferred sketch — read-only until un-superseded (↓). '
+        : 'Click the preview to edit. ') +
       `Created ${esc((v.created_at || '').slice(0, 10))}.`;
 
     // Link affordance (GROUP-level): unlinked gets the link button; linked
@@ -526,58 +523,41 @@ class SnippetView {
       linkBit = `<button type="button" class="sn-linkbtn" title="Link to manuscript">${LINK_SVG}</button>`;
     }
 
-    // Tabs: letters; overflow beyond 8 collapses into a ▾ dropdown.
-    const defs = this.tabDefs();
-    const MAXTABS = 8;
-    const shown = defs.length > MAXTABS ? defs.slice(0, MAXTABS - 1) : defs;
-    const overflow = defs.length > MAXTABS ? defs.slice(MAXTABS - 1) : [];
-    const tabHtml = shown.map(d => this.tabButtonHTML(d)).join('') +
-      (overflow.length
-        ? `<span class="sn-tab-more"><button type="button" class="sn-more-btn" title="More sketches">▾</button><span class="sn-more-list" hidden>${overflow.map(d => this.tabButtonHTML(d)).join('')}</span></span>`
-        : '');
-
     const openBook = this.canonized() && sn.linked_manuscript_id
       ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.snippet_id)}" title="Open in book">Open in book ↗</a>`
       : '';
+    // Layout: main column (header + body) plus the letter RAIL down the right
+    // edge — a symmetric "titlebar" whose top button is THIS sketch's letter
+    // (the upper-right corner identity), with every sibling below it and the
+    // canon fleuron at the bottom. The widget always grows to fit the rail.
     this.dom.innerHTML = `
-      <div class="sn-header">
-        <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
-        <span class="sn-tabs">${tabHtml}</span>
-        <span class="sn-actions">
-          ${openBook}
-          <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-          <button type="button" data-act="remove" class="sn-trash" title="Delete this sketch (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
-        </span>
-      </div>
-      <div class="sn-body"></div>`;
+      <div class="sn-cols">
+        <div class="sn-main">
+          <div class="sn-header">
+            <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
+            <span class="sn-actions">
+              ${openBook}
+              <button type="button" data-act="remove" class="sn-trash" title="Delete this sketch (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
+              <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
+              <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+            </span>
+          </div>
+          <div class="sn-body"></div>
+        </div>
+        <div class="sn-rail">${this.railHTML()}</div>
+      </div>`;
     this.body = this.dom.querySelector('.sn-body');
     this.saveEl = this.dom.querySelector('.sn-save');
 
-    this.dom.querySelectorAll('[data-tab]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.setTab(btn.dataset.tab);
-        // Picking from the ▾ overflow list closes it.
-        const l = this.dom.querySelector('.sn-more-list');
-        if (l) l.hidden = true;
-      });
+    this.dom.querySelectorAll('[data-compare]').forEach(btn => {
+      btn.addEventListener('click', () => this.setCompare(
+        btn.dataset.compare === 'canon' ? 'canon' : parseInt(btn.dataset.compare, 10)));
     });
-    const moreWrap = this.dom.querySelector('.sn-tab-more');
-    if (moreWrap) {
-      const list = moreWrap.querySelector('.sn-more-list');
-      const closeOnOutside = (e) => {
-        if (!moreWrap.contains(e.target)) {
-          list.hidden = true;
-          document.removeEventListener('mousedown', closeOnOutside, true);
-        }
-      };
-      moreWrap.querySelector('.sn-more-btn').addEventListener('click', () => {
-        list.hidden = !list.hidden;
-        if (!list.hidden) document.addEventListener('mousedown', closeOnOutside, true);
-        else document.removeEventListener('mousedown', closeOnOutside, true);
-      });
-    }
     this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(false));
-    this.dom.querySelector('[data-act="freeze"]').addEventListener('click', () => this.toggleFreeze());
+    this.dom.querySelector('[data-act="freeze"]').addEventListener('click', () =>
+      this.setSketchState(this.frozen() ? 'draft' : 'frozen'));
+    this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
+      this.setSketchState(this.superseded() ? 'draft' : 'superseded'));
     const linkBtn = this.dom.querySelector('.sn-linkbtn');
     if (linkBtn) linkBtn.addEventListener('click', () => this.openLinkPicker());
     const unlinkBtn = this.dom.querySelector('.sn-unlink');
@@ -585,60 +565,84 @@ class SnippetView {
     this.renderBody();
   }
 
-  tabButtonHTML(d) {
-    // On mobile the label text is hidden via CSS and a "|" separator shown
-    // instead (the ::before on .sn-tab-label), so keep the real text here.
-    if (d.label) return `<span class="sn-tab-label" data-sep="|">${esc(d.label)}</span>`;
-    const active = (d.self && this.tab === 'self') || (d.canon && this.tab === 'canon') || d.key === this.tab;
-    const isPeer = !d.self && !d.canon;
-    const cls = ['sn-tab', active ? 'active' : '', d.canon ? 'sn-tab-canon' : '',
-      d.self ? 'sn-tab-self' : '', isPeer ? 'sn-tab-peer' : ''].filter(Boolean).join(' ');
-    const title = d.canon ? 'Canon — the version placed into the book'
-      : d.self ? `Sketch ${d.letter} (this widget's sketch)`
-      : `Sketch ${d.letter} (preview; click to view)`;
-    return `<button type="button" data-tab="${d.self ? 'self' : (d.canon ? 'canon' : d.key)}" class="${cls}" title="${title}">${esc(String(d.letter))}</button>`;
+  // The right-edge rail: self letter (top, inert identity), siblings below
+  // (click = split-compare, colored by state), canon fleuron at the bottom.
+  railHTML() {
+    const btns = [];
+    btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}" title="This widget is sketch ${this.letter()}.">${esc(this.letter())}</button>`);
+    const others = (this.ctx.siblings || []).filter(x => x.sketch_id !== this.sketchId);
+    for (const x of others) {
+      const st = x.state || 'draft';
+      const stNote = st === 'superseded' ? ' (superseded)' : st === 'frozen' ? ' (frozen)' : '';
+      btns.push(`<button type="button" data-compare="${x.sketch_id}" class="sn-rail-btn sn-rail-peer st-${st}${this.compare === x.sketch_id ? ' active' : ''}" title="Compare to sketch ${letterOf(x.ordinal)}.${stNote}">${esc(letterOf(x.ordinal))}</button>`);
+    }
+    if (this.canonized()) {
+      btns.push(`<button type="button" data-compare="canon" class="sn-rail-btn sn-rail-canon${this.compare === 'canon' ? ' active' : ''}" title="Compare to the canon version — the text placed into the book.">❦</button>`);
+    }
+    return btns.join('');
   }
 
-  setTab(key) {
-    this.tab = key === 'self' || key === 'canon' ? key : parseInt(key, 10);
-    this.mode = 'preview';
-    this.dom.querySelectorAll('[data-tab]').forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === String(key));
+  // Toggle the split-compare: same target closes it, another target swaps the
+  // right half. The self pane (left) is untouched — same subcomponent, still
+  // editable — so comparing never loses your place or your edit.
+  setCompare(key) {
+    this.compare = this.compare === key ? null : key;
+    this.dom.querySelectorAll('[data-compare]').forEach(b => {
+      const k = b.dataset.compare === 'canon' ? 'canon' : parseInt(b.dataset.compare, 10);
+      b.classList.toggle('active', k === this.compare);
     });
     this.renderBody();
   }
 
   renderBody() {
-    // All body re-renders (enter edit, blur→preview, switch tab, peer preview)
+    // All body re-renders (enter edit, blur→preview, open/close compare)
     // replace DOM and may move focus; preserve the reader's scroll position so
     // none of them jump the pad to the top of the widget.
     return this.preserveScroll(() => {
-      if (this.tab === 'self') {
+      if (this.compare == null) {
+        this.selfHost = this.body;
+        this.body.innerHTML = '';
         return this.mode === 'edit' ? this.renderEdit() : this.renderSelfPreview();
       }
-      if (this.tab === 'canon') return this.renderCanon(false);
-      return this.renderPeer(this.tab);
+      // Split: LEFT = self (same subcomponent as unsplit — preview or edit),
+      // RIGHT = the comparison target, read-only on a disabled background.
+      this.body.innerHTML = `
+        <div class="sn-split">
+          <div class="sn-split-left"></div>
+          <div class="sn-split-right"></div>
+        </div>`;
+      this.selfHost = this.body.querySelector('.sn-split-left');
+      if (this.mode === 'edit') this.renderEdit(); else this.renderSelfPreview();
+      const right = this.body.querySelector('.sn-split-right');
+      if (this.compare === 'canon') this.renderCanon(false, right);
+      else this.renderComparePeer(this.compare, right);
     });
   }
 
   renderSelfPreview() {
     this.ta = null;
-    const frozen = this.frozen();
-    this.body.innerHTML = `<div class="sn-render${frozen ? ' sn-frozen' : ' sn-clickable'}" title="${frozen ? 'Frozen — unfreeze (snowflake) to edit' : 'Click to edit'}"></div>`;
-    const host = this.body.firstChild;
+    const target = this.selfHost || this.body;
+    const ro = this.readonly();
+    const roCls = this.frozen() ? ' sn-frozen' : this.superseded() ? ' sn-superseded' : ' sn-clickable';
+    const roTitle = this.frozen() ? 'Frozen — unfreeze (snowflake) to edit'
+      : this.superseded() ? 'Superseded — un-supersede (↓) to edit'
+      : 'Click to edit';
+    target.innerHTML = `<div class="sn-render${roCls}" title="${roTitle}"></div>`;
+    const host = target.firstChild;
     const text = this.ctx.sketch.text;
     if (text.trim()) {
       renderBookText(host, text);
     } else {
-      host.innerHTML = `<div class="sn-empty">${frozen ? 'Empty (frozen) variation.' : 'Click to write.'}</div>`;
+      host.innerHTML = `<div class="sn-empty">${ro ? `Empty (${this.stateName()}) sketch.` : 'Click to write.'}</div>`;
     }
     host.addEventListener('click', () => {
-      if (!this.frozen()) { this.mode = 'edit'; this.renderBody(); }
+      if (!this.readonly()) { this.mode = 'edit'; this.renderBody(); }
     });
   }
 
   renderEdit() {
-    this.body.innerHTML = '';
+    const target = this.selfHost || this.body;
+    target.innerHTML = '';
     const ta = document.createElement('textarea');
     ta.className = 'sn-text';
     ta.placeholder = 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
@@ -662,7 +666,7 @@ class SnippetView {
         this.saveEl.textContent = '';
         // Blur may have flipped to preview before this save resolved —
         // re-render so the preview shows what was just saved.
-        if (changed && this.tab === 'self' && this.mode === 'preview') this.renderBody();
+        if (changed && this.mode === 'preview') this.renderBody();
         return true;
       } catch (e) {
         if (e.status === 409) {
@@ -699,7 +703,7 @@ class SnippetView {
     });
     ta.addEventListener('blur', () => {
       save();
-      if (this.tab === 'self' && this.mode === 'edit') { this.mode = 'preview'; this.renderBody(); }
+      if (this.mode === 'edit') { this.mode = 'preview'; this.renderBody(); }
     });
 
     // Literal .manuscript editing: Tab inserts a real \t at the caret (so a
@@ -737,7 +741,7 @@ class SnippetView {
     ta.addEventListener('input', autoGrow);
     wrap.appendChild(overlay);
     wrap.appendChild(ta);
-    this.body.appendChild(wrap);
+    target.appendChild(wrap);
     this.ta = ta;
     // preventScroll: focusing the textarea would otherwise scroll it into view
     // (jumping to the top of the snippet) — the main "click-to-edit scrolls me
@@ -747,31 +751,33 @@ class SnippetView {
     autoGrow();
   }
 
-  // A sibling sketch shown as a READ-ONLY preview (its real home widget is
-  // elsewhere). Disabled-looking, no caret; a link navigates to its source.
-  async renderPeer(sketchId) {
-    this.body.innerHTML = '<div class="sn-note">Loading sketch…</div>';
+  // The RIGHT HALF of a split-compare: a sibling sketch, read-only on a
+  // disabled background, with a mini header naming it and linking to its
+  // home widget.
+  async renderComparePeer(sketchId, pane) {
+    pane.innerHTML = '<div class="sn-note">Loading sketch…</div>';
     let ctx = this.peerCache[sketchId];
     if (!ctx) {
       try {
         ctx = this.peerCache[sketchId] = await sketchApi.context(sketchId);
       } catch (e) {
-        this.body.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load sketch (${esc(e.message)}).</span></div>`;
+        pane.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load sketch (${esc(e.message)}).</span></div>`;
         return;
       }
     }
-    if (this.tab !== sketchId) return; // switched away while loading
+    if (this.compare !== sketchId || !pane.isConnected) return; // switched away while loading
     const letter = esc(letterOf(ctx.sketch.ordinal));
-    this.body.innerHTML = `
-      <div class="sn-note"><strong>Previewing sketch ${letter}.</strong> <a href="#" class="sn-goto-source">Click here to navigate to source.</a></div>
+    const st = ctx.sketch.state || 'draft';
+    pane.innerHTML = `
+      <div class="sn-note"><strong>${letter}</strong> · read-only${st !== 'draft' ? ` · ${esc(st)}` : ''} · <a href="#" class="sn-goto-source">open source ↗</a></div>
       <div class="sn-render sn-peer"></div>`;
     const snippetId = ctx.sketch.snippet_id;
     const ordinal = ctx.sketch.ordinal;
-    this.body.querySelector('.sn-goto-source').addEventListener('click', (e) => {
+    pane.querySelector('.sn-goto-source').addEventListener('click', (e) => {
       e.preventDefault();
       this.gotoSketchSource(sketchId, snippetId, ordinal);
     });
-    const host = this.body.querySelector('.sn-render');
+    const host = pane.querySelector('.sn-render');
     // Swallow mousedown so a click doesn't place a caret / fall through to the
     // ProseMirror editor behind the widget (which would move the PM selection
     // and scroll the pad). Text stays selectable via drag (that's mousemove).
@@ -798,49 +804,51 @@ class SnippetView {
   // the &snippet#id … &end#id region from the effective manuscript; the
   // canon variation's text is the immutable as-canonized snapshot, used as
   // fallback and via the in-body toggle.
-  async renderCanon(showSnapshot) {
+  async renderCanon(showSnapshot, pane) {
     const sn = this.ctx.snippet;
     const snap = this.ctx.canon ? this.ctx.canon.text : '';
     const canonizedOn = this.ctx.canon ? (this.ctx.canon.created_at || '').slice(0, 10) : '';
     if (showSnapshot) {
-      this.body.innerHTML = `
+      pane.innerHTML = `
         <div class="sn-note">As canonized (${esc(canonizedOn)}) — the text at the moment it entered the book. <a href="#" class="sn-canonswap">Show live</a></div>
-        <div class="sn-render"></div>`;
-      this.body.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(false); });
-      renderBookText(this.body.querySelector('.sn-render'), snap);
+        <div class="sn-render sn-peer"></div>`;
+      pane.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(false, pane); });
+      renderBookText(pane.querySelector('.sn-render'), snap);
       return;
     }
-    this.body.innerHTML = '<div class="sn-note">Resolving from the manuscript…</div><div class="sn-render"></div>';
-    const host = this.body.querySelector('.sn-render');
+    pane.innerHTML = '<div class="sn-note">Resolving from the manuscript…</div><div class="sn-render sn-peer"></div>';
+    const host = pane.querySelector('.sn-render');
     try {
       const data = await bookData.load(sn.linked_manuscript_id, false);
       const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
       const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.snippet_id, window.WriteSysCommand, canon);
-      if (this.tab !== 'canon') return;
+      if (this.compare !== 'canon' || !pane.isConnected) return;
       if (res.status !== 'ok') {
-        this.body.querySelector('.sn-note').innerHTML =
+        pane.querySelector('.sn-note').innerHTML =
           `<span class="sn-error">Region #${esc(sn.snippet_id)} ${res.status === 'missing-anchor'
             ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the as-canonized snapshot.</span>`;
         renderBookText(host, snap);
         return;
       }
-      this.body.querySelector('.sn-note').innerHTML =
+      pane.querySelector('.sn-note').innerHTML =
         `Live from the effective manuscript (committed + your suggestions). <a href="#" class="sn-canonswap">Show as-canonized</a>`;
-      this.body.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(true); });
+      pane.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(true, pane); });
       window.WriteSysScratchRender.render(host, res.items);
     } catch (e) {
-      this.body.querySelector('.sn-note').innerHTML =
+      pane.querySelector('.sn-note').innerHTML =
         `<span class="sn-error">Could not load manuscript ${sn.linked_manuscript_id} (${esc(e.message)}) — showing the snapshot.</span>`;
       renderBookText(host, snap);
     }
   }
 
-  async toggleFreeze() {
+  async setSketchState(state) {
     try {
-      await sketchApi.freeze(this.sketchId, !this.frozen());
+      await sketchApi.setState(this.sketchId, state);
       await this.refresh();
+      // Sibling rails color-code THIS sketch's state — update them live.
+      await refreshSnippetSiblings(this.ctx.snippet.snippet_id, this.sketchId);
     } catch (e) {
-      alert('Could not toggle freeze: ' + e.message);
+      alert('Could not update sketch state: ' + e.message);
     }
   }
 

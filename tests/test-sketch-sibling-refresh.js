@@ -30,8 +30,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   // How many sibling (peer) tabs does widget A show right now? (B should be one.)
   const tabsBefore = await page.evaluate((vid) =>
     document.querySelector(`.sn-widget[data-sketch-id="${vid}"]`)
-      .querySelectorAll('.sn-tab-peer').length, varA);
-  check('widget A shows B as a related tab', tabsBefore >= 1, `peers=${tabsBefore}`);
+      .querySelectorAll('.sn-rail-peer').length, varA);
+  check('widget A shows B as a rail letter', tabsBefore >= 1, `peers=${tabsBefore}`);
 
   // Add C as another sibling (from A). Widget A must now show BOTH B and C
   // without any reload.
@@ -42,14 +42,14 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
 
   const tabsAfter = await page.evaluate((vid) =>
     document.querySelector(`.sn-widget[data-sketch-id="${vid}"]`)
-      .querySelectorAll('.sn-tab-peer').length, varA);
-  check('widget A gained C as a related tab immediately (no reload)',
+      .querySelectorAll('.sn-rail-peer').length, varA);
+  check('widget A gained C as a rail letter immediately (no reload)',
     tabsAfter >= 2, `peers before=${tabsBefore} after=${tabsAfter}`);
 
   // And widget B should also show C (and A) — every sibling stays in sync.
   const tabsB = await page.evaluate((vid) =>
     document.querySelector(`.sn-widget[data-sketch-id="${vid}"]`)
-      .querySelectorAll('.sn-tab-peer').length, varB);
+      .querySelectorAll('.sn-rail-peer').length, varB);
   check('widget B also shows the two other siblings', tabsB >= 2, `peers=${tabsB}`);
 
   await browser.close();

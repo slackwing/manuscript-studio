@@ -46,6 +46,7 @@ func writeSketchError(w http.ResponseWriter, err error) {
 	case errors.Is(err, database.ErrNotOwner):
 		http.Error(w, "Not found", http.StatusNotFound)
 	case errors.Is(err, database.ErrSketchFrozen),
+		errors.Is(err, database.ErrSketchSuperseded),
 		errors.Is(err, database.ErrSketchCanon),
 		errors.Is(err, database.ErrOrdinalCap),
 		errors.Is(err, database.ErrLinkedElsewhere),
@@ -292,8 +293,10 @@ func (h *SketchHandlers) HandleUpdateSketch(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleFreezeSketch: POST /api/sketches/{id}/freeze {frozen}.
-func (h *SketchHandlers) HandleFreezeSketch(w http.ResponseWriter, r *http.Request) {
+// HandleSetSketchState: PUT /api/sketches/{id}/state {state}. One lifecycle
+// column (draft | frozen | superseded), so frozen and superseded are mutually
+// exclusive — setting either cancels the other.
+func (h *SketchHandlers) HandleSetSketchState(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.requireSession(w, r)
 	if !ok || !h.requireCSRF(w, r) {
 		return
@@ -303,13 +306,17 @@ func (h *SketchHandlers) HandleFreezeSketch(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var req struct {
-		Frozen bool `json:"frozen"`
+		State string `json:"state"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
-	if err := h.DB.SetSketchFrozen(r.Context(), session.Username, id, req.Frozen); err != nil {
+	if req.State != "draft" && req.State != "frozen" && req.State != "superseded" {
+		http.Error(w, "state must be draft, frozen or superseded", http.StatusBadRequest)
+		return
+	}
+	if err := h.DB.SetSketchState(r.Context(), session.Username, id, req.State); err != nil {
 		writeSketchError(w, err)
 		return
 	}

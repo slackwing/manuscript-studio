@@ -28,5 +28,6 @@
     <include file="changelog/019-note-context-columns.xml"/>
     <include file="changelog/020-user-wide-tags.xml"/>
     <include file="changelog/021-scratchpad-manuscript-link.xml"/>
+    <include file="changelog/022-sketch-state.xml"/>
 
 </databaseChangeLog>

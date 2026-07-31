@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!-- Sketch lifecycle becomes ONE state: draft | frozen | superseded.
+         frozen and superseded are mutually exclusive by construction (setting
+         one cancels the other), both read-only. Replaces the frozen boolean. -->
+    <changeSet id="022-sketch-state" author="claude">
+        <addColumn tableName="sketch">
+            <column name="state" type="TEXT" defaultValue="draft">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <sql>ALTER TABLE sketch ADD CONSTRAINT sketch_state_check CHECK (state IN ('draft','frozen','superseded'))</sql>
+        <sql>UPDATE sketch SET state = 'frozen' WHERE frozen</sql>
+        <dropColumn tableName="sketch" columnName="frozen"/>
+    </changeSet>
+
+</databaseChangeLog>

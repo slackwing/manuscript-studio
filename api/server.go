@@ -251,7 +251,7 @@ func (s *Server) setupRouter() {
 			r.Put("/sketches/{sketch_id}", s.sketchHandlers.HandleUpdateSketch)
 			r.Delete("/sketches/{sketch_id}", s.sketchHandlers.HandleDeleteSketch)
 			r.Post("/sketches/{sketch_id}/restore", s.sketchHandlers.HandleRestoreSketch)
-			r.Post("/sketches/{sketch_id}/freeze", s.sketchHandlers.HandleFreezeSketch)
+			r.Put("/sketches/{sketch_id}/state", s.sketchHandlers.HandleSetSketchState)
 			r.Post("/sketches/{sketch_id}/canonize", s.sketchHandlers.HandleCanonizeSketch)
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
 			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)

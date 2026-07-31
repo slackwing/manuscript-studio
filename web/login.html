@@ -5,121 +5,143 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Manuscript Studio — Login</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    /* The library wall, floor to ceiling. A soft vignette keeps the card
+       legible over the busy shelves without dimming the room's warmth. */
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: Georgia, "Times New Roman", serif;
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
       padding: 20px;
+      background: #2b2419 url("img/login-bookshelf.jpg") center / cover no-repeat fixed;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at center, rgba(20, 15, 8, 0.25) 0%, rgba(20, 15, 8, 0.55) 100%),
+        linear-gradient(rgba(20, 15, 8, 0.1), rgba(20, 15, 8, 0.35));
+      pointer-events: none;
     }
 
     .login-container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-      padding: 40px;
+      position: relative;
+      background: rgba(251, 248, 240, 0.82);
+      backdrop-filter: blur(14px) saturate(1.1);
+      -webkit-backdrop-filter: blur(14px) saturate(1.1);
+      border: 1px solid rgba(201, 162, 39, 0.45);
+      border-radius: 14px;
+      box-shadow:
+        0 30px 80px -20px rgba(10, 8, 4, 0.7),
+        inset 0 1px 0 rgba(255, 250, 235, 0.6);
+      padding: 44px 42px 38px;
       width: 100%;
       max-width: 400px;
     }
 
     h1 {
       text-align: center;
-      color: #333;
-      margin-bottom: 10px;
-      font-size: 28px;
+      color: #2f2415;
+      margin-bottom: 6px;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
 
     .subtitle {
       text-align: center;
-      color: #666;
-      margin-bottom: 30px;
-      font-size: 14px;
+      color: #6b5c42;
+      margin-bottom: 28px;
+      font-size: 12px;
+      font-family: Helvetica, Arial, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+    }
+    /* A little gilt rule under the title, like a spine ornament. */
+    .subtitle::after {
+      content: "";
+      display: block;
+      width: 54px;
+      height: 2px;
+      margin: 14px auto 0;
+      background: linear-gradient(90deg, transparent, #c9a227, transparent);
     }
 
-    .form-group {
-      margin-bottom: 20px;
-    }
+    .form-group { margin-bottom: 18px; }
 
     label {
       display: block;
-      margin-bottom: 8px;
-      color: #333;
-      font-weight: 500;
-      font-size: 14px;
+      margin-bottom: 7px;
+      color: #4a3d28;
+      font-family: Helvetica, Arial, sans-serif;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
 
     select, input {
       width: 100%;
-      padding: 12px;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      font-size: 14px;
-      transition: border-color 0.3s;
+      padding: 12px 13px;
+      border: 1px solid #cbb98f;
+      border-radius: 7px;
+      font-size: 15px;
+      font-family: Georgia, serif;
+      background: rgba(255, 253, 247, 0.9);
+      color: #2f2415;
+      transition: border-color 0.25s, box-shadow 0.25s;
     }
 
     select:focus, input:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: #c9a227;
+      box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.2);
     }
 
+    /* The button is the bookbinding: leather with a gilt edge. */
     button {
       width: 100%;
-      padding: 12px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 6px;
+      padding: 13px;
+      background: linear-gradient(170deg, #7a5a34 0%, #5b3f22 60%, #6b4a28 100%);
+      color: #f3e6c4;
+      border: 1px solid #c9a227;
+      border-radius: 7px;
       font-size: 16px;
+      font-family: Georgia, serif;
       font-weight: 600;
+      letter-spacing: 0.04em;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+      box-shadow: inset 0 1px 0 rgba(255, 236, 180, 0.35), 0 4px 14px -6px rgba(10, 8, 4, 0.6);
+      transition: filter 0.2s, transform 0.15s, box-shadow 0.2s;
     }
-
     button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      filter: brightness(1.12);
+      transform: translateY(-1px);
+      box-shadow: inset 0 1px 0 rgba(255, 236, 180, 0.35), 0 8px 20px -8px rgba(10, 8, 4, 0.7);
     }
-
-    button:active {
-      transform: translateY(0);
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; filter: none; }
 
     .error {
-      background: #fee;
-      color: #c33;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 20px;
-      font-size: 14px;
+      background: rgba(250, 236, 232, 0.95);
+      color: #a33;
+      border: 1px solid #ddb0a8;
+      padding: 11px 12px;
+      border-radius: 7px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      font-family: Helvetica, Arial, sans-serif;
       display: none;
     }
+    .error.show { display: block; }
 
-    .error.show {
-      display: block;
-    }
-
-    .password-toggle {
-      position: relative;
-    }
-
-    .password-toggle input {
-      padding-right: 40px;
-    }
-
+    .password-toggle { position: relative; }
+    .password-toggle input { padding-right: 40px; }
     .password-toggle button {
       position: absolute;
       right: 0;
@@ -127,16 +149,14 @@
       width: 40px;
       padding: 0;
       background: transparent;
-      color: #666;
+      border: none;
+      box-shadow: none;
+      color: #6b5c42;
       font-size: 12px;
       margin: 0;
+      text-shadow: none;
     }
-
-    .password-toggle button:hover {
-      transform: none;
-      box-shadow: none;
-      color: #333;
-    }
+    .password-toggle button:hover { transform: none; box-shadow: none; filter: none; color: #2f2415; }
   </style>
 </head>
 <body>
@@ -229,7 +249,13 @@
       }, 5000);
     }
 
-    document.getElementById('username').focus();
+    // Prefill the last-used name (also feeds the in-place re-login modal).
+    (function () {
+      const last = localStorage.getItem('ms_last_username');
+      const u = document.getElementById('username');
+      if (last) { u.value = last; document.getElementById('password').focus(); }
+      else u.focus();
+    })();
   </script>
 </body>
 </html>

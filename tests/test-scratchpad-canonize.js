@@ -145,16 +145,14 @@ function noisyPng(w, h) {
     await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2, null, { timeout: 10000 });
     const bWidget = page.locator(`.sn-widget[data-sketch-id="${varB}"]`);
 
-    // B's tabs: B first (its own sketch), a "Related:" label, then A.
-    await bWidget.locator('.sn-tab-self').waitFor({ timeout: 10000 });
-    check('B tab shown first (self)', (await bWidget.locator('.sn-tab-self').textContent()).trim() === 'B');
-    check('related label + sibling A present',
-      await bWidget.locator('.sn-tab-label').count() === 1
-      && (await bWidget.locator('.sn-tab-label').textContent()).toLowerCase().includes('related')
-      && (await bWidget.locator('.sn-tab-peer').allTextContents()).join('').includes('A'));
+    // B's rail: B on top (its own sketch), then A below (no label).
+    await bWidget.locator('.sn-rail-self').waitFor({ timeout: 10000 });
+    check('B letter on top of the rail (self)', (await bWidget.locator('.sn-rail-self').textContent()).trim() === 'B');
+    check('rail lists sibling A (no label)',
+      (await bWidget.locator('.sn-rail-peer').allTextContents()).join('').includes('A'));
 
     // Click A's sibling tab → read-only PEER preview with navigate-to-source.
-    await bWidget.locator('.sn-tab', { hasText: 'A' }).first().click();
+    await bWidget.locator('.sn-rail-peer', { hasText: 'A' }).first().click(); // split compare
     await page.waitForFunction((vid) => {
       const w = document.querySelector(`.sn-widget[data-sketch-id="${vid}"]`);
       const host = w && w.querySelector('.sn-render.sn-peer');
@@ -219,12 +217,12 @@ function noisyPng(w, h) {
 
     // --- widgets after canonize: Canon tab everywhere, blue state ---
     await page.goto(`${HOME_URL}#scratchpad=${padId}`);
-    await page.waitForFunction(() => document.querySelectorAll('.sn-widget .sn-tab-canon').length === 2, null, { timeout: 20000 });
+    await page.waitForFunction(() => document.querySelectorAll('.sn-widget .sn-rail-canon').length === 2, null, { timeout: 20000 });
     check('Canon tab appears on BOTH variations of the group', true);
-    check('canonized group wears the blue state', await page.locator('.sn-widget.sn-canon').count() === 2);
+    check('canonized group wears the leather state', await page.locator('.sn-widget.sn-canon').count() === 2);
 
     // Canon tab: live view resolves the region from the effective manuscript.
-    await page.locator(`.sn-widget[data-sketch-id="${varB}"] .sn-tab-canon`).click();
+    await page.locator(`.sn-widget[data-sketch-id="${varB}"] .sn-rail-canon`).click();
     await page.waitForFunction(() => {
       const notes = Array.from(document.querySelectorAll('.sn-widget .sn-note'));
       const live = notes.find(n => /effective manuscript/i.test(n.textContent));

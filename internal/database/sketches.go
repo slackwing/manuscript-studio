@@ -21,6 +21,7 @@ import (
 // Sentinel errors, mapped to HTTP statuses by the handlers.
 var (
 	ErrSketchFrozen     = errors.New("sketch is frozen")
+	ErrSketchSuperseded = errors.New("sketch is superseded")
 	ErrSketchCanon      = errors.New("the canon sketch is permanently frozen")
 	ErrOrdinalCap       = errors.New("sketch limit reached (26 per snippet)")
 	ErrNotOwner         = errors.New("not found")
@@ -39,7 +40,7 @@ type Sketch struct {
 	SnippetID    string    `json:"snippet_id"`
 	Ordinal      *int      `json:"ordinal"` // nil = the hidden canon sketch
 	Text         string    `json:"text"`
-	Frozen       bool      `json:"frozen"`
+	State        string    `json:"state"` // draft | frozen | superseded
 	ScratchpadID *int      `json:"scratchpad_id,omitempty"` // the sketch's one home
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -47,9 +48,9 @@ type Sketch struct {
 
 // SketchRef is the light form used for the sibling tab list.
 type SketchRef struct {
-	SketchID int  `json:"sketch_id"`
-	Ordinal  *int `json:"ordinal"`
-	Frozen   bool `json:"frozen"`
+	SketchID int    `json:"sketch_id"`
+	Ordinal  *int   `json:"ordinal"`
+	State    string `json:"state"`
 }
 
 type SnippetInfo struct {
@@ -76,7 +77,7 @@ type PickerSketch struct {
 	SnippetID            string    `json:"snippet_id"`
 	Ordinal              int       `json:"ordinal"`
 	Preview              string    `json:"preview"`
-	Frozen               bool      `json:"frozen"`
+	State                string    `json:"state"`
 	UpdatedAt            time.Time `json:"updated_at"`
 	LinkedManuscriptID   int       `json:"linked_manuscript_id"`
 	LinkedManuscriptName string    `json:"linked_manuscript_name"`
@@ -102,12 +103,12 @@ func newSnippetID() (string, error) {
 
 func scanSketch(row pgx.Row) (Sketch, error) {
 	var s Sketch
-	err := row.Scan(&s.SketchID, &s.SnippetID, &s.Ordinal, &s.Text, &s.Frozen,
+	err := row.Scan(&s.SketchID, &s.SnippetID, &s.Ordinal, &s.Text, &s.State,
 		&s.ScratchpadID, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 
-const sketchCols = `sketch_id, snippet_id, ordinal, text, frozen, scratchpad_id, created_at, updated_at`
+const sketchCols = `sketch_id, snippet_id, ordinal, text, state, scratchpad_id, created_at, updated_at`
 
 // CreateSnippet makes a fresh group: snippet row + sketch A. scratchpadID is
 // the sketch's home (the scratchpad whose widget is being created).
@@ -195,12 +196,12 @@ func (db *DB) GetSketchContext(ctx context.Context, userID string, id int) (*Ske
 	var owner string
 	var linkedID, canonID *int
 	err := db.Pool.QueryRow(ctx, `
-		SELECT v.sketch_id, v.snippet_id, v.ordinal, v.text, v.frozen, v.scratchpad_id, v.created_at, v.updated_at,
+		SELECT v.sketch_id, v.snippet_id, v.ordinal, v.text, v.state, v.scratchpad_id, v.created_at, v.updated_at,
 		       s.user_id, s.linked_manuscript_id, s.linked_manuscript_name, s.canon_sketch_id
 		FROM sketch v JOIN snippet s ON s.snippet_id = v.snippet_id
 		WHERE v.sketch_id = $1 AND v.deleted_at IS NULL
 	`, id).Scan(&out.Sketch.SketchID, &out.Sketch.SnippetID, &out.Sketch.Ordinal,
-		&out.Sketch.Text, &out.Sketch.Frozen, &out.Sketch.ScratchpadID,
+		&out.Sketch.Text, &out.Sketch.State, &out.Sketch.ScratchpadID,
 		&out.Sketch.CreatedAt, &out.Sketch.UpdatedAt,
 		&owner, &linkedID, &out.Snippet.LinkedManuscriptName, &canonID)
 	if err != nil || owner != userID {
@@ -217,7 +218,7 @@ func (db *DB) GetSketchContext(ctx context.Context, userID string, id int) (*Ske
 	// Siblings = every lettered sketch in this group (including this one), by
 	// letter — the tab list. The frontend orders "current first, then others".
 	rows, err := db.Pool.Query(ctx, `
-		SELECT sketch_id, ordinal, frozen FROM sketch
+		SELECT sketch_id, ordinal, state FROM sketch
 		WHERE snippet_id = $1 AND ordinal IS NOT NULL AND deleted_at IS NULL
 		ORDER BY ordinal
 	`, out.Sketch.SnippetID)
@@ -227,7 +228,7 @@ func (db *DB) GetSketchContext(ctx context.Context, userID string, id int) (*Ske
 	defer rows.Close()
 	for rows.Next() {
 		var ref SketchRef
-		if err := rows.Scan(&ref.SketchID, &ref.Ordinal, &ref.Frozen); err != nil {
+		if err := rows.Scan(&ref.SketchID, &ref.Ordinal, &ref.State); err != nil {
 			return nil, err
 		}
 		out.Siblings = append(out.Siblings, ref)
@@ -255,22 +256,24 @@ func (db *DB) UpdateSketchText(ctx context.Context, userID string, id int, text 
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var owner string
-	var frozen bool
+	var owner, state string
 	var ordinal *int
 	err = tx.QueryRow(ctx, `
-		SELECT s.user_id, v.frozen, v.ordinal
+		SELECT s.user_id, v.state, v.ordinal
 		FROM sketch v JOIN snippet s ON s.snippet_id = v.snippet_id
 		WHERE v.sketch_id = $1 FOR UPDATE OF v
-	`, id).Scan(&owner, &frozen, &ordinal)
+	`, id).Scan(&owner, &state, &ordinal)
 	if err != nil || owner != userID {
 		return ErrNotOwner
 	}
 	if ordinal == nil {
 		return ErrSketchCanon
 	}
-	if frozen {
+	if state == "frozen" {
 		return ErrSketchFrozen
+	}
+	if state == "superseded" {
+		return ErrSketchSuperseded
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE sketch SET text = $2, updated_at = NOW() WHERE sketch_id = $1
@@ -285,9 +288,14 @@ func (db *DB) UpdateSketchText(ctx context.Context, userID string, id int, text 
 	return tx.Commit(ctx)
 }
 
-// SetSketchFrozen toggles the snowflake. The canon sketch is permanently frozen
+// SetSketchState sets the lifecycle state (draft | frozen | superseded).
+// frozen and superseded are mutually exclusive by construction — one column,
+// so setting either cancels the other. The canon sketch is permanently frozen
 // — its snapshot is immutable by design.
-func (db *DB) SetSketchFrozen(ctx context.Context, userID string, id int, frozen bool) error {
+func (db *DB) SetSketchState(ctx context.Context, userID string, id int, state string) error {
+	if state != "draft" && state != "frozen" && state != "superseded" {
+		return fmt.Errorf("invalid sketch state %q", state)
+	}
 	var owner string
 	var ordinal *int
 	err := db.Pool.QueryRow(ctx, `
@@ -301,7 +309,7 @@ func (db *DB) SetSketchFrozen(ctx context.Context, userID string, id int, frozen
 	if ordinal == nil {
 		return ErrSketchCanon
 	}
-	_, err = db.Pool.Exec(ctx, `UPDATE sketch SET frozen = $2 WHERE sketch_id = $1`, id, frozen)
+	_, err = db.Pool.Exec(ctx, `UPDATE sketch SET state = $2 WHERE sketch_id = $1`, id, state)
 	return err
 }
 
@@ -313,7 +321,7 @@ func (db *DB) FreezeAllSketches(ctx context.Context, userID, snippetID string) e
 		return ErrNotOwner
 	}
 	_, err := db.Pool.Exec(ctx, `
-		UPDATE sketch SET frozen = true WHERE snippet_id = $1 AND ordinal IS NOT NULL
+		UPDATE sketch SET state = 'frozen' WHERE snippet_id = $1 AND ordinal IS NOT NULL AND state = 'draft'
 	`, snippetID)
 	return err
 }
@@ -322,7 +330,7 @@ func (db *DB) FreezeAllSketches(ctx context.Context, userID, snippetID string) e
 // sketches, most recently updated first. q filters on text.
 func (db *DB) ListSketchesForPicker(ctx context.Context, userID, q string) ([]PickerSketch, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT v.sketch_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.frozen, v.updated_at,
+		SELECT v.sketch_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.state, v.updated_at,
 		       COALESCE(s.linked_manuscript_id, 0), s.linked_manuscript_name,
 		       (s.canon_sketch_id IS NOT NULL) AS canonized
 		FROM sketch v JOIN snippet s ON s.snippet_id = v.snippet_id
@@ -338,7 +346,7 @@ func (db *DB) ListSketchesForPicker(ctx context.Context, userID, q string) ([]Pi
 	out := []PickerSketch{}
 	for rows.Next() {
 		var p PickerSketch
-		if err := rows.Scan(&p.SketchID, &p.SnippetID, &p.Ordinal, &p.Preview, &p.Frozen, &p.UpdatedAt,
+		if err := rows.Scan(&p.SketchID, &p.SnippetID, &p.Ordinal, &p.Preview, &p.State, &p.UpdatedAt,
 			&p.LinkedManuscriptID, &p.LinkedManuscriptName, &p.Canonized); err != nil {
 			return nil, err
 		}
@@ -353,7 +361,7 @@ type DeletedSketch struct {
 	SnippetID            string    `json:"snippet_id"`
 	Ordinal              int       `json:"ordinal"`
 	Preview              string    `json:"preview"`
-	Frozen               bool      `json:"frozen"`
+	State                string    `json:"state"`
 	DeletedAt            time.Time `json:"deleted_at"`
 	LinkedManuscriptName string    `json:"linked_manuscript_name"`
 }
@@ -395,7 +403,7 @@ func (db *DB) RestoreSketch(ctx context.Context, userID string, id int) error {
 // lettered sketches, most recently DELETED first. q filters on text.
 func (db *DB) ListDeletedSketches(ctx context.Context, userID, q string) ([]DeletedSketch, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT v.sketch_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.frozen,
+		SELECT v.sketch_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.state,
 		       v.deleted_at, s.linked_manuscript_name
 		FROM sketch v JOIN snippet s ON s.snippet_id = v.snippet_id
 		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NOT NULL
@@ -410,7 +418,7 @@ func (db *DB) ListDeletedSketches(ctx context.Context, userID, q string) ([]Dele
 	out := []DeletedSketch{}
 	for rows.Next() {
 		var d DeletedSketch
-		if err := rows.Scan(&d.SketchID, &d.SnippetID, &d.Ordinal, &d.Preview, &d.Frozen,
+		if err := rows.Scan(&d.SketchID, &d.SnippetID, &d.Ordinal, &d.Preview, &d.State,
 			&d.DeletedAt, &d.LinkedManuscriptName); err != nil {
 			return nil, err
 		}
@@ -478,8 +486,8 @@ func (db *DB) CanonizeSketch(ctx context.Context, userID string, sketchID, manus
 	}
 	var newCanonID int
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO sketch (snippet_id, ordinal, text, frozen)
-		VALUES ($1, NULL, $2, true)
+		INSERT INTO sketch (snippet_id, ordinal, text, state)
+		VALUES ($1, NULL, $2, 'frozen')
 		RETURNING sketch_id
 	`, snippetID, text).Scan(&newCanonID); err != nil {
 		return nil, fmt.Errorf("create canon sketch: %w", err)
