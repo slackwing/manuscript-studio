@@ -643,66 +643,44 @@ class SnippetView {
   renderEdit() {
     const target = this.selfHost || this.body;
     target.innerHTML = '';
-    const ta = document.createElement('textarea');
-    ta.className = 'sn-text';
-    ta.placeholder = 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).';
-    ta.value = this.ctx.sketch.text;
-    ta.rows = Math.max(6, this.ctx.sketch.text.split('\n').length + 2);
-    let t = null;
-    let saveAttempt = 0;
-    let retryTimer = null;
-    let countdown = null;
-    const clearRetry = () => { clearTimeout(retryTimer); retryTimer = null; clearInterval(countdown); countdown = null; };
-    const save = async () => {
-      clearTimeout(t); clearRetry();
-      if (ta.value === this.ctx.sketch.text) { dirtyVariations.delete(this); this.saveEl.textContent = ''; return true; }
-      this.saveEl.textContent = 'saving…';
-      try {
-        await sketchApi.saveText(this.sketchId, ta.value);
-        const changed = this.ctx.sketch.text !== ta.value;
-        this.ctx.sketch.text = ta.value;
-        dirtyVariations.delete(this);
-        saveAttempt = 0;
-        this.saveEl.textContent = '';
+    // The SHARED edit-pane machinery (edit-pane.js) — same autosave/debounce,
+    // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
+    const pane = window.WriteSysEditPane.createMonoEditor({
+      value: this.ctx.sketch.text,
+      placeholder: 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).',
+      // Mirror the text into the overlay, rendering each tab as a faint grey
+      // → glyph so invisible whitespace is visible. Everything else is neutral
+      // (the textarea's own text sits transparent on top).
+      overlayHTML: tabMarkupHTML,
+      onInput: () => saver.poke(),
+    });
+    const ta = pane.textarea;
+    const saver = window.WriteSysEditPane.createAutosaver({
+      initialValue: this.ctx.sketch.text,
+      getValue: () => ta.value,
+      save: (text) => sketchApi.saveText(this.sketchId, text),
+      statusEl: this.saveEl,
+      onDirty: (d) => { if (d) dirtyVariations.add(this); else dirtyVariations.delete(this); },
+      onSaved: (text, changed) => {
+        this.ctx.sketch.text = text;
         // Blur may have flipped to preview before this save resolved —
         // re-render so the preview shows what was just saved.
         if (changed && this.mode === 'preview') this.renderBody();
-        return true;
-      } catch (e) {
-        if (e.status === 409) {
-          // Frozen underneath us (another widget/tab) — surface it.
-          this.saveEl.textContent = 'frozen — not saved';
-          return false;
-        }
-        saveAttempt = Math.min(saveAttempt + 1, 6);
-        let secs = Math.min(60, Math.pow(2, saveAttempt));
-        const authFail = e.status === 401;
-        const show = () => {
-          this.saveEl.textContent = `Failed to save. Trying again in ${secs}s`;
-          if (authFail) appendReloginLink(this.saveEl);
-        };
-        show();
-        countdown = setInterval(() => { secs -= 1; if (secs > 0) show(); }, 1000);
-        retryTimer = setTimeout(() => { clearRetry(); save(); }, secs * 1000);
-        return false;
-      }
-    };
+      },
+      // Frozen/superseded underneath us (another widget/tab) — surface it.
+      onFatal: (e) => (e.status === 409 ? 'frozen — not saved' : null),
+    });
     // Exactly ONE flusher per view at a time. renderEdit() runs on every
-    // enter-edit / tab-switch / rebuild, each making a fresh `save` closure that
-    // captures its OWN snapshot of the text. Without removing the previous one,
+    // enter-edit / compare-toggle / rebuild, each wiring a fresh autosaver that
+    // holds its OWN snapshot of the text. Without removing the previous one,
     // stale closures accumulate in variationFlushers, and the next doc-save
     // fires ALL of them at once — a race where an OLD snapshot can land last and
     // clobber current work (data-loss bug). Drop this view's prior flusher first.
     if (this.flush) variationFlushers.delete(this.flush);
-    this.flush = save;
-    variationFlushers.add(save);
-    ta.addEventListener('input', () => {
-      dirtyVariations.add(this);
-      clearTimeout(t); clearRetry();
-      t = setTimeout(save, 600);
-    });
+    this.flush = saver.flush;
+    variationFlushers.add(saver.flush);
     ta.addEventListener('blur', () => {
-      save();
+      saver.flush();
       if (this.mode === 'edit') { this.mode = 'preview'; this.renderBody(); }
     });
 
@@ -715,40 +693,18 @@ class SnippetView {
       if (e.key === 'Escape') { e.stopPropagation(); ta.blur(); return; }
       if (e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault();
-        const s = ta.selectionStart, en = ta.selectionEnd;
-        ta.value = ta.value.slice(0, s) + '\t' + ta.value.slice(en);
-        ta.selectionStart = ta.selectionEnd = s + 1;
-        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        pane.insertAtCaret('\t');
       }
     });
 
-    // The editor never scrolls internally — it grows to fit its content (the
-    // dialog body scrolls instead). This also makes the tab-marker overlay
-    // trivial: no scroll position to sync, just matched static geometry.
-    const wrap = document.createElement('div');
-    wrap.className = 'sn-text-wrap';
-    const overlay = document.createElement('div');
-    overlay.className = 'sn-text-overlay';
-    overlay.setAttribute('aria-hidden', 'true');
-    const autoGrow = () => {
-      ta.style.height = 'auto';
-      ta.style.height = ta.scrollHeight + 'px';
-      // Mirror the text into the overlay, rendering each tab as a faint grey
-      // → glyph so invisible whitespace is visible. Everything else is neutral
-      // (the textarea's own text sits transparent on top).
-      overlay.innerHTML = tabMarkupHTML(ta.value);
-    };
-    ta.addEventListener('input', autoGrow);
-    wrap.appendChild(overlay);
-    wrap.appendChild(ta);
-    target.appendChild(wrap);
+    target.appendChild(pane.wrap);
     this.ta = ta;
     // preventScroll: focusing the textarea would otherwise scroll it into view
     // (jumping to the top of the snippet) — the main "click-to-edit scrolls me
     // up" trigger. preserveScroll (around renderBody) is the backstop.
     ta.focus({ preventScroll: true });
     ta.setSelectionRange(ta.value.length, ta.value.length);
-    autoGrow();
+    pane.autoGrow();
   }
 
   // The RIGHT HALF of a split-compare: a sibling sketch, read-only on a

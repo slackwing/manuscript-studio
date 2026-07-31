@@ -2016,17 +2016,58 @@ p.section-break {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(640px, 90vw);
-  background: #fff;
-  border-radius: 6px;
+  width: min(980px, 94vw);
+  max-height: 86vh;
+  background: #fbfaf7;
+  border: 1px solid #c9c2b2;
+  border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-  padding: 20px 24px;
   z-index: 201;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
   font-family: "Helvetica", sans-serif;
 }
+.sgm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #f3efe6;
+  border-bottom: 1px solid #e4ded1;
+}
+.sgm-save { font-size: 11px; color: #a49b8a; white-space: nowrap; }
+.sgm-spacer { flex: 1; }
+.sgm-close {
+  border: none;
+  background: none;
+  font-size: 17px;
+  color: #999;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+.sgm-close:hover { color: #222; }
+/* Main columns: split panes + the letter rail (shared .sn-rail look). */
+.sgm-cols { display: flex; align-items: stretch; flex: 1; min-height: 0; }
+.sgm-split { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-y: auto; }
+.sgm-left { flex: 1 1 50%; min-width: 0; padding: 12px; }
+.sgm-right {
+  flex: 1 1 50%;
+  min-width: 0;
+  padding: 12px;
+  border-left: 1px solid #d8d2c4;
+  background: #efeae0;
+  display: flex;
+  flex-direction: column;
+}
+.sgm-version-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a8378;
+  margin: 0 0 8px 2px;
+}
+.sgm-rail { justify-content: flex-start; }
 
 .suggestion-modal-title {
   font-size: 16px;
@@ -2039,48 +2080,23 @@ p.section-break {
   color: #777;
 }
 
-.suggestion-modal-textarea {
-  width: 100%;
-  font-family: "Monaco", "Menlo", monospace;
-  font-size: 13px;
-  line-height: 1.45;
-  padding: 10px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  resize: vertical;
-  white-space: pre-wrap;
-  box-sizing: border-box;
-}
-
-.suggestion-modal-textarea:focus {
-  outline: none;
-  border-color: #2a7bb0;
-}
-
-/* Read-only original above the edit box — same monospace metrics so it lines
-   up char-for-char with the edit textarea; muted so the edit box is primary. */
+/* The edit pane itself wears the snippet widget's .sn-text styles
+   (scratchpad.css, shared) — .suggestion-modal-textarea stays as a hook only.
+   The read-only version pane matches its monospace metrics char-for-char. */
 .suggestion-modal-original {
+  flex: 1;
   width: 100%;
   font-family: "Monaco", "Menlo", monospace;
   font-size: 13px;
   line-height: 1.45;
   padding: 10px 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  resize: vertical;
+  border: none;
+  resize: none;
   white-space: pre-wrap;
   box-sizing: border-box;
-  background: #f7f7f7;
-  color: #555;
-  margin-bottom: 10px;
-}
-.suggestion-modal-label {
-  display: block;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #888;
-  margin: 0 0 3px 2px;
+  background: transparent;
+  color: #444;
+  outline: none;
 }
 
 /* Structural-break glyph diff in a suggested prose fragment: green § / ¶ for
@@ -2115,38 +2131,6 @@ p.section-break {
 .suggestion-modal-break:hover {
   background: #eaeef2;
   color: #1f2328;
-}
-
-.suggestion-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.suggestion-modal-cancel,
-.suggestion-modal-save {
-  padding: 6px 14px;
-  font-family: "Helvetica", sans-serif;
-  font-size: 13px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 1px solid #ccc;
-  background: #fff;
-  color: #333;
-}
-
-.suggestion-modal-save {
-  background: #2a7bb0;
-  border-color: #2a7bb0;
-  color: #fff;
-}
-
-.suggestion-modal-cancel:hover {
-  background: #f5f5f5;
-}
-
-.suggestion-modal-save:hover {
-  background: #225f8c;
 }
 
 /* Push-to-PR split-button (lives in #controls). */

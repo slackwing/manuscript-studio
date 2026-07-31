@@ -112,84 +112,152 @@ const WriteSysSuggestions = {
     const original = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
       ? window.WriteSysRenderer.sentenceMap[sentenceId] || ''
       : '';
-    const current = (this.bySentenceId[sentenceId] !== undefined)
+    const openCurrent = (this.bySentenceId[sentenceId] !== undefined)
       ? this.bySentenceId[sentenceId]
       : original;
 
+    const tm = window.WriteSysTextMarkers;
+    const toG = (t) => (tm ? tm.toGlyphs(t) : t);
+    const fromG = (t) => (tm ? tm.fromGlyphs(t) : t);
+
+    // RIGHT-pane versions: 0 = committed (this migration); k = the text k
+    // commits back, straight from the history-bars data already loaded for the
+    // left margin (previous_sentence_id chains, 3 back). A version whose text
+    // matches the one after it is greyed out — nothing changed there.
+    const histEntry = (window.WriteSysHistory && window.WriteSysHistory.bySentenceId)
+      ? window.WriteSysHistory.bySentenceId[sentenceId] : null;
+    const hist = (histEntry && histEntry.history) || [];
+    const versions = [{ k: 0, text: original }];
+    for (let k = 1; k <= 3; k++) {
+      const h = hist[k - 1];
+      versions.push({ k, text: h ? h.text : null });
+    }
+
     const overlay = document.createElement('div');
     overlay.id = 'suggestion-modal-overlay';
-
-    const tm = window.WriteSysTextMarkers;
     const modal = document.createElement('div');
     modal.id = 'suggestion-modal';
+    const railBtns = versions.map((v) => {
+      if (v.k === 0) {
+        return '<button type="button" class="sn-rail-btn sn-rail-peer" data-ver="0" title="Committed text (current)">0</button>';
+      }
+      const prev = versions[v.k - 1].text;
+      const plural = v.k > 1 ? 's' : '';
+      const dis = v.text == null || v.text === prev;
+      const title = v.text == null ? `No record ${v.k} commits back`
+        : dis ? `Unchanged ${v.k} commit${plural} ago`
+        : `${v.k} commit${plural} ago`;
+      return `<button type="button" class="sn-rail-btn sn-rail-peer" data-ver="${v.k}" title="${title}"${dis ? ' disabled' : ''}>${v.k}</button>`;
+    }).join('');
     modal.innerHTML = `
-      <div class="suggestion-modal-title">Suggest edit</div>
-      <label class="suggestion-modal-label">Original</label>
-      <textarea class="suggestion-modal-original" rows="4" readonly spellcheck="false"></textarea>
-      <label class="suggestion-modal-label">Your edit</label>
-      <div class="suggestion-modal-breaks">
-        <button type="button" class="suggestion-modal-break" data-break="section" title="Insert a section break (blank line)">§ section</button>
-        <button type="button" class="suggestion-modal-break" data-break="paragraph" title="Insert a paragraph break (new indented paragraph)">¶ paragraph</button>
+      <div class="sgm-head">
+        <span class="suggestion-modal-title">Suggest edit</span>
+        <span class="sn-save sgm-save"></span>
+        <span class="sgm-spacer"></span>
+        <div class="suggestion-modal-breaks">
+          <button type="button" class="suggestion-modal-break" data-break="section" title="Insert a section break (blank line)">§ section</button>
+          <button type="button" class="suggestion-modal-break" data-break="paragraph" title="Insert a paragraph break (new indented paragraph)">¶ paragraph</button>
+        </div>
+        <button type="button" class="sgm-close" title="Close (your edit auto-saves)">×</button>
       </div>
-      <textarea class="suggestion-modal-textarea" rows="6" spellcheck="false"></textarea>
-      <div class="suggestion-modal-actions">
-        <button type="button" class="suggestion-modal-cancel">Cancel</button>
-        <button type="button" class="suggestion-modal-save">Save</button>
-      </div>
-    `;
-
+      <div class="sgm-cols">
+        <div class="sgm-split">
+          <div class="sgm-left"></div>
+          <div class="sgm-right">
+            <div class="sgm-version-label"></div>
+            <textarea class="suggestion-modal-original" readonly spellcheck="false"></textarea>
+          </div>
+        </div>
+        <div class="sn-rail sgm-rail">
+          <button type="button" class="sn-rail-btn sn-rail-self" title="Your edit — auto-saved as you type.">*</button>
+          ${railBtns}
+        </div>
+      </div>`;
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
 
-    // Read-only original for reference — a real (monospace) textarea so it's
-    // char-for-char vertically aligned with the edit box and easy to copy.
+    // Version selector → right pane (read-only, monospace, glyph form so it
+    // aligns char-for-char with the edit pane).
     const originalArea = modal.querySelector('.suggestion-modal-original');
-    originalArea.value = tm ? tm.toGlyphs(original) : original;
+    const verLabel = modal.querySelector('.sgm-version-label');
+    const showVersion = (k) => {
+      originalArea.value = toG(versions[k].text || '');
+      verLabel.textContent = k === 0
+        ? '0 · committed (current)'
+        : `${k} · ${k} commit${k > 1 ? 's' : ''} ago`;
+      modal.querySelectorAll('.sgm-rail [data-ver]').forEach((b) =>
+        b.classList.toggle('active', parseInt(b.dataset.ver, 10) === k));
+    };
+    modal.querySelectorAll('.sgm-rail [data-ver]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (!b.disabled) showVersion(parseInt(b.dataset.ver, 10));
+      });
+    });
+    showVersion(0);
 
-    // Show glyphs in the textarea so the user sees and edits paragraph
-    // markers visually instead of literal whitespace.
-    const textarea = modal.querySelector('.suggestion-modal-textarea');
-    textarea.value = tm ? tm.toGlyphs(current) : current;
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    // LEFT pane: the SHARED edit machinery (edit-pane.js) — the same
+    // autosave-as-you-type, retry ladder, dirty tracking and flush-or-refuse
+    // close that snippet widgets use. Nothing is ever lost to a stray click.
+    let staleAlerted = false;
+    const pane = window.WriteSysEditPane.createMonoEditor({
+      value: toG(openCurrent),
+      onInput: () => saver.poke(),
+    });
+    pane.textarea.classList.add('suggestion-modal-textarea');
+    const saver = window.WriteSysEditPane.createAutosaver({
+      initialValue: toG(openCurrent),
+      getValue: () => pane.textarea.value,
+      save: async (glyphText) => {
+        const newText = fromG(glyphText);
+        const resp = await authenticatedFetch(`${this.apiBaseUrl}/sentences/${sentenceId}/suggestion`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: newText }),
+        });
+        if (!resp.ok) {
+          const err = new Error('HTTP ' + resp.status);
+          err.status = resp.status;
+          throw err;
+        }
+        // Server collapses "text == original" into a delete; mirror locally.
+        if (newText === original) delete this.bySentenceId[sentenceId];
+        else this.bySentenceId[sentenceId] = newText;
+      },
+      statusEl: modal.querySelector('.sgm-save'),
+      onFatal: (e) => {
+        if (e.status !== 409) return null;
+        // 409 = stale migration (see the stale banner / poll in renderer.js):
+        // reloading is the only way forward, but the user must get a chance to
+        // copy their text out first.
+        if (!staleAlerted) {
+          staleAlerted = true;
+          alert('The manuscript was updated underneath this edit. Copy your text somewhere safe, then reload the page.');
+        }
+        return 'manuscript updated — copy your text, then reload';
+      },
+    });
+    modal.querySelector('.sgm-left').appendChild(pane.wrap);
+    const textarea = pane.textarea;
 
-    // Break-insert buttons: a real newline can't be typed here, so these drop a
-    // § (section, \n\n) or ¶ (paragraph, \n\t) glyph at the caret. On save,
-    // fromGlyphs turns them back into real breaks; canonicalize then owns all
-    // structural reshaping (block-command spacing, anchor blocking) — the modal
-    // itself never decides structure. No-op gracefully if text-markers absent.
+    // Break-insert buttons: a § (section, \n\n) or ¶ (paragraph, \n\t) glyph
+    // at the caret. On save, fromGlyphs turns them back into real breaks;
+    // canonicalize then owns all structural reshaping.
     if (tm) {
-      const insertGlyph = (glyph) => {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const v = textarea.value;
-        textarea.value = v.slice(0, start) + glyph + v.slice(end);
-        const caret = start + glyph.length;
-        textarea.setSelectionRange(caret, caret);
-        textarea.focus();
-      };
       modal.querySelectorAll('.suggestion-modal-break').forEach((btn) => {
         btn.addEventListener('click', () => {
-          insertGlyph(btn.dataset.break === 'section' ? tm.SECTION_GLYPH : tm.PARAGRAPH_GLYPH);
+          pane.insertAtCaret(btn.dataset.break === 'section' ? tm.SECTION_GLYPH : tm.PARAGRAPH_GLYPH);
         });
       });
     }
 
-    // Live conversion: a real newline pressed in the textarea is the
-    // user's natural way of expressing a paragraph break. Map \n\n → §
-    // (section) and remaining \n → ¶ (paragraph) on every input. Done
-    // here rather than only on save so the user sees the glyphs the
-    // moment they hit Enter, matching what the diff in the page shows.
+    // Live conversion: a real newline typed in the textarea is the user's
+    // natural way of expressing a paragraph break. Map \n\n → § (section) and
+    // remaining \n → ¶ (paragraph) on every input, preserving the caret.
     if (tm) {
       textarea.addEventListener('input', () => {
         const before = textarea.value;
-        // Skip if no newlines — saves the round-trip on most keystrokes.
         if (!/\n/.test(before)) return;
         const caret = textarea.selectionStart;
-        // Only \n\n → § changes the length (2 chars collapse to a 1-char
-        // glyph); a lone \n → ¶ is a 1:1 swap. So the caret shifts left by
-        // the number of \n\n PAIRS strictly before it — counted with the
-        // same non-overlapping /\n\n/g scan the replace below uses.
         const pairsBefore = (before.slice(0, caret).match(/\n\n/g) || []).length;
         const after = before.replace(/\n\n/g, tm.SECTION_GLYPH).replace(/\n/g, tm.PARAGRAPH_GLYPH);
         if (after === before) return;
@@ -199,55 +267,17 @@ const WriteSysSuggestions = {
       });
     }
 
-    const close = () => {
+    // Closing ALWAYS flushes first; a failing save keeps the modal open with
+    // the retry/stale status showing — an accidental overlay click or Escape
+    // can no longer lose anything.
+    const close = async () => {
+      if (!(await saver.flush())) return;
+      saver.destroy();
       overlay.remove();
       modal.remove();
-    };
-
-    let saving = false;
-    const save = async () => {
-      if (saving) return;
-      // Convert UI form (glyphs OR escape literals OR raw chars) → storage form.
-      const newText = tm ? tm.fromGlyphs(textarea.value) : textarea.value;
-      if (newText === current) {
-        close();
-        return;
-      }
-
-      // Don't close until the PUT succeeds — a failed save (500, 409-stale,
-      // network drop) must leave the modal open with the user's text intact.
-      saving = true;
-      try {
-        const resp = await authenticatedFetch(`${this.apiBaseUrl}/sentences/${sentenceId}/suggestion`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: newText }),
-        });
-        if (!resp.ok) {
-          console.error('save suggestion failed: HTTP', resp.status);
-          // 409 = stale migration (see the stale banner / poll in
-          // renderer.js): reloading is the only way forward, but the user
-          // must get a chance to copy their text out first.
-          alert(resp.status === 409
-            ? 'Failed to save: the manuscript was updated. Copy your text somewhere safe, then reload the page.'
-            : 'Failed to save suggestion');
-          return;
-        }
-      } catch (err) {
-        console.error('save suggestion failed:', err);
-        alert('Failed to save suggestion');
-        return;
-      } finally {
-        saving = false;
-      }
-      close();
-
-      // Server collapses "text == original" into a delete; reflect locally.
-      if (newText === original) {
-        delete this.bySentenceId[sentenceId];
-      } else {
-        this.bySentenceId[sentenceId] = newText;
-      }
+      const finalText = (this.bySentenceId[sentenceId] !== undefined)
+        ? this.bySentenceId[sentenceId] : original;
+      if (finalText === openCurrent) return; // no net change → no re-render
 
       // Stamp the URL so a manual hard-reload comes back to this sentence
       // instead of the top of the manuscript. replaceState — don't pollute
@@ -257,9 +287,6 @@ const WriteSysSuggestions = {
       window.history.replaceState(null, '', url.toString());
 
       if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
-        // Pass the sentence id as both anchor (preserves viewport position
-        // across re-pagination) and selection target (highlights it after
-        // re-render so the user sees what changed).
         await window.WriteSysRenderer.renderManuscript({
           anchorSentenceId: sentenceId,
           selectSentenceId: sentenceId,
@@ -269,20 +296,19 @@ const WriteSysSuggestions = {
         window.WriteSysPush.refresh();
       }
     };
-
     overlay.addEventListener('click', close);
-    modal.querySelector('.suggestion-modal-cancel').addEventListener('click', close);
-    modal.querySelector('.suggestion-modal-save').addEventListener('click', save);
-
-    textarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+    modal.querySelector('.sgm-close').addEventListener('click', close);
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
         e.preventDefault();
-        save();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
+        e.stopPropagation();
         close();
       }
     });
+
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    pane.autoGrow();
   },
 };
 

@@ -137,7 +137,7 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
     const survivorText = 'edited text that must survive a failed save';
     await page.locator('.suggestion-modal-textarea').fill(survivorText);
-    await page.locator('.suggestion-modal-textarea').press('Enter');
+    await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForTimeout(500);
 
     const modalStillOpen = await page.locator('#suggestion-modal').count();
@@ -147,24 +147,33 @@ function psql(sql) {
       : '';
     assert(keptText === survivorText,
       `User's text is preserved in the modal (got "${keptText}")`);
-    assert(alerts.length === 1 && /failed to save/i.test(alerts[0]),
-      `Failure alert shown (got ${JSON.stringify(alerts)})`);
+    // Autosave pane: failures surface in the STATUS slot (retry ladder), not
+    // a blocking alert — the modal quietly retries until it lands.
+    const statusText = await page.locator('.sgm-save').textContent();
+    assert(/failed to save/i.test(statusText),
+      `Retry-ladder status shown instead of an alert (got "${statusText}")`);
+    assert(alerts.length === 0, `No blocking alert on a retryable failure (got ${JSON.stringify(alerts)})`);
 
     await page.unroute('**/api/sentences/*/suggestion');
     if (modalStillOpen === 1) {
+      // Server reachable again: restore the ORIGINAL text so the flush-on-close
+      // collapses the suggestion to none (autosave close always saves).
+      const origG = await page.evaluate((t) =>
+        window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, first.text);
+      await page.locator('.suggestion-modal-textarea').fill(origG);
       await page.locator('.suggestion-modal-textarea').press('Escape');
-      await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
+      await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
     }
 
     const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
-    assert(rows === '0', `No suggestion row was stored by the failed save (count: ${rows})`);
+    assert(rows === '0', `No suggestion row remains after revert-and-close (count: ${rows})`);
 
     // ---- newText === current still closes immediately, without a PUT ----
 
     const putsBefore = putRequests.length;
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
-    await page.locator('.suggestion-modal-textarea').press('Enter'); // unchanged text
+    await page.locator('.suggestion-modal-textarea').press('Escape'); // unchanged text
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     assert(true, 'Unchanged text closes the modal immediately');
     await page.waitForTimeout(500);

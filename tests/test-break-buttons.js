@@ -31,6 +31,9 @@ const { TEST_URL, loginAsTestUser,
   });
   check('opened modal', !!opened, opened);
   await page.waitForTimeout(300);
+  // The pre-filled (original) glyph text — restored before closing so the
+  // autosave leaves no suggestion behind.
+  const origGlyph = await page.locator('.suggestion-modal-textarea').inputValue();
 
   const hasButtons = await page.locator('.suggestion-modal-break').count();
   check('two break buttons present', hasButtons === 2, String(hasButtons));
@@ -55,11 +58,12 @@ const { TEST_URL, loginAsTestUser,
   const roundtrip = await page.evaluate((v) => window.WriteSysTextMarkers.fromGlyphs(v), afterPara);
   check('glyphs convert back to real breaks', roundtrip === 'A\n\n\n\tB', JSON.stringify(roundtrip));
 
-  // Cancel — no save, no mutation.
-  await page.locator('.suggestion-modal-cancel').click();
-  await page.waitForTimeout(200);
-  const closed = await page.locator('#suggestion-modal').count();
-  check('modal closed via Cancel (no save)', closed === 0);
+  // Closing ALWAYS saves now (autosave modal) — restore the original text
+  // first so no suggestion is left behind, then Escape to flush + close.
+  await page.locator('.suggestion-modal-textarea').fill(origGlyph);
+  await page.locator('.suggestion-modal-textarea').press('Escape');
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 4000 });
+  check('modal closed via Escape (edit reverted, no suggestion left)', true);
 
   await browser.close();
   process.exit(failed ? 1 : 0);

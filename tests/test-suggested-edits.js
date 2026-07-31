@@ -89,9 +89,9 @@ function psql(sql) {
     // Type the glyph form (as the user would in the modal); the modal converts
     // to raw storage form (newText) on save.
     await page.locator('.suggestion-modal-textarea').fill(newTextGlyph);
-    await page.locator('.suggestion-modal-textarea').press('Enter');
+    await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
-    assert(true, 'Enter saves and closes the modal');
+    assert(true, 'Escape flushes the autosave and closes the modal');
 
     // Wait for Paged.js re-render to settle.
     await page.waitForFunction(
@@ -143,7 +143,7 @@ function psql(sql) {
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForSelector('#suggestion-modal');
     await page.locator('.suggestion-modal-textarea').fill(first.text);
-    await page.locator('.suggestion-modal-textarea').press('Enter');
+    await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(2000);
 
@@ -171,7 +171,7 @@ function psql(sql) {
       await page.locator(`.sentence[data-sentence-id="${apos.id}"]`).first().click();
       await page.waitForSelector('#suggestion-modal');
       await page.locator('.suggestion-modal-textarea').fill(aposNew);
-      await page.locator('.suggestion-modal-textarea').press('Enter');
+      await page.locator('.suggestion-modal-textarea').press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
       await page.waitForFunction(
         (sid) => {
@@ -199,21 +199,34 @@ function psql(sql) {
       await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), apos.id);
       await page.waitForSelector('#suggestion-modal');
       await page.locator('.suggestion-modal-textarea').fill(apos.text);
-      await page.locator('.suggestion-modal-textarea').press('Enter');
+      await page.locator('.suggestion-modal-textarea').press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
       await page.waitForTimeout(2000);
     }
 
-    // Use the in-page API directly — the keydown handler is what's under
-    // test; how the modal opens is irrelevant.
+    // AUTOSAVE semantics: Escape now FLUSHES then closes — typed text is
+    // never discarded (the whole point of the shared edit pane). The typed
+    // text must be in the DB after Escape; reverting to the original text and
+    // Escaping again collapses the suggestion back to none.
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal');
-    await page.locator('.suggestion-modal-textarea').fill('this should be discarded');
+    await page.locator('.suggestion-modal-textarea').fill('this text auto-saves on Escape');
     await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
     const dbAfterEsc = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
-    assert(dbAfterEsc === '0', `Esc discards changes (count still 0)`);
+    assert(dbAfterEsc === '1', `Escape saved the typed text (count 1, autosave)`);
+    // Revert: original text → server collapses to delete.
+    await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
+    await page.waitForSelector('#suggestion-modal');
+    const origGlyph2 = await page.evaluate((t) =>
+      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, first.text);
+    await page.locator('.suggestion-modal-textarea').fill(origGlyph2);
+    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
+    await page.waitForTimeout(500);
+    const dbAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
+    assert(dbAfterRevert === '0', `Reverting to original then Escape deletes the suggestion`);
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}`);

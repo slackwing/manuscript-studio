@@ -139,7 +139,7 @@ function teardownBareRemote(bareDir) {
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), target.id);
     await page.waitForSelector('#suggestion-modal');
     await page.locator('.suggestion-modal-textarea').fill(newText);
-    await page.locator('.suggestion-modal-textarea').press('Enter');
+    await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
 
