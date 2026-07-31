@@ -74,21 +74,14 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
     assert(true, 'Re-click opens suggestion modal');
 
-    // The edit textarea shows GLYPH form (§ for \n\n, ¶ for \n\t) so compare
-    // against the glyph-converted original, not raw storage form.
-    const wantGlyph = await page.evaluate((t) =>
-      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, first.text);
+    // The edit pane shows RAW .manuscript text (sketch-editor mode — real
+    // newlines/tabs, → overlay for tabs; no glyphs).
     const textareaValue = await page.locator('.suggestion-modal-textarea').inputValue();
-    assert(textareaValue === wantGlyph,
-      `Textarea pre-fills with original sentence text (got "${textareaValue.slice(0,30)}..." want "${wantGlyph.slice(0,30)}...")`);
+    assert(textareaValue === first.text,
+      `Textarea pre-fills with original sentence text (got "${textareaValue.slice(0,30)}..." want "${first.text.slice(0,30)}...")`);
 
-    // Edit in glyph form; the server stores the fromGlyphs (raw) form.
-    const newTextGlyph = wantGlyph.replace(/\.$/, '') + ' (with edit added).';
-    const newText = await page.evaluate((t) =>
-      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.fromGlyphs(t) : t, newTextGlyph);
-    // Type the glyph form (as the user would in the modal); the modal converts
-    // to raw storage form (newText) on save.
-    await page.locator('.suggestion-modal-textarea').fill(newTextGlyph);
+    const newText = first.text.replace(/\.$/, '') + ' (with edit added).';
+    await page.locator('.suggestion-modal-textarea').fill(newText);
     await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     assert(true, 'Escape flushes the autosave and closes the modal');
@@ -219,9 +212,7 @@ function psql(sql) {
     // Revert: original text → server collapses to delete.
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal');
-    const origGlyph2 = await page.evaluate((t) =>
-      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, first.text);
-    await page.locator('.suggestion-modal-textarea').fill(origGlyph2);
+    await page.locator('.suggestion-modal-textarea').fill(first.text);
     await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);

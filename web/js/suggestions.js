@@ -116,10 +116,6 @@ const WriteSysSuggestions = {
       ? this.bySentenceId[sentenceId]
       : original;
 
-    const tm = window.WriteSysTextMarkers;
-    const toG = (t) => (tm ? tm.toGlyphs(t) : t);
-    const fromG = (t) => (tm ? tm.fromGlyphs(t) : t);
-
     // RIGHT-pane versions: 0 = committed (this migration); k = the text k
     // commits back, straight from the history-bars data already loaded for the
     // left margin (previous_sentence_id chains, 3 back). A version whose text
@@ -149,26 +145,35 @@ const WriteSysSuggestions = {
         : `${v.k} commit${plural} ago`;
       return `<button type="button" class="sn-rail-btn sn-rail-peer" data-ver="${v.k}" title="${title}"${dis ? ' disabled' : ''}>${v.k}</button>`;
     }).join('');
+    // EXACTLY the snippet widget's chrome (scratchpad.css): sn-cols → sn-main
+    // (sn-header + sn-body with the split) + sn-rail down the right edge, the
+    // * button in the corner where a widget shows its sketch letter. The edit
+    // pane IS the sketch editor — raw .manuscript text, real newlines, Tab
+    // inserts a literal \t (rendered as → by the shared overlay). No glyphs,
+    // no break buttons.
     modal.innerHTML = `
-      <div class="sgm-head">
-        <span class="suggestion-modal-title">Suggest edit</span>
-        <span class="sn-save sgm-save"></span>
-        <span class="sgm-spacer"></span>
-        <div class="suggestion-modal-breaks">
-          <button type="button" class="suggestion-modal-break" data-break="section" title="Insert a section break (blank line)">§ section</button>
-          <button type="button" class="suggestion-modal-break" data-break="paragraph" title="Insert a paragraph break (new indented paragraph)">¶ paragraph</button>
-        </div>
-        <button type="button" class="sgm-close" title="Close (your edit auto-saves)">×</button>
-      </div>
-      <div class="sgm-cols">
-        <div class="sgm-split">
-          <div class="sgm-left"></div>
-          <div class="sgm-right">
-            <div class="sgm-version-label"></div>
-            <textarea class="suggestion-modal-original" readonly spellcheck="false"></textarea>
+      <div class="sn-cols">
+        <div class="sn-main">
+          <div class="sn-header">
+            <span class="sn-status" title="Your edit auto-saves as you type. Closing flushes first — nothing is lost.">Suggest edit</span><span class="sn-save"></span>
+            <span class="sn-actions">
+              <button type="button" class="sgm-close" title="Close (your edit auto-saves)">×</button>
+            </span>
+          </div>
+          <div class="sn-body">
+            <div class="sn-split">
+              <div class="sn-split-left">
+                <div class="sn-note"><strong>*</strong> · suggested edit</div>
+                <div class="sgm-left"></div>
+              </div>
+              <div class="sn-split-right">
+                <div class="sn-note sgm-version-label"></div>
+                <textarea class="suggestion-modal-original sgm-version-text" readonly spellcheck="false"></textarea>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="sn-rail sgm-rail">
+        <div class="sn-rail">
           <button type="button" class="sn-rail-btn sn-rail-self" title="Your edit — auto-saved as you type.">*</button>
           ${railBtns}
         </div>
@@ -176,39 +181,43 @@ const WriteSysSuggestions = {
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
 
-    // Version selector → right pane (read-only, monospace, glyph form so it
-    // aligns char-for-char with the edit pane).
+    // Version selector → right pane (read-only, same monospace metrics as the
+    // edit pane so the two align char-for-char).
     const originalArea = modal.querySelector('.suggestion-modal-original');
     const verLabel = modal.querySelector('.sgm-version-label');
-    const showVersion = (k) => {
-      originalArea.value = toG(versions[k].text || '');
-      verLabel.textContent = k === 0
-        ? '0 · committed (current)'
-        : `${k} · ${k} commit${k > 1 ? 's' : ''} ago`;
-      modal.querySelectorAll('.sgm-rail [data-ver]').forEach((b) =>
-        b.classList.toggle('active', parseInt(b.dataset.ver, 10) === k));
+    const sizeVersionPane = () => {
+      originalArea.style.height = 'auto';
+      originalArea.style.height = Math.max(originalArea.scrollHeight, 60) + 'px';
     };
-    modal.querySelectorAll('.sgm-rail [data-ver]').forEach((b) => {
+    const showVersion = (k) => {
+      originalArea.value = versions[k].text || '';
+      verLabel.innerHTML = k === 0
+        ? '<strong>0</strong> · committed (current)'
+        : `<strong>${k}</strong> · ${k} commit${k > 1 ? 's' : ''} ago`;
+      modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) =>
+        b.classList.toggle('active', parseInt(b.dataset.ver, 10) === k));
+      sizeVersionPane();
+    };
+    modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) => {
       b.addEventListener('click', () => {
         if (!b.disabled) showVersion(parseInt(b.dataset.ver, 10));
       });
     });
-    showVersion(0);
 
-    // LEFT pane: the SHARED edit machinery (edit-pane.js) — the same
-    // autosave-as-you-type, retry ladder, dirty tracking and flush-or-refuse
-    // close that snippet widgets use. Nothing is ever lost to a stray click.
+    // LEFT pane: the SHARED edit component (edit-pane.js) — the same
+    // autosave-as-you-type, retry ladder, dirty tracking, tab overlay and
+    // flush-or-refuse close that snippet widgets use.
     let staleAlerted = false;
     const pane = window.WriteSysEditPane.createMonoEditor({
-      value: toG(openCurrent),
+      value: openCurrent,
+      overlayHTML: window.WriteSysEditPane.tabMarkupHTML,
       onInput: () => saver.poke(),
     });
     pane.textarea.classList.add('suggestion-modal-textarea');
     const saver = window.WriteSysEditPane.createAutosaver({
-      initialValue: toG(openCurrent),
+      initialValue: openCurrent,
       getValue: () => pane.textarea.value,
-      save: async (glyphText) => {
-        const newText = fromG(glyphText);
+      save: async (newText) => {
         const resp = await authenticatedFetch(`${this.apiBaseUrl}/sentences/${sentenceId}/suggestion`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -223,7 +232,7 @@ const WriteSysSuggestions = {
         if (newText === original) delete this.bySentenceId[sentenceId];
         else this.bySentenceId[sentenceId] = newText;
       },
-      statusEl: modal.querySelector('.sgm-save'),
+      statusEl: modal.querySelector('.sn-save'),
       onFatal: (e) => {
         if (e.status !== 409) return null;
         // 409 = stale migration (see the stale banner / poll in renderer.js):
@@ -238,34 +247,7 @@ const WriteSysSuggestions = {
     });
     modal.querySelector('.sgm-left').appendChild(pane.wrap);
     const textarea = pane.textarea;
-
-    // Break-insert buttons: a § (section, \n\n) or ¶ (paragraph, \n\t) glyph
-    // at the caret. On save, fromGlyphs turns them back into real breaks;
-    // canonicalize then owns all structural reshaping.
-    if (tm) {
-      modal.querySelectorAll('.suggestion-modal-break').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          pane.insertAtCaret(btn.dataset.break === 'section' ? tm.SECTION_GLYPH : tm.PARAGRAPH_GLYPH);
-        });
-      });
-    }
-
-    // Live conversion: a real newline typed in the textarea is the user's
-    // natural way of expressing a paragraph break. Map \n\n → § (section) and
-    // remaining \n → ¶ (paragraph) on every input, preserving the caret.
-    if (tm) {
-      textarea.addEventListener('input', () => {
-        const before = textarea.value;
-        if (!/\n/.test(before)) return;
-        const caret = textarea.selectionStart;
-        const pairsBefore = (before.slice(0, caret).match(/\n\n/g) || []).length;
-        const after = before.replace(/\n\n/g, tm.SECTION_GLYPH).replace(/\n/g, tm.PARAGRAPH_GLYPH);
-        if (after === before) return;
-        textarea.value = after;
-        const newCaret = Math.max(0, Math.min(after.length, caret - pairsBefore));
-        textarea.setSelectionRange(newCaret, newCaret);
-      });
-    }
+    showVersion(0);
 
     // Closing ALWAYS flushes first; a failing save keeps the modal open with
     // the retry/stale status showing — an accidental overlay click or Escape
@@ -303,6 +285,14 @@ const WriteSysSuggestions = {
         e.preventDefault();
         e.stopPropagation();
         close();
+      }
+    });
+    // Sketch-editor keys: Tab inserts a literal \t (a "\n\t" paragraph break
+    // is typeable); Shift-Tab still escapes the field.
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        pane.insertAtCaret('\t');
       }
     });
 

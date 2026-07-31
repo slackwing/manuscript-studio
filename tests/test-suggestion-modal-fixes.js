@@ -1,8 +1,9 @@
 /**
- * Suggestion-modal robustness: caret math + failed-save data preservation.
+ * Suggestion-modal robustness: raw sketch-editor input + failed-save
+ * preservation.
  *
- * Bug 1 (caret): the modal textarea live-converts newlines to glyphs
- * (\n\n → §, remaining \n → ¶). Only the pair conversion changes string
+ * Input: the pane edits RAW .manuscript text (shared edit-pane) — Enter and
+ * Tab insert literal characters; the → overlay marks tabs. (Historical note:
  * length (2 chars → 1), but the old code subtracted the count of ALL
  * newlines before the caret, so after pressing Shift+Enter the caret
  * landed BEFORE the glyph and subsequent typing came out reversed
@@ -78,48 +79,28 @@ function psql(sql) {
     });
     assert(!!first && !!first.id, `Found a prose sentence (${first && first.id.slice(0, 12)}...)`);
 
-    // ---- Bug 1: caret position after newline → glyph conversion ----
+    // ---- Raw sketch-editor mode: newlines and tabs stay LITERAL ----
+    // (The glyph conversion died with the old modal — the pane now edits raw
+    // .manuscript text exactly like a snippet sketch: Enter = \n, Tab = \t.)
 
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
     const ta = page.locator('.suggestion-modal-textarea');
 
-    // Typing: "abc" + Shift+Enter (real newline) + "def". The single \n
-    // becomes ¶ with NO length change, so the caret must stay after it.
     await ta.fill('abc');
-    await ta.press('Shift+Enter');
+    await ta.press('Enter');
     await page.keyboard.type('def');
     const typed = await ta.inputValue();
-    assert(typed === 'abc¶def',
-      `Typing after Shift+Enter lands after the ¶ glyph (got "${typed}")`);
-
-    // Paste-style: value with a \n\n pair, caret at end, one input event.
-    // The pair collapses to one § (length shrinks by 1) so the caret moves
-    // left exactly one — to the end, not into the text.
-    const pasted = await page.evaluate(() => {
-      const el = document.querySelector('.suggestion-modal-textarea');
-      el.value = 'a\n\nb';
-      el.setSelectionRange(4, 4);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      return { value: el.value, caret: el.selectionStart };
-    });
-    assert(pasted.value === 'a§b',
-      `\\n\\n pair converts to a single § (got "${pasted.value}")`);
-    assert(pasted.caret === 3,
-      `Caret shifts by 1 per collapsed pair, landing at end (got ${pasted.caret})`);
-
-    // Mixed: pair + single newline before the caret — only the pair counts.
-    const mixed = await page.evaluate(() => {
-      const el = document.querySelector('.suggestion-modal-textarea');
-      el.value = 'a\n\nb\nc';
-      el.setSelectionRange(6, 6);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      return { value: el.value, caret: el.selectionStart };
-    });
-    assert(mixed.value === 'a§b¶c',
-      `Mixed newlines convert to §/¶ (got "${mixed.value}")`);
-    assert(mixed.caret === 5,
-      `Caret only discounts \\n\\n pairs, not lone \\n (got ${mixed.caret}, want 5)`);
+    assert(typed === 'abc\ndef',
+      `Enter inserts a REAL newline, caret follows (got ${JSON.stringify(typed)})`);
+    await ta.press('Tab');
+    const tabbed = await ta.inputValue();
+    assert(tabbed === 'abc\ndef\t',
+      `Tab inserts a literal \\t like the sketch editor (got ${JSON.stringify(tabbed)})`);
+    // The shared overlay renders the tab as a → marker.
+    const overlayTabs = await page.evaluate(() =>
+      document.querySelectorAll('#suggestion-modal .sn-text-overlay .sn-tab').length);
+    assert(overlayTabs === 1, `Tab overlay glyph rendered (got ${overlayTabs})`);
 
     await ta.press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
@@ -149,7 +130,7 @@ function psql(sql) {
       `User's text is preserved in the modal (got "${keptText}")`);
     // Autosave pane: failures surface in the STATUS slot (retry ladder), not
     // a blocking alert — the modal quietly retries until it lands.
-    const statusText = await page.locator('.sgm-save').textContent();
+    const statusText = await page.locator('#suggestion-modal .sn-save').textContent();
     assert(/failed to save/i.test(statusText),
       `Retry-ladder status shown instead of an alert (got "${statusText}")`);
     assert(alerts.length === 0, `No blocking alert on a retryable failure (got ${JSON.stringify(alerts)})`);
@@ -158,9 +139,7 @@ function psql(sql) {
     if (modalStillOpen === 1) {
       // Server reachable again: restore the ORIGINAL text so the flush-on-close
       // collapses the suggestion to none (autosave close always saves).
-      const origG = await page.evaluate((t) =>
-        window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, first.text);
-      await page.locator('.suggestion-modal-textarea').fill(origG);
+      await page.locator('.suggestion-modal-textarea').fill(first.text);
       await page.locator('.suggestion-modal-textarea').press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
     }

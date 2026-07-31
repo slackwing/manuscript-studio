@@ -287,17 +287,8 @@ export const letterOf = (ordinal) => ordinal ? String.fromCharCode(64 + ordinal)
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// tabMarkupHTML mirrors a textarea's raw value into overlay HTML, rendering
-// each literal tab as a faint grey → glyph so \t whitespace is visible. The
-// span keeps the REAL tab character (so it consumes exactly one tab stop —
-// identical width to the textarea's own tab, given the shared tab-size) and
-// draws the → via CSS ::before with zero advance width, so alignment is exact
-// with no scroll sync (the editor never scrolls; see renderEdit). A trailing
-// newline gets a zero-width space so the overlay's last line keeps height.
-const tabMarkupHTML = (value) => {
-  const withNL = value.endsWith('\n') ? value + '​' : value;
-  return esc(withNL).replace(/\t/g, '<span class="sn-tab">\t</span>');
-};
+// Tab-glyph overlay markup: shared with the suggest-edit modal (edit-pane.js).
+const tabMarkupHTML = (value) => window.WriteSysEditPane.tabMarkupHTML(value);
 
 const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
 const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.2 1.5h3.6l.5 1.1H13V4H3V2.6h2.7l.5-1.1zM4.1 5.2h7.8l-.55 8.4c-.06.85-.77 1.5-1.62 1.5H6.27c-.85 0-1.56-.65-1.62-1.5L4.1 5.2zm2.35 1.7l.3 6.3h.9l-.25-6.3h-.95zm3.1 0l-.25 6.3h.9l.3-6.3h-.95z"/></svg>';

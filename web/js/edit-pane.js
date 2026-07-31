@@ -153,5 +153,18 @@
     return { wrap, textarea: ta, autoGrow, insertAtCaret };
   }
 
-  window.WriteSysEditPane = { createAutosaver, createMonoEditor };
+  // tabMarkupHTML mirrors a textarea's raw value into overlay HTML, rendering
+  // each literal tab as a faint grey → glyph so \t whitespace is visible. The
+  // span keeps the REAL tab character (identical width to the textarea's own
+  // tab, given the shared tab-size); the → paints via CSS ::before with zero
+  // advance width. A trailing newline gets a zero-width space so the overlay's
+  // last line keeps height.
+  const escHTML = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  function tabMarkupHTML(value) {
+    const withNL = value.endsWith('\n') ? value + '\u200b' : value;
+    return escHTML(withNL).replace(/\t/g, '<span class="sn-tab">\t</span>');
+  }
+
+  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML };
 })();

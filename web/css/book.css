@@ -2012,6 +2012,9 @@ p.section-break {
 }
 
 #suggestion-modal {
+  /* A snippet widget, floated: the chrome (sn-header / sn-cols / sn-rail /
+     sn-split) is scratchpad.css verbatim — this block only positions the
+     floating shell and bounds its height. */
   position: fixed;
   top: 50%;
   left: 50%;
@@ -2020,7 +2023,6 @@ p.section-break {
   max-height: 86vh;
   background: #fbfaf7;
   border: 1px solid #c9c2b2;
-  border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   z-index: 201;
   display: flex;
@@ -2028,46 +2030,14 @@ p.section-break {
   overflow: hidden;
   font-family: "Helvetica", sans-serif;
 }
-.sgm-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: #f3efe6;
-  border-bottom: 1px solid #e4ded1;
-}
-.sgm-save { font-size: 11px; color: #a49b8a; white-space: nowrap; }
-.sgm-spacer { flex: 1; }
+#suggestion-modal .sn-cols { flex: 1; min-height: 0; }
+#suggestion-modal .sn-main { display: flex; flex-direction: column; min-height: 0; }
+#suggestion-modal .sn-body { flex: 1; overflow-y: auto; min-height: 0; }
+#suggestion-modal .sn-split { align-items: stretch; min-height: 100%; }
 .sgm-close {
-  border: none;
-  background: none;
-  font-size: 17px;
-  color: #999;
-  cursor: pointer;
-  padding: 2px 8px;
+  font-size: 15px;
+  line-height: 1;
 }
-.sgm-close:hover { color: #222; }
-/* Main columns: split panes + the letter rail (shared .sn-rail look). */
-.sgm-cols { display: flex; align-items: stretch; flex: 1; min-height: 0; }
-.sgm-split { display: flex; align-items: stretch; flex: 1; min-width: 0; overflow-y: auto; }
-.sgm-left { flex: 1 1 50%; min-width: 0; padding: 12px; }
-.sgm-right {
-  flex: 1 1 50%;
-  min-width: 0;
-  padding: 12px;
-  border-left: 1px solid #d8d2c4;
-  background: #efeae0;
-  display: flex;
-  flex-direction: column;
-}
-.sgm-version-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #8a8378;
-  margin: 0 0 8px 2px;
-}
-.sgm-rail { justify-content: flex-start; }
 
 .suggestion-modal-title {
   font-size: 16px;
@@ -2082,18 +2052,21 @@ p.section-break {
 
 /* The edit pane itself wears the snippet widget's .sn-text styles
    (scratchpad.css, shared) — .suggestion-modal-textarea stays as a hook only.
-   The read-only version pane matches its monospace metrics char-for-char. */
-.suggestion-modal-original {
-  flex: 1;
+   The read-only version pane copies .sn-text's EXACT metrics (12px/1.55
+   Monaco, tab-size 4, same padding) so the panes align char-for-char. */
+.sgm-version-text {
   width: 100%;
-  font-family: "Monaco", "Menlo", monospace;
-  font-size: 13px;
-  line-height: 1.45;
-  padding: 10px 12px;
-  border: none;
-  resize: none;
-  white-space: pre-wrap;
   box-sizing: border-box;
+  padding: 10px 12px;
+  font: 12px/1.55 "Monaco", monospace;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  border: none;
+  margin: 0;
+  resize: none;
+  overflow: hidden;
   background: transparent;
   color: #444;
   outline: none;
@@ -2110,27 +2083,6 @@ p.section-break {
   color: #c0392b;
   text-decoration: line-through;
   margin-right: 0.15em;
-}
-
-/* Break-insert buttons above the edit textarea. Drop a § (section, \n\n) or
-   ¶ (paragraph, \n\t) glyph at the caret. */
-.suggestion-modal-breaks {
-  display: flex;
-  gap: 6px;
-  margin: 0 0 6px 2px;
-}
-.suggestion-modal-break {
-  font-size: 12px;
-  padding: 3px 9px;
-  color: #57606a;
-  background: #f6f8fa;
-  border: 1px solid #d8dee4;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.suggestion-modal-break:hover {
-  background: #eaeef2;
-  color: #1f2328;
 }
 
 /* Push-to-PR split-button (lives in #controls). */

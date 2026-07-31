@@ -112,12 +112,12 @@ async function syncToHead() {
     // rail with * on top.
     const layout = await page.evaluate(() => {
       const m = document.querySelector('#suggestion-modal');
-      const rail = [...m.querySelectorAll('.sn-rail-btn')].map(b => ({
+      const rail = [...m.querySelectorAll('.sn-rail .sn-rail-btn')].map(b => ({
         t: b.textContent.trim(), dis: b.disabled, cls: b.className,
       }));
       return {
         paneIsShared: !!m.querySelector('.sgm-left .sn-text-wrap textarea.sn-text.suggestion-modal-textarea'),
-        rightPane: !!m.querySelector('.sgm-right .suggestion-modal-original'),
+        rightPane: !!m.querySelector('.sn-split-right .suggestion-modal-original'),
         rail,
         mono: getComputedStyle(m.querySelector('.suggestion-modal-textarea')).fontFamily,
       };
@@ -135,7 +135,7 @@ async function syncToHead() {
     check('right pane defaults to committed text', v0.includes('Version three'), JSON.stringify(v0.slice(0, 40)));
 
     // Click version 1 → previous commit's text.
-    await page.locator('.sgm-rail [data-ver="1"]').click();
+    await page.locator('#suggestion-modal .sn-rail [data-ver="1"]').click();
     const v1 = await page.locator('.suggestion-modal-original').inputValue();
     check('version 1 shows the prior commit text', v1.includes('Version one'), JSON.stringify(v1.slice(0, 40)));
     const label = await page.locator('.sgm-version-label').textContent();
@@ -148,13 +148,11 @@ async function syncToHead() {
     await page.waitForTimeout(1500);
     const rows = psql(`SELECT text FROM suggested_change WHERE sentence_id='${target.id}' AND user_id='${TEST_USERNAME}'`);
     check('typed text AUTOSAVED without closing the modal', rows.includes('Autosaved tail.'), JSON.stringify(rows.slice(0, 60)));
-    const status = await page.locator('.sgm-save').textContent();
+    const status = await page.locator('#suggestion-modal .sn-save').textContent();
     check('save status settled (empty)', status === '', JSON.stringify(status));
 
     // Revert to original and close — suggestion collapses, no row left.
-    const origG = await page.evaluate((t) =>
-      window.WriteSysTextMarkers ? window.WriteSysTextMarkers.toGlyphs(t) : t, target.text);
-    await page.locator('.suggestion-modal-textarea').fill(origG);
+    await page.locator('.suggestion-modal-textarea').fill(target.text);
     await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
     await page.waitForTimeout(400);
