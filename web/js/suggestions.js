@@ -163,7 +163,7 @@ const WriteSysSuggestions = {
           <div class="sn-body">
             <div class="sn-split">
               <div class="sn-split-left">
-                <div class="sn-note"><strong>*</strong> · suggested edit</div>
+                <div class="sn-note"><strong>*</strong> suggested edit</div>
                 <div class="sgm-left"></div>
               </div>
               <div class="sn-split-right">
@@ -185,18 +185,13 @@ const WriteSysSuggestions = {
     // edit pane so the two align char-for-char).
     const originalArea = modal.querySelector('.suggestion-modal-original');
     const verLabel = modal.querySelector('.sgm-version-label');
-    const sizeVersionPane = () => {
-      originalArea.style.height = 'auto';
-      originalArea.style.height = Math.max(originalArea.scrollHeight, 60) + 'px';
-    };
     const showVersion = (k) => {
       originalArea.value = versions[k].text || '';
       verLabel.innerHTML = k === 0
-        ? '<strong>0</strong> · committed (current)'
-        : `<strong>${k}</strong> · ${k} commit${k > 1 ? 's' : ''} ago`;
+        ? '<strong>0</strong> committed (current)'
+        : `<strong>${k}</strong> ${k} commit${k > 1 ? 's' : ''} ago`;
       modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) =>
         b.classList.toggle('active', parseInt(b.dataset.ver, 10) === k));
-      sizeVersionPane();
     };
     modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) => {
       b.addEventListener('click', () => {

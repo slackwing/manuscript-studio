@@ -6,10 +6,10 @@
 body.home-page {
   margin: 0;
   font-family: "Helvetica", sans-serif;
-  /* The library wall (login page's photo) at ~50%: a half-strength veil of the
-     old page color washes it toward parchment so cards and text stay easy. */
+  /* The library wall (login page's photo) at ~25%: a 75% veil of the old
+     page color washes it well toward parchment so cards and text stay easy. */
   background:
-    linear-gradient(rgba(243, 241, 236, 0.5), rgba(243, 241, 236, 0.5)),
+    linear-gradient(rgba(243, 241, 236, 0.75), rgba(243, 241, 236, 0.75)),
     url("../img/login-bookshelf.jpg") center / cover no-repeat fixed;
   color: #222;
 }

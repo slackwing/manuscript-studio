@@ -326,6 +326,15 @@
 .sn-rail-btn.st-superseded { color: #b04038; background: #f6e7e4; }
 .sn-rail-btn.st-superseded:hover { background: #faf0ee; }
 .sn-rail-btn.st-frozen.active, .sn-rail-btn.st-superseded.active { border-color: #c2baa8; }
+/* A disabled rail button (e.g. an unchanged history hop in the suggest-edit
+   modal) must READ disabled: faded, no hover invite, default cursor. */
+.sn-rail-btn:disabled,
+.sn-rail-btn:disabled:hover {
+  color: #c9c2b2;
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
 
 /* ---- split compare: left = self (editable), right = the target ---- */
 .sn-split { display: flex; align-items: stretch; }

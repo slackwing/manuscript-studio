@@ -386,19 +386,9 @@ body {
   align-items: center;
   gap: var(--page-gap);
   padding: 2em;
-  /* The margins keep their grey — a 93% grey veil over the library-wall photo
-     leaves the shelves ghosting through at ~7%. (The white page sheets sit on
-     top, untouched.) LONGHAND on purpose: paged.js re-serializes author CSS
-     into an inline sheet and its parser drops the layered background
-     shorthand entirely. */
-  background-color: #f5f5f5;
-  background-image:
-    linear-gradient(rgba(245, 245, 245, 0.93), rgba(245, 245, 245, 0.93)),
-    url("../img/login-bookshelf.jpg");
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
+  /* Plain grey around the pages — no photo here: reading the manuscript
+     should have zero distractions. */
+  background: #f5f5f5;
   min-height: calc(100vh - 60px);
   margin-top: 60px !important; /* Space for fixed controls */
 }
@@ -2034,6 +2024,14 @@ p.section-break {
 #suggestion-modal .sn-main { display: flex; flex-direction: column; min-height: 0; }
 #suggestion-modal .sn-body { flex: 1; overflow-y: auto; min-height: 0; }
 #suggestion-modal .sn-split { align-items: stretch; min-height: 100%; }
+/* Both panes are flex columns filling the row, so the two textboxes are
+   ALWAYS the same height (the row is as tall as the taller content; the
+   shorter side stretches; an overlong old version scrolls internally). */
+#suggestion-modal .sn-split-left,
+#suggestion-modal .sn-split-right { display: flex; flex-direction: column; }
+#suggestion-modal .sgm-left { flex: 1; display: flex; flex-direction: column; }
+#suggestion-modal .sgm-left .sn-text-wrap { flex: 1; }
+#suggestion-modal .sgm-version-text { flex: 1; overflow-y: auto; }
 .sgm-close {
   font-size: 15px;
   line-height: 1;
