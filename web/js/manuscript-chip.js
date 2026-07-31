@@ -27,15 +27,22 @@
         align-items: center;
         gap: 4px;
         max-width: 220px;
+        height: auto;
+        margin: 0;
+        box-sizing: border-box;
         padding: 2px 7px;
         border: 1px solid #c9a227;
         border-radius: 9px;
-        background: linear-gradient(170deg, #7a5a34 0%, #5b3f22 60%, #6b4a28 100%);
+        /* Flat vertical leather — a diagonal gradient + inset sheen smeared
+           around the pill's rounded ends and read as blotches. */
+        background: linear-gradient(#66492b, #573d21);
+        background-clip: padding-box;
         color: #f3e6c4;
         font: 10px "Helvetica", sans-serif;
+        line-height: 1.5;
         white-space: nowrap;
-        box-shadow: inset 0 1px 0 rgba(255, 236, 180, 0.3);
-        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+        box-shadow: none;
+        text-shadow: none;
         cursor: default;
       }
       .ms-chip svg { flex: none; }
