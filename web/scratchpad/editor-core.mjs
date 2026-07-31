@@ -339,7 +339,14 @@ function refreshSnippetSiblings(snippetId, exceptSketchId) {
 
 function renderBookText(host, text) {
   const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-  window.WriteSysScratchRender.renderText(host, canon(text));
+  // A snippet is often a MID-CHAPTER excerpt, so a Tab typed at the very start
+  // means "the first paragraph is indented". Normalize that leading \t to a
+  // real \n\t marker — canonicalize preserves a single leading marker and the
+  // renderer classes the paragraph 'indented' — instead of letting the prose
+  // whitespace-trim eat it. Display-only: the stored sketch text keeps the \t.
+  let t = String(text == null ? '' : text);
+  if (t.startsWith('\t')) t = '\n' + t;
+  window.WriteSysScratchRender.renderText(host, canon(t));
 }
 
 // ---- Shared scroll hold ----------------------------------------------------
