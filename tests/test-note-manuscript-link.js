@@ -41,7 +41,7 @@ function psql(sql) {
   const unlinkedChip = float.locator('.manuscript-chip.unlinked');
   await unlinkedChip.waitFor({ timeout: 4000 });
   check('unlinked note shows the bare link chip', await unlinkedChip.count() === 1);
-  const hasName = await float.locator('.manuscript-chip .manuscript-chip-name').count();
+  const hasName = await float.locator('.manuscript-chip .ms-chip-name').count();
   check('bare chip has no manuscript name', hasName === 0, `nameSpans=${hasName}`);
 
   // Click it → the shared manuscript picker opens.
@@ -61,16 +61,16 @@ function psql(sql) {
   // Chip is now linked, shows the name, has an × to unlink.
   const linkedChip = float.locator('.manuscript-chip.linked');
   await linkedChip.waitFor({ timeout: 4000 });
-  const chipName = await linkedChip.locator('.manuscript-chip-name').textContent();
+  const chipName = await linkedChip.locator('.ms-chip-name').textContent();
   check('chip now shows the linked manuscript name', (chipName || '').trim() === (pickedName || '').trim(), `chip="${chipName}" picked="${pickedName}"`);
-  check('linked chip has an unlink ×', await linkedChip.locator('.manuscript-chip-remove').count() === 1);
+  check('linked chip has an unlink ×', await linkedChip.locator('.ms-chip-x').count() === 1);
 
   // DB persisted the manuscript_id.
   const mid = psql(`SELECT manuscript_id FROM note WHERE note_id=${noteId}`).trim();
   check('note.manuscript_id persisted', /^[0-9]+$/.test(mid), `manuscript_id=${mid}`);
 
   // Unlink via the × → back to a bare chip, DB cleared.
-  await linkedChip.locator('.manuscript-chip-remove').click();
+  await linkedChip.locator('.ms-chip-x').click();
   await page.waitForTimeout(600);
   check('unlinking returns the bare chip', await float.locator('.manuscript-chip.unlinked').count() === 1);
   const midAfter = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${noteId}`).trim();

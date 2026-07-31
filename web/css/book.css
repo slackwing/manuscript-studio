@@ -1150,39 +1150,8 @@ p.section-break {
 /* Manuscript-link chip — the last chip on every note (all views). Marked with
    the link glyph so it reads as a link, not a tag. Linked: named + ×. Unlinked:
    just the glyph, click to pick a manuscript. */
-.tag-chip.manuscript-chip {
-  gap: 4px;
-  background: #dcebfa;
-  color: #2a6fb0;
-}
-.tag-chip.manuscript-chip:hover { background: #cfe3f6; }
-/* Read-only manuscript chip (a sentence note is inherently in its manuscript —
-   shown as context, but not unlinkable). */
-.tag-chip.manuscript-chip.readonly { cursor: default; }
-.tag-chip.manuscript-chip.readonly:hover { background: #dcebfa; }
-.tag-chip.manuscript-chip.unlinked {
-  cursor: pointer;
-  background: transparent;
-  border: 1px dashed #9cc3e6;
-  color: #6a9bc4;
-  padding: 4px 8px;
-}
-.tag-chip.manuscript-chip.unlinked:hover {
-  border-color: #2a6fb0;
-  color: #2a6fb0;
-}
-.manuscript-chip-icon { display: inline-flex; align-items: center; }
-.manuscript-chip-icon svg { display: block; }
-.manuscript-chip-name { line-height: 1; }
-.manuscript-chip-remove {
-  cursor: pointer;
-  font-weight: bold;
-  color: #5a8fbf;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0 2px;
-}
-.manuscript-chip-remove:hover { color: #b33b3a; }
+/* Manuscript chip: skin lives in the shared component (js/manuscript-chip.js
+   → .ms-chip). Only the class hooks remain for tests/card-compact rules. */
 
 /* Manuscript picker popover (shared by every note's link chip). */
 .note-linkpop {

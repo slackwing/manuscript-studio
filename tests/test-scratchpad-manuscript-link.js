@@ -61,8 +61,8 @@ async function makeNote(page, text) {
   const pickedName = await pop.locator('button[data-mid]').first().textContent();
   await pop.locator('button[data-mid]').first().click();
   await page.waitForTimeout(600);
-  check('pad header now shows linked state', await linkEl.evaluate(e => e.classList.contains('linked')));
-  const chipName = await linkEl.locator('.spm-link-name').textContent().catch(() => '');
+  check('pad header now shows linked state', await linkEl.locator('.ms-chip.linked').count() === 1);
+  const chipName = await linkEl.locator('.ms-chip-name').textContent().catch(() => '');
   check('pad link shows the manuscript name', (chipName || '').trim() === (pickedName || '').trim(), `chip="${chipName}"`);
 
   // (3) A note made AFTER linking → inherits the manuscript, and the float that
@@ -98,7 +98,7 @@ async function makeNote(page, text) {
   const snippetId = snipCtx && snipCtx.snippet && snipCtx.snippet.snippet_id;
   const snipLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM snippet WHERE snippet_id='${snippetId}'`).trim();
   check('snippet in a linked pad INHERITS the manuscript', /^[0-9]+$/.test(snipLink), `linked=${snipLink}`);
-  const snipChip = await page.locator('.sn-widget .sn-linkchip .sn-linkname').first().textContent().catch(() => '');
+  const snipChip = await page.locator('.sn-widget .sn-linkchip .ms-chip-name').first().textContent().catch(() => '');
   check('snippet shows its manuscript link chip immediately', (snipChip || '').trim() === pickedName.trim(), `chip="${snipChip}"`);
 
   // The earlier note is still untouched (not retroactively linked).
@@ -106,7 +106,7 @@ async function makeNote(page, text) {
   check('pre-link note STILL has no manuscript (not retroactive)', preMid2 === 'null', `manuscript_id=${preMid2}`);
 
   // (4) Unlink the pad → future notes stop inheriting.
-  await linkEl.locator('.spm-link-remove').click();
+  await linkEl.locator('.ms-chip-x').click();
   await page.waitForTimeout(500);
   check('pad shows unlinked again', !(await linkEl.evaluate(e => e.classList.contains('linked'))));
   const padLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM scratchpad WHERE scratchpad_id=(SELECT scratchpad_id FROM note WHERE note_id=${postNote})`).trim();

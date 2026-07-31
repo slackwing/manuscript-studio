@@ -33,65 +33,10 @@
   // the snippet linker and global search use). Cached; a failure resets so a
   // later open retries. [{id, name}]
   let manuscriptsPromise = null;
-  function listManuscripts() {
-    if (!manuscriptsPromise) {
-      manuscriptsPromise = fetch('api/home', { credentials: 'same-origin' })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('home ' + r.status))))
-        .then((d) => (d.manuscripts || []).map((m) => ({ id: m.manuscript_id, name: m.display_name || m.name })));
-      manuscriptsPromise.catch(() => { manuscriptsPromise = null; });
-    }
-    return manuscriptsPromise;
-  }
-
-  // A small search-and-pick popover anchored to `anchorEl`. Calls onPick(id) with
-  // the chosen manuscript_id. Shared by every note's link chip (one picker, so
-  // the linking UX is identical in margin / float / landing).
-  function openManuscriptPicker(anchorEl, onPick) {
-    document.querySelectorAll('.note-linkpop').forEach((el) => el.remove());
-    const pop = document.createElement('div');
-    pop.className = 'note-linkpop';
-    pop.innerHTML =
-      '<input type="text" class="note-linkpop-q" placeholder="Search manuscripts…" autocomplete="off">' +
-      '<div class="note-linkpop-list"><span class="note-linkpop-empty">Loading…</span></div>';
-    document.body.appendChild(pop);
-    const r = anchorEl.getBoundingClientRect();
-    pop.style.position = 'absolute';
-    pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
-    pop.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 240)) + 'px';
-
-    const close = () => { document.removeEventListener('mousedown', outside, true); pop.remove(); };
-    const outside = (e) => { if (!pop.contains(e.target)) close(); };
-    setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
-
-    const q = pop.querySelector('.note-linkpop-q');
-    const list = pop.querySelector('.note-linkpop-list');
-    q.focus();
-    listManuscripts().then((all) => {
-      if (!pop.isConnected) return;
-      const render = () => {
-        const needle = q.value.trim().toLowerCase();
-        const hits = all.filter((m) => m.name.toLowerCase().includes(needle));
-        list.innerHTML = hits.length
-          ? hits.map((m) => `<button type="button" data-mid="${m.id}"></button>`).join('')
-          : '<span class="note-linkpop-empty">No matches</span>';
-        // textContent (not innerHTML) for names — XSS-safe.
-        const btns = list.querySelectorAll('button[data-mid]');
-        hits.forEach((m, i) => { btns[i].textContent = m.name; });
-      };
-      render();
-      q.addEventListener('input', render);
-      q.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') close();
-        if (e.key === 'Enter') { const b = list.querySelector('button[data-mid]'); if (b) b.click(); }
-      });
-      list.addEventListener('click', (e) => {
-        const b = e.target.closest('button[data-mid]');
-        if (!b) return;
-        close();
-        onPick(parseInt(b.dataset.mid, 10));
-      });
-    }).catch(() => { list.innerHTML = '<span class="note-linkpop-empty">Could not load manuscripts</span>'; });
-  }
+  // Manuscript list + picker are owned by the shared chip component
+  // (js/manuscript-chip.js) — these names stay exported for back-compat.
+  const listManuscripts = () => window.WriteSysManuscriptChip.listManuscripts();
+  const openManuscriptPicker = (anchorEl, onPick) => window.WriteSysManuscriptChip.openPicker(anchorEl, onPick);
 
   function buildPalette(note, handlers) {
     const palette = document.createElement('div');
@@ -189,51 +134,22 @@
     // Location flag: the manuscript margin sets showManuscriptChip:false — a
     // sentence note is trivially in its manuscript, so the chip is noise there.
     if (handlers.showManuscriptChip === false) return;
-    const canLink = !!handlers.onLinkManuscript;
-    const canUnlink = !!handlers.onUnlinkManuscript;
-    if (!note.manuscript_id && !canLink) return; // nothing to show
-
-    const chip = document.createElement('div');
-    chip.className = 'tag-chip manuscript-chip';
-    const icon = document.createElement('span');
-    icon.className = 'manuscript-chip-icon';
-    icon.innerHTML = LINK_SVG;
-    chip.appendChild(icon);
-
-    if (note.manuscript_id) {
-      chip.classList.add('linked');
-      const name = document.createElement('span');
-      name.className = 'manuscript-chip-name';
-      name.textContent = note.manuscript_name || 'Manuscript';
-      chip.appendChild(name);
-      if (canUnlink) {
-        const rm = document.createElement('span');
-        rm.className = 'manuscript-chip-remove';
-        rm.textContent = '×';
-        rm.title = 'Unlink from manuscript';
-        chip.appendChild(rm);
-        rm.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          await handlers.onUnlinkManuscript();
-          renderTags(noteEl, note, handlers);
-        });
-      } else {
-        // Read-only: the note is inherently in this manuscript.
-        chip.classList.add('readonly');
-        chip.title = 'In ' + (note.manuscript_name || 'this manuscript');
-      }
-    } else {
-      chip.classList.add('unlinked');
-      chip.title = 'Link to a manuscript';
-      chip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openManuscriptPicker(chip, async (manuscriptId) => {
-          await handlers.onLinkManuscript(manuscriptId);
-          renderTags(noteEl, note, handlers);
-        });
-      });
-    }
-    list.appendChild(chip);
+    const chip = window.WriteSysManuscriptChip.build({
+      linkedId: note.manuscript_id,
+      linkedName: note.manuscript_name,
+      removable: !!handlers.onUnlinkManuscript,
+      onUnlink: handlers.onUnlinkManuscript && (async () => {
+        await handlers.onUnlinkManuscript();
+        renderTags(noteEl, note, handlers);
+      }),
+      onPick: handlers.onLinkManuscript && (async (manuscriptId) => {
+        await handlers.onLinkManuscript(manuscriptId);
+        renderTags(noteEl, note, handlers);
+      }),
+      // Context hooks only (tests + card-compact CSS) — skin comes from .ms-chip.
+      extraClass: 'tag-chip manuscript-chip',
+    });
+    if (chip) list.appendChild(chip);
   }
 
   function updatePriorityFlagUI(noteEl, note) {

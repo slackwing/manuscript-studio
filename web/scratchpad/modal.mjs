@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=38';
+import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=39';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=34';
+  link.href = 'scratchpad/scratchpad.css?v=35';
   document.head.appendChild(link);
 }
 
@@ -47,7 +47,7 @@ export const ScratchpadModal = {
       <div class="spm-dialog" role="dialog" aria-label="Scratchpad">
         <div class="spm-header">
           <input id="spm-title" class="spm-title" type="text" placeholder="Untitled" autocomplete="off">
-          <span id="spm-link" class="spm-link" tabindex="0" role="button"></span>
+          <span id="spm-link" tabindex="0" role="button"></span>
           <span class="spm-header-spacer"></span>
           <span id="spm-status" class="spm-status">Saved</span>
           <button type="button" id="spm-expand" title="Expand">⤢</button>
@@ -139,41 +139,27 @@ export const ScratchpadModal = {
       return r.ok ? r.json() : Promise.reject(new Error('link ' + r.status));
     };
 
+    // THE shared manuscript chip (js/manuscript-chip.js) — identical look and
+    // behavior to snippet widgets and note cards.
     const render = () => {
       el.innerHTML = '';
-      const icon = document.createElement('span');
-      icon.className = 'spm-link-icon';
-      icon.innerHTML = window.WriteSysNoteWidget.LINK_SVG;
-      el.appendChild(icon);
-      if (linkedId) {
-        el.classList.add('linked');
-        el.title = 'Linked to ' + linkedName + ' — new elements inherit it. Click × to unlink.';
-        const name = document.createElement('span');
-        name.className = 'spm-link-name';
-        name.textContent = linkedName || 'Manuscript';
-        el.appendChild(name);
-        const rm = document.createElement('span');
-        rm.className = 'spm-link-remove';
-        rm.textContent = '×';
-        rm.title = 'Unlink scratchpad';
-        el.appendChild(rm);
-        rm.onclick = async (e) => {
-          e.stopPropagation();
+      const chip = window.WriteSysManuscriptChip.build({
+        linkedId: linkedId,
+        linkedName: linkedName,
+        hintLinked: 'Linked to ' + linkedName + ' — new elements inherit it. Click × to unlink.',
+        hintUnlinked: HINT,
+        onUnlink: async () => {
           try { await put(0); linkedId = null; linkedName = ''; render(); }
           catch (err) { alert('Could not unlink scratchpad: ' + err.message); }
-        };
-        el.onclick = null;
-      } else {
-        el.classList.remove('linked');
-        el.title = HINT;
-        el.onclick = () => {
-          window.WriteSysNoteWidget.openManuscriptPicker(el, async (mid) => {
-            // Don't leave the UI showing "linked" if the write failed — surface it.
-            try { const d = await put(mid); linkedId = d.linked_manuscript_id || null; linkedName = d.linked_manuscript_name || ''; render(); }
-            catch (err) { alert('Could not link scratchpad: ' + err.message); }
-          });
-        };
-      }
+        },
+        onPick: async (mid) => {
+          // Don't leave the UI showing "linked" if the write failed — surface it.
+          try { const d = await put(mid); linkedId = d.linked_manuscript_id || null; linkedName = d.linked_manuscript_name || ''; render(); }
+          catch (err) { alert('Could not link scratchpad: ' + err.message); }
+        },
+        extraClass: 'spm-link-chip', // hook only
+      });
+      if (chip) el.appendChild(chip);
     };
     render();
   },

@@ -297,17 +297,6 @@ const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" st
 const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
 const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
 
-// The user's accessible manuscripts, for the link picker. One fetch per
-// page life; failure resets so a retry can succeed.
-let manuscriptsPromise = null;
-function listManuscripts() {
-  if (!manuscriptsPromise) {
-    manuscriptsPromise = fetchJSON('api/home', {}, false).then(d =>
-      (d.manuscripts || []).map(m => ({ id: m.manuscript_id, name: m.display_name || m.name })));
-    manuscriptsPromise.catch(() => { manuscriptsPromise = null; });
-  }
-  return manuscriptsPromise;
-}
 
 // Views with unsaved variation text register a flush here so the modal's
 // close guard can flush (and refuse to close on failure). dirtyVariations
@@ -503,16 +492,10 @@ class SnippetView {
         : 'Click the preview to edit. ') +
       `Created ${esc((v.created_at || '').slice(0, 10))}.`;
 
-    // Link affordance (GROUP-level): unlinked gets the link button; linked
-    // a chip (unlink × until canonized — canon pins the link permanently).
-    let linkBit = '';
-    if (sn.linked_manuscript_id) {
-      const unlink = this.canonized() ? ''
-        : `<button type="button" class="sn-unlink" title="Unlink from ${esc(sn.linked_manuscript_name)}">×</button>`;
-      linkBit = `<span class="sn-linkchip" title="Linked to ${esc(sn.linked_manuscript_name)} — this snippet can only be canonized into that manuscript.">${LINK_SVG}<span class="sn-linkname">${esc(sn.linked_manuscript_name)}</span>${unlink}</span>`;
-    } else {
-      linkBit = `<button type="button" class="sn-linkbtn" title="Link to manuscript">${LINK_SVG}</button>`;
-    }
+    // Link affordance (GROUP-level): THE shared manuscript chip
+    // (js/manuscript-chip.js) — same component as the pad title bar and note
+    // cards. Canon pins the link permanently (chip becomes read-only).
+    const linkBit = '<span class="sn-linkslot"></span>';
 
     const openBook = this.canonized() && sn.linked_manuscript_id
       ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.snippet_id)}" title="Open in book">Open in book ↗</a>`
@@ -549,10 +532,19 @@ class SnippetView {
       this.setSketchState(this.frozen() ? 'draft' : 'frozen'));
     this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
       this.setSketchState(this.superseded() ? 'draft' : 'superseded'));
-    const linkBtn = this.dom.querySelector('.sn-linkbtn');
-    if (linkBtn) linkBtn.addEventListener('click', () => this.openLinkPicker());
-    const unlinkBtn = this.dom.querySelector('.sn-unlink');
-    if (unlinkBtn) unlinkBtn.addEventListener('click', () => this.setLink(0));
+    const linkSlot = this.dom.querySelector('.sn-linkslot');
+    const chip = window.WriteSysManuscriptChip.build({
+      linkedId: sn.linked_manuscript_id,
+      linkedName: sn.linked_manuscript_name,
+      removable: !this.canonized(),
+      hintLinked: `Linked to ${sn.linked_manuscript_name} — this snippet can only be canonized into that manuscript. Click × to unlink.`,
+      hintReadonly: `Linked to ${sn.linked_manuscript_name} — canon pinned the link permanently.`,
+      hintUnlinked: 'Link to manuscript',
+      onUnlink: () => this.setLink(0),
+      onPick: (mid) => this.setLink(mid),
+      extraClass: 'sn-linkchip', // context hook (tests count these)
+    });
+    if (chip) linkSlot.appendChild(chip);
     this.renderBody();
   }
 
@@ -634,6 +626,19 @@ class SnippetView {
   renderEdit() {
     const target = this.selfHost || this.body;
     target.innerHTML = '';
+    // FIREFOX: while ProseMirror holds a NodeSelection on this widget (a
+    // fresh insert leaves its node selected), PM's selection syncing fights
+    // the textarea caret — clicks get yanked back and the caret appears
+    // frozen until the selection moves elsewhere. Park the PM selection just
+    // after the node before wiring the editor.
+    const pmSel = this.view.state.selection;
+    if (pmSel instanceof NodeSelection && pmSel.node === this.node) {
+      const pos = this.getPos();
+      if (pos != null) {
+        this.view.dispatch(this.view.state.tr.setSelection(
+          TextSelection.near(this.view.state.doc.resolve(pos + this.node.nodeSize), 1)));
+      }
+    }
     // The SHARED edit-pane machinery (edit-pane.js) — same autosave/debounce,
     // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
     const pane = window.WriteSysEditPane.createMonoEditor({
@@ -812,63 +817,6 @@ class SnippetView {
     }
   }
 
-  async openLinkPicker() {
-    this.closeLinkPicker();
-    const pop = document.createElement('div');
-    pop.className = 'sn-linkpop';
-    pop.innerHTML = `
-      <input type="text" class="sn-linkpop-q" placeholder="Search manuscripts…" autocomplete="off">
-      <div class="sn-linkpop-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
-    this.dom.querySelector('.sn-header').appendChild(pop);
-    this.linkPop = pop;
-    this._outside = (e) => { if (!pop.contains(e.target)) this.closeLinkPicker(); };
-    setTimeout(() => document.addEventListener('mousedown', this._outside, true), 0);
-    const q = pop.querySelector('.sn-linkpop-q');
-    const list = pop.querySelector('.sn-linkpop-list');
-    q.focus();
-    let all;
-    try {
-      all = await listManuscripts();
-    } catch (e) {
-      list.innerHTML = '<span class="sn-linkpop-empty">Could not load manuscripts</span>';
-      return;
-    }
-    if (!this.linkPop) return; // closed while loading
-    const renderList = () => {
-      const needle = q.value.trim().toLowerCase();
-      const hits = all.filter(m => m.name.toLowerCase().includes(needle));
-      list.innerHTML = hits.length
-        ? hits.map(m => `<button type="button" data-mid="${m.id}">${esc(m.name)}</button>`).join('')
-        : '<span class="sn-linkpop-empty">No matches</span>';
-    };
-    renderList();
-    q.addEventListener('input', renderList);
-    q.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') this.closeLinkPicker();
-      if (e.key === 'Enter') {
-        const first = list.querySelector('button[data-mid]');
-        if (first) first.click();
-      }
-    });
-    list.addEventListener('click', (e) => {
-      const b = e.target.closest('button[data-mid]');
-      if (!b) return;
-      this.setLink(parseInt(b.dataset.mid, 10));
-      this.closeLinkPicker();
-    });
-  }
-
-  closeLinkPicker() {
-    if (this._outside) {
-      document.removeEventListener('mousedown', this._outside, true);
-      this._outside = null;
-    }
-    if (this.linkPop) {
-      this.linkPop.remove();
-      this.linkPop = null;
-    }
-  }
-
   async removeWidget(broken) {
     const pos = this.getPos();
     if (pos == null) return;
@@ -900,7 +848,6 @@ class SnippetView {
   }
 
   destroy() {
-    this.closeLinkPicker();
     variationFlushers.delete(this.flush);
     dirtyVariations.delete(this);
     liveSnippetViews.delete(this);

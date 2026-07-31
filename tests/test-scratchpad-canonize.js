@@ -112,16 +112,16 @@ function noisyPng(w, h) {
     }, null, { timeout: 10000 });
     check('variation text autosaved; preview renders book-style after blur', true);
 
-    // --- link / unlink the GROUP via the header affordance ---
-    await page.click('.sn-widget .sn-linkbtn');
-    await page.waitForSelector('.sn-linkpop button[data-mid]', { timeout: 5000 });
-    await page.click('.sn-linkpop button[data-mid]');
-    await page.waitForSelector('.sn-widget .sn-linkchip', { timeout: 5000 });
-    const chipName = await page.textContent('.sn-widget .sn-linkchip .sn-linkname');
+    // --- link / unlink the GROUP via the SHARED chip (manuscript-chip.js) ---
+    await page.click('.sn-widget .sn-linkchip.unlinked');
+    await page.waitForSelector('.note-linkpop button[data-mid]', { timeout: 5000 });
+    await page.click('.note-linkpop button[data-mid]');
+    await page.waitForSelector('.sn-widget .sn-linkchip.linked', { timeout: 5000 });
+    const chipName = await page.textContent('.sn-widget .sn-linkchip .ms-chip-name');
     check('link picker links the group (chip shows name)', !!chipName.trim(), chipName.trim());
-    await page.click('.sn-widget .sn-unlink');
-    await page.waitForSelector('.sn-widget .sn-linkbtn', { timeout: 5000 });
-    check('chip × unlinks (link button back)', true);
+    await page.click('.sn-widget .sn-linkchip .ms-chip-x');
+    await page.waitForSelector('.sn-widget .sn-linkchip.unlinked', { timeout: 5000 });
+    check('chip × unlinks (bare chip back)', true);
 
     // --- image machinery: >1MiB PNG (old body cap regression) ---
     const png = noisyPng(840, 840);
