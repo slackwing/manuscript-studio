@@ -6,23 +6,13 @@
 body.home-page {
   margin: 0;
   font-family: "Helvetica", sans-serif;
-  /* The library wall, same as the login page. */
-  background: #2b2419 url("../img/login-bookshelf.jpg") center / cover no-repeat fixed;
+  /* The library wall (login page's photo) at ~50%: a half-strength veil of the
+     old page color washes it toward parchment so cards and text stay easy. */
+  background:
+    linear-gradient(rgba(243, 241, 236, 0.5), rgba(243, 241, 236, 0.5)),
+    url("../img/login-bookshelf.jpg") center / cover no-repeat fixed;
   color: #222;
 }
-/* Soft vignette (login-page treatment) so cards and headers stay legible. */
-body.home-page::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at center, rgba(20, 15, 8, 0.25) 0%, rgba(20, 15, 8, 0.55) 100%),
-    linear-gradient(rgba(20, 15, 8, 0.1), rgba(20, 15, 8, 0.35));
-  pointer-events: none;
-  z-index: 0;
-}
-/* Content rides above the vignette. */
-.home-main { position: relative; z-index: 1; }
 
 .home-main {
   max-width: 1060px;
@@ -45,15 +35,12 @@ body.home-page::before {
   font-weight: 400;
   letter-spacing: 0.01em;
   margin: 0;
-  color: #f6efe0;
-  text-shadow: 0 1px 3px rgba(10, 8, 4, 0.7);
 }
-.home-count { font-size: 12px; color: #d8cdb4; text-shadow: 0 1px 2px rgba(10, 8, 4, 0.7); }
+.home-count { font-size: 12px; color: #777; }
 .home-spacer { flex: 1; }
 .home-seeall {
   font-size: 12px;
-  color: #e8d9b0;
-  text-shadow: 0 1px 2px rgba(10, 8, 4, 0.7);
+  color: #2a6fb0;
   text-decoration: none;
 }
 .home-seeall:hover { text-decoration: underline; }

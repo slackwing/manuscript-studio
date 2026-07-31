@@ -356,7 +356,10 @@ const WriteSysRenderer = {
       pagesContainer.style.marginLeft = "";
       pagesContainer.style.marginBottom = "";
       pagesContainer.style.padding = "2em";
-      pagesContainer.style.background = "#f5f5f5";
+      // No inline background here: the stylesheet paints the grey veil over
+      // the library-wall photo (.pagedjs_pages in book.css) — an inline flat
+      // grey would sit on top and hide it entirely.
+      pagesContainer.style.background = "";
       document.body.style.background = "";
     }
   },

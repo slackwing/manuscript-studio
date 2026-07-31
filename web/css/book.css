@@ -92,20 +92,6 @@ body {
   padding: 0;
   quotes: """ """ "'" "'";
 }
-/* A ghost of the library wall behind the pages: the SAME grey stays (painted
-   by the body background above); this fixed layer adds the bookshelf photo at
-   ~7% on top of it, and its negative z-index keeps it UNDER the white page
-   sheets and all content. (Inside widget shadow roots there is no <body>, so
-   this never leaks into snippet previews.) */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: url("../img/login-bookshelf.jpg") center / cover no-repeat;
-  opacity: 0.07;
-  pointer-events: none;
-  z-index: -1;
-}
 
 /* Controls at top - completely outside Paged.js */
 #controls {
@@ -400,7 +386,19 @@ body::before {
   align-items: center;
   gap: var(--page-gap);
   padding: 2em;
-  background: #f5f5f5;
+  /* The margins keep their grey — a 93% grey veil over the library-wall photo
+     leaves the shelves ghosting through at ~7%. (The white page sheets sit on
+     top, untouched.) LONGHAND on purpose: paged.js re-serializes author CSS
+     into an inline sheet and its parser drops the layered background
+     shorthand entirely. */
+  background-color: #f5f5f5;
+  background-image:
+    linear-gradient(rgba(245, 245, 245, 0.93), rgba(245, 245, 245, 0.93)),
+    url("../img/login-bookshelf.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   min-height: calc(100vh - 60px);
   margin-top: 60px !important; /* Space for fixed controls */
 }
