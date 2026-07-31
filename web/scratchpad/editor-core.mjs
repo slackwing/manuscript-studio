@@ -10,7 +10,7 @@
  * renderer.js in a shadow root with book.css).
  */
 import {
-  Schema, Node as PMNode,
+  Schema, Node as PMNode, Plugin,
   EditorState, NodeSelection, TextSelection, Selection,
   EditorView,
   keymap, history, undo, redo,
@@ -1733,6 +1733,20 @@ export async function createScratchpadEditor(els, scratchpadId) {
       gapCursor(),
       columnResizing(),
       tableEditing(),
+      // Trailing-node guarantee: the doc always ends with an empty paragraph.
+      // A snippet/table/image as the LAST node leaves nowhere obvious to put
+      // the caret to keep writing (the gap cursor exists but is undiscoverable
+      // at the doc edge) — so any edit that leaves a non-paragraph last child
+      // gets a paragraph appended, and there's always a line to click below.
+      new Plugin({
+        appendTransaction(trs, _old, newState) {
+          if (!trs.some(tr => tr.docChanged)) return null;
+          const last = newState.doc.lastChild;
+          if (last && last.type === newState.schema.nodes.paragraph) return null;
+          return newState.tr.insert(newState.doc.content.size,
+            newState.schema.nodes.paragraph.create());
+        },
+      }),
     ],
   });
 
@@ -1751,6 +1765,13 @@ export async function createScratchpadEditor(els, scratchpadId) {
     },
   });
   activeView = view;
+  // Docs SAVED with a trailing snippet/table/image predate the trailing-node
+  // plugin (which only runs on edits) — normalize once at open.
+  if (!view.state.doc.lastChild
+      || view.state.doc.lastChild.type !== schema.nodes.paragraph) {
+    view.dispatch(view.state.tr.insert(view.state.doc.content.size,
+      schema.nodes.paragraph.create()));
+  }
   updateToolbar();
   setSaveState('saved');
 
