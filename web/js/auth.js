@@ -56,7 +56,9 @@ function getCSRFToken() {
 }
 
 // fetch() with credentials and an X-CSRF-Token header on state-changing
-// methods. Redirects to login on 401 so an expired session isn't silent.
+// methods. On 401, the in-place session guard takes over when present (dim +
+// re-login modal, no reload — unsaved work survives); the hard redirect to
+// login.html is only the fallback for pages that don't load the guard.
 async function authenticatedFetch(url, options = {}) {
   options.credentials = 'include';
 
@@ -70,7 +72,8 @@ async function authenticatedFetch(url, options = {}) {
 
   const response = await fetch(url, options);
   if (response.status === 401) {
-    window.location.href = 'login.html';
+    if (window.WriteSysSessionGuard) window.WriteSysSessionGuard.requireLogin();
+    else window.location.href = 'login.html';
   }
   return response;
 }

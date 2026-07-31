@@ -204,6 +204,8 @@
         if (data.csrf_token) {
           sessionStorage.setItem('csrf_token', data.csrf_token);
         }
+        // The session guard's re-login modal prefills this on expiry.
+        localStorage.setItem('ms_last_username', username);
 
         // Pick landing manuscript: last opened (if still accessible),
         // else the first accessible, else open the empty app.

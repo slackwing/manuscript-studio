@@ -23,6 +23,24 @@ import {
 
 const csrf = () => sessionStorage.getItem('csrf_token') || '';
 
+// Save-failure status lines get a "log in" affordance when the failure is an
+// expired session (401): clicking opens the app-wide re-login modal
+// (session-guard.js) in place — no reload, pending saves then succeed on
+// their normal retry tick.
+function appendReloginLink(el) {
+  if (!window.WriteSysSessionGuard) return;
+  el.append(' · ');
+  const a = document.createElement('a');
+  a.href = '#';
+  a.textContent = 'Session expired — log in';
+  a.style.cssText = 'color:#a33;text-decoration:underline;cursor:pointer;';
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.WriteSysSessionGuard.requireLogin();
+  });
+  el.appendChild(a);
+}
+
 // ---------------------------------------------------------------- schema
 
 const coreNodes = {
@@ -614,7 +632,11 @@ class SnippetView {
         }
         saveAttempt = Math.min(saveAttempt + 1, 6);
         let secs = Math.min(60, Math.pow(2, saveAttempt));
-        const show = () => { this.saveEl.textContent = `Failed to save. Trying again in ${secs}s`; };
+        const authFail = e.status === 401;
+        const show = () => {
+          this.saveEl.textContent = `Failed to save. Trying again in ${secs}s`;
+          if (authFail) appendReloginLink(this.saveEl);
+        };
         show();
         countdown = setInterval(() => { secs -= 1; if (secs > 0) show(); }, 1000);
         retryTimer = setTimeout(() => { clearRetry(); save(); }, secs * 1000);
@@ -1515,12 +1537,13 @@ export async function createScratchpadEditor(els, scratchpadId) {
     els.statusEl.textContent = s === 'saved' ? 'Saved' : (s === 'saving' ? 'Saving…' : 'Unsaved');
   };
 
-  const scheduleRetry = () => {
+  const scheduleRetry = (authFail) => {
     clearRetry();
     retryAttempt = Math.min(retryAttempt + 1, 6);
     let secs = Math.min(60, Math.pow(2, retryAttempt)); // 2, 4, 8, …, 60
     const show = () => {
       els.statusEl.textContent = `Failed to save. Trying again in ${secs}s`;
+      if (authFail) appendReloginLink(els.statusEl);
     };
     show();
     countdownTimer = setInterval(() => { secs -= 1; if (secs > 0) show(); }, 1000);
@@ -1545,14 +1568,18 @@ export async function createScratchpadEditor(els, scratchpadId) {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
         body: JSON.stringify({ title: els.titleInput.value, doc: view.state.doc.toJSON() }),
       });
-      if (!r.ok) throw new Error(String(r.status));
+      if (!r.ok) {
+        const err = new Error(String(r.status));
+        err.status = r.status;
+        throw err;
+      }
       retryAttempt = 0;
       setSaveState('saved');
       return variationsOk;
     } catch (e) {
       console.error('autosave failed', e);
       saveState = 'unsaved';
-      if (!destroyed) scheduleRetry();
+      if (!destroyed) scheduleRetry(e.status === 401);
       return false;
     }
   };
@@ -1689,6 +1716,12 @@ export async function createScratchpadEditor(els, scratchpadId) {
 
   const onTitleInput = () => scheduleSave();
   els.titleInput.addEventListener('input', onTitleInput);
+  // After an in-place re-login (session-guard.js), don't sit out the rest of
+  // the retry backoff — flush everything unsaved right away.
+  const onSessionRestored = () => {
+    if (saveState !== 'saved' || dirtyVariations.size > 0) saveNow();
+  };
+  document.addEventListener('ms:session-restored', onSessionRestored);
   const onImage = async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -1738,6 +1771,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       clearRetry();
       els.titleInput.removeEventListener('input', onTitleInput);
       els.imageInput.removeEventListener('change', onImage);
+      document.removeEventListener('ms:session-restored', onSessionRestored);
       if (saveState !== 'saved') await saveNow();
       closeNoteFloat();
       // Anchor NodeViews destroy() during view.destroy(); don't let that
