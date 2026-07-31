@@ -534,13 +534,26 @@ class SnippetView {
     this.saveEl = this.dom.querySelector('.sn-save');
 
     this.dom.querySelectorAll('[data-tab]').forEach(btn => {
-      btn.addEventListener('click', () => this.setTab(btn.dataset.tab));
+      btn.addEventListener('click', () => {
+        this.setTab(btn.dataset.tab);
+        // Picking from the ▾ overflow list closes it.
+        const l = this.dom.querySelector('.sn-more-list');
+        if (l) l.hidden = true;
+      });
     });
-    const more = this.dom.querySelector('.sn-more-btn');
-    if (more) {
-      more.addEventListener('click', () => {
-        const list = this.dom.querySelector('.sn-more-list');
+    const moreWrap = this.dom.querySelector('.sn-tab-more');
+    if (moreWrap) {
+      const list = moreWrap.querySelector('.sn-more-list');
+      const closeOnOutside = (e) => {
+        if (!moreWrap.contains(e.target)) {
+          list.hidden = true;
+          document.removeEventListener('mousedown', closeOnOutside, true);
+        }
+      };
+      moreWrap.querySelector('.sn-more-btn').addEventListener('click', () => {
         list.hidden = !list.hidden;
+        if (!list.hidden) document.addEventListener('mousedown', closeOnOutside, true);
+        else document.removeEventListener('mousedown', closeOnOutside, true);
       });
     }
     this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(false));

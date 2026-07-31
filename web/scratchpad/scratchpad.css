@@ -334,6 +334,9 @@
   15% { box-shadow: 0 0 0 3px rgba(42, 111, 176, 0.5); }
 }
 .sn-tab-more { position: relative; display: inline-block; }
+/* display:flex below would override the UA's [hidden]{display:none} — restate
+   it or the dropdown is permanently open. */
+.sn-more-list[hidden] { display: none; }
 .sn-more-list {
   position: absolute;
   top: calc(100% + 2px);
