@@ -361,12 +361,27 @@ function renderBookText(host, text) {
 // re-evaluated every frame, so late async growth (peer previews filling in
 // after a fetch) is compensated for as long as any hold is active.
 const scrollHolds = new Map(); // host → {base, fns, until, pin}
+// While a DELIBERATE scroll is in progress (deep-link settle-scroll to a note,
+// navigate-to-sketch), holds must not fight it: suspended holds ABSORB the
+// current position (rebase) instead of pinning, then defend the new position
+// once the suspension lapses. Without this, widgets building during a pad open
+// re-arm the hold and yank the settle-scroll back to the top — the deep-link
+// "never lands on the note" regression.
+let holdSuspendUntil = 0;
+export function suspendScrollHolds(ms) {
+  holdSuspendUntil = Math.max(holdSuspendUntil, performance.now() + ms);
+}
 function holdScroll(host, ms, deltaFn) {
   let h = scrollHolds.get(host);
   if (!h) {
     h = { base: host.scrollTop, fns: [], until: 0 };
+    h.sum = () => h.fns.reduce((s, f) => s + f(), 0);
     h.pin = () => {
-      const want = h.base + h.fns.reduce((s, f) => s + f(), 0);
+      if (performance.now() < holdSuspendUntil) {
+        h.base = host.scrollTop - h.sum(); // track, don't fight
+        return;
+      }
+      const want = h.base + h.sum();
       if (host.scrollTop !== want) host.scrollTop = want;
     };
     scrollHolds.set(host, h);
@@ -381,6 +396,11 @@ function holdScroll(host, ms, deltaFn) {
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
+  } else {
+    // Re-arming an existing hold: adopt whatever position the page is at NOW
+    // (a settle-scroll or the user may have moved since the hold was created)
+    // rather than defending a stale base forever.
+    h.base = host.scrollTop - h.sum();
   }
   h.until = Math.max(h.until, performance.now() + ms);
   if (deltaFn) h.fns.push(deltaFn);

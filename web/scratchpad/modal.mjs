@@ -4,7 +4,7 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId } from './editor-core.mjs?v=33';
+import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=34';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
@@ -206,6 +206,10 @@ export const ScratchpadModal = {
     const step = () => {
       if (!el.isConnected) return;
       const last = n >= 6;
+      // This scroll is DELIBERATE — widget-render scroll holds must follow it,
+      // not fight it (suspension covers the smooth pass and the tail of async
+      // widget growth).
+      suspendScrollHolds(1500);
       el.scrollIntoView({ behavior: last ? 'smooth' : 'auto', block: 'center' });
       if (last) { if (done) done(); return; }
       n++;
@@ -223,6 +227,7 @@ export const ScratchpadModal = {
       const el = this.overlay && this.overlay.querySelector(
         `.sn-widget[data-snippet-id="${CSS.escape(snippetId)}"][data-ordinal="${ordinal}"]`);
       if (el) {
+        suspendScrollHolds(2000); // deliberate scroll — holds follow, not fight
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('sn-flash');
         setTimeout(() => el.classList.remove('sn-flash'), 1600);
