@@ -92,6 +92,20 @@ body {
   padding: 0;
   quotes: """ """ "'" "'";
 }
+/* A ghost of the library wall behind the pages: the SAME grey stays (painted
+   by the body background above); this fixed layer adds the bookshelf photo at
+   ~7% on top of it, and its negative z-index keeps it UNDER the white page
+   sheets and all content. (Inside widget shadow roots there is no <body>, so
+   this never leaks into snippet previews.) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: url("../img/login-bookshelf.jpg") center / cover no-repeat;
+  opacity: 0.07;
+  pointer-events: none;
+  z-index: -1;
+}
 
 /* Controls at top - completely outside Paged.js */
 #controls {

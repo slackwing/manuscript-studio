@@ -6,9 +6,23 @@
 body.home-page {
   margin: 0;
   font-family: "Helvetica", sans-serif;
-  background: #f3f1ec;
+  /* The library wall, same as the login page. */
+  background: #2b2419 url("../img/login-bookshelf.jpg") center / cover no-repeat fixed;
   color: #222;
 }
+/* Soft vignette (login-page treatment) so cards and headers stay legible. */
+body.home-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(20, 15, 8, 0.25) 0%, rgba(20, 15, 8, 0.55) 100%),
+    linear-gradient(rgba(20, 15, 8, 0.1), rgba(20, 15, 8, 0.35));
+  pointer-events: none;
+  z-index: 0;
+}
+/* Content rides above the vignette. */
+.home-main { position: relative; z-index: 1; }
 
 .home-main {
   max-width: 1060px;
@@ -25,18 +39,21 @@ body.home-page {
 }
 .home-section-head h2 {
   /* Serif, like the wordmark — headers belong to the same family as the
-     product name. */
+     product name. Light over the bookshelf photo, with a soft shadow. */
   font-family: Georgia, serif;
   font-size: 19px;
   font-weight: 400;
   letter-spacing: 0.01em;
   margin: 0;
+  color: #f6efe0;
+  text-shadow: 0 1px 3px rgba(10, 8, 4, 0.7);
 }
-.home-count { font-size: 12px; color: #999; }
+.home-count { font-size: 12px; color: #d8cdb4; text-shadow: 0 1px 2px rgba(10, 8, 4, 0.7); }
 .home-spacer { flex: 1; }
 .home-seeall {
   font-size: 12px;
-  color: #2a6fb0;
+  color: #e8d9b0;
+  text-shadow: 0 1px 2px rgba(10, 8, 4, 0.7);
   text-decoration: none;
 }
 .home-seeall:hover { text-decoration: underline; }
