@@ -324,6 +324,43 @@ function renderBookText(host, text) {
   window.WriteSysScratchRender.renderText(host, canon(text));
 }
 
+// ---- Shared scroll hold ----------------------------------------------------
+// ONE pin per scroll host, shared by every widget that re-renders in the same
+// window. Pinning raw scrollTop per-widget was wrong twice over: (a) when a
+// widget ABOVE the viewport grows/shrinks (sibling refresh after a save), the
+// content the reader is looking at shifts by the height delta even though
+// scrollTop never changed — the "suddenly I'm at the top of the pad" jump —
+// so the right target is base + Σ height-deltas of above-viewport widgets;
+// (b) two widgets rebuilding concurrently each pinned their own snapshot and
+// fought each other. holdScroll keeps one base and a list of delta functions,
+// re-evaluated every frame, so late async growth (peer previews filling in
+// after a fetch) is compensated for as long as any hold is active.
+const scrollHolds = new Map(); // host → {base, fns, until, pin}
+function holdScroll(host, ms, deltaFn) {
+  let h = scrollHolds.get(host);
+  if (!h) {
+    h = { base: host.scrollTop, fns: [], until: 0 };
+    h.pin = () => {
+      const want = h.base + h.fns.reduce((s, f) => s + f(), 0);
+      if (host.scrollTop !== want) host.scrollTop = want;
+    };
+    scrollHolds.set(host, h);
+    host.addEventListener('scroll', h.pin, true);
+    const step = () => {
+      if (performance.now() > h.until) {
+        scrollHolds.delete(host);
+        host.removeEventListener('scroll', h.pin, true);
+        return;
+      }
+      h.pin();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  h.until = Math.max(h.until, performance.now() + ms);
+  if (deltaFn) h.fns.push(deltaFn);
+}
+
 class SnippetView {
   constructor(node, view, getPos) {
     this.node = node;
@@ -381,23 +418,21 @@ class SnippetView {
   scrollHost() {
     return this.dom.closest('.spm-editor') || this.dom.closest('[data-scroll-host]') || null;
   }
-  // Snapshot scrollTop, run fn (which may replace DOM / move focus / grow a
-  // textarea), then PIN the scroll position for a short window. A single
-  // rAF-restore wasn't enough: entering edit swaps in a multi-row textarea that
-  // auto-grows over SEVERAL frames, and each growth nudges scrollTop after the
-  // one-shot restore already ran — the residual "clicking a snippet jumps me to
-  // the top." Pin any scroll back to the snapshot for ~400ms, then release.
+  // Snapshot the reader's position, run fn (which may replace DOM / move focus
+  // / grow a textarea), then hold it for a short window via the SHARED
+  // holdScroll pin. If THIS widget sits entirely above the viewport, its height
+  // change must move scrollTop with it (delta compensation) — otherwise the
+  // content in view shifts by the delta and the reader lands somewhere earlier
+  // in the pad. A visible widget contributes no delta: the reader is looking at
+  // it, so plain position-hold is right.
   preserveScroll(fn) {
     const host = this.scrollHost();
     if (!host) return fn();
-    const top = host.scrollTop;
+    const above = this.dom.getBoundingClientRect().bottom
+      <= host.getBoundingClientRect().top + 1;
+    const beforeH = this.dom.offsetHeight;
     const r = fn();
-    let active = true;
-    const pin = () => { if (active && host.scrollTop !== top) host.scrollTop = top; };
-    host.addEventListener('scroll', pin, true);
-    const loop = () => { if (!active) return; pin(); requestAnimationFrame(loop); };
-    requestAnimationFrame(loop);
-    setTimeout(() => { active = false; host.removeEventListener('scroll', pin, true); }, 400);
+    holdScroll(host, 700, above ? () => this.dom.offsetHeight - beforeH : null);
     return r;
   }
 
@@ -609,7 +644,9 @@ class SnippetView {
     // "\n\t" paragraph break is typeable) instead of moving focus. Shift-Tab
     // still escapes the field so the author is never trapped.
     ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { ta.blur(); return; }
+      // Escape exits the snippet edit ONLY — stopPropagation so the modal's
+      // document-level Escape handler doesn't also close the whole pad.
+      if (e.key === 'Escape') { e.stopPropagation(); ta.blur(); return; }
       if (e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault();
         const s = ta.selectionStart, en = ta.selectionEnd;
@@ -904,14 +941,7 @@ let activeView = null;
 function lockScratchpadScroll(fn) {
   const host = activeView && activeView.dom.closest('.spm-editor');
   if (!host) return fn();
-  const top = host.scrollTop;
-  let active = true;
-  const pin = () => { if (active && host.scrollTop !== top) host.scrollTop = top; };
-  host.addEventListener('scroll', pin, true);
-  // Also pin across frames in case the scroll is set programmatically (no event).
-  const raf = () => { if (!active) return; pin(); requestAnimationFrame(raf); };
-  requestAnimationFrame(raf);
-  setTimeout(() => { active = false; host.removeEventListener('scroll', pin, true); }, 450);
+  holdScroll(host, 450, null); // shared pin — composes with widget height deltas
   return fn();
 }
 
