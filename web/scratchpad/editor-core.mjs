@@ -618,6 +618,14 @@ class SnippetView {
     } else {
       host.innerHTML = `<div class="sn-empty">${ro ? `Empty (${this.stateName()}) sketch.` : 'Click to write.'}</div>`;
     }
+    // Swallow mousedown: in FIREFOX the native mousedown on a non-editable
+    // island inside the contenteditable pad moves/reveals the DOM selection —
+    // when ProseMirror's selection sits far away (doc start after wheel-only
+    // scrolling), that reveal SCROLLS THE PAD TO THE TOP on the click that was
+    // meant to start editing. preventDefault stops the native caret/selection
+    // work; the click still fires and enters edit, which focuses the textarea
+    // itself. (Same trick the compare peer pane uses.)
+    host.addEventListener('mousedown', (e) => { e.preventDefault(); });
     host.addEventListener('click', () => {
       if (!this.readonly()) { this.mode = 'edit'; this.renderBody(); }
     });
@@ -626,18 +634,20 @@ class SnippetView {
   renderEdit() {
     const target = this.selfHost || this.body;
     target.innerHTML = '';
-    // FIREFOX: while ProseMirror holds a NodeSelection on this widget (a
-    // fresh insert leaves its node selected), PM's selection syncing fights
-    // the textarea caret — clicks get yanked back and the caret appears
-    // frozen until the selection moves elsewhere. Park the PM selection just
-    // after the node before wiring the editor.
-    const pmSel = this.view.state.selection;
-    if (pmSel instanceof NodeSelection && pmSel.node === this.node) {
-      const pos = this.getPos();
-      if (pos != null) {
-        this.view.dispatch(this.view.state.tr.setSelection(
-          TextSelection.near(this.view.state.doc.resolve(pos + this.node.nodeSize), 1)));
-      }
+    // FIREFOX: ProseMirror's stored selection fights the widget's textarea.
+    // Two observed failure modes, same root:
+    //  - a fresh insert leaves a NodeSelection on this widget → the caret
+    //    freezes (clicks yanked back);
+    //  - the selection sits far away (e.g. doc START when the reader scrolled
+    //    down without clicking prose) → entering edit makes Firefox restore/
+    //    reveal that faraway DOM selection and the pad JUMPS TO THE TOP —
+    //    the long-standing "scroll up on click" bug.
+    // Park the PM selection just after this node, ALWAYS, before wiring the
+    // editor: adjacent selection = nothing to scroll to, nothing to fight.
+    const pos = this.getPos();
+    if (pos != null) {
+      this.view.dispatch(this.view.state.tr.setSelection(
+        TextSelection.near(this.view.state.doc.resolve(pos + this.node.nodeSize), 1)));
     }
     // The SHARED edit-pane machinery (edit-pane.js) — same autosave/debounce,
     // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
