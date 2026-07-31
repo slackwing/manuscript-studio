@@ -139,7 +139,7 @@ async function syncToHead() {
     const v1 = await page.locator('.suggestion-modal-original').inputValue();
     check('version 1 shows the prior commit text', v1.includes('Version one'), JSON.stringify(v1.slice(0, 40)));
     const label = await page.locator('.sgm-version-label').textContent();
-    check('version label updates', /1 · 1 commit ago/.test(label), label);
+    check('version label updates', /1 1 commit ago/.test(label), label);
 
     // AUTOSAVE AS YOU TYPE: no close, no button — just wait out the debounce.
     await page.locator('.suggestion-modal-textarea').click();
