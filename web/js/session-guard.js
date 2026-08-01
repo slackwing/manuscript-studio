@@ -107,7 +107,7 @@
         });
         if (!resp.ok) throw new Error((await resp.text()) || 'Login failed');
         const data = await resp.json();
-        if (data.csrf_token) sessionStorage.setItem('csrf_token', data.csrf_token);
+        if (data.csrf_token) localStorage.setItem('csrf_token', data.csrf_token); // localStorage: SHARED across tabs (sessionStorage skew caused save-403 data loss)
         localStorage.setItem('ms_last_username', user.value);
         close(true);
         document.dispatchEvent(new CustomEvent('ms:session-restored'));
@@ -134,10 +134,32 @@
     },
   };
 
+  // CSRF SELF-HEAL: a 403 "Invalid CSRF token" means our stored token no
+  // longer matches the session — the classic cause being a re-login in
+  // ANOTHER tab rotating the session cookie (this exact skew once 403'd four
+  // minutes of sketch autosaves and lost the writing). The fix is silent:
+  // GET /api/session returns the session's current csrf_token; resync it and
+  // the caller's own retry ladder succeeds on its next attempt. If the
+  // session itself is dead, /api/session 401s and the login modal takes over.
+  let healing = null;
+  function healCSRF() {
+    if (!healing) {
+      healing = origFetch('api/session', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && d.csrf_token) localStorage.setItem('csrf_token', d.csrf_token);
+        })
+        .catch(() => {})
+        .finally(() => { setTimeout(() => { healing = null; }, 2000); });
+    }
+    return healing;
+  }
+
   // The document-level hook: ANY same-origin API call answered with 401 trips
-  // the guard. The 401 still propagates to the caller, so existing error
-  // handling (save-retry ladders, error banners) is untouched — it simply
-  // starts succeeding once the user logs back in.
+  // the guard; a CSRF 403 triggers the silent token resync above. Statuses
+  // still propagate to the caller, so existing error handling (save-retry
+  // ladders, error banners) is untouched — it simply starts succeeding once
+  // the token is healed / the user logs back in.
   const origFetch = window.fetch;
   window.fetch = function (input, init) {
     return origFetch.call(this, input, init).then((resp) => {
@@ -145,6 +167,7 @@
         const url = typeof input === 'string' ? input : (input && input.url) || '';
         const isApi = /(^|\/)api\//.test(url) && !/api\/login\b/.test(url);
         if (resp.status === 401 && isApi) window.WriteSysSessionGuard.requireLogin();
+        if (resp.status === 403 && isApi) healCSRF();
       } catch (_) { /* never break the caller over guard bookkeeping */ }
       return resp;
     });

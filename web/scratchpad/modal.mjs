@@ -4,14 +4,14 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=41';
+import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=42';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
   const link = document.createElement('link');
   link.id = 'scratchpad-css';
   link.rel = 'stylesheet';
-  link.href = 'scratchpad/scratchpad.css?v=35';
+  link.href = 'scratchpad/scratchpad.css?v=36';
   document.head.appendChild(link);
 }
 
@@ -97,7 +97,7 @@ export const ScratchpadModal = {
     // Landing-page recency stamp (fire-and-forget; cards sort by this).
     fetch(`api/scratchpads/${scratchpadId}/opened`, {
       method: 'POST',
-      headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
+      headers: { 'X-CSRF-Token': (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '' },
     }).catch(() => {});
     window.WriteSysScratchpad = this.editor; // test / power-user hook
     this.setupManuscriptLink(scratchpadId);
@@ -129,7 +129,7 @@ export const ScratchpadModal = {
     } catch (e) { /* leave unlinked */ }
 
     const HINT = 'Link scratchpad to manuscript. Causes all NEW elements (snippets, notes, etc.) in the scratchpad to be linked to the manuscript by default.';
-    const csrf = () => sessionStorage.getItem('csrf_token') || '';
+    const csrf = () => (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
     const put = async (mid) => {
       const r = await fetch(`api/scratchpads/${scratchpadId}/link`, {
         method: 'PUT', credentials: 'same-origin',

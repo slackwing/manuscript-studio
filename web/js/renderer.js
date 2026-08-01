@@ -68,7 +68,7 @@ const WriteSysRenderer = {
       // Stamp per-user recency for the landing page (fire-and-forget).
       fetch(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/opened`, {
         method: 'POST',
-        headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
+        headers: { 'X-CSRF-Token': (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '' },
       }).catch(() => {});
       this.renderInfoLine(migration);
 

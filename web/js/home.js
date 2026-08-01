@@ -213,7 +213,7 @@ const WriteSysHome = {
         if (!window.confirm(`Delete scratchpad "${title}"? (Soft-deleted — recoverable from the database.)`)) return;
         await fetch(`api/scratchpads/${id}`, {
           method: 'DELETE',
-          headers: { 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
+          headers: { 'X-CSRF-Token': (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '' },
         });
         this.reload();
       });
@@ -224,7 +224,7 @@ const WriteSysHome = {
     const now = new Date();
     const r = await fetch('api/scratchpads', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || '' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '' },
       body: JSON.stringify({ title: `Untitled ${now.getMonth() + 1}/${now.getDate()}` }),
     });
     if (!r.ok) return;

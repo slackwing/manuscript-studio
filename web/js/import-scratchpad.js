@@ -10,7 +10,7 @@
  * targets must be committed sentences with no pending suggestion.
  */
 const WriteSysImportScratchpad = {
-  csrf() { return sessionStorage.getItem('csrf_token') || ''; },
+  csrf() { return (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || ''; },
 
   // ---------------------------------------------------------- affordances
 

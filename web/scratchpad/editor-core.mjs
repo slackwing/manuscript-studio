@@ -21,7 +21,7 @@ import {
   addRowAfter, deleteRow, addColumnAfter, deleteColumn, deleteTable,
 } from './vendor/prosemirror.mjs';
 
-const csrf = () => sessionStorage.getItem('csrf_token') || '';
+const csrf = () => (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
 
 // Save-failure status lines get a "log in" affordance when the failure is an
 // expired session (401): clicking opens the app-wide re-login modal
@@ -649,10 +649,19 @@ class SnippetView {
       this.view.dispatch(this.view.state.tr.setSelection(
         TextSelection.near(this.view.state.doc.resolve(pos + this.node.nodeSize), 1)));
     }
+    // LOCAL DRAFT RESTORE: if a newer-than-server draft survives in
+    // localStorage (saves were failing when the widget last lived — CSRF
+    // skew, expiry, crash, reload), seed the editor with IT, not the stale
+    // server text, and let the autosaver push it up immediately.
+    const draftKey = `ms-draft-sketch-${this.sketchId}`;
+    const draft = window.WriteSysEditPane.readDraft(draftKey);
+    const serverText = this.ctx.sketch.text;
+    const restored = !!(draft && draft.t !== serverText
+      && draft.at > Date.parse(this.ctx.sketch.updated_at || 0));
     // The SHARED edit-pane machinery (edit-pane.js) — same autosave/debounce,
     // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
     const pane = window.WriteSysEditPane.createMonoEditor({
-      value: this.ctx.sketch.text,
+      value: restored ? draft.t : serverText,
       placeholder: 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).',
       // Mirror the text into the overlay, rendering each tab as a faint grey
       // → glyph so invisible whitespace is visible. Everything else is neutral
@@ -662,7 +671,8 @@ class SnippetView {
     });
     const ta = pane.textarea;
     const saver = window.WriteSysEditPane.createAutosaver({
-      initialValue: this.ctx.sketch.text,
+      initialValue: serverText, // server truth — a restored draft counts as dirty
+      draftKey,
       getValue: () => ta.value,
       save: (text) => sketchApi.saveText(this.sketchId, text),
       statusEl: this.saveEl,
@@ -683,6 +693,11 @@ class SnippetView {
     // fires ALL of them at once — a race where an OLD snapshot can land last and
     // clobber current work (data-loss bug). Drop this view's prior flusher first.
     if (this.flush) variationFlushers.delete(this.flush);
+    // Kill the REPLACED pane's autosaver outright: a pending debounce or
+    // retry timer from it would fire later holding the detached textarea's
+    // OLD text and overwrite newer saves (the stale-save family, again).
+    if (this._saver) this._saver.destroy();
+    this._saver = saver;
     this.flush = saver.flush;
     variationFlushers.add(saver.flush);
     ta.addEventListener('blur', () => {
@@ -711,6 +726,10 @@ class SnippetView {
     ta.focus({ preventScroll: true });
     ta.setSelectionRange(ta.value.length, ta.value.length);
     pane.autoGrow();
+    if (restored) {
+      this.saveEl.textContent = 'restored unsaved draft';
+      saver.poke(); // push the recovered text up as soon as saves work
+    }
   }
 
   // The RIGHT HALF of a split-compare: a sibling sketch, read-only on a
@@ -858,6 +877,7 @@ class SnippetView {
   }
 
   destroy() {
+    if (this._saver) this._saver.destroy();
     variationFlushers.delete(this.flush);
     dirtyVariations.delete(this);
     liveSnippetViews.delete(this);

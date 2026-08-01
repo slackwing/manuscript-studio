@@ -347,6 +347,9 @@
   15% { box-shadow: 0 0 0 3px rgba(42, 111, 176, 0.5); }
 }
 .sn-save { font-size: 10px; color: #a49b8a; white-space: nowrap; }
+/* Failing saves must be LOUD — a quiet grey status once hid four minutes of
+   rejected autosaves. */
+.sn-save.sn-save-err { color: #b04038; font-weight: 700; }
 
 /* snowflake freeze toggle — depressed while frozen */
 .sn-actions .sn-freeze { color: #a49b8a; padding: 3px 5px; }

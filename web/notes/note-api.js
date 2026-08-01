@@ -12,7 +12,7 @@
  */
 (function () {
   const BASE = 'api/notes';
-  const csrf = () => sessionStorage.getItem('csrf_token') || '';
+  const csrf = () => (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
   // Reuse the app's authenticated fetch if present (handles 401→login); else
   // fall back to plain fetch with the CSRF header.
   const authFetch = (url, opts) =>

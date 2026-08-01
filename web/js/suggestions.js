@@ -203,14 +203,19 @@ const WriteSysSuggestions = {
     // autosave-as-you-type, retry ladder, dirty tracking, tab overlay and
     // flush-or-refuse close that snippet widgets use.
     let staleAlerted = false;
+    // Draft safety net: restore a fresh unsaved draft (failed saves / crash).
+    const draftKey = `ms-draft-suggest-${sentenceId}`;
+    const draft = window.WriteSysEditPane.readDraft(draftKey);
+    const restored = !!(draft && draft.t !== openCurrent);
     const pane = window.WriteSysEditPane.createMonoEditor({
-      value: openCurrent,
+      value: restored ? draft.t : openCurrent,
       overlayHTML: window.WriteSysEditPane.tabMarkupHTML,
       onInput: () => saver.poke(),
     });
     pane.textarea.classList.add('suggestion-modal-textarea');
     const saver = window.WriteSysEditPane.createAutosaver({
-      initialValue: openCurrent,
+      initialValue: openCurrent, // server truth — a restored draft counts as dirty
+      draftKey,
       getValue: () => pane.textarea.value,
       save: async (newText) => {
         const resp = await authenticatedFetch(`${this.apiBaseUrl}/sentences/${sentenceId}/suggestion`, {
@@ -294,6 +299,10 @@ const WriteSysSuggestions = {
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     pane.autoGrow();
+    if (restored) {
+      modal.querySelector('.sn-save').textContent = 'restored unsaved draft';
+      saver.poke();
+    }
   },
 };
 

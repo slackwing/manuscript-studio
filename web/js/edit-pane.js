@@ -37,11 +37,30 @@
     let attempt = 0;
     let destroyed = false;
 
+    // LOCAL DRAFT SAFETY NET: every keystroke mirrors the text into
+    // localStorage (per draftKey); a successful save clears it. Whatever
+    // kills the saves — CSRF skew, expiry, network, a crash, a reload —
+    // the words survive on THIS machine and the host restores them.
+    const draftWrite = (v) => {
+      if (!opts.draftKey) return;
+      try { localStorage.setItem(opts.draftKey, JSON.stringify({ t: v, at: Date.now() })); } catch (_) {}
+    };
+    const draftClear = () => {
+      if (!opts.draftKey) return;
+      try { localStorage.removeItem(opts.draftKey); } catch (_) {}
+    };
+
     const clearRetry = () => {
       clearTimeout(retryTimer); retryTimer = null;
       clearInterval(countdown); countdown = null;
     };
-    const setStatus = (text) => { if (statusEl) statusEl.textContent = text; };
+    const setStatus = (text, failing) => {
+      if (!statusEl) return;
+      statusEl.textContent = text;
+      // A failing save must be LOUD — the tiny grey status was overlooked
+      // for four minutes of lost writing once.
+      statusEl.classList.toggle('sn-save-err', !!failing);
+    };
     const appendRelogin = () => {
       if (!statusEl || !window.WriteSysSessionGuard) return;
       statusEl.append(' · ');
@@ -76,16 +95,17 @@
         if (opts.onDirty) opts.onDirty(dirty());
         if (opts.onSaved) opts.onSaved(value, true);
         // Typed more while the save was in flight → chase it.
-        if (dirty()) poke();
+        if (dirty()) poke(); else draftClear();
         return !dirty();
       } catch (e) {
+        draftWrite(value);
         const fatal = opts.onFatal && opts.onFatal(e);
-        if (fatal) { setStatus(fatal); return false; }
+        if (fatal) { setStatus(fatal, true); return false; }
         attempt = Math.min(attempt + 1, 6);
         let secs = Math.min(60, Math.pow(2, attempt));
         const authFail = e.status === 401;
         const show = () => {
-          setStatus(`Failed to save. Trying again in ${secs}s`);
+          setStatus(`Failed to save. Trying again in ${secs}s`, true);
           if (authFail) appendRelogin();
         };
         show();
@@ -97,6 +117,7 @@
 
     const poke = () => {
       if (opts.onDirty) opts.onDirty(true);
+      draftWrite(opts.getValue());
       clearTimeout(t); clearRetry();
       t = setTimeout(save, debounceMs);
     };
@@ -173,6 +194,24 @@
     return escHTML(withNL).replace(/\t/g, '<span class="sn-tab">\t</span>');
   }
 
+  // readDraft(key): the crash-recovery counterpart of the autosaver's draft
+  // mirror. Returns { t, at } or null; drafts older than 48h are discarded.
+  function readDraft(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!d || typeof d.t !== 'string' || Date.now() - d.at > 48 * 3600 * 1000) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      return d;
+    } catch (_) { return null; }
+  }
+  function clearDraft(key) {
+    try { localStorage.removeItem(key); } catch (_) {}
+  }
+
   // The Alt+D date: "Saturday, August 1" (weekday, month day — no year).
   function dateString(d) {
     return (d || new Date()).toLocaleDateString('en-US', {
@@ -180,5 +219,5 @@
     });
   }
 
-  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString };
+  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft };
 })();

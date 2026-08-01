@@ -52,7 +52,7 @@ async function getSession() {
 }
 
 function getCSRFToken() {
-  return sessionStorage.getItem('csrf_token');
+  return (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token'));
 }
 
 // fetch() with credentials and an X-CSRF-Token header on state-changing
