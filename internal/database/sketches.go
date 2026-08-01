@@ -327,7 +327,10 @@ func (db *DB) FreezeAllSketches(ctx context.Context, userID, snippetID string) e
 }
 
 // ListSketchesForPicker feeds the Based-on picker: the user's lettered
-// sketches, most recently updated first. q filters on text.
+// sketches, most recently updated first. q filters on text (contiguous
+// case-insensitive substring). Superseded sketches are excluded — they're
+// explicitly "no longer the preferred sketch", so neither a base for new
+// related sketches nor a canonize candidate (un-supersede first).
 func (db *DB) ListSketchesForPicker(ctx context.Context, userID, q string) ([]PickerSketch, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT v.sketch_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.state, v.updated_at,
@@ -335,6 +338,7 @@ func (db *DB) ListSketchesForPicker(ctx context.Context, userID, q string) ([]Pi
 		       (s.canon_sketch_id IS NOT NULL) AS canonized
 		FROM sketch v JOIN snippet s ON s.snippet_id = v.snippet_id
 		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NULL
+		  AND v.state <> 'superseded'
 		  AND ($2 = '' OR v.text ILIKE '%' || $2 || '%')
 		ORDER BY v.updated_at DESC
 		LIMIT 50

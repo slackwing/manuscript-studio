@@ -6,7 +6,7 @@
 //  - superseded sketches are EXCLUDED from the wordcount representative
 //    ("canonized wins, then most recent non-superseded").
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, loginAsTestUser, cleanupTestNotes } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 const SYSTEM_TOKEN = 'dev-system-token-not-for-production';
 const API = TEST_URL.replace(/\/$/, '') + '/api';
@@ -18,6 +18,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   let failed = false;
   const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
 
+  await cleanupTestNotes(); // stray linked snippets skew the wordcount check
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
@@ -102,6 +103,14 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   });
   check('B rail letter reddish (superseded)', /st-superseded/.test(colors.B), colors.B);
   check('C rail letter bluish (frozen)', /st-frozen/.test(colors.C), colors.C);
+
+  // The Related/Based-on picker EXCLUDES superseded sketches (frozen stay).
+  const picker = await page.evaluate(async () => {
+    const r = await fetch('api/sketches?q=');
+    return (await r.json()).sketches.map((x) => x.sketch_id);
+  });
+  check('picker excludes superseded B', !picker.includes(bId), JSON.stringify(picker.slice(0, 8)));
+  check('picker still includes frozen C', picker.includes(cId));
 
   // Wordcount: link the snippet to the test manuscript, make B the MOST RECENT
   // (but superseded) — the representative must skip it.
