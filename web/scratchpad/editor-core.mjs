@@ -1552,15 +1552,15 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { label: 'I', title: 'Italic (Ctrl-I)', cls: 'i', run: toggleMark(schema.marks.em), active: s => markActive(s, schema.marks.em) },
     { sep: true },
     ...[1, 2, 3, 4].map(l => ({
-      label: 'H' + l, title: 'Heading ' + l,
+      label: 'H' + l, title: `Heading ${l} (Ctrl+Alt+${l})`,
       run: setBlockType(schema.nodes.heading, { level: l }),
       active: s => headingActive(s, l),
     })),
     { sep: true },
-    { html: ICON_UL, title: 'Bullet list', run: wrapInList(schema.nodes.bullet_list) },
-    { html: ICON_OL, title: 'Numbered list', run: wrapInList(schema.nodes.ordered_list) },
+    { html: ICON_UL, title: 'Bullet list (Ctrl+Shift+8)', run: wrapInList(schema.nodes.bullet_list) },
+    { html: ICON_OL, title: 'Numbered list (Ctrl+Shift+7)', run: wrapInList(schema.nodes.ordered_list) },
     { sep: true },
-    { label: '❝', title: 'Blockquote', run: wrapIn(schema.nodes.blockquote) },
+    { label: '❝', title: 'Blockquote (Ctrl+Shift+9)', run: wrapIn(schema.nodes.blockquote) },
     { label: '—', title: 'Horizontal rule', run: (s, d) => insertBlockSafely(s, d, schema.nodes.horizontal_rule.create()) },
     { sep: true },
     { table: true },
@@ -1573,8 +1573,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { label: '− Col', title: 'Delete column', run: deleteColumn, show: showInTable },
     { label: '✕ Table', title: 'Delete table', run: deleteTable, show: showInTable },
     { sep: true },
-    { label: '↶', title: 'Undo', run: undo },
-    { label: '↷', title: 'Redo', run: redo },
+    { label: '↶', title: 'Undo (Ctrl+Z)', run: undo },
+    { label: '↷', title: 'Redo (Ctrl+Y)', run: redo },
     // Right-aligned note-color section (NOTES_PLAN.md Phase 2): 6 colored squares
     // that create a note from the current selection.
     { noteColors: true },
@@ -1627,6 +1627,13 @@ export async function createScratchpadEditor(els, scratchpadId) {
   };
 
   // ---- editor ----
+  // Alt+D: type today's date ("Saturday, August 1") at the cursor.
+  const insertDate = (state, dispatch) => {
+    if (dispatch) {
+      dispatch(state.tr.insertText(window.WriteSysEditPane.dateString()).scrollIntoView());
+    }
+    return true;
+  };
   const li = schema.nodes.list_item;
   const state = EditorState.create({
     doc: PMNode.fromJSON(schema, modernizeDoc(pad.doc)),
@@ -1636,6 +1643,16 @@ export async function createScratchpadEditor(els, scratchpadId) {
         'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo,
         'Mod-b': toggleMark(schema.marks.strong),
         'Mod-i': toggleMark(schema.marks.em),
+        'Alt-d': insertDate,
+        // Headings: Ctrl+Alt+1..4 (the Docs standard; plain Alt+N is the
+        // browser's tab switcher in Firefox).
+        ...Object.fromEntries([1, 2, 3, 4].map((l) => [
+          `Mod-Alt-${l}`, setBlockType(schema.nodes.heading, { level: l }),
+        ])),
+        // Lists + quote: the Docs/Notion conventions.
+        'Shift-Mod-7': wrapInList(schema.nodes.ordered_list),
+        'Shift-Mod-8': wrapInList(schema.nodes.bullet_list),
+        'Shift-Mod-9': wrapIn(schema.nodes.blockquote),
         'Enter': splitListItem(li),
         'Tab': chainCommands(goToNextCell(1), sinkListItem(li)),
         'Shift-Tab': chainCommands(goToNextCell(-1), liftListItem(li)),

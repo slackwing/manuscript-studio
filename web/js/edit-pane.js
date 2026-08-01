@@ -142,6 +142,13 @@
       autoGrow();
       if (opts.onInput) opts.onInput();
     });
+    // Alt+D types today's date at the caret — same shortcut as the pad prose.
+    ta.addEventListener('keydown', (e) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyD' || e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        insertAtCaret(dateString());
+      }
+    });
     const insertAtCaret = (text) => {
       const s = ta.selectionStart, e = ta.selectionEnd;
       ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
@@ -166,5 +173,12 @@
     return escHTML(withNL).replace(/\t/g, '<span class="sn-tab">\t</span>');
   }
 
-  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML };
+  // The Alt+D date: "Saturday, August 1" (weekday, month day — no year).
+  function dateString(d) {
+    return (d || new Date()).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric',
+    });
+  }
+
+  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString };
 })();
