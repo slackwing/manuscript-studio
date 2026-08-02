@@ -320,10 +320,18 @@ func (s *Server) setupRouter() {
 		}
 		filePath := filepath.Join("web", filepath.Clean("/"+path))
 
-		// HTML must always revalidate so updated ?v= cache-busters on JS/CSS
-		// actually take effect. Without this, browsers heuristically cache
-		// index.html for hours and continue requesting the OLD asset versions.
+		// Explicit cache policy end to end (field lesson: 'no-cache' HTML
+		// WITHOUT validators + validator-only assets let Firefox serve stale
+		// bundles on a normal reload — only a devtools-open reload bypassed).
+		//  - HTML: no-store — never cached, every load sees fresh ?v= refs.
+		//  - ?v=-busted assets: immutable, cache for a year (the URL changes
+		//    when the content does).
+		//  - everything else: no-cache (revalidate).
 		if strings.HasSuffix(path, ".html") {
+			w.Header().Set("Cache-Control", "no-store")
+		} else if req.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		if strings.HasSuffix(path, ".html") && basePath != "" {
