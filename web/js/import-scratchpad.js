@@ -23,17 +23,11 @@ const WriteSysImportScratchpad = {
     if (!r || !r.currentMigrationID) return;
     const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
 
-    // The page may be transform-scaled on mobile. getBoundingClientRect() is
-    // SCREEN px, but these affordances are appended INTO pageArea and positioned
-    // in its own (unscaled) coord space — so convert screen deltas by ÷scale, or
-    // they land at the wrong height / on the wrong page. 1 on desktop.
-    const scale = (window.WriteSysPlaceholder && window.WriteSysPlaceholder.pageScale)
-      ? window.WriteSysPlaceholder.pageScale() : 1;
-
+    // Affordances are anchored INSIDE their own paragraph (position:relative
+    // host), so they ride reflows and transforms with no coordinate math.
     document.querySelectorAll('.pagedjs_page').forEach(page => {
       const pageArea = page.querySelector('.pagedjs_page_content');
       if (!pageArea) return;
-      const pageRect = pageArea.getBoundingClientRect();
 
       // + rule between paragraphs: a gap ABOVE each paragraph whose previous
       // sibling ends in a committed, suggestion-free sentence.
@@ -49,17 +43,20 @@ const WriteSysImportScratchpad = {
         // The zone itself never intercepts pointer events (it overlays prose
         // when paragraphs have no gap) — only the small left-margin + tab is
         // clickable; hovering it reveals the insertion rule.
-        const rect = p.getBoundingClientRect();
+        // ANCHORED INSIDE THE PARAGRAPH (position:relative host): late
+        // reflows — webfont swaps, image loads — used to leave absolutely
+        // positioned zones stranded half a page above their gaps.
         const zone = document.createElement('div');
         zone.className = 'import-zone';
         zone.dataset.sentenceId = boundaryId;
-        zone.style.top = `${Math.max(0, (rect.top - pageRect.top) / scale - 9)}px`;
+        zone.style.top = '-9px';
         zone.innerHTML = '<button type="button" class="import-tab" title="Import from scratchpad (canonize)">+</button><span class="import-rule"></span>';
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
           this.openModal({ mode: 'append', sentenceId: boundaryId });
         });
-        pageArea.appendChild(zone);
+        if (getComputedStyle(p).position === 'static') p.style.position = 'relative';
+        p.appendChild(zone);
       });
 
       // Placeholder fill: replace a committed &placeholder (block or own-line
@@ -74,18 +71,18 @@ const WriteSysImportScratchpad = {
         const slug = el.dataset.slug;
         if (!slug) return;
         // Left-margin button too — never over the prose.
-        const rect = holder.getBoundingClientRect();
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'ph-fill-btn';
         btn.textContent = '⧉';
         btn.title = `Fill placeholder #${slug} from scratchpad (canonize)`;
-        btn.style.top = `${(rect.top - pageRect.top) / scale + 2}px`;
+        btn.style.top = '2px';
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           this.openModal({ mode: 'replace', sentenceId, slug });
         });
-        pageArea.appendChild(btn);
+        if (getComputedStyle(holder).position === 'static') holder.style.position = 'relative';
+        holder.appendChild(btn);
       });
     });
   },
