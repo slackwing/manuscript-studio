@@ -43,7 +43,8 @@ const WriteSysImportScratchpad = {
         const prevSpans = prev.querySelectorAll('.sentence[data-sentence-id]');
         if (prevSpans.length === 0) return;
         const boundaryId = prevSpans[prevSpans.length - 1].dataset.sentenceId;
-        if (sug[boundaryId] !== undefined) return; // pending suggestion → ineligible
+        // A pending suggestion on the boundary is fine: canonize COMPOSES the
+        // region onto it (one suggestion carries both; they push together).
         if (!r.sentenceMap[boundaryId]) return;    // not a committed sentence
         // The zone itself never intercepts pointer events (it overlays prose
         // when paragraphs have no gap) — only the small left-margin + tab is
@@ -51,6 +52,7 @@ const WriteSysImportScratchpad = {
         const rect = p.getBoundingClientRect();
         const zone = document.createElement('div');
         zone.className = 'import-zone';
+        zone.dataset.sentenceId = boundaryId;
         zone.style.top = `${Math.max(0, (rect.top - pageRect.top) / scale - 9)}px`;
         zone.innerHTML = '<button type="button" class="import-tab" title="Import from scratchpad (canonize)">+</button><span class="import-rule"></span>';
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
@@ -105,7 +107,7 @@ const WriteSysImportScratchpad = {
         document.querySelectorAll('.import-zone').forEach((z) => {
           if (!z.isConnected) return;
           const r = z.getBoundingClientRect();
-          if (x < r.left - 30 || x > r.right + 30) return; // off the page column
+          if (x < r.left - 80 || x > r.right + 80) return; // way off the page column
           const d = Math.abs(y - (r.top + r.height / 2));
           if (d < bestD) { bestD = d; best = z; }
         });
@@ -236,6 +238,12 @@ const WriteSysImportScratchpad = {
     }
 
     const committed = r.sentenceMap[target.sentenceId] || '';
+    // Compose onto a pending suggestion when one exists — the user's prose
+    // edit and the canon region ride ONE suggestion (pushed/reverted
+    // together). No ambiguity: the region always goes AFTER the boundary
+    // sentence's current (effective) text.
+    const pending = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+    const base = pending[target.sentenceId] !== undefined ? pending[target.sentenceId] : committed;
     const content = ctx.sketch.text.replace(/\s+$/, '');
     const openLine = `&snippet#${slug}{${label}}`;
     const endLine = `&end#${slug}`;
@@ -245,7 +253,7 @@ const WriteSysImportScratchpad = {
       const marker = r.leadingMarker(committed);
       suggested = `${marker}${openLine}\n\n${content}\n\n${endLine}`;
     } else {
-      suggested = `${committed}\n\n${openLine}\n\n${content}\n\n${endLine}`;
+      suggested = `${base.replace(/\s+$/, '')}\n\n${openLine}\n\n${content}\n\n${endLine}`;
     }
 
     const go = document.getElementById('im-go');
