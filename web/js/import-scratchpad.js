@@ -262,6 +262,10 @@ const WriteSysImportScratchpad = {
         } catch (e) { /* non-fatal */ }
       }
 
+      // The canonize suggestion is now the truth for this sentence — a stale
+      // suggest-edit draft (crash leftover) must not auto-restore over it.
+      try { localStorage.removeItem(`ms-draft-suggest-${target.sentenceId}`); } catch (e) { /* non-fatal */ }
+
       if (window.WriteSysSuggestions) await window.WriteSysSuggestions.loadForMigration(r.currentMigrationID);
       this.closeModal();
       await r.renderManuscript({ anchorSentenceId: target.sentenceId, selectSentenceId: target.sentenceId });
