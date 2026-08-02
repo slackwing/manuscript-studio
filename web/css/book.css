@@ -618,11 +618,12 @@ p.has-anchor-margin {
 }
 .cmd-anchor-margin {
   position: absolute;
-  left: -1.6em;
+  /* OFF the page sheet: the page's left margin is 0.5in (@page), so this
+     clears it into the grey gutter between the outline and the page edge. */
+  left: calc(-0.5in - 14px);
   top: 0;
   font-size: 0.9em;
   line-height: inherit;
-  /* legible over the history bars without a hard box */
   text-shadow: 0 0 2px #fff, 0 0 2px #fff;
   z-index: 11;
 }

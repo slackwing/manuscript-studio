@@ -527,7 +527,7 @@ const WriteSysRenderer = {
         el.style.left = ''; // reset before measuring
         const key = Math.round(el.getBoundingClientRect().top / 8);
         const n = byLine.get(key) || 0;
-        if (n > 0) el.style.left = `-${(1.6 + n * 1.2).toFixed(1)}em`;
+        if (n > 0) el.style.left = `calc(-0.5in - ${14 + n * 20}px)`;
         byLine.set(key, n + 1);
       });
     });
