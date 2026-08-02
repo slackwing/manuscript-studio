@@ -98,6 +98,9 @@ const WriteSysImportScratchpad = {
     if (this._proximityBound) return;
     this._proximityBound = true;
     let pending = null;
+    // CAPTURE phase: a bubble listener dies to any descendant handler's
+    // stopPropagation (vendor code — paged.js et al — is outside our control);
+    // capture sees every move regardless.
     document.addEventListener('mousemove', (e) => {
       if (pending) return;
       const x = e.clientX, y = e.clientY;
@@ -116,7 +119,7 @@ const WriteSysImportScratchpad = {
         });
         if (best && bestD <= this.HOT_BAND_PX) best.classList.add('import-hot');
       });
-    });
+    }, true);
   },
 
   // --------------------------------------------------------------- modal
