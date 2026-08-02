@@ -17,6 +17,7 @@ const WriteSysImportScratchpad = {
   // refresh (re)builds the hover affordances. Runs after pagination, same
   // hook family as the rainbow bars.
   refresh() {
+    this.bindProximity();
     document.querySelectorAll('.import-zone, .ph-fill-btn').forEach(el => el.remove());
     const r = window.WriteSysRenderer;
     if (!r || !r.currentMigrationID) return;
@@ -56,15 +57,6 @@ const WriteSysImportScratchpad = {
           e.stopPropagation();
           this.openModal({ mode: 'append', sentenceId: boundaryId });
         });
-        // The + is hidden by default and only shown when the mouse is near this
-        // gap — i.e. hovering the paragraph just below it (or the one above).
-        // We toggle .import-hot on the zone rather than making the zone itself
-        // pointer-interactive, so prose is never blocked.
-        const hot = () => zone.classList.add('import-hot');
-        const cold = () => zone.classList.remove('import-hot');
-        p.addEventListener('mouseenter', hot);
-        p.addEventListener('mouseleave', cold);
-        if (prev) { prev.addEventListener('mouseenter', hot); prev.addEventListener('mouseleave', cold); }
         pageArea.appendChild(zone);
       });
 
@@ -92,6 +84,35 @@ const WriteSysImportScratchpad = {
           this.openModal({ mode: 'replace', sentenceId, slug });
         });
         pageArea.appendChild(btn);
+      });
+    });
+  },
+
+  // PROXIMITY reveal: exactly ONE + at a time — the gap whose vertical
+  // position is nearest the pointer, and only within a tight band. (The old
+  // per-paragraph hover lit BOTH gaps around the hovered paragraph.)
+  HOT_BAND_PX: 26,
+  bindProximity() {
+    if (this._proximityBound) return;
+    this._proximityBound = true;
+    let pending = null;
+    document.addEventListener('mousemove', (e) => {
+      if (pending) return;
+      const x = e.clientX, y = e.clientY;
+      pending = requestAnimationFrame(() => {
+        pending = null;
+        let best = null, bestD = Infinity;
+        document.querySelectorAll('.import-zone').forEach((z) => {
+          if (!z.isConnected) return;
+          const r = z.getBoundingClientRect();
+          if (x < r.left - 30 || x > r.right + 30) return; // off the page column
+          const d = Math.abs(y - (r.top + r.height / 2));
+          if (d < bestD) { bestD = d; best = z; }
+        });
+        document.querySelectorAll('.import-zone.import-hot').forEach((z) => {
+          if (z !== best || bestD > this.HOT_BAND_PX) z.classList.remove('import-hot');
+        });
+        if (best && bestD <= this.HOT_BAND_PX) best.classList.add('import-hot');
       });
     });
   },
