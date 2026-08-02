@@ -1131,11 +1131,37 @@ class NoteRefView {
   applyColor(color) {
     this.dom.className = 'sn-note-ref color-' + (color || 'yellow');
   }
+  // WITHOUT update(), ProseMirror destroys+recreates this view on ANY redraw
+  // of its region — e.g. typing in the same paragraph — and destroy() was
+  // soft-deleting the note while its ref was still in the doc. Notes died
+  // silently all week (the recreated view kept rendering the ref, so nothing
+  // looked wrong). Accept same-note updates so the view is REUSED.
+  update(node) {
+    if (node.type !== this.node.type) return false;
+    if (node.attrs.noteId !== this.noteId) return false;
+    this.node = node;
+    this.dom.querySelector('.sn-note-ref-text').textContent = node.attrs.text;
+    return true;
+  }
   destroy() {
     unregisterNoteRefView(this.noteId, this);
-    if (!editorTearingDown && !suppressNoteDelete.has(this.noteId) && window.WriteSysNoteAPI && this.noteId) {
-      window.WriteSysNoteAPI.remove(this.noteId).catch(() => {});
-    }
+    if (editorTearingDown || suppressNoteDelete.has(this.noteId) || !window.WriteSysNoteAPI || !this.noteId) return;
+    // Defense in depth: even when destroy fires, only soft-delete if the ref
+    // is GENUINELY gone from the doc after this transaction settles — a
+    // recreated view (any future update()-miss) must never kill a live note.
+    const noteId = this.noteId;
+    setTimeout(() => {
+      if (editorTearingDown) return;
+      const view = activeView;
+      let still = false;
+      if (view) {
+        view.state.doc.descendants((n) => {
+          if (still) return false;
+          if (n.type.name === 'noteRef' && n.attrs.noteId === noteId) { still = true; return false; }
+        });
+      }
+      if (!still) window.WriteSysNoteAPI.remove(noteId).catch(() => {});
+    }, 0);
   }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
