@@ -20,6 +20,18 @@ const WriteSysRegion = {
     const canon = canonize || ((t) => t);
     const items = [];
     let state = 'before';
+    // The opener/end may sit INLINE inside a prose fragment (the tight
+    // canonize form: "prev.\n&snippet#id{label}\n\tcontent\n&end#id") —
+    // find them mid-text, not just as block fragments. Indices from
+    // findInline are code-point offsets (match with Array.from).
+    const findTok = (text, kinds) => {
+      if (!cmdLib.findInline) return null;
+      for (const c of cmdLib.findInline(text)) {
+        if (kinds.indexOf(c.kind) !== -1 && c.slug === slug) return c;
+      }
+      return null;
+    };
+    const slicePts = (text, a, b) => Array.from(text).slice(a, b).join('');
     for (const s of sentences) {
       const raw = (sugMap && sugMap[s.id] !== undefined) ? sugMap[s.id] : s.text;
       const eff = canon(raw);
@@ -27,16 +39,38 @@ const WriteSysRegion = {
         if (state === 'before') {
           if (f.kind === 'command' && (f.cmd.kind === 'anchor' || f.cmd.kind === 'snippet') && f.cmd.slug === slug) {
             state = 'inside';
+            continue;
+          }
+          if (f.kind === 'prose') {
+            const open = findTok(f.text, ['anchor', 'snippet']);
+            if (open) {
+              state = 'inside';
+              const rest = slicePts(f.text, open.end);
+              const endTok = findTok(rest, ['end']);
+              if (endTok) {
+                const inner = slicePts(rest, 0, endTok.start);
+                if (inner.trim()) items.push({ id: s.id, text: inner });
+                return { status: 'ok', items };
+              }
+              if (rest.trim()) items.push({ id: s.id, text: rest });
+            }
           }
           continue;
         }
-        if (state === 'inside') {
-          if (f.kind === 'command' && f.cmd.kind === 'end' && f.cmd.slug === slug) {
+        // state === 'inside'
+        if (f.kind === 'command' && f.cmd.kind === 'end' && f.cmd.slug === slug) {
+          return { status: 'ok', items };
+        }
+        if (f.kind === 'prose') {
+          const endTok = findTok(f.text, ['end']);
+          if (endTok) {
+            const inner = slicePts(f.text, 0, endTok.start);
+            if (inner.trim()) items.push({ id: s.id, text: (f.marker || '') + inner });
             return { status: 'ok', items };
           }
-          const body = f.kind === 'command' ? f.cmd.raw : f.text;
-          items.push({ id: s.id, text: (f.marker || '') + body });
         }
+        const body = f.kind === 'command' ? f.cmd.raw : f.text;
+        items.push({ id: s.id, text: (f.marker || '') + body });
       }
     }
     if (state === 'before') return { status: 'missing-anchor', items: [] };
