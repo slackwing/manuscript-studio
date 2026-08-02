@@ -279,6 +279,7 @@ const WriteSysRenderer = {
       // scratchpad-import affordances are position-derived too.
       if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
       if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
+      this.layoutMarginGlyphs();
 
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {
@@ -377,6 +378,18 @@ const WriteSysRenderer = {
 
     const out = [];
     let openP = null; // { cls, spans } — current open paragraph
+    // Anchor-family glyphs (⚓ for &anchor/&snippet) NEVER interrupt prose
+    // flow: they defer to the NEXT paragraph's LEFT MARGIN (across sentence
+    // boundaries — post-push an anchor is its own sentence row). The anchor's
+    // own structural marker carries over so \n\n before an anchor still
+    // sections the following prose, \n\t still indents it.
+    let pendingMarginGlyphs = [];
+    let pendingCarriedCls = '';
+    const strongestCls = (a, b) => {
+      if (a === 'section-break' || b === 'section-break') return 'section-break';
+      if (a === 'indented' || b === 'indented') return 'indented';
+      return a || b || '';
+    };
 
     const flush = () => {
       if (openP !== null) {
@@ -426,7 +439,6 @@ const WriteSysRenderer = {
       // flush (no indent look). We hold the glyph here and attach it to the
       // paragraph the next prose fragment opens. If there's no following prose,
       // the anchor falls back to its own quiet ⚓ line.
-      let pendingAnchorGlyph = '';
       for (let fi = 0; fi < frags.length; fi++) {
         const f = frags[fi];
         // A structural fragment (command/header) that came from a suggestion
@@ -434,14 +446,20 @@ const WriteSysRenderer = {
         // the author knows to click it to see the change.
         const changed = suggestion !== undefined;
         if (f.kind === 'command') {
-          // Leading-anchor-before-prose: defer the glyph to the next prose
-          // fragment (its paragraph). Recognized by a marker-less anchor
-          // command (the split emits the anchor with marker:'' and moves the
-          // paragraph marker onto the following prose) immediately followed by
-          // a prose fragment.
-          const next = frags[fi + 1];
-          if (f.cmd.kind === 'anchor' && !f.marker && next && next.kind === 'prose') {
-            pendingAnchorGlyph = this.anchorGlyphHTML(f.cmd, id, changed, /*margin*/ true);
+          // Anchor family (&anchor / &snippet): ALWAYS a margin glyph on the
+          // next paragraph — never a flow-breaking block line. The marker it
+          // carried transfers to that paragraph's break class.
+          if (f.cmd.kind === 'anchor' || f.cmd.kind === 'snippet') {
+            pendingMarginGlyphs.push({ cmd: f.cmd, id, changed });
+            pendingCarriedCls = strongestCls(pendingCarriedCls,
+              f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : ''));
+            continue;
+          }
+          // &end: never shown in the preview (the raw text keeps it) — but its
+          // marker still carries (a region often ends right before a break).
+          if (f.cmd.kind === 'end') {
+            pendingCarriedCls = strongestCls(pendingCarriedCls,
+              f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : ''));
             continue;
           }
           // Otherwise a block command fragment → render its result, no diff.
@@ -470,27 +488,49 @@ const WriteSysRenderer = {
         }
         const sugClass = (suggestion !== undefined) ? ' has-suggestion' : '';
         let span = `<span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${inner}</span>`;
-        // A pending leading-anchor ⚓ opens its own paragraph (positioning
-        // context) with the glyph absolutely placed in the left margin, aligned
-        // to this paragraph's top. cls forces a fresh <p> in pushProse.
-        if (pendingAnchorGlyph) {
-          span = pendingAnchorGlyph + span;
+        // Pending margin glyphs attach to THIS paragraph, absolutely placed
+        // in the left margin aligned to its top; the carried break class wins
+        // over the prose's own weaker one.
+        cls = strongestCls(cls, pendingCarriedCls);
+        pendingCarriedCls = '';
+        if (pendingMarginGlyphs.length) {
+          span = pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, /*margin*/ true)).join('') + span;
           cls = (cls ? cls + ' ' : '') + 'has-anchor-margin';
-          pendingAnchorGlyph = '';
+          pendingMarginGlyphs = [];
         }
         pushProse(cls, span);
       }
-      // A trailing pending glyph (anchor with no following prose in this
-      // sentence) still needs to render — fall back to its own quiet ⚓ line.
-      if (pendingAnchorGlyph) {
-        flush();
-        out.push(`<div class="cmd-anchor">${this.anchorGlyphHTML({ args: [] }, id, suggestion !== undefined, false)}</div>`);
-        // (label is carried on the glyph span already produced above)
+    }
+    // Anchors with no following prose anywhere: attach to the last open
+    // paragraph, else fall back to a quiet standalone line.
+    if (pendingMarginGlyphs.length) {
+      if (openP) {
+        openP.spans.unshift(pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, true)).join(''));
+        openP.cls = (openP.cls ? openP.cls + ' ' : '') + 'has-anchor-margin';
+      } else {
+        // No prose anywhere to host them: quiet standalone line, NON-margin.
+        out.push(`<div class="cmd-anchor">${pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, false)).join('')}</div>`);
       }
+      pendingMarginGlyphs = [];
     }
 
     flush();
     return out.join('\n');
+  },
+
+  // layoutMarginGlyphs stacks same-line margin anchors leftward so several on
+  // one line never overlap (they may overlap the outline column — fine, rare).
+  layoutMarginGlyphs() {
+    document.querySelectorAll('.pagedjs_page_content').forEach((page) => {
+      const byLine = new Map();
+      page.querySelectorAll('.cmd-anchor-margin').forEach((el) => {
+        el.style.left = ''; // reset before measuring
+        const key = Math.round(el.getBoundingClientRect().top / 8);
+        const n = byLine.get(key) || 0;
+        if (n > 0) el.style.left = `-${(1.6 + n * 1.2).toFixed(1)}em`;
+        byLine.set(key, n + 1);
+      });
+    });
   },
 
   // stripLeadingMarker removes a single leading \n\n or \n\t (structural) so
@@ -568,12 +608,9 @@ const WriteSysRenderer = {
       return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
     }
     if (cmd.kind === 'end') {
-      // Invisible region terminator (SCRATCHPAD_PLAN.md). Same affordance
-      // rules as &meta: visible blue marker only while it's a suggestion.
+      // Region terminator: NEVER rendered in the preview — it exists in the
+      // raw text (suggest-edit shows it) and that's the only place it should.
       const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
-      if (changed) {
-        return `<div class="cmd-end cmd-suggested"${slugAttr}><span class="sentence" data-sentence-id="${this.escapeHtml(id)}" title="region end — click to view">∎</span></div>`;
-      }
       return `<div class="cmd-end"${slugAttr} hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
     }
     const form = window.WriteSysCommand && window.WriteSysCommand.structuralForm(cmd.raw);
@@ -605,7 +642,8 @@ const WriteSysRenderer = {
     const titleAttr = label ? ` title="${this.escapeHtml(label)}"` : '';
     const chCls = changed ? ' cmd-suggested' : '';
     const marginCls = margin ? ' cmd-anchor-margin' : '';
-    return `<span class="sentence cmd-anchor-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${titleAttr} aria-label="anchor">⚓</span>`;
+    const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+    return `<span class="sentence cmd-anchor-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="anchor">⚓</span>`;
   },
 
   // Escape first, then substitute *x* → <em> — otherwise the escape pass
@@ -664,8 +702,13 @@ const WriteSysRenderer = {
     }
     if (c.kind === 'anchor' || c.kind === 'snippet') {
       const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
-      // Invisible marker (zero-width) — the host sentence is the scroll target.
-      return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`;
+      const label = (c.args && c.args[0]) || c.slug || '';
+      const titleAttr = label ? ` title="${this.escapeHtml(label)}"` : '';
+      // The zero-width target stays inline (scroll anchor); the VISIBLE ⚓
+      // rides in the left margin at this line's height (absolute, no top →
+      // static-position y), so the flow is never touched.
+      return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`
+        + `<span class="cmd-anchor-glyph cmd-anchor-margin cmd-anchor-margin-inline"${slug}${titleAttr} aria-label="anchor">⚓</span>`;
     }
     // reference
     const slugMap = (window.WriteSysOutline && window.WriteSysOutline.slugMap) || {};

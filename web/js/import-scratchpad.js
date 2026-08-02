@@ -250,13 +250,18 @@ const WriteSysImportScratchpad = {
     const content = ctx.sketch.text.replace(/\s+$/, '');
     const openLine = `&snippet#${slug}{${label}}`;
     const endLine = `&end#${slug}`;
+    // Tight structure: single \n around the region markers so the canonized
+    // text reads as a REGULAR paragraph continuing the flow — the \t makes it
+    // an indented paragraph (upgrade to \n\n by hand for a section break).
+    // Anchors render in the left margin, &end renders not at all, so none of
+    // this interrupts the prose.
     let suggested;
     if (target.mode === 'replace') {
       // Replace the placeholder command, keep its structural marker.
       const marker = r.leadingMarker(committed);
-      suggested = `${marker}${openLine}\n\n${content}\n\n${endLine}`;
+      suggested = `${marker}${openLine}\n\t${content}\n${endLine}`;
     } else {
-      suggested = `${base.replace(/\s+$/, '')}\n\n${openLine}\n\n${content}\n\n${endLine}`;
+      suggested = `${base.replace(/\s+$/, '')}\n${openLine}\n\t${content}\n${endLine}`;
     }
 
     const go = document.getElementById('im-go');

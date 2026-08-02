@@ -48,11 +48,29 @@ const WriteSysOutline = {
     const canon = (window.WriteSysCanonicalize && window.WriteSysCanonicalize.canonicalize)
       ? window.WriteSysCanonicalize.canonicalize
       : (t) => t;
+    const pushAnchor = (a) => {
+      if (curPart >= 0 && curChapter >= 0) o.parts[curPart].chapters[curChapter].anchors.push(a);
+      else if (curPart >= 0) o.parts[curPart].anchors.push(a);
+      else if (curChapter >= 0) o.top_chapters[curChapter].anchors.push(a);
+      else o.top_anchors.push(a);
+    };
     for (const s of sentences) {
       const rawEff = (sug[s.id] !== undefined) ? sug[s.id] : s.text;
       const eff = canon(rawEff);
       for (const f of cmd.segmentFragments(eff)) {
-        if (f.kind !== 'command') continue;
+        if (f.kind !== 'command') {
+          // INLINE anchors/snippets (mid-prose, e.g. the tight canonize form
+          // "prev.\n&snippet#id{label}\n\tcontent") outline exactly like
+          // their block twins.
+          if (f.kind === 'prose' && cmd.findInline) {
+            for (const ic of cmd.findInline(f.text)) {
+              if ((ic.kind === 'anchor' || ic.kind === 'snippet') && ic.slug) {
+                pushAnchor({ description: (ic.args && ic.args[0]) || '', slug: ic.slug, sentence_id: s.id });
+              }
+            }
+          }
+          continue;
+        }
         const c = f.cmd;
         const label = c.args[0] || '';
         const desc = c.args[1] || '';
@@ -76,11 +94,7 @@ const WriteSysOutline = {
             if (!spec.valid || !spec.label.trim()) continue;
             description = spec.label;
           }
-          const a = { description, slug: c.slug, sentence_id: s.id };
-          if (curPart >= 0 && curChapter >= 0) o.parts[curPart].chapters[curChapter].anchors.push(a);
-          else if (curPart >= 0) o.parts[curPart].anchors.push(a);
-          else if (curChapter >= 0) o.top_chapters[curChapter].anchors.push(a);
-          else o.top_anchors.push(a);
+          pushAnchor({ description, slug: c.slug, sentence_id: s.id });
         }
       }
     }

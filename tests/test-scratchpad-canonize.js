@@ -189,8 +189,8 @@ function noisyPng(w, h) {
     check('canonize modal completed', true);
     await waitForRepagination(page, stamp);
     const book = await page.evaluate((sid) => {
-      const opener = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${sid}"], .pagedjs_pages .inline-anchor[data-slug="${sid}"]`);
-      const end = document.querySelector(`.pagedjs_pages .cmd-end[data-slug="${sid}"]`);
+      const opener = document.querySelector(`.pagedjs_pages .cmd-anchor-glyph[data-slug="${sid}"], .pagedjs_pages .inline-anchor[data-slug="${sid}"]`);
+      const end = document.querySelector(`.pagedjs_pages .cmd-end[data-slug="${sid}"], .pagedjs_pages .inline-end[data-slug="${sid}"]`);
       const content = Array.from(document.querySelectorAll('.pagedjs_pages .sentence'))
         .some(s => /keg arrived at noon/i.test(s.textContent));
       const outlineRow = Array.from(document.querySelectorAll('.outline-item.outline-anchor'))
@@ -198,7 +198,7 @@ function noisyPng(w, h) {
       return {
         openerFound: !!opener,
         endFound: !!end,
-        endVisibleWhileSuggested: end ? !end.hidden : false,
+        endVisibleWhileSuggested: end ? !(end.hidden || end.classList.contains('inline-end')) : false,
         content,
         outlineRow: !!outlineRow,
       };
@@ -206,11 +206,13 @@ function noisyPng(w, h) {
     check('&snippet region opener renders in book (suggested)', book.openerFound);
     check('snippet label lists in the outline', book.outlineRow);
     check('canonized prose renders in book', book.content === true);
-    check('&end present, visible as blue marker while suggested', book.endFound && book.endVisibleWhileSuggested);
+    check('&end present in DOM but NEVER visible (raw-text only)', book.endFound && !book.endVisibleWhileSuggested);
 
     const boundary = await page.evaluate((sid) => {
-      const opener = document.querySelector(`.pagedjs_pages .cmd-anchor[data-slug="${sid}"] .sentence`);
-      return opener ? opener.dataset.sentenceId : null;
+      const opener = document.querySelector(`.pagedjs_pages .cmd-anchor-glyph[data-slug="${sid}"]`);
+      if (!opener) return null;
+      const host = opener.dataset.sentenceId ? opener : opener.closest('.sentence');
+      return host ? host.dataset.sentenceId : null;
     }, snippetId);
     boundaryId = boundary;
     check('one suggestion carries the region', !!boundaryId, boundaryId);

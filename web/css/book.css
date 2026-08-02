@@ -626,6 +626,11 @@ p.has-anchor-margin {
   text-shadow: 0 0 2px #fff, 0 0 2px #fff;
   z-index: 11;
 }
+/* INLINE anchors: the ⚓ still rides the left margin but at ITS LINE's height
+   (no top → static y position). Paragraphs are positioning contexts so the
+   absolute glyph resolves against its own paragraph. */
+.pagedjs_page_content p { position: relative; }
+.cmd-anchor-margin-inline { top: auto; }
 
 /* &meta settings (TEX_COMMANDS_PLAN.md §5.5). Book-wide toggles applied as
    body[data-*] attributes by the renderer. */
