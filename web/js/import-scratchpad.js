@@ -97,28 +97,29 @@ const WriteSysImportScratchpad = {
   bindProximity() {
     if (this._proximityBound) return;
     this._proximityBound = true;
-    let pending = null;
-    // CAPTURE phase: a bubble listener dies to any descendant handler's
-    // stopPropagation (vendor code — paged.js et al — is outside our control);
-    // capture sees every move regardless.
+    // SYNCHRONOUS on purpose: an earlier version deferred through
+    // requestAnimationFrame with a skip-while-pending latch — when rAF stalls
+    // (Firefox/Wayland does this on real windows while headless sails), the
+    // latch never clears and every move is skipped. A timestamp throttle
+    // cannot wedge. Capture phase so vendor stopPropagation can't starve it.
+    let lastRun = 0;
     document.addEventListener('mousemove', (e) => {
-      if (pending) return;
+      const now = performance.now();
+      if (now - lastRun < 33) return;
+      lastRun = now;
       const x = e.clientX, y = e.clientY;
-      pending = requestAnimationFrame(() => {
-        pending = null;
-        let best = null, bestD = Infinity;
-        document.querySelectorAll('.import-zone').forEach((z) => {
-          if (!z.isConnected) return;
-          const r = z.getBoundingClientRect();
-          if (x < r.left - 80 || x > r.right + 80) return; // way off the page column
-          const d = Math.abs(y - (r.top + r.height / 2));
-          if (d < bestD) { bestD = d; best = z; }
-        });
-        document.querySelectorAll('.import-zone.import-hot').forEach((z) => {
-          if (z !== best || bestD > this.HOT_BAND_PX) z.classList.remove('import-hot');
-        });
-        if (best && bestD <= this.HOT_BAND_PX) best.classList.add('import-hot');
+      let best = null, bestD = Infinity;
+      document.querySelectorAll('.import-zone').forEach((z) => {
+        const r = z.getBoundingClientRect();
+        if (!r.width && !r.height) return;                 // detached remnant
+        if (x < r.left - 80 || x > r.right + 80) return;   // way off the column
+        const d = Math.abs(y - (r.top + r.height / 2));
+        if (d < bestD) { bestD = d; best = z; }
       });
+      document.querySelectorAll('.import-zone.import-hot').forEach((z) => {
+        if (z !== best || bestD > this.HOT_BAND_PX) z.classList.remove('import-hot');
+      });
+      if (best && bestD <= this.HOT_BAND_PX) best.classList.add('import-hot');
     }, true);
   },
 
