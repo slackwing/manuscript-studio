@@ -1868,7 +1868,12 @@ p.section-break {
    each commit boundary". Mirror of right-side rainbow bars in geometry. */
 .history-bar-container {
   position: absolute;
+  /* The container is a wide invisible box over the left gutter — it was
+     eating hover/clicks meant for the canonize + button. Only the visible
+     bar lanes are interactive. */
+  pointer-events: none;
 }
+.history-bar { pointer-events: auto; }
 
 .history-bar {
   border-radius: 1px;
@@ -2543,7 +2548,11 @@ p.section-break {
   opacity: 0;
   transition: opacity 0.12s ease;
 }
-.import-tab:hover { opacity: 1; }
+.import-tab:hover {
+  opacity: 1;
+  background: #2a6fb0;   /* fill in on hover — clearly clickable */
+  color: #fff;
+}
 .import-tab:hover ~ .import-rule { border-top-color: #2a6fb0; }
 
 /* Reveal the gap's + when the mouse is near that gap: the renderer marks the
@@ -2551,8 +2560,9 @@ p.section-break {
    via a shared data attr, and hovering that paragraph (where the mouse is when
    "near" the gap) fades the + in. This keeps .import-zone pointer-events:none
    so prose is never blocked. */
+/* Proximity reveals ONLY the + — the dashed insertion rule shows on hovering
+   the button itself (it's a preview of where the region lands). */
 .import-hot .import-tab { opacity: 1; }
-.import-hot .import-rule { border-top-color: #2a6fb0; }
 
 /* "Fill from scratchpad" on a committed placeholder — left margin too. */
 .ph-fill-btn {

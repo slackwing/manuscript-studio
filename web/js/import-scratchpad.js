@@ -49,7 +49,9 @@ const WriteSysImportScratchpad = {
         const zone = document.createElement('div');
         zone.className = 'import-zone';
         zone.dataset.sentenceId = boundaryId;
-        zone.style.top = '-9px';
+        // -5px: vertically centred in the GAP — -9 hugged the descenders
+        // (g/y) of the line above and floated far from the next line's caps.
+        zone.style.top = '-5px';
         zone.innerHTML = '<button type="button" class="import-tab" title="Import from scratchpad (canonize)">+</button><span class="import-rule"></span>';
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
