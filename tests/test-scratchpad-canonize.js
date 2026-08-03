@@ -190,15 +190,18 @@ function noisyPng(w, h) {
     await waitForRepagination(page, stamp);
     const book = await page.evaluate((sid) => {
       const opener = document.querySelector(`.pagedjs_pages .cmd-anchor-glyph[data-slug="${sid}"], .pagedjs_pages .inline-anchor[data-slug="${sid}"]`);
-      const end = document.querySelector(`.pagedjs_pages .cmd-end[data-slug="${sid}"], .pagedjs_pages .inline-end[data-slug="${sid}"]`);
+      // Trailing &end tokens are stripped from the render entirely (they
+      // exist only in the raw text) — assert nothing &end-shaped is VISIBLE.
+      const endVisible = Array.from(document.querySelectorAll('.pagedjs_pages *'))
+        .some(n => n.children.length === 0 && /&end#/.test(n.textContent) &&
+                   n.offsetParent !== null && !n.hidden);
       const content = Array.from(document.querySelectorAll('.pagedjs_pages .sentence'))
         .some(s => /keg arrived at noon/i.test(s.textContent));
       const outlineRow = Array.from(document.querySelectorAll('.outline-item.outline-anchor'))
         .find(n => /Keg Party/.test(n.textContent));
       return {
         openerFound: !!opener,
-        endFound: !!end,
-        endVisibleWhileSuggested: end ? !(end.hidden || end.classList.contains('inline-end')) : false,
+        endVisibleWhileSuggested: endVisible,
         content,
         outlineRow: !!outlineRow,
       };
@@ -206,7 +209,7 @@ function noisyPng(w, h) {
     check('&snippet region opener renders in book (suggested)', book.openerFound);
     check('snippet label lists in the outline', book.outlineRow);
     check('canonized prose renders in book', book.content === true);
-    check('&end present in DOM but NEVER visible (raw-text only)', book.endFound && !book.endVisibleWhileSuggested);
+    check('&end NEVER visible in the book (raw-text only)', !book.endVisibleWhileSuggested);
 
     const boundary = await page.evaluate((sid) => {
       const opener = document.querySelector(`.pagedjs_pages .cmd-anchor-glyph[data-slug="${sid}"]`);
