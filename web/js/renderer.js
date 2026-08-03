@@ -510,7 +510,10 @@ const WriteSysRenderer = {
         // Pending margin glyphs attach to THIS paragraph, absolutely placed
         // in the left margin aligned to its top; the carried break class wins
         // over the prose's own weaker one.
-        cls = strongestCls(cls, pendingCarriedCls);
+        // A carried marker (from a command line) never overrides an explicit
+        // indent: "\n\n&snippet{}\n\tPara" is an INDENTED paragraph — the \n\n
+        // was breathing room around the command, not a section break.
+        cls = cls === 'indented' ? cls : strongestCls(cls, pendingCarriedCls);
         pendingCarriedCls = '';
         if (pendingMarginGlyphs.length) {
           const glyphs = pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, /*margin*/ true)).join('');
@@ -559,7 +562,7 @@ const WriteSysRenderer = {
         el.style.left = ''; // reset before measuring
         const key = Math.round(el.getBoundingClientRect().top / 8);
         const n = byLine.get(key) || 0;
-        if (n > 0) el.style.left = `calc(-0.5in - ${14 + n * 20}px)`;
+        if (n > 0) el.style.left = `calc(-0.5in - ${22 + n * 20}px)`;
         byLine.set(key, n + 1);
       });
     });
@@ -570,6 +573,7 @@ const WriteSysRenderer = {
   stripLeadingMarker(text) {
     const t = String(text == null ? '' : text);
     if (t.startsWith('\n\n') || t.startsWith('\n\t')) return t.slice(2);
+    if (t.startsWith('\t')) return t.slice(1); // bare tab after a \n\n delimiter
     return t;
   },
 

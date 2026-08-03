@@ -620,9 +620,11 @@ p.has-anchor-margin {
    later in this file) — two classes outrank it so absolute actually wins. */
 .cmd-anchor-glyph.cmd-anchor-margin {
   position: absolute;
-  /* OFF the page sheet: the page's left margin is 0.5in (@page), so this
-     clears it into the grey gutter between the outline and the page edge. */
-  left: calc(-0.5in - 14px);
+  padding: 0;
+  /* FULLY off the page sheet: the page's left margin is 0.5in (@page); the
+     extra 22px clears the glyph's own ~18px width past the sheet edge into
+     the grey gutter between the outline and the page. */
+  left: calc(-0.5in - 22px);
   top: 0;
   font-size: 0.9em;
   line-height: inherit;
@@ -634,6 +636,16 @@ p.has-anchor-margin {
    absolute glyph resolves against its own paragraph. */
 .pagedjs_page_content p { position: relative; }
 .cmd-anchor-glyph.cmd-anchor-margin-inline { top: auto; }
+/* No sentence-highlight box floating in the gutter — the glyph alone. Three
+   classes to out-specify .sentence.selected / hover (both !important). */
+.sentence.cmd-anchor-glyph.cmd-anchor-margin,
+.sentence.cmd-anchor-glyph.cmd-anchor-margin:hover {
+  background: none !important;
+}
+/* paged.js crops each sheet (overflow: hidden) — Firefox clips the gutter
+   glyphs to a sliver at the page edge. Content never reaches the sheet edge
+   (0.5in page margins), so releasing the crop only frees the gutter. */
+.pagedjs_sheet { overflow: visible !important; }
 
 /* &meta settings (TEX_COMMANDS_PLAN.md §5.5). Book-wide toggles applied as
    body[data-*] attributes by the renderer. */

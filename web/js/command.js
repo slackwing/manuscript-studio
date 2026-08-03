@@ -172,7 +172,11 @@ const WriteSysCommand = {
       }
       // Markdown # headers are deprecated and no longer rendered specially —
       // a '#' line is ordinary prose (convert to an &-command for a heading).
-      frags.push({ kind: 'prose', text: piece, marker });
+      // A block whose text BEGINS with a tab is explicitly an indented
+      // paragraph, whatever delimiter preceded it — "\n\n\t" is a blank line
+      // for raw-text readability (typically around a command line) plus a
+      // tabbed paragraph, not a section break.
+      frags.push({ kind: 'prose', text: piece, marker: piece.startsWith('\t') ? '\n\t' : marker });
       marker = '';
     }
     return frags;
