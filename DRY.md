@@ -71,3 +71,14 @@ When a feature reaches its SECOND surface, extract the component then — not
 on the third. The extraction is always cheapest at two call sites, and every
 one of the divergences above (blue vs leather chip, two pickers, three save
 ladders) started at exactly that moment.
+
+## Icons (resolved 2026-08-03)
+
+`web/js/icons.js` (`window.WriteSysIcons`) is the ONE source for house SVG
+icons — `trash(size)`, `trashStroke(size)`, `link(size)`. It loads as a plain
+script before every consumer; scratchpad modules read it off `window` (same
+document). Previously the trash can was pasted in three places (home.js,
+editor-core.mjs ×2 variants) and the link glyph in two — and a fourth trash
+(an emoji, then a novel SVG) almost shipped in range-delete. Add new icons to
+icons.js; never inline an icon at a call site, never use emoji glyphs for UI
+(platform emoji fonts render clipped/off-center).

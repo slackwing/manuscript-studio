@@ -2932,8 +2932,9 @@ body.range-delete-mode .pagedjs_pages {
   border: 1px solid #d9534f;
   background: #fff;
   color: #d9534f;
-  font: 12px/20px "Helvetica", sans-serif;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   cursor: pointer;
   z-index: 31;

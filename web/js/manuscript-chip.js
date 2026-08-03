@@ -15,7 +15,7 @@
 (function () {
   'use strict';
 
-  const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
+  const LINK_SVG = window.WriteSysIcons.link(11); // house icon, js/icons.js
 
   function injectStyles() {
     if (document.getElementById('ms-chip-style')) return;

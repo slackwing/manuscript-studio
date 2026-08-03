@@ -95,7 +95,7 @@ const WriteSysRangeDelete = {
     btn.type = 'button';
     btn.className = 'range-trash';
     btn.title = `Suggest deleting ${this.range.length} sentence${this.range.length > 1 ? 's' : ''}`;
-    btn.innerHTML = '🗑';
+    btn.innerHTML = window.WriteSysIcons.trash(12); // the house trash, never a new copy
     let armed = false, resetTimer = null;
     btn.addEventListener('click', (e) => {
       e.preventDefault(); e.stopPropagation();
