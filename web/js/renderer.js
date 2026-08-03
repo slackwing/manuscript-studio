@@ -280,6 +280,10 @@ const WriteSysRenderer = {
       if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
       if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
       this.layoutMarginGlyphs();
+      // Webfonts landing after pagination shift geometry — re-pin then.
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => this.layoutMarginGlyphs());
+      }
 
       const originalContent = document.getElementById('manuscript-content');
       if (originalContent) {
@@ -556,14 +560,29 @@ const WriteSysRenderer = {
   // layoutMarginGlyphs stacks same-line margin anchors leftward so several on
   // one line never overlap (they may overlap the outline column — fine, rare).
   layoutMarginGlyphs() {
-    document.querySelectorAll('.pagedjs_page_content').forEach((page) => {
+    // MEASURED, not computed: the CSS calc() is only a pre-layout initial —
+    // it guesses the page margin and depends on font metrics, which put the
+    // glyph ON the sheet in some environments (Firefox, other margins). Here
+    // we measure the actual sheet edge and pin each glyph's RIGHT edge a
+    // fixed gap into the grey gutter; same-line glyphs stack further left.
+    const GAP = 6;   // px between glyph right edge and the sheet edge
+    const STACK = 20; // px per extra same-line glyph
+    document.querySelectorAll('.pagedjs_page').forEach((pageEl) => {
+      const sheet = pageEl.querySelector('.pagedjs_sheet') || pageEl;
+      const sheetX = sheet.getBoundingClientRect().left;
       const byLine = new Map();
-      page.querySelectorAll('.cmd-anchor-margin').forEach((el) => {
-        el.style.left = ''; // reset before measuring
-        const key = Math.round(el.getBoundingClientRect().top / 8);
+      pageEl.querySelectorAll('.cmd-anchor-margin').forEach((el) => {
+        el.style.left = '0px'; // known baseline in the paragraph's own space
+        const host = el.offsetParent;
+        if (!host) return;
+        const hr = host.getBoundingClientRect();
+        const scale = host.offsetWidth ? hr.width / host.offsetWidth : 1;
+        const r = el.getBoundingClientRect();
+        const key = Math.round(r.top / 8);
         const n = byLine.get(key) || 0;
-        if (n > 0) el.style.left = `calc(-0.5in - ${22 + n * 20}px)`;
         byLine.set(key, n + 1);
+        const targetRight = sheetX - (GAP + n * STACK) * scale;
+        el.style.left = `${(targetRight - r.right) / scale}px`;
       });
     });
   },

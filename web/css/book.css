@@ -621,10 +621,11 @@ p.has-anchor-margin {
 .cmd-anchor-glyph.cmd-anchor-margin {
   position: absolute;
   padding: 0;
-  /* FULLY off the page sheet: the page's left margin is 0.5in (@page); the
-     extra 22px clears the glyph's own ~18px width past the sheet edge into
-     the grey gutter between the outline and the page. */
+  /* Pre-layout initial only: layoutMarginGlyphs() MEASURES the sheet edge
+     after pagination and pins the glyph into the gutter — never trust this
+     guess for final position. */
   left: calc(-0.5in - 22px);
+  width: max-content; /* the box hugs the ⚓ so pinning its edge is exact */
   top: 0;
   font-size: 0.9em;
   line-height: inherit;
