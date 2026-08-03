@@ -91,10 +91,15 @@ const psql = (sql) => execSync(
   check('mode exits after apply', modeOff);
   // deleted sentences vanish from the effective preview
   const gone = await page.evaluate((ids) => {
-    const present = new Set([...document.querySelectorAll('.sentence[data-sentence-id]')].map(e => e.dataset.sentenceId));
-    return ids.every(id => !present.has(id));
+    return ids.map((id) => {
+      const el = document.querySelector(`.sentence[data-sentence-id="${id}"]`);
+      if (!el) return { id, present: false };
+      const cs = getComputedStyle(el);
+      return { id, present: true, struck: el.classList.contains('suggested-delete') && cs.textDecorationLine.includes('line-through'), hasText: el.textContent.trim().length > 0 };
+    });
   }, pair.between);
-  check('range disappears from the effective render', gone);
+  check('range sentences STILL RENDER (deletion is a proposal, not applied)', gone.every(g => g.present && g.hasText), gone.filter(g => !g.present).map(g => g.id));
+  check('every range sentence shows red strikethrough', gone.every(g => g.struck));
 
   // Escape exits a fresh selection without applying
   await page.evaluate(() => window.WriteSysRenderer.scrollToSentence && null);

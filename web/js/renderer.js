@@ -416,7 +416,12 @@ const WriteSysRenderer = {
       const id = s.id;
       const committed = s.text;
       const suggestion = sugMap[id]; // undefined if none
-      const rawEffective = (suggestion !== undefined) ? suggestion : committed;
+      // An EMPTY suggestion is a pending DELETION proposal (range-delete,
+      // emptied suggest-edit). It must render as a proposal — the committed
+      // text struck through in red — not disappear as if already applied.
+      const isDeleteProposal = suggestion !== undefined
+        && String(suggestion).trim() === '' && String(committed).trim() !== '';
+      const rawEffective = (suggestion !== undefined && !isDeleteProposal) ? suggestion : committed;
       // Canonicalize per sentence BEFORE segmenting so the preview is truthful:
       // a leading anchor blocks out (⚓ + outline entry), an inline-typed
       // command gains its block form, whitespace tidies. Same canonicalize the
@@ -496,7 +501,7 @@ const WriteSysRenderer = {
         let cls = f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : '');
         const body = this.stripLeadingMarker(pieceText);
         let inner;
-        if (suggestion !== undefined && loneProse) {
+        if (suggestion !== undefined && loneProse && !isDeleteProposal) {
           // A pure prose edit → word-level diff vs. the committed prose, then
           // render any inline &reference/&anchor tokens that survived the diff
           // as links/markers (they're escaped as &amp;… in the diff HTML).
@@ -509,7 +514,8 @@ const WriteSysRenderer = {
         } else {
           inner = this.applyInlineFormatting(body);
         }
-        const sugClass = (suggestion !== undefined) ? ' has-suggestion' : '';
+        const sugClass = (suggestion !== undefined ? ' has-suggestion' : '')
+          + (isDeleteProposal ? ' suggested-delete' : '');
         let span = `<span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${inner}</span>`;
         // Pending margin glyphs attach to THIS paragraph, absolutely placed
         // in the left margin aligned to its top; the carried break class wins
