@@ -616,7 +616,9 @@ h3 {
 p.has-anchor-margin {
   position: relative;
 }
-.cmd-anchor-margin {
+/* Compound selector: the glyph also carries .sentence (position: relative,
+   later in this file) — two classes outrank it so absolute actually wins. */
+.cmd-anchor-glyph.cmd-anchor-margin {
   position: absolute;
   /* OFF the page sheet: the page's left margin is 0.5in (@page), so this
      clears it into the grey gutter between the outline and the page edge. */
@@ -631,7 +633,7 @@ p.has-anchor-margin {
    (no top → static y position). Paragraphs are positioning contexts so the
    absolute glyph resolves against its own paragraph. */
 .pagedjs_page_content p { position: relative; }
-.cmd-anchor-margin-inline { top: auto; }
+.cmd-anchor-glyph.cmd-anchor-margin-inline { top: auto; }
 
 /* &meta settings (TEX_COMMANDS_PLAN.md §5.5). Book-wide toggles applied as
    body[data-*] attributes by the renderer. */

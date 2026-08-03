@@ -455,13 +455,10 @@ const WriteSysRenderer = {
               f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : ''));
             continue;
           }
-          // &end: never shown in the preview (the raw text keeps it) — but its
-          // marker still carries (a region often ends right before a break).
-          if (f.cmd.kind === 'end') {
-            pendingCarriedCls = strongestCls(pendingCarriedCls,
-              f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : ''));
-            continue;
-          }
+          // &end: never shown in the preview (the raw text keeps it), and it
+          // carries NOTHING — its preceding marker separated the content from
+          // the terminator; the next sentence brings its own break.
+          if (f.cmd.kind === 'end') continue;
           // Otherwise a block command fragment → render its result, no diff.
           // &meta renders nothing. All share this sentence's id.
           flush();
@@ -469,9 +466,31 @@ const WriteSysRenderer = {
           if (html) out.push(html);
           continue;
         }
-        // Prose fragment.
+        // Prose fragment. TRAILING inline anchors/snippets (the tight
+        // canonize form leaves "…prev.\n&snippet#id{label}" at a piece's end)
+        // introduce what FOLLOWS — promote them to the next paragraph's
+        // margin glyph instead of letting them dangle (and wrap) at the tail
+        // of the previous line. Trailing &end tokens just vanish.
+        let pieceText = f.text;
+        const promotedGlyphs = []; // become pending only AFTER this piece's own attach check
+        if (window.WriteSysCommand && window.WriteSysCommand.findInline) {
+          for (;;) {
+            const cmds = window.WriteSysCommand.findInline(pieceText);
+            if (!cmds.length) break;
+            const last = cmds[cmds.length - 1];
+            const chars = Array.from(pieceText);
+            const tail = chars.slice(last.end).join('');
+            if (tail.trim() !== '') break; // genuinely mid-text — leave inline
+            if (last.kind === 'anchor' || last.kind === 'snippet') {
+              promotedGlyphs.push({ cmd: last, id, changed: suggestion !== undefined });
+            } else if (last.kind !== 'end') {
+              break; // references/placeholders stay in the flow
+            }
+            pieceText = chars.slice(0, last.start).join('').replace(/\s+$/, '');
+          }
+        }
         let cls = f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : '');
-        const body = this.stripLeadingMarker(f.text);
+        const body = this.stripLeadingMarker(pieceText);
         let inner;
         if (suggestion !== undefined && loneProse) {
           // A pure prose edit → word-level diff vs. the committed prose, then
@@ -494,10 +513,23 @@ const WriteSysRenderer = {
         cls = strongestCls(cls, pendingCarriedCls);
         pendingCarriedCls = '';
         if (pendingMarginGlyphs.length) {
-          span = pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, /*margin*/ true)).join('') + span;
-          cls = (cls ? cls + ' ' : '') + 'has-anchor-margin';
+          const glyphs = pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, /*margin*/ true)).join('');
           pendingMarginGlyphs = [];
+          if (!cls && openP) {
+            // Mid-paragraph: the glyphs join the OPEN paragraph — never force
+            // a paragraph break just to host a marker.
+            openP.spans.push(glyphs);
+            if (openP.cls.indexOf('has-anchor-margin') === -1) {
+              openP.cls = (openP.cls ? openP.cls + ' ' : '') + 'has-anchor-margin';
+            }
+            if (promotedGlyphs.length) pendingMarginGlyphs.push(...promotedGlyphs);
+            pushProse(cls, span);
+            continue;
+          }
+          span = glyphs + span;
+          cls = (cls ? cls + ' ' : '') + 'has-anchor-margin';
         }
+        if (promotedGlyphs.length) pendingMarginGlyphs.push(...promotedGlyphs);
         pushProse(cls, span);
       }
     }
