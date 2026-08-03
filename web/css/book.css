@@ -2903,10 +2903,18 @@ p.section-break {
 }
 /* While a range is live, the canonize + affordances get out of the way. */
 body.range-delete-mode .import-zone { display: none !important; }
+/* While a range is active, native text selection stays off in the book —
+   our red range highlight is the only selection visual. */
+body.range-delete-mode .pagedjs_pages {
+  -webkit-user-select: none;
+  user-select: none;
+}
 /* The persistent red trash circle in the left gutter (import-tab geometry,
    red family; house two-click confirm). */
 .range-trash {
   position: absolute;
+  /* left/top are pre-layout initials — showTrash() measures the sheet edge
+     and pins the button into the gutter, centered on the range. */
   left: -30px;
   top: 0;
   width: 22px;

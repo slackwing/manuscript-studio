@@ -43,15 +43,38 @@ const psql = (sql) => execSync(
   await page.locator(`.sentence[data-sentence-id="${pair.bId}"]`).first().click({ modifiers: ['Shift'] });
   await page.waitForTimeout(400);
 
-  const mode = await page.evaluate(() => ({
-    selected: new Set([...document.querySelectorAll('.sentence.range-selected')].map(e => e.dataset.sentenceId)).size,
-    modeOn: document.body.classList.contains('range-delete-mode'),
-    trash: document.querySelectorAll('.range-trash').length,
-    plusHidden: [...document.querySelectorAll('.import-zone')].every(z => getComputedStyle(z).display === 'none'),
-  }));
+  const mode = await page.evaluate(() => {
+    const trashEl = document.querySelector('.range-trash');
+    let trashGeom = null;
+    if (trashEl) {
+      const tr = trashEl.getBoundingClientRect();
+      const sheet = trashEl.closest('.pagedjs_sheet') || trashEl.closest('.pagedjs_page');
+      const sr = sheet.getBoundingClientRect();
+      const sel = [...document.querySelectorAll('.sentence.range-selected')]
+        .filter((el) => (el.closest('.pagedjs_sheet') || el.closest('.pagedjs_page')) === sheet)
+        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0);
+      const top = Math.min(...sel.map((r) => r.top));
+      const bottom = Math.max(...sel.map((r) => r.bottom));
+      trashGeom = {
+        rightVsSheet: Math.round(tr.right - sr.left),          // < 0: fully in the gutter
+        centerOffset: Math.round((tr.top + tr.bottom) / 2 - (top + bottom) / 2), // ≈ 0: centered on range
+      };
+    }
+    return {
+      selected: new Set([...document.querySelectorAll('.sentence.range-selected')].map(e => e.dataset.sentenceId)).size,
+      modeOn: document.body.classList.contains('range-delete-mode'),
+      trash: document.querySelectorAll('.range-trash').length,
+      plusHidden: [...document.querySelectorAll('.import-zone')].every(z => getComputedStyle(z).display === 'none'),
+      nativeSelection: String(window.getSelection() || ''),
+      trashGeom,
+    };
+  });
   check('range highlighted', mode.selected === pair.between.length, `${mode.selected}/${pair.between.length}`);
   check('mode on + red trash shown', mode.modeOn && mode.trash === 1);
   check('+ affordances hidden in mode', mode.plusHidden);
+  check('NO native text selection after shift-click', mode.nativeSelection === '', mode.nativeSelection.slice(0, 40));
+  check('trash fully off the sheet, in the gutter', mode.trashGeom && mode.trashGeom.rightVsSheet < 0, mode.trashGeom);
+  check('trash vertically centered on the range (±8px)', mode.trashGeom && Math.abs(mode.trashGeom.centerOffset) <= 8, mode.trashGeom);
 
   // first click arms, second applies
   await page.locator('.range-trash').click();

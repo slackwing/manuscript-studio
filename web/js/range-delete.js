@@ -24,6 +24,17 @@ const WriteSysRangeDelete = {
     // Capture phase: sentence spans live inside paged.js content; suggestion
     // click handlers also listen — we only act on shift-clicks, and swallow
     // them so the suggest-edit modal doesn't also fire.
+    // Native shift-click selection starts at MOUSEDOWN — before our click
+    // handler can act — and sweeps from wherever the browser's caret last
+    // was, even across the outline. Swallow it for shift-clicks in the book
+    // so only our range highlight shows.
+    document.addEventListener('mousedown', (e) => {
+      if (!e.shiftKey) return;
+      if (!(e.target.closest && e.target.closest('.pagedjs_pages'))) return;
+      e.preventDefault();
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) sel.removeAllRanges();
+    }, true);
     document.addEventListener('click', (e) => {
       const span = e.target.closest && e.target.closest('.sentence[data-sentence-id]');
       if (!span) {
@@ -63,6 +74,10 @@ const WriteSysRangeDelete = {
     const set = new Set(this.range);
     document.querySelectorAll('.sentence[data-sentence-id]').forEach((el) => {
       if (set.has(el.dataset.sentenceId)) el.classList.add('range-selected');
+      // The app's own click-select may have grayed a sentence under the
+      // pointer (wrapped spans have big hitboxes) — the range is the only
+      // selection visual while the mode is on.
+      el.classList.remove('selected');
     });
     document.body.classList.add('range-delete-mode');
     this.showTrash();
@@ -95,6 +110,27 @@ const WriteSysRangeDelete = {
       this.apply();
     });
     host.appendChild(btn);
+    // Like the gutter anchors: MEASURED off the sheet (never computed from
+    // margin guesses), vertically centered on the selection range — the
+    // portion of it on this page.
+    const sheet = first.closest('.pagedjs_sheet') || first.closest('.pagedjs_page');
+    const selected = [...document.querySelectorAll('.sentence.range-selected')]
+      .filter((el) => (el.closest('.pagedjs_sheet') || el.closest('.pagedjs_page')) === sheet);
+    if (sheet && selected.length) {
+      const sr = sheet.getBoundingClientRect();
+      let top = Infinity, bottom = -Infinity;
+      selected.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.height === 0) return;
+        top = Math.min(top, r.top);
+        bottom = Math.max(bottom, r.bottom);
+      });
+      const hr = host.getBoundingClientRect();
+      const scale = host.offsetWidth ? hr.width / host.offsetWidth : 1;
+      const br = btn.getBoundingClientRect();
+      btn.style.left = `${(sr.left - 6 * scale - br.width - hr.left) / scale}px`;
+      btn.style.top = `${((top + bottom) / 2 - br.height / 2 - hr.top) / scale}px`;
+    }
     this.btn = btn;
   },
 
