@@ -89,10 +89,13 @@ function resetMeta() {
   // --- seed 11 days of history: 1000 → 2000 words, linear ---
   for (let i = 10; i >= 0; i--) {
     const total = 1000 + (10 - i) * 100;
-    psql(`INSERT INTO wordcount_history (manuscript_id, day, words_committed, words_effective, words_snippets)
-          VALUES (${TEST_MANUSCRIPT_ID}, CURRENT_DATE - ${i}, ${total}, ${total}, 0)
+    const avg = 100 + (10 - i) * 3;
+    const p30 = 40 + (10 - i) * 8;
+    psql(`INSERT INTO wordcount_history (manuscript_id, day, words_committed, words_effective, words_snippets, rate_average, rate_past_30d, projected_end)
+          VALUES (${TEST_MANUSCRIPT_ID}, CURRENT_DATE - ${i}, ${total}, ${total}, 0, ${avg}, ${p30}, CURRENT_DATE + 120)
           ON CONFLICT (manuscript_id, day) DO UPDATE SET words_committed = EXCLUDED.words_committed,
-            words_effective = EXCLUDED.words_effective, words_snippets = EXCLUDED.words_snippets`);
+            words_effective = EXCLUDED.words_effective, words_snippets = EXCLUDED.words_snippets,
+            rate_average = EXCLUDED.rate_average, rate_past_30d = EXCLUDED.rate_past_30d, projected_end = EXCLUDED.projected_end`);
   }
 
   // --- browser ---
@@ -153,6 +156,16 @@ function resetMeta() {
   await page.locator('#stats-margin .stats-hit[data-series="avg"]').click({ force: true });
   const avgShown = await page.locator('.stats-finish-marker[data-for="avg"]').evaluate(g => g.style.display !== 'none');
   check('click/tap reveals the marker', avgShown === true);
+
+  // Second graph: the per-day rate history (red past-30d, blue average),
+  // boxed, label-free.
+  const rateSvgs = await page.locator('#stats-margin .stats-rate-graph svg').count();
+  check('rate graph renders below the progress graph', rateSvgs === 1);
+  const rateLines = await page.locator('#stats-margin .stats-rate-graph polyline').evaluateAll(
+    els => els.map(e => e.getAttribute('stroke')).sort());
+  check('rate graph plots red past-30d + blue average', rateLines.join(',') === '#4b8ec9,#c0392b', rateLines.join(','));
+  const rateTexts = await page.locator('#stats-margin .stats-rate-graph text').count();
+  check('rate graph has no labels at all', rateTexts === 0, `texts=${rateTexts}`);
   const avgText = await page.locator('#stats-margin .stats-pane').innerText();
   check('average words/day shown', /AVERAGE/.test(avgText) && /words\/day/.test(avgText));
   check('PAST 30D and 1Y RATE rows shown', /PAST 30D/.test(avgText) && /1Y RATE/.test(avgText), avgText.replace(/\n/g, ' | '));

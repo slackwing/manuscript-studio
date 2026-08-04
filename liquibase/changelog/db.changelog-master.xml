@@ -30,5 +30,6 @@
     <include file="changelog/021-scratchpad-manuscript-link.xml"/>
     <include file="changelog/022-sketch-state.xml"/>
     <include file="changelog/023-manuscript-birthday-goal.xml"/>
+    <include file="changelog/024-wordcount-rates.xml"/>
 
 </databaseChangeLog>

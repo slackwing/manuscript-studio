@@ -112,7 +112,32 @@ const REP_WORDS = 9;
     check('history endpoint enabled', hist.enabled === true);
     const today = (hist.rows || [])[hist.rows.length - 1];
     check('history endpoint returns today\'s row', today && today.words_snippets === REP_WORDS);
+
+    // --- per-day rates (024): NULL without a birthday; computed with one ---
+    check('rates are null while no birthday is set', today && today.rate_average === null && today.projected_end === null,
+      today && `avg=${today.rate_average}`);
+    const metaResp = await authed(`/manuscripts/${TEST_MANUSCRIPT_ID}/meta`, {
+      method: 'PATCH', body: JSON.stringify({ birthday: '2026-01-01' }),
+    });
+    check('birthday set for rate compute', metaResp.ok, `status ${metaResp.status}`);
+    await admin('/admin/wordcount-compute', { method: 'POST' });
+    const hist2 = await (await authed(`/manuscripts/${TEST_MANUSCRIPT_ID}/wordcount-history`)).json();
+    const today2 = (hist2.rows || [])[hist2.rows.length - 1];
+    check('rate_average computed on today\'s row', today2 && today2.rate_average > 0, today2 && `avg=${today2.rate_average}`);
+    check('rate_past_30d computed', today2 && today2.rate_past_30d !== null, today2 && `p30=${today2.rate_past_30d}`);
+    check('projected_end computed while goal is ahead', today2 && typeof today2.projected_end === 'string',
+      today2 && `end=${today2.projected_end}`);
   } finally {
+    // PATCH can't null a birthday — reset the fixture's meta and rates in
+    // SQL so reruns start from the no-birthday state again.
+    const { execSync } = require('child_process');
+    const psql = (sql) => execSync(
+      `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
+      { encoding: 'utf-8', stdio: 'pipe' });
+    try {
+      psql(`UPDATE manuscript SET birthday = NULL, word_goal = 40000 WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}`);
+      psql(`UPDATE wordcount_history SET rate_average = NULL, rate_past_30d = NULL, projected_end = NULL WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}`);
+    } catch (e) { /* best effort */ }
     // cleanupTestAnnotations wipes this user's snippets/variations; then
     // recompute so the table stays consistent for other consumers.
     await cleanupTestAnnotations();

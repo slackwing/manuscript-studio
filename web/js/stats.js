@@ -94,6 +94,8 @@ const WriteSysStats = {
     const rows = (d.rows || []).map(r => ({
       t: this.parseDay(r.day),
       total: (r.words_effective || 0) + (r.words_snippets || 0),
+      avg: r.rate_average,
+      trend: r.rate_past_30d,
     })).sort((a, b) => a.t - b.t);
     const birthT = d.birthday ? this.parseDay(d.birthday) : null;
     const goal = d.word_goal || 40000;
@@ -114,6 +116,9 @@ const WriteSysStats = {
       m.avgCrossT = cross(m.avgRate);
       m.trendCrossT = cross(m.trendRate);
     }
+    // The per-day rates the cron froze (024) — the rate graph's series.
+    // Days from before the cron tracked rates simply have none.
+    m.ratePts = rows.filter(r => r.avg != null && r.trend != null);
     return m;
   },
 
@@ -147,6 +152,9 @@ const WriteSysStats = {
       graphHTML = '<div class="stats-empty">No word-count history yet.</div>';
     } else {
       graphHTML = `<div class="stats-graph">${this.buildGraph(m)}</div>`;
+      if (m.ratePts.length >= 2) {
+        graphHTML += `<div class="stats-graph stats-rate-graph">${this.buildRateGraph(m)}</div>`;
+      }
     }
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}</div>`;
@@ -229,6 +237,35 @@ const WriteSysStats = {
     // No x-axis labels: the birthday is in the header rows above, and each
     // line's projected finish appears via its hover/tap drop marker.
 
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
+  },
+
+  // buildRateGraph: the pace-over-time companion below the progress graph.
+  // Same boxed style, NO labels at all — it reads as relative shape. Red is
+  // the past-30d pace, blue the average, each day's value as frozen by the
+  // cron. X spans birthday → today (the right edge is today, where the
+  // progress graph's projections take over); days before rate tracking
+  // simply have no line.
+  buildRateGraph(m) {
+    const w = Math.max(180, (this.el.clientWidth || 280) - 30);
+    const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
+    const h = isBar ? 56 : 84;
+    const padL = 6, padR = 6, padT = 6, padB = 6;
+
+    const xMin = m.birthT, xMax = Math.max(this.todayT(), xMin + this.DAY);
+    let yMax = 1;
+    for (const p of m.ratePts) yMax = Math.max(yMax, p.avg, p.trend);
+    yMax *= 1.05;
+    const X = t => padL + ((t - xMin) / (xMax - xMin)) * (w - padL - padR);
+    const Y = v => (h - padB) - (Math.max(0, v) / yMax) * (h - padB - padT);
+
+    const pts = (key) => m.ratePts
+      .filter(p => p.t <= xMax)
+      .map(p => `${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
+    const parts = [];
+    parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
+    parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="1.4"/>`);
+    parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="1.4"/>`);
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },
 

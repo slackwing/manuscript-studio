@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Per-day writing rates (STATS_PLAN), computed by the hourly wordcount
+         cron alongside the totals. Today's row is overwritten in place each
+         run (so a day keeps its LAST computed values); historical rows are
+         filled only while their rates are NULL — which doubles as the
+         backfill on the first run after this deploys. All NULLable: no
+         birthday = no rates.
+           rate_average   — words/day since the manuscript's birthday
+           rate_past_30d  — slope across the trailing 30 days of history
+           projected_end  — the day the goal lands at rate_average, as
+                            projected ON THAT DAY -->
+    <changeSet id="024-wordcount-rates" author="claude">
+        <addColumn tableName="wordcount_history">
+            <column name="rate_average" type="DOUBLE PRECISION"/>
+            <column name="rate_past_30d" type="DOUBLE PRECISION"/>
+            <column name="projected_end" type="DATE"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

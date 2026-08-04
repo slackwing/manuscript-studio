@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/slackwing/manuscript-studio/internal/sentence"
@@ -10,14 +11,19 @@ import (
 
 // WordcountRow is one day's wordcount for one manuscript, aggregated across
 // ALL users (only authors can suggest or link snippets, so this is the
-// combined progress of everyone writing toward the book).
+// combined progress of everyone writing toward the book). The rate columns
+// (024-wordcount-rates) are that day's writing pace as computed ON that
+// day — nil while the manuscript has no birthday.
 type WordcountRow struct {
-	ManuscriptID   int       `json:"manuscript_id"`
-	Day            time.Time `json:"day"`
-	WordsCommitted int       `json:"words_committed"`
-	WordsEffective int       `json:"words_effective"`
-	WordsSnippets  int       `json:"words_snippets"`
-	ComputedAt     time.Time `json:"computed_at"`
+	ManuscriptID   int        `json:"manuscript_id"`
+	Day            time.Time  `json:"day"`
+	WordsCommitted int        `json:"words_committed"`
+	WordsEffective int        `json:"words_effective"`
+	WordsSnippets  int        `json:"words_snippets"`
+	ComputedAt     time.Time  `json:"computed_at"`
+	RateAverage    *float64   `json:"rate_average"`
+	RatePast30d    *float64   `json:"rate_past_30d"`
+	ProjectedEnd   *time.Time `json:"projected_end"`
 }
 
 // Total is the headline number: the effective book (committed with pending
@@ -25,6 +31,52 @@ type WordcountRow struct {
 // A canonized snippet's text lives in the book as a suggestion, so it is
 // counted by WordsEffective and excluded from WordsSnippets — never both.
 func (r WordcountRow) Total() int { return r.WordsEffective + r.WordsSnippets }
+
+// ComputeRates derives each day's rate columns from the totals history —
+// the same math the stats pane uses live, frozen per day:
+//   rate_average  = total ÷ days since birthday (floor 1)
+//   rate_past_30d = slope across the recorded rows in the trailing 30 days
+//                   (the average stands in when the window has no slope)
+//   projected_end = day + (goal − total) ÷ rate_average, only while the
+//                   goal is ahead and the pace is positive
+// Pure: rows must be day-ascending; a nil birthday yields no rates.
+func ComputeRates(rows []WordcountRow, birthday *time.Time, goal int) []WordcountRow {
+	out := make([]WordcountRow, len(rows))
+	copy(out, rows)
+	if birthday == nil {
+		return out
+	}
+	for i := range out {
+		day := out[i].Day
+		total := float64(out[i].Total())
+		days := day.Sub(*birthday).Hours() / 24
+		if days < 1 {
+			days = 1
+		}
+		avg := total / days
+		trend := avg
+		winStart := day.AddDate(0, 0, -30)
+		j := 0
+		for j <= i && out[j].Day.Before(winStart) {
+			j++
+		}
+		if j < i {
+			span := out[i].Day.Sub(out[j].Day).Hours() / 24
+			if span >= 1 {
+				trend = (total - float64(out[j].Total())) / span
+			}
+		}
+		avgCopy, trendCopy := avg, trend
+		out[i].RateAverage = &avgCopy
+		out[i].RatePast30d = &trendCopy
+		out[i].ProjectedEnd = nil
+		if avg > 0 && total < float64(goal) {
+			end := day.AddDate(0, 0, int(math.Ceil((float64(goal)-total)/avg)))
+			out[i].ProjectedEnd = &end
+		}
+	}
+	return out
+}
 
 // ComputeWordcountHistory computes today's row for every manuscript with a
 // completed migration and upserts it (keyed by manuscript + day, so hourly
@@ -72,25 +124,31 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		return nil, err
 	}
 
-	midRows, err := db.Pool.Query(ctx, `SELECT manuscript_id FROM manuscript ORDER BY manuscript_id`)
+	midRows, err := db.Pool.Query(ctx, `SELECT manuscript_id, birthday, word_goal FROM manuscript ORDER BY manuscript_id`)
 	if err != nil {
 		return nil, fmt.Errorf("list manuscripts: %w", err)
 	}
 	defer midRows.Close()
-	var mids []int
+	type msMeta struct {
+		id       int
+		birthday *time.Time
+		goal     int
+	}
+	var metas []msMeta
 	for midRows.Next() {
-		var id int
-		if err := midRows.Scan(&id); err != nil {
+		var m msMeta
+		if err := midRows.Scan(&m.id, &m.birthday, &m.goal); err != nil {
 			return nil, err
 		}
-		mids = append(mids, id)
+		metas = append(metas, m)
 	}
 	if err := midRows.Err(); err != nil {
 		return nil, err
 	}
 
 	var out []WordcountRow
-	for _, mid := range mids {
+	for _, meta := range metas {
+		mid := meta.id
 		mig, err := db.GetLatestMigration(ctx, mid)
 		if err != nil || mig == nil {
 			continue // no completed migration yet — nothing to count
@@ -149,6 +207,31 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		`, mid, committed, effective, row.WordsSnippets, day).Scan(&row.Day, &row.ComputedAt); err != nil {
 			return nil, fmt.Errorf("upsert wordcount for manuscript %d: %w", mid, err)
 		}
+		// Rates: recompute TODAY's row every run (last write of the day
+		// sticks); fill a historical row only while its rates are NULL —
+		// which is also the one-time backfill after 024 deploys. Past days
+		// stay frozen at whatever goal/birthday was current back then.
+		hist, err := db.ListWordcountHistory(ctx, mid)
+		if err != nil {
+			return nil, fmt.Errorf("list history for rates %d: %w", mid, err)
+		}
+		rated := ComputeRates(hist, meta.birthday, meta.goal)
+		for i := range rated {
+			isToday := rated[i].Day.Format("2006-01-02") == day
+			if hist[i].RateAverage != nil && !isToday {
+				continue
+			}
+			if rated[i].RateAverage == nil && hist[i].RateAverage == nil {
+				continue // nothing to write (no birthday)
+			}
+			if _, err := db.Pool.Exec(ctx, `
+				UPDATE wordcount_history
+				SET rate_average = $3, rate_past_30d = $4, projected_end = $5
+				WHERE manuscript_id = $1 AND day = $2
+			`, mid, rated[i].Day, rated[i].RateAverage, rated[i].RatePast30d, rated[i].ProjectedEnd); err != nil {
+				return nil, fmt.Errorf("update rates for manuscript %d day %s: %w", mid, rated[i].Day.Format("2006-01-02"), err)
+			}
+		}
 		out = append(out, row)
 	}
 	return out, nil
@@ -160,10 +243,10 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 func (db *DB) GetLatestWordcount(ctx context.Context, manuscriptID int) (*WordcountRow, error) {
 	var r WordcountRow
 	err := db.Pool.QueryRow(ctx, `
-		SELECT manuscript_id, day, words_committed, words_effective, words_snippets, computed_at
+		SELECT manuscript_id, day, words_committed, words_effective, words_snippets, computed_at, rate_average, rate_past_30d, projected_end
 		FROM wordcount_history WHERE manuscript_id = $1
 		ORDER BY day DESC LIMIT 1
-	`, manuscriptID).Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSnippets, &r.ComputedAt)
+	`, manuscriptID).Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSnippets, &r.ComputedAt, &r.RateAverage, &r.RatePast30d, &r.ProjectedEnd)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
 			return nil, nil
@@ -177,7 +260,7 @@ func (db *DB) GetLatestWordcount(ctx context.Context, manuscriptID int) (*Wordco
 // order — the wordcount-over-time graph's data.
 func (db *DB) ListWordcountHistory(ctx context.Context, manuscriptID int) ([]WordcountRow, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT manuscript_id, day, words_committed, words_effective, words_snippets, computed_at
+		SELECT manuscript_id, day, words_committed, words_effective, words_snippets, computed_at, rate_average, rate_past_30d, projected_end
 		FROM wordcount_history WHERE manuscript_id = $1
 		ORDER BY day ASC
 	`, manuscriptID)
@@ -188,7 +271,7 @@ func (db *DB) ListWordcountHistory(ctx context.Context, manuscriptID int) ([]Wor
 	out := []WordcountRow{}
 	for rows.Next() {
 		var r WordcountRow
-		if err := rows.Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSnippets, &r.ComputedAt); err != nil {
+		if err := rows.Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSnippets, &r.ComputedAt, &r.RateAverage, &r.RatePast30d, &r.ProjectedEnd); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
