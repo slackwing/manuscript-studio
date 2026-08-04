@@ -9,8 +9,9 @@
  *   blue  solid  — extrapolation at the average-since-birthday pace
  *   purple solid — the pace needed to reach the goal one year from today
  *
- * No legend — hovering a line says what it means, its rate, and its
- * expected finish day; hovering the actual series shows that day's count.
+ * No legend, no labels, no tooltips: hovering (or tapping, on mobile) an
+ * extrapolation reveals a same-color dotted drop to the axis captioned
+ * "May 27, 2027 @ 271 wpd" — that caption is the whole hint.
  * Palette (#c0392b/#4b8ec9/#6b2fa0 on #f5f5f5) is CVD-validated.
  */
 const WriteSysStats = {
@@ -156,7 +157,7 @@ const WriteSysStats = {
     const w = Math.max(180, (this.el.clientWidth || 280) - 30);
     const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
     const h = isBar ? 96 : 150;
-    const padL = 6, padR = 6, padT = 14, padB = 24;
+    const padL = 6, padR = 6, padT = 14, padB = 10;
 
     const cap = m.last.t + 3 * 365 * this.DAY; // don't let a slow pace stretch the axis for years
     const xEnds = [m.last.t + 365 * this.DAY];
@@ -171,12 +172,11 @@ const WriteSysStats = {
     const line = (x1, y1, x2, y2, color, width, dash, cls) =>
       `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}${cls ? ` class="${cls}"` : ''}/>`;
 
-    // Axes (plain, recessive) + goal gridline + y labels.
-    parts.push(line(padL, Y(0), w - padR, Y(0), '#cccccc', 1));
-    parts.push(line(padL, padT, padL, Y(0), '#cccccc', 1));
+    // Boxed axes (recessive), goal gridline, and the goal number tucked
+    // just below the top edge. No "0" — the bottom edge speaks for itself.
+    parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${(Y(0) - padT).toFixed(1)}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
     parts.push(line(padL, Y(m.goal), w - padR, Y(m.goal), '#dddddd', 1, '2 3'));
-    parts.push(`<text x="${padL + 3}" y="${Y(m.goal) - 3}" font-size="8" fill="#999">${this.fmtNum(m.goal)}</text>`);
-    parts.push(`<text x="${padL + 3}" y="${h - padB + 9}" font-size="8" fill="#999">0</text>`);
+    parts.push(`<text x="${padL + 4}" y="${padT + 10}" font-size="8" fill="#999">${this.fmtNum(m.goal)}</text>`);
 
     // Assumed ramp: birthday (0 words) to the first recorded day — dotted,
     // in the actual series' color, since it's the same story minus the data.
@@ -186,7 +186,6 @@ const WriteSysStats = {
     // Actual series.
     const pts = m.rows.map(r => `${X(r.t).toFixed(1)},${Y(r.total).toFixed(1)}`).join(' ');
     parts.push(`<polyline points="${pts}" fill="none" stroke="${this.COLOR_ACTUAL}" stroke-width="1.6"/>`);
-    parts.push(`<polyline points="${pts}" fill="none" stroke="transparent" stroke-width="10" class="stats-hit" data-series="actual"/>`);
 
     // Extrapolations, all anchored at the latest actual point. Each gets a
     // fat transparent twin for hovering. endAt() clips a rising line to the
@@ -205,68 +204,40 @@ const WriteSysStats = {
     }
     for (const e of extras) {
       parts.push(line(anchorX, anchorY, e.end.x, e.end.y, e.color, 1.4, e.dash));
+      // Hidden until its line is hovered: a same-color dotted drop from the
+      // line's end to the axis, captioned "May 27, 2027 @ 271 wpd" beside it
+      // just above y=0. That caption is the WHOLE hint — no tooltips.
+      const dateT = e.key === 'need' ? m.last.t + 365 * this.DAY : e.crossT;
+      const caption = `${dateT != null ? this.fmtDayLong(dateT) : ''} @ ${this.fmtNum(e.rate)} wpd`;
+      const nearRight = e.end.x > w - 130;
+      parts.push(`<g class="stats-finish-marker" data-for="${e.key}" style="display:none">` +
+        line(e.end.x, e.end.y, e.end.x, Y(0), e.color, 1, '2 3') +
+        `<text x="${(nearRight ? e.end.x - 4 : e.end.x + 4).toFixed(1)}" y="${(Y(0) - 4).toFixed(1)}" font-size="8" fill="${e.color}" text-anchor="${nearRight ? 'end' : 'start'}">${caption}</text>` +
+        `</g>`);
       parts.push(`<line x1="${anchorX.toFixed(1)}" y1="${anchorY.toFixed(1)}" x2="${e.end.x.toFixed(1)}" y2="${e.end.y.toFixed(1)}" stroke="transparent" stroke-width="10" class="stats-hit" data-series="${e.key}"/>`);
     }
 
-    // X labels: only the birthday and the CURRENT extrapolated finish day
-    // (recent pace when it projects a finish, else the average) — exact
-    // dates for every line live in the hover.
-    const xLabel = (t, anchorMode) =>
-      `<text x="${Math.min(Math.max(X(t), padL), w - padR).toFixed(1)}" y="${h - 3}" font-size="8" fill="#999" text-anchor="${anchorMode}">${this.fmtDay(t, true)}</text>`;
-    parts.push(xLabel(m.birthT, 'start'));
-    const finishT = (m.trendCrossT != null && m.trendCrossT <= xMax) ? m.trendCrossT
-      : (m.avgCrossT != null && m.avgCrossT <= xMax) ? m.avgCrossT : null;
-    if (finishT != null && X(finishT) - X(m.birthT) > 50) {
-      parts.push(xLabel(finishT, X(finishT) > w - 50 ? 'end' : 'middle'));
-    }
+    // No x-axis labels: the birthday is in the header rows above, and each
+    // line's projected finish appears via its hover/tap drop marker.
 
-    this._graphModel = m; // for tooltips
-    this._graphGeom = { xMin, xMax, w, padL, padR };
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },
 
-  // ---- hover tooltips -------------------------------------------------
+  // ---- finish-drop markers (hover on desktop, tap on mobile) -----------
   wireHover() {
     const svg = this.el.querySelector('.stats-graph svg');
     if (!svg) return;
-    let tip = document.getElementById('stats-tip');
-    if (!tip) {
-      tip = document.createElement('div');
-      tip.id = 'stats-tip';
-      document.body.appendChild(tip);
-    }
-    const m = this._graphModel;
-    // Each extrapolation's hover: what it means · its rate · expected
-    // finish day (the only place the exact dates live — there's no legend).
-    const finish = (t) => (t != null ? ` · finish ${this.fmtDay(t, true)}` : '');
-    const text = (series, evt) => {
-      if (series === 'trend') {
-        return `recent pace (last 30 days) · ${this.fmtNum(m.trendRate)} words/day${finish(m.trendCrossT)}`;
-      }
-      if (series === 'avg') {
-        return `average since birthday · ${this.fmtNum(m.avgRate)} words/day${finish(m.avgCrossT)}`;
-      }
-      if (series === 'need') {
-        return `needed to finish in 1 year · ${this.fmtNum(m.needRate)} words/day${finish(m.last.t + 365 * this.DAY)}`;
-      }
-      // actual: nearest recorded day to the pointer.
-      const g = this._graphGeom;
-      const rect = svg.getBoundingClientRect();
-      const px = ((evt.clientX - rect.left) / rect.width) * g.w;
-      const t = g.xMin + ((px - g.padL) / (g.w - g.padL - g.padR)) * (g.xMax - g.xMin);
-      let nearest = m.rows[0];
-      for (const r of m.rows) if (Math.abs(r.t - t) < Math.abs(nearest.t - t)) nearest = r;
-      return `${this.fmtDay(nearest.t, true)} · ${this.fmtNum(nearest.total)} words`;
-    };
+    const markerFor = (key) => svg.querySelector(`.stats-finish-marker[data-for="${key}"]`);
+    const hideAll = () => svg.querySelectorAll('.stats-finish-marker').forEach(g => { g.style.display = 'none'; });
+    const show = (key) => { hideAll(); const mk = markerFor(key); if (mk) mk.style.display = ''; };
     svg.querySelectorAll('.stats-hit').forEach(hit => {
-      hit.addEventListener('mousemove', (evt) => {
-        tip.textContent = text(hit.dataset.series, evt);
-        tip.style.display = 'block';
-        tip.style.left = `${Math.min(evt.clientX + 12, window.innerWidth - tip.offsetWidth - 8)}px`;
-        tip.style.top = `${evt.clientY - 28}px`;
-      });
-      hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+      hit.addEventListener('mousemove', () => show(hit.dataset.series));
+      hit.addEventListener('mouseleave', () => { const mk = markerFor(hit.dataset.series); if (mk) mk.style.display = 'none'; });
+      // Touch: a tap fires this too — keep the marker up until a tap lands
+      // somewhere else (the svg-background handler below).
+      hit.addEventListener('click', (e) => { e.stopPropagation(); show(hit.dataset.series); });
     });
+    svg.addEventListener('click', hideAll);
   },
 
   // ---- inline editors -------------------------------------------------

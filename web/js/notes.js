@@ -151,10 +151,34 @@ const WriteSysNotes = {
       if (outline) outline.style.left = `${leftBand}px`;
       if (stats) stats.style.left = `${leftBand}px`;
       if (chrome) chrome.style.left = `${leftBand}px`;
+      // Panes start where the chrome ACTUALLY ends — its height varies (name
+      // wraps, push button loads async, tab row), so the old fixed top:142px
+      // either overlapped the rule or left a random gap. Desktop only: the
+      // mobile second-bar pins its own top in the @media block, and an
+      // inline top would beat it.
+      if (window.innerWidth >= this.DESKTOP_MIN_WIDTH && chrome) {
+        const bottom = Math.ceil(chrome.getBoundingClientRect().bottom);
+        for (const el of [outline, stats]) {
+          if (!el) continue;
+          el.style.top = `${bottom}px`;
+          el.style.maxHeight = `calc(100vh - ${bottom + 20}px)`;
+        }
+      } else {
+        for (const el of [outline, stats]) {
+          if (!el) continue;
+          el.style.top = '';
+          el.style.maxHeight = '';
+        }
+      }
     };
 
     positionGutters();
     window.addEventListener('resize', positionGutters);
+    // The chrome's height changes as async content lands (manuscript name,
+    // push button) — re-anchor the panes whenever it does.
+    if (window.ResizeObserver && chrome) {
+      new ResizeObserver(positionGutters).observe(chrome);
+    }
   },
 
   // Mark an auto-created note as committed so "never mind" won't delete it

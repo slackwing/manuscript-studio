@@ -769,7 +769,7 @@ p.section-break {
   overflow-y: auto;
   z-index: 100;
   /* Top padding gives the nav air below the chrome's tab row + rule. */
-  padding: 12px 12px 12px 16px;
+  padding: 16px 12px 12px 16px;
   display: none;
   /* Scrollable but with NO visible scrollbar, in every view (desktop gutter
      and the mobile second bar). Firefox + WebKit/Blink. */
@@ -885,7 +885,7 @@ p.section-break {
   overflow-y: auto;
   z-index: 100;
   /* Top padding mirrors the outline's: air below the tab row + rule. */
-  padding: 12px 12px 12px 18px;
+  padding: 16px 12px 12px 18px;
   display: none;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -930,22 +930,6 @@ p.section-break {
   font-style: italic;
   color: #999;
   padding: 4px 0;
-}
-/* Hover tooltip for graph lines/points — fixed so it can escape the
-   scrolling band. */
-#stats-tip {
-  position: fixed;
-  z-index: 300;
-  background: #fff;
-  border: 1px solid #d0cabb;
-  border-radius: 4px;
-  padding: 4px 7px;
-  font: 10px "Helvetica", sans-serif;
-  color: #57503f;
-  pointer-events: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  white-space: nowrap;
-  display: none;
 }
 /* NOTE: the narrow-layout (≤1100px) block lives at the very END of this file,
    after all the base #controls / #manuscript-chrome / #outline-margin /
@@ -2768,11 +2752,12 @@ p.section-break {
      the outline in the same left band. */
   width: var(--gutter-band-width);
   z-index: 100;
-  padding: 16px 12px 12px 18px;
+  /* Bottom rule lives on .pane-tabs (content width — flush with the text,
+     not the box padding), so the box needs almost no bottom padding. */
+  padding: 16px 12px 2px 18px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  border-bottom: 1px solid #e3e0d8;
   /* The strip itself must never eat clicks aimed at the page under it —
      only its interactive children are pointer-targets (same rule as the
      import zones). */
@@ -2792,11 +2777,15 @@ p.section-break {
   pointer-events: auto;
 }
 /* Pane tabs (STATS_PLAN): flat letterspaced text links just above the
-   chrome's bottom rule. The active one is dark; the other is a link. */
+   bottom rule. The rule is THIS row's border so it spans exactly the
+   content width — flush with the text, not the chrome box's padding.
+   The active tab is dark; the other is a link. */
 .pane-tabs {
   display: flex;
   gap: 16px;
   margin-top: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e3e0d8;
 }
 .pane-tab {
   pointer-events: auto;
@@ -2928,7 +2917,8 @@ p.section-break {
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
   #mc-info { font-size: 9px; text-align: center; }
   #manuscript-chrome #push-button-container { margin-top: 2px; }
-  #manuscript-chrome .pane-tabs { justify-content: center; margin-top: 5px; }
+  /* The second bar draws its own full-width border; no tab rule here. */
+  #manuscript-chrome .pane-tabs { justify-content: center; margin-top: 5px; padding-bottom: 0; border-bottom: none; }
 
   /* --- second bar, right two-thirds: the outline (only when there's real
          structure — an outline-less manuscript shows no empty bar) --- */

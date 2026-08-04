@@ -134,13 +134,25 @@ function resetMeta() {
   // Graph: actual polyline + 3 extrapolation hover targets (trend/avg/need).
   await page.waitForSelector('#stats-margin .stats-graph svg');
   const hits = await page.locator('#stats-margin .stats-hit').evaluateAll(els => els.map(e => e.dataset.series).sort());
-  check('graph has 4 hover series', hits.join(',') === 'actual,avg,need,trend', hits.join(','));
+  check('graph has 3 extrapolation hover targets', hits.join(',') === 'avg,need,trend', hits.join(','));
   check('no legend — hover is the only hint', (await page.locator('#stats-margin .stats-legend').count()) === 0);
-  // Hovering an extrapolation names it, gives its rate, and its finish day.
+  // Hovering an extrapolation reveals its dotted finish-drop marker whose
+  // caption ("May 27, 2027 @ 271 wpd") is the ENTIRE hint — no tooltips.
+  check('no tooltip element — the drop marker is the whole hint', (await page.locator('#stats-tip').count()) === 0);
   await page.locator('#stats-margin .stats-hit[data-series="need"]').hover({ force: true });
-  await page.waitForSelector('#stats-tip', { state: 'visible' });
-  const tip = await page.locator('#stats-tip').innerText();
-  check('needed-line hover shows meaning + rate + finish', /needed to finish in 1 year/.test(tip) && /words\/day/.test(tip) && /finish/.test(tip), tip);
+  await page.waitForFunction(() => {
+    const g = document.querySelector('.stats-finish-marker[data-for="need"]');
+    return g && g.style.display !== 'none';
+  });
+  const caption = await page.locator('.stats-finish-marker[data-for="need"] text').evaluate(t => t.textContent);
+  check('marker caption is "date @ rate wpd"', /[A-Z][a-z]+ \d+, \d{4} @ [\d,]+ wpd/.test(caption), caption);
+  await page.mouse.move(10, 10);
+  const markerAfter = await page.locator('.stats-finish-marker[data-for="need"]').evaluate(g => g.style.display !== 'none');
+  check('marker hides on mouse-out', markerAfter === false);
+  // Tap (mobile path): click reveals and keeps the marker; background tap hides.
+  await page.locator('#stats-margin .stats-hit[data-series="avg"]').click({ force: true });
+  const avgShown = await page.locator('.stats-finish-marker[data-for="avg"]').evaluate(g => g.style.display !== 'none');
+  check('click/tap reveals the marker', avgShown === true);
   const avgText = await page.locator('#stats-margin .stats-pane').innerText();
   check('average words/day shown', /words\/day/.test(avgText));
 
