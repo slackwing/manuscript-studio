@@ -68,3 +68,28 @@ func TestBuildOutlineTopLevel(t *testing.T) {
 		t.Errorf("want 1 part, got %d", len(o.Parts))
 	}
 }
+
+// No label = not outline-worthy: unlabeled anchors and snippets are skipped
+// (the placeholder rule, applied uniformly — an unlabeled anchor used to
+// list as a bare #slug and read as noise).
+func TestBuildOutlineSkipsUnlabeledAnchors(t *testing.T) {
+	ids := []string{"c1", "a1", "a2", "s1", "s2"}
+	textByID := map[string]string{
+		"c1": "&chapter#c1{1.}{Smoke}",
+		"a1": "&anchor#bare{}",             // unlabeled — skipped
+		"a2": "&anchor#named{kept anchor}", // labeled — kept
+		"s1": "&snippet#sn1{}",             // unlabeled canonized snippet — skipped
+		"s2": "&snippet#sn2{kept snippet}", // labeled — kept
+	}
+	o := BuildOutline(ids, textByID)
+	if len(o.TopChapters) != 1 {
+		t.Fatalf("want 1 top chapter, got %+v", o.TopChapters)
+	}
+	anchors := o.TopChapters[0].Anchors
+	if len(anchors) != 2 {
+		t.Fatalf("want only the 2 labeled entries, got %+v", anchors)
+	}
+	if anchors[0].Slug != "named" || anchors[1].Slug != "sn2" {
+		t.Errorf("wrong survivors: %+v", anchors)
+	}
+}

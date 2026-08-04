@@ -86,8 +86,8 @@ func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manus
 		`DELETE FROM suggested_change WHERE sentence_id IN (
 			SELECT sentence_id FROM sentence WHERE migration_id IN (
 				SELECT migration_id FROM migration WHERE manuscript_id = $1))`,
-		`DELETE FROM tag WHERE migration_id IN (
-			SELECT migration_id FROM migration WHERE manuscript_id = $1)`,
+		// Tags are user-wide since 020-user-wide-tags (no migration_id);
+		// deleting the fixture user cascades them via tag_user_id_fkey.
 		`DELETE FROM sentence WHERE migration_id IN (
 			SELECT migration_id FROM migration WHERE manuscript_id = $1)`,
 		`DELETE FROM migration WHERE manuscript_id = $1`,
@@ -704,6 +704,75 @@ func TestMigration_NoOpSuggestionsPrunedFromCurrentMigration(t *testing.T) {
 	}
 	if len(oldRows) != 2 {
 		t.Errorf("expected both no-op suggestions to remain on the prior migration as audit data, got %d", len(oldRows))
+	}
+}
+
+// A suggestion that PREPENDS a block command to a sentence gets applied as
+// TWO committed sentences (the command becomes its own line). The prose half
+// then pairs exact-match with the old sentence and the suggestion carries
+// forward — where it used to survive forever, because the single-sentence
+// no-op check never saw it as applied. Every later push then minted ANOTHER
+// copy of the command (this actually happened: the thrice-duplicated
+// "salvia night" anchor). The neighbor-window prune must kill it.
+func TestMigration_AppliedMultiSentenceSuggestionPruned(t *testing.T) {
+	f := newFixture(t)
+
+	src1 := "We probably recounted tales of that night."
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", src1)
+	proseID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "We probably recounted")
+
+	sugg := "&anchor{The night.}\nWe probably recounted tales of that night."
+	if _, err := f.db.UpsertSuggestion(f.ctx, proseID1, f.username, sugg); err != nil {
+		t.Fatalf("upsert multi-sentence suggestion: %v", err)
+	}
+
+	// v2 = the suggestion applied: the anchor is now its own committed
+	// sentence right before the (unchanged) prose sentence.
+	src2 := "&anchor{The night.}\nWe probably recounted tales of that night."
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", src2)
+
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("fully-applied multi-sentence suggestion should be pruned, got %d row(s): %+v", len(rows), rows)
+	}
+
+	// Old migration is audit data and stays put.
+	oldRows, err := f.db.GetSuggestionsForMigration(f.ctx, mID1, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m1: %v", err)
+	}
+	if len(oldRows) != 1 {
+		t.Errorf("applied suggestion should remain on the prior migration as audit data, got %d", len(oldRows))
+	}
+}
+
+// A carried-forward suggestion whose content is NOT in the document must
+// survive the neighbor-window prune — only fully-applied text gets cleaned.
+func TestMigration_UnappliedSuggestionSurvivesWindowPrune(t *testing.T) {
+	f := newFixture(t)
+
+	src := "First stable sentence. Second stable sentence."
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", src)
+	firstID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "First stable")
+
+	sugg := "&anchor{A brand new place.}\nFirst stable sentence."
+	if _, err := f.db.UpsertSuggestion(f.ctx, firstID1, f.username, sugg); err != nil {
+		t.Fatalf("upsert suggestion: %v", err)
+	}
+
+	// Unchanged source: the anchor was never applied, so the carried-forward
+	// suggestion still has something to say.
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", src)
+
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("unapplied suggestion must survive the prune, got %d row(s): %+v", len(rows), rows)
 	}
 }
 

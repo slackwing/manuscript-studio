@@ -26,6 +26,11 @@ type Manuscript struct {
 	// config slug (handlers.displayNameFor).
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
+	// Birthday is the day writing began — distinct from CreatedAt because a
+	// book can start on paper before entering the system. nil = never set.
+	Birthday *time.Time `json:"birthday"`
+	// WordGoal is the target length driving the stats-pane extrapolations.
+	WordGoal int `json:"word_goal"`
 }
 
 // Lifecycle: pending → running → done | error (.Error set on error).

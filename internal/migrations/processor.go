@@ -186,7 +186,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
 
-	suggestionsPruned, err := db.PruneNoOpSuggestionsForMigration(ctx, migrationID)
+	suggestionsPruned, err := db.PruneNoOpSuggestionsForMigration(ctx, migrationID, newSentenceIDs)
 	if err != nil {
 		return nil, fmt.Errorf("prune no-op suggestions: %w", err)
 	}

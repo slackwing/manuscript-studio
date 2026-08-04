@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
@@ -321,9 +322,82 @@ func (h *MigrationHandlers) HandleGetWordcountHistory(w http.ResponseWriter, r *
 		http.Error(w, "Failed to load wordcount history", http.StatusInternalServerError)
 		return
 	}
+	// The stats pane's one fetch: history rows PLUS the metadata its header
+	// and extrapolations need (birthday, word goal).
+	m, err := h.DB.GetManuscriptByID(r.Context(), manuscriptID)
+	if err != nil || m == nil {
+		http.Error(w, "Failed to load manuscript", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(struct {
-		Enabled bool                     `json:"enabled"`
-		Rows    []database.WordcountRow `json:"rows"`
-	}{h.Config.WordcountHistory.Enabled, rows})
+		Enabled  bool                    `json:"enabled"`
+		Rows     []database.WordcountRow `json:"rows"`
+		Birthday *string                 `json:"birthday"`
+		WordGoal int                     `json:"word_goal"`
+	}{h.Config.WordcountHistory.Enabled, rows, dateString(m.Birthday), m.WordGoal})
+}
+
+// dateString formats a DATE column for the API as plain YYYY-MM-DD — a
+// timestamp here would invite timezone-shift bugs in the browser.
+func dateString(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format("2006-01-02")
+	return &s
+}
+
+// HandleUpdateManuscriptMeta partially updates stats-pane metadata:
+// {"birthday": "YYYY-MM-DD"} and/or {"word_goal": N}. Omitted fields are
+// left unchanged. Responds with the updated metadata.
+func (h *MigrationHandlers) HandleUpdateManuscriptMeta(w http.ResponseWriter, r *http.Request) {
+	manuscriptID, err := strconv.Atoi(chi.URLParam(r, "manuscript_id"))
+	if err != nil {
+		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
+		return
+	}
+	var body struct {
+		Birthday *string `json:"birthday"`
+		WordGoal *int    `json:"word_goal"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if body.Birthday == nil && body.WordGoal == nil {
+		http.Error(w, "Nothing to update", http.StatusBadRequest)
+		return
+	}
+	var birthday *time.Time
+	if body.Birthday != nil {
+		t, err := time.Parse("2006-01-02", *body.Birthday)
+		if err != nil {
+			http.Error(w, "birthday must be YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+		birthday = &t
+	}
+	if body.WordGoal != nil && *body.WordGoal < 1 {
+		http.Error(w, "word_goal must be positive", http.StatusBadRequest)
+		return
+	}
+	m, err := h.DB.UpdateManuscriptMeta(r.Context(), manuscriptID, birthday, body.WordGoal)
+	if err != nil {
+		log.Printf("update manuscript meta %d: %v", manuscriptID, err)
+		http.Error(w, "Failed to update manuscript", http.StatusInternalServerError)
+		return
+	}
+	if m == nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Birthday *string `json:"birthday"`
+		WordGoal int     `json:"word_goal"`
+	}{dateString(m.Birthday), m.WordGoal})
 }

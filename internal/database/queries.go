@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +26,7 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 		VALUES ($1, $2)
 		ON CONFLICT (repo_path, file_path) DO UPDATE
 			SET repo_path = EXCLUDED.repo_path
-		RETURNING manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at
+		RETURNING manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at, birthday, word_goal
 	`
 
 	var m models.Manuscript
@@ -35,6 +36,8 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 		&m.FilePath,
 		&m.DisplayName,
 		&m.CreatedAt,
+		&m.Birthday,
+		&m.WordGoal,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manuscript: %w", err)
@@ -47,9 +50,9 @@ func (db *DB) CreateManuscript(ctx context.Context, repoPath, filePath string) (
 func (db *DB) GetManuscriptByID(ctx context.Context, manuscriptID int) (*models.Manuscript, error) {
 	var m models.Manuscript
 	err := db.Pool.QueryRow(ctx,
-		`SELECT manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at FROM manuscript WHERE manuscript_id = $1`,
+		`SELECT manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at, birthday, word_goal FROM manuscript WHERE manuscript_id = $1`,
 		manuscriptID,
-	).Scan(&m.ManuscriptID, &m.RepoPath, &m.FilePath, &m.DisplayName, &m.CreatedAt)
+	).Scan(&m.ManuscriptID, &m.RepoPath, &m.FilePath, &m.DisplayName, &m.CreatedAt, &m.Birthday, &m.WordGoal)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -61,7 +64,7 @@ func (db *DB) GetManuscriptByID(ctx context.Context, manuscriptID int) (*models.
 
 func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*models.Manuscript, error) {
 	query := `
-		SELECT manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at
+		SELECT manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at, birthday, word_goal
 		FROM manuscript
 		WHERE repo_path = $1 AND file_path = $2
 	`
@@ -73,6 +76,8 @@ func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*mo
 		&m.FilePath,
 		&m.DisplayName,
 		&m.CreatedAt,
+		&m.Birthday,
+		&m.WordGoal,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -81,6 +86,28 @@ func (db *DB) GetManuscript(ctx context.Context, repoPath, filePath string) (*mo
 		return nil, fmt.Errorf("failed to get manuscript: %w", err)
 	}
 
+	return &m, nil
+}
+
+// UpdateManuscriptMeta partially updates the stats-pane metadata: a nil
+// field is left unchanged. Returns the updated row, or (nil, nil) when the
+// manuscript doesn't exist.
+func (db *DB) UpdateManuscriptMeta(ctx context.Context, manuscriptID int, birthday *time.Time, wordGoal *int) (*models.Manuscript, error) {
+	var m models.Manuscript
+	err := db.Pool.QueryRow(ctx, `
+		UPDATE manuscript
+		SET birthday = COALESCE($2, birthday),
+		    word_goal = COALESCE($3, word_goal)
+		WHERE manuscript_id = $1
+		RETURNING manuscript_id, repo_path, file_path, COALESCE(display_name, ''), created_at, birthday, word_goal
+	`, manuscriptID, birthday, wordGoal).Scan(
+		&m.ManuscriptID, &m.RepoPath, &m.FilePath, &m.DisplayName, &m.CreatedAt, &m.Birthday, &m.WordGoal)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update manuscript meta: %w", err)
+	}
 	return &m, nil
 }
 
@@ -406,15 +433,68 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 }
 
 // PruneNoOpSuggestionsForMigration deletes suggestions on sentences in the
-// given migration whose suggestion text matches the sentence text under
-// NormalizeText. These are no-ops with nothing to actually suggest — typically
-// left behind when a suggestion's text gets incorporated into the source by a
-// later commit and carried forward across exact-match pairings.
+// given migration whose text is already fully present in the committed
+// document. Two shapes qualify (both compared under NormalizeText):
+//
+//  1. the suggestion matches its own sentence's text — the classic no-op,
+//     left behind when a suggestion's text gets incorporated into the
+//     source by a later commit and carried forward across exact-match
+//     pairings;
+//  2. the suggestion matches its sentence JOINED WITH adjacent committed
+//     sentences — the multi-sentence twin of (1). A suggestion that
+//     prepends a block command ("&anchor{...} We probably recounted...")
+//     is applied as TWO committed sentences; the prose half then pairs
+//     exact-match with the old sentence, the suggestion carries forward
+//     forever, and every subsequent push mints ANOTHER copy of the
+//     anchor. This rule breaks that loop.
+//
 // Scoped to current migration so old migrations remain untouched audit data.
 // Returns the count deleted.
-func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID int) (int, error) {
+//
+// orderedIDs is the migration's sentence order. The processor passes it
+// directly because it prunes BEFORE MarkMigrationDone stores
+// sentence_id_array; pass nil to fall back to the stored array.
+func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID int, orderedIDs []string) (int, error) {
+	// Document order + texts, for the neighbor-window rule.
+	if len(orderedIDs) == 0 {
+		mig, err := db.GetMigrationByID(ctx, migrationID)
+		if err != nil {
+			return 0, fmt.Errorf("load migration for prune: %w", err)
+		}
+		if mig != nil {
+			orderedIDs = mig.SentenceIDArray
+		}
+	}
+	orderByID := map[string]int{}
+	var orderedTexts []string
+	if len(orderedIDs) > 0 {
+		textRows, err := db.Pool.Query(ctx,
+			`SELECT sentence_id, text FROM sentence WHERE migration_id = $1`, migrationID)
+		if err != nil {
+			return 0, fmt.Errorf("scan sentences for prune: %w", err)
+		}
+		textByID := map[string]string{}
+		for textRows.Next() {
+			var id, text string
+			if err := textRows.Scan(&id, &text); err != nil {
+				textRows.Close()
+				return 0, fmt.Errorf("scan sentence row: %w", err)
+			}
+			textByID[id] = text
+		}
+		textRows.Close()
+		if err := textRows.Err(); err != nil {
+			return 0, fmt.Errorf("iter sentence rows: %w", err)
+		}
+		orderedTexts = make([]string, 0, len(orderedIDs))
+		for _, id := range orderedIDs {
+			orderByID[id] = len(orderedTexts)
+			orderedTexts = append(orderedTexts, textByID[id])
+		}
+	}
+
 	rows, err := db.Pool.Query(ctx, `
-		SELECT sc.suggestion_id, sc.text, s.text
+		SELECT sc.suggestion_id, sc.text, s.sentence_id, s.text
 		FROM suggested_change sc
 		JOIN sentence s ON s.sentence_id = sc.sentence_id
 		WHERE s.migration_id = $1
@@ -424,13 +504,42 @@ func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID 
 	}
 	defer rows.Close()
 	var noOpIDs []int
+	// windowApplied: does the suggestion equal some contiguous run of
+	// committed sentences that includes its own (index j)? Window is
+	// capped at 3 neighbors each side — a suggestion rarely segments into
+	// more, and the cap keeps this O(1) per suggestion.
+	windowApplied := func(normSugg string, j int) bool {
+		const w = 3
+		for start := max(0, j-w); start <= j; start++ {
+			for end := j; end <= min(len(orderedTexts)-1, j+w); end++ {
+				if start == j && end == j {
+					continue // that's rule (1), already checked
+				}
+				joined := strings.Join(orderedTexts[start:end+1], "\n")
+				if sentence.NormalizeText(joined) == normSugg {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	for rows.Next() {
 		var id int
-		var suggText, sentText string
-		if err := rows.Scan(&id, &suggText, &sentText); err != nil {
+		var suggText, sentenceID, sentText string
+		if err := rows.Scan(&id, &suggText, &sentenceID, &sentText); err != nil {
 			return 0, fmt.Errorf("scan suggestion row: %w", err)
 		}
-		if sentence.NormalizeText(suggText) == sentence.NormalizeText(sentText) {
+		normSugg := sentence.NormalizeText(suggText)
+		if normSugg == sentence.NormalizeText(sentText) {
+			noOpIDs = append(noOpIDs, id)
+			continue
+		}
+		// An empty normalized suggestion carries no comparable content —
+		// never window-prune those.
+		if normSugg == "" {
+			continue
+		}
+		if j, ok := orderByID[sentenceID]; ok && windowApplied(normSugg, j) {
 			noOpIDs = append(noOpIDs, id)
 		}
 	}

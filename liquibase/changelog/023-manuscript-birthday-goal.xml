@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Statistics-pane metadata (STATS_PLAN). birthday is the day writing
+         BEGAN — not created_at, since a book can start on paper long before
+         it enters the system. NULL = never set; the stats pane prompts for
+         it. word_goal is the target length used for the progress graph's
+         extrapolations; the 40,000 default applies to existing rows too
+         (addColumn with default backfills), and it's editable in the UI. -->
+    <changeSet id="023-manuscript-birthday-goal" author="claude">
+        <addColumn tableName="manuscript">
+            <column name="birthday" type="DATE"/>
+            <column name="word_goal" type="INTEGER" defaultValueNumeric="40000">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

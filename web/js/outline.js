@@ -64,8 +64,10 @@ const WriteSysOutline = {
           // their block twins.
           if (f.kind === 'prose' && cmd.findInline) {
             for (const ic of cmd.findInline(f.text)) {
-              if ((ic.kind === 'anchor' || ic.kind === 'snippet') && ic.slug) {
-                pushAnchor({ description: (ic.args && ic.args[0]) || '', slug: ic.slug, sentence_id: s.id });
+              const inlineLabel = (ic.args && ic.args[0]) || '';
+              // No label = not outline-worthy (same rule as the block twins).
+              if ((ic.kind === 'anchor' || ic.kind === 'snippet') && ic.slug && inlineLabel.trim()) {
+                pushAnchor({ description: inlineLabel, slug: ic.slug, sentence_id: s.id });
               }
             }
           }
@@ -90,10 +92,12 @@ const WriteSysOutline = {
           let description = label;
           if (c.kind === 'placeholder') {
             const spec = cmd.placeholderSpec(c.args);
-            // Unlabeled placeholders are pure spacing — not outline-worthy.
-            if (!spec.valid || !spec.label.trim()) continue;
+            if (!spec.valid) continue;
             description = spec.label;
           }
+          // No label = not outline-worthy — one rule for anchors,
+          // placeholders, and snippets alike (mirrors Go BuildOutline).
+          if (!description.trim()) continue;
           pushAnchor({ description, slug: c.slug, sentence_id: s.id });
         }
       }

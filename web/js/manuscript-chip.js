@@ -31,7 +31,9 @@
         margin: 0;
         box-sizing: border-box;
         padding: 2px 7px;
-        border: 1px solid #c9a227;
+        /* 2px, not 1 — at 1px the gilt edge was too thin to read as gold
+           against the leather and just looked like fuzz. */
+        border: 2px solid #c9a227;
         border-radius: 9px;
         /* Flat vertical leather — a diagonal gradient + inset sheen smeared
            around the pill's rounded ends and read as blotches. */

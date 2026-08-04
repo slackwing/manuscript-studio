@@ -103,11 +103,16 @@ func BuildOutline(ids []string, textByID map[string]string) *Outline {
 			// placeholder renders as prose and stays out of the outline.
 			if cmd.Kind == CmdPlaceholder {
 				spec := ParsePlaceholder(cmd)
-				// Unlabeled placeholders are pure spacing — not outline-worthy.
-				if !spec.Valid || strings.TrimSpace(spec.Label) == "" {
+				label = spec.Label
+				if !spec.Valid {
 					continue
 				}
-				label = spec.Label
+			}
+			// No label = not outline-worthy — one rule for anchors,
+			// placeholders, and snippets alike (an unlabeled anchor listed
+			// as a bare #slug and read as noise).
+			if strings.TrimSpace(label) == "" {
+				continue
 			}
 			a := OutlineAnchor{Description: label, Slug: cmd.Slug, SentenceID: id}
 			switch {

@@ -137,6 +137,7 @@ const WriteSysNotes = {
     // positioning is harmless there because #outline-margin.has-outline is
     // re-anchored by the @media rule.)
     const outline = document.getElementById('outline-margin');
+    const stats = document.getElementById('stats-margin');
     const chrome = document.getElementById('manuscript-chrome');
     const positionGutters = () => {
       const gutter = (window.innerWidth - this.SPACING.PAGE_WIDTH) / 2;
@@ -144,9 +145,11 @@ const WriteSysNotes = {
       margin.style.right = `${gutter - this.SPACING.HORIZONTAL_GAP - this.SPACING.ANNOTATION_WIDTH}px`;
       // Mirror on the left: the outline band's left edge. The manuscript-chrome
       // info header sits in the same band directly above the outline, so it
-      // shares the exact same left.
+      // shares the exact same left — as does the stats pane, the outline's
+      // tab-switched sibling in the same band.
       const leftBand = Math.max(0, gutter - this.SPACING.HORIZONTAL_GAP - this.SPACING.GUTTER_BAND);
       if (outline) outline.style.left = `${leftBand}px`;
+      if (stats) stats.style.left = `${leftBand}px`;
       if (chrome) chrome.style.left = `${leftBand}px`;
     };
 

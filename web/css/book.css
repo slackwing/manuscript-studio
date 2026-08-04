@@ -868,6 +868,94 @@ p.section-break {
   color: #999;
   font-style: italic;
 }
+
+/* ---- Statistics pane (STATS_PLAN) — the outline's tab-switched sibling.
+   Same band, same flat look: fixed in the left gutter on desktop, second
+   bar on mobile (see the @media block at the end of the file). Visibility
+   is class-driven by stats.js: .pane-on shows this, .pane-off hides the
+   outline — those two rules live at the VERY end of the file so they beat
+   the mobile block's `display … !important` by source order. */
+#stats-margin {
+  position: fixed;
+  top: 142px; /* below #manuscript-chrome, same as the outline */
+  /* left: set by JS (notes.js positionGutters), mirroring the outline. */
+  width: var(--gutter-band-width);
+  max-height: calc(100vh - 162px);
+  overflow-y: auto;
+  z-index: 100;
+  padding: 0 12px 12px 18px;
+  display: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#stats-margin::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.stats-pane {
+  font-family: Georgia, serif;
+  font-size: 12px;
+  color: #555;
+}
+.stats-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+.stats-row-label {
+  flex: 0 0 62px;
+  font: 10px "Helvetica", sans-serif;
+  letter-spacing: 0.02em;
+  color: #a39d90;
+}
+.stats-row-value { color: #333; }
+.stats-row-unit { color: #999; font-size: 11px; }
+/* Editable values (birthday, word goal): quiet until hovered. */
+.stats-editable { cursor: pointer; border-bottom: 1px dotted transparent; }
+.stats-editable:hover { border-bottom-color: #a39d90; color: #000; }
+.stats-editable.stats-unset { color: #a39d90; font-style: italic; }
+.stats-edit-input {
+  font: inherit;
+  color: #333;
+  border: 1px solid #d0cabb;
+  border-radius: 3px;
+  background: #fff;
+  padding: 0 3px;
+  max-width: 110px;
+}
+.stats-graph { margin-top: 10px; }
+.stats-graph svg { display: block; width: 100%; height: auto; }
+.stats-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font: 9px "Helvetica", sans-serif;
+  letter-spacing: 0.03em;
+  color: #999;
+}
+.stats-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.stats-legend-item svg { display: block; }
+.stats-empty {
+  font-size: 11px;
+  font-style: italic;
+  color: #999;
+  padding: 4px 0;
+}
+/* Hover tooltip for graph lines/points — fixed so it can escape the
+   scrolling band. */
+#stats-tip {
+  position: fixed;
+  z-index: 300;
+  background: #fff;
+  border: 1px solid #d0cabb;
+  border-radius: 4px;
+  padding: 4px 7px;
+  font: 10px "Helvetica", sans-serif;
+  color: #57503f;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  white-space: nowrap;
+  display: none;
+}
 /* NOTE: the narrow-layout (≤1100px) block lives at the very END of this file,
    after all the base #controls / #manuscript-chrome / #outline-margin /
    .pagedjs_*
@@ -2691,20 +2779,46 @@ p.section-break {
   z-index: 100;
   padding: 16px 12px 12px 18px;
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
   border-bottom: 1px solid #e3e0d8;
   /* The strip itself must never eat clicks aimed at the page under it —
      only its interactive children are pointer-targets (same rule as the
      import zones). */
   pointer-events: none;
 }
+/* The old chrome row (name + info left, push right) lives in .mc-top now
+   that the pane tabs sit under it. */
+#manuscript-chrome .mc-top {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
 #manuscript-chrome #push-button-container,
 #manuscript-chrome #push-button-container * {
   pointer-events: auto;
 }
+/* Pane tabs (STATS_PLAN): flat letterspaced text links just above the
+   chrome's bottom rule. The active one is dark; the other is a link. */
+.pane-tabs {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+}
+.pane-tab {
+  pointer-events: auto;
+  cursor: pointer;
+  font: 10px "Helvetica", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a39d90;
+  text-decoration: none;
+}
+.pane-tab:hover { color: #57503f; text-decoration: underline; }
+.pane-tab.active { color: #57503f; cursor: default; }
+.pane-tab.active:hover { text-decoration: none; }
 #manuscript-chrome .mc-left {
   display: flex;
   flex-direction: column;
@@ -2811,10 +2925,19 @@ p.section-break {
     border-bottom: 1px solid #e3e0d8;
     overflow: hidden;
   }
+  /* The chrome's row content lives in .mc-top now; stack and center it the
+     way the chrome itself used to be, with the pane tabs centered below. */
+  #manuscript-chrome .mc-top {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
   #manuscript-chrome .mc-left { align-items: center; text-align: center; }
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
   #mc-info { font-size: 9px; text-align: center; }
   #manuscript-chrome #push-button-container { margin-top: 2px; }
+  #manuscript-chrome .pane-tabs { justify-content: center; margin-top: 5px; }
 
   /* --- second bar, right two-thirds: the outline (only when there's real
          structure — an outline-less manuscript shows no empty bar) --- */
@@ -2839,6 +2962,24 @@ p.section-break {
   /* The caret inherits the nav font-size (now 11px) — too small to spot on a
      phone. Bump it so the reading-position marker is easy to see. */
   #outline-margin .outline-caret { font-size: 16px; }
+
+  /* Stats pane takes the outline's second-bar slot when its tab is active
+     (visibility itself is decided by the .pane-on/.pane-off rules at the
+     very end of the file). */
+  #stats-margin.pane-on {
+    top: 40px;
+    left: 33.333% !important;    /* beat the inline left JS sets for desktop */
+    width: 66.667%;
+    height: 104px;
+    max-height: 104px;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    background: #fff;
+    border-bottom: 1px solid #e3e0d8;
+    overflow-y: auto;
+  }
+  #stats-margin .stats-pane { font-size: 11px; }
+  #stats-margin .stats-row { padding: 1px 0; }
 
   /* --- fit the reading page to the viewport width while KEEPING the book-page
          look. The sheet is scaled by renderer.applyResponsiveScaling (transform
@@ -2945,3 +3086,12 @@ body.range-delete-mode .pagedjs_pages {
   color: #fff;
   box-shadow: 0 0 0 3px rgba(217, 83, 79, 0.35);
 }
+
+/* ============================================================
+   Pane visibility (STATS_PLAN) — MUST be the last rules in the file: they
+   arbitrate the OUTLINE/STATISTICS tabs and have to beat the mobile
+   block's `#outline-margin.has-outline { display: block !important }` and
+   `#stats-margin.pane-on { … }` by source order (equal specificity).
+   ============================================================ */
+#outline-margin.pane-off { display: none !important; }
+#stats-margin.pane-on { display: block !important; }

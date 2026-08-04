@@ -218,6 +218,7 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/{migration_id}/suggestions", s.suggestionHandlers.HandleGetSuggestionsForMigration)
 			r.Get("/migrations/{migration_id}/outline", s.migrationHandlers.HandleGetOutline)
 			r.Get("/manuscripts/{manuscript_id}/wordcount-history", s.migrationHandlers.HandleGetWordcountHistory)
+			r.Patch("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleUpdateManuscriptMeta)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
