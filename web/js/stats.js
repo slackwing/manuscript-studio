@@ -127,14 +127,18 @@ const WriteSysStats = {
     const birthdayVal = m.birthT != null
       ? `<span class="stats-row-value stats-editable" id="stats-birthday" title="Click to edit">${this.fmtDayLong(m.birthT)}</span>`
       : `<span class="stats-row-value stats-editable stats-unset" id="stats-birthday" title="Click to set">set birthday</span>`;
-    const avgVal = (m.birthT != null && m.current != null)
-      ? `${this.fmtNum(m.avgRate)} <span class="stats-row-unit">words/day</span>`
+    const haveRates = m.birthT != null && m.current != null;
+    const rate = (r) => haveRates
+      ? `${this.fmtNum(r)} <span class="stats-row-unit">words/day</span>`
       : '<span class="stats-row-unit">&mdash;</span>';
     const rowsHTML =
       `<div class="stats-row"><span class="stats-row-label">BIRTHDAY</span>${birthdayVal}</div>` +
       `<div class="stats-row"><span class="stats-row-label">WORD GOAL</span>` +
         `<span class="stats-row-value stats-editable" id="stats-goal" title="Click to edit">${this.fmtNum(m.goal)}</span></div>` +
-      `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value">${avgVal}</span></div>`;
+      `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value">${rate(m.avgRate)}</span></div>` +
+      `<div class="stats-row"><span class="stats-row-label">PAST 30D</span><span class="stats-row-value">${rate(m.trendRate)}</span></div>` +
+      // The pace that finishes the goal one year from now.
+      `<div class="stats-row"><span class="stats-row-label">1Y RATE</span><span class="stats-row-value">${rate(m.needRate)}</span></div>`;
 
     let graphHTML;
     if (m.birthT == null) {

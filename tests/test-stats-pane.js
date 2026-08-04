@@ -154,7 +154,8 @@ function resetMeta() {
   const avgShown = await page.locator('.stats-finish-marker[data-for="avg"]').evaluate(g => g.style.display !== 'none');
   check('click/tap reveals the marker', avgShown === true);
   const avgText = await page.locator('#stats-margin .stats-pane').innerText();
-  check('average words/day shown', /words\/day/.test(avgText));
+  check('average words/day shown', /AVERAGE/.test(avgText) && /words\/day/.test(avgText));
+  check('PAST 30D and 1Y RATE rows shown', /PAST 30D/.test(avgText) && /1Y RATE/.test(avgText), avgText.replace(/\n/g, ' | '));
 
   // Edit the goal inline to 80,000 — the number the user actually plans.
   await page.locator('#stats-goal').click();
