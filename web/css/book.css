@@ -769,7 +769,7 @@ p.section-break {
   overflow-y: auto;
   z-index: 100;
   /* Top padding gives the nav air below the chrome's tab row + rule. */
-  padding: 16px 12px 12px 16px;
+  padding: 8px 12px 12px 16px;
   display: none;
   /* Scrollable but with NO visible scrollbar, in every view (desktop gutter
      and the mobile second bar). Firefox + WebKit/Blink. */
@@ -885,7 +885,7 @@ p.section-break {
   overflow-y: auto;
   z-index: 100;
   /* Top padding mirrors the outline's: air below the tab row + rule. */
-  padding: 16px 12px 12px 18px;
+  padding: 8px 12px 12px 18px;
   display: none;
   scrollbar-width: none;
   -ms-overflow-style: none;

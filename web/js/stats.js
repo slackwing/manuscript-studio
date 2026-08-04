@@ -168,7 +168,10 @@ const WriteSysStats = {
     if (m.avgCrossT != null) xEnds.push(Math.min(m.avgCrossT, cap));
     if (m.trendCrossT != null) xEnds.push(Math.min(m.trendCrossT, cap));
     const xMin = m.birthT, xMax = Math.max(...xEnds);
-    const yMax = Math.max(m.goal, m.current) * 1.02;
+    // The box's top edge IS the goal — no separate goal gridline needed.
+    // (If the count ever exceeds the goal, the top grows to fit and the
+    // goal line reappears inside the box.)
+    const yMax = Math.max(m.goal, m.current);
     const X = t => padL + ((t - xMin) / (xMax - xMin)) * (w - padL - padR);
     const Y = v => (h - padB) - (v / yMax) * (h - padB - padT);
 
@@ -176,10 +179,12 @@ const WriteSysStats = {
     const line = (x1, y1, x2, y2, color, width, dash, cls) =>
       `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}${cls ? ` class="${cls}"` : ''}/>`;
 
-    // Boxed axes (recessive), goal gridline, and the goal number tucked
-    // just below the top edge. No "0" — the bottom edge speaks for itself.
+    // Boxed axes (recessive) with the goal number tucked just below the
+    // top edge. No "0" — the bottom edge speaks for itself.
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${(Y(0) - padT).toFixed(1)}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
-    parts.push(line(padL, Y(m.goal), w - padR, Y(m.goal), '#dddddd', 1, '2 3'));
+    if (m.current > m.goal) {
+      parts.push(line(padL, Y(m.goal), w - padR, Y(m.goal), '#dddddd', 1, '2 3'));
+    }
     parts.push(`<text x="${padL + 4}" y="${padT + 10}" font-size="8" fill="#999">${this.fmtNum(m.goal)}</text>`);
 
     // Assumed ramp: birthday (0 words) to the first recorded day — dotted,
