@@ -115,10 +115,15 @@ every apostrophe as a spurious diff. Don't reorder.
 
 ### N10 — Classify every new tests/*.js file
 
-`test-all.sh` has two arrays at the top (`FAST_TESTS`, `SLOW_TESTS`). When
-you add `tests/test-foo.js`, add `test-foo` (basename, no `.js`) to whichever
-is appropriate. The script's sanity check refuses to run if anything is
-unclassified. Threshold: ≤15 s wall time = `fast`, otherwise `slow`.
+`test-all.sh` has three arrays at the top (`FAST_TESTS`, `SLOW_TESTS`,
+`SERIAL_TESTS`). When you add `tests/test-foo.js`, add `test-foo` (basename,
+no `.js`) to whichever is appropriate. The script's sanity check refuses to
+run if anything is unclassified. Threshold: ≤15 s wall time = `fast`,
+otherwise `slow`. `SERIAL_TESTS` run one at a time after the parallel pool
+drains — a LAST RESORT for tests that can't survive the 4-worker pool
+(focus contention in the shared Chromium, order-sensitive fixtures);
+prefer fixing the test's isolation, and NEVER hardcode `manuscript_id=1`
+or user `'test'` (use test-utils' worker-scoped values).
 
 ### N11 — Suggestions FK to sentences in tests
 
