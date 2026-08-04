@@ -6,12 +6,12 @@
  *   black dotted — assumed ramp from (birthday, 0) to the first cron row
  *   black solid  — actual daily totals (wordcount_history: effective+snippets)
  *   red   solid  — extrapolation at the recent 30-day pace
- *   blue  dashed — extrapolation at the average-since-birthday pace
- *   purple dashed — the pace needed to reach the goal one year from today
+ *   blue  solid  — extrapolation at the average-since-birthday pace
+ *   purple solid — the pace needed to reach the goal one year from today
  *
- * Hovering a line shows its rate; hovering the actual series shows that
- * day's count. Palette (#c0392b/#4b8ec9/#6b2fa0 on #f5f5f5) is
- * CVD-validated; dash patterns are the secondary encoding.
+ * No legend — hovering a line says what it means, its rate, and its
+ * expected finish day; hovering the actual series shows that day's count.
+ * Palette (#c0392b/#4b8ec9/#6b2fa0 on #f5f5f5) is CVD-validated.
  */
 const WriteSysStats = {
   apiBaseUrl: 'api',
@@ -141,7 +141,7 @@ const WriteSysStats = {
     } else if (!m.rows.length) {
       graphHTML = '<div class="stats-empty">No word-count history yet.</div>';
     } else {
-      graphHTML = `<div class="stats-graph">${this.buildGraph(m)}</div>` + this.buildLegend();
+      graphHTML = `<div class="stats-graph">${this.buildGraph(m)}</div>`;
     }
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}</div>`;
@@ -149,20 +149,9 @@ const WriteSysStats = {
     this.wireHover();
   },
 
-  buildLegend() {
-    const seg = (color, dash) =>
-      `<svg width="16" height="6" viewBox="0 0 16 6"><line x1="0" y1="3" x2="16" y2="3" stroke="${color}" stroke-width="1.6"${dash ? ` stroke-dasharray="${dash}"` : ''}/></svg>`;
-    return `<div class="stats-legend">` +
-      `<span class="stats-legend-item">${seg(this.COLOR_ACTUAL)}actual</span>` +
-      `<span class="stats-legend-item">${seg(this.COLOR_TREND)}recent pace</span>` +
-      `<span class="stats-legend-item">${seg(this.COLOR_AVG, '3 2')}average</span>` +
-      `<span class="stats-legend-item">${seg(this.COLOR_NEED, '6 3')}needed</span>` +
-      `</div>`;
-  },
-
-  // buildGraph returns the SVG string. Kept deliberately flat: no axis
-  // boxes, one dotted gridline at the goal, labels only at 0, the goal,
-  // the birthday, and the extrapolated crossing dates.
+  // buildGraph returns the SVG string. Flat: plain x/y axis lines, one
+  // dotted gridline at the goal, labels only at 0, the goal, the birthday,
+  // and the current extrapolated finish day.
   buildGraph(m) {
     const w = Math.max(180, (this.el.clientWidth || 280) - 30);
     const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
@@ -182,10 +171,12 @@ const WriteSysStats = {
     const line = (x1, y1, x2, y2, color, width, dash, cls) =>
       `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}${cls ? ` class="${cls}"` : ''}/>`;
 
-    // Goal gridline + y labels.
+    // Axes (plain, recessive) + goal gridline + y labels.
+    parts.push(line(padL, Y(0), w - padR, Y(0), '#cccccc', 1));
+    parts.push(line(padL, padT, padL, Y(0), '#cccccc', 1));
     parts.push(line(padL, Y(m.goal), w - padR, Y(m.goal), '#dddddd', 1, '2 3'));
-    parts.push(`<text x="${padL}" y="${Y(m.goal) - 3}" font-size="8" fill="#999">${this.fmtNum(m.goal)}</text>`);
-    parts.push(`<text x="${padL}" y="${h - padB + 9}" font-size="8" fill="#999">0</text>`);
+    parts.push(`<text x="${padL + 3}" y="${Y(m.goal) - 3}" font-size="8" fill="#999">${this.fmtNum(m.goal)}</text>`);
+    parts.push(`<text x="${padL + 3}" y="${h - padB + 9}" font-size="8" fill="#999">0</text>`);
 
     // Assumed ramp: birthday (0 words) to the first recorded day — dotted,
     // in the actual series' color, since it's the same story minus the data.
@@ -209,31 +200,24 @@ const WriteSysStats = {
     const extras = [];
     if (m.current < m.goal) {
       if (m.trendRate > 0) extras.push({ key: 'trend', color: this.COLOR_TREND, dash: '', rate: m.trendRate, end: endAt(m.trendRate, m.trendCrossT), crossT: m.trendCrossT });
-      if (m.avgRate > 0) extras.push({ key: 'avg', color: this.COLOR_AVG, dash: '4 3', rate: m.avgRate, end: endAt(m.avgRate, m.avgCrossT), crossT: m.avgCrossT });
-      extras.push({ key: 'need', color: this.COLOR_NEED, dash: '8 4', rate: m.needRate, end: { x: X(m.last.t + 365 * this.DAY), y: Y(m.goal) }, crossT: m.last.t + 365 * this.DAY });
+      if (m.avgRate > 0) extras.push({ key: 'avg', color: this.COLOR_AVG, dash: '', rate: m.avgRate, end: endAt(m.avgRate, m.avgCrossT), crossT: m.avgCrossT });
+      extras.push({ key: 'need', color: this.COLOR_NEED, dash: '', rate: m.needRate, end: { x: X(m.last.t + 365 * this.DAY), y: Y(m.goal) }, crossT: m.last.t + 365 * this.DAY });
     }
     for (const e of extras) {
       parts.push(line(anchorX, anchorY, e.end.x, e.end.y, e.color, 1.4, e.dash));
       parts.push(`<line x1="${anchorX.toFixed(1)}" y1="${anchorY.toFixed(1)}" x2="${e.end.x.toFixed(1)}" y2="${e.end.y.toFixed(1)}" stroke="transparent" stroke-width="10" class="stats-hit" data-series="${e.key}"/>`);
     }
 
-    // X labels: birthday at the left; each in-window crossing date in its
-    // line's color (ties label to line without a second legend).
-    const xLabel = (t, color, anchorMode) =>
-      `<text x="${Math.min(Math.max(X(t), padL), w - padR).toFixed(1)}" y="${h - 3}" font-size="8" fill="${color}" text-anchor="${anchorMode}">${this.fmtDay(t, true)}</text>`;
-    parts.push(xLabel(m.birthT, '#999', 'start'));
-    const crossings = [];
-    if (m.avgCrossT != null && m.avgCrossT <= xMax) crossings.push({ t: m.avgCrossT, color: this.COLOR_AVG });
-    if (m.trendCrossT != null && m.trendCrossT <= xMax) crossings.push({ t: m.trendCrossT, color: this.COLOR_TREND });
-    // Two crossings can land on top of each other — drop the second label
-    // when they'd collide (the hover tooltip still has the exact date).
-    crossings.sort((a, b) => a.t - b.t);
-    let lastLabelX = -Infinity;
-    for (const c of crossings) {
-      const x = X(c.t);
-      if (x - lastLabelX < 44) continue;
-      lastLabelX = x;
-      parts.push(xLabel(c.t, c.color, x > w - 50 ? 'end' : 'middle'));
+    // X labels: only the birthday and the CURRENT extrapolated finish day
+    // (recent pace when it projects a finish, else the average) — exact
+    // dates for every line live in the hover.
+    const xLabel = (t, anchorMode) =>
+      `<text x="${Math.min(Math.max(X(t), padL), w - padR).toFixed(1)}" y="${h - 3}" font-size="8" fill="#999" text-anchor="${anchorMode}">${this.fmtDay(t, true)}</text>`;
+    parts.push(xLabel(m.birthT, 'start'));
+    const finishT = (m.trendCrossT != null && m.trendCrossT <= xMax) ? m.trendCrossT
+      : (m.avgCrossT != null && m.avgCrossT <= xMax) ? m.avgCrossT : null;
+    if (finishT != null && X(finishT) - X(m.birthT) > 50) {
+      parts.push(xLabel(finishT, X(finishT) > w - 50 ? 'end' : 'middle'));
     }
 
     this._graphModel = m; // for tooltips
@@ -252,17 +236,18 @@ const WriteSysStats = {
       document.body.appendChild(tip);
     }
     const m = this._graphModel;
+    // Each extrapolation's hover: what it means · its rate · expected
+    // finish day (the only place the exact dates live — there's no legend).
+    const finish = (t) => (t != null ? ` · finish ${this.fmtDay(t, true)}` : '');
     const text = (series, evt) => {
       if (series === 'trend') {
-        return `${this.fmtNum(m.trendRate)} words/day (recent 30-day pace)` +
-          (m.trendCrossT ? ` · ${this.fmtNum(m.goal)} on ${this.fmtDay(m.trendCrossT, true)}` : '');
+        return `recent pace (last 30 days) · ${this.fmtNum(m.trendRate)} words/day${finish(m.trendCrossT)}`;
       }
       if (series === 'avg') {
-        return `${this.fmtNum(m.avgRate)} words/day (average since birthday)` +
-          (m.avgCrossT ? ` · ${this.fmtNum(m.goal)} on ${this.fmtDay(m.avgCrossT, true)}` : '');
+        return `average since birthday · ${this.fmtNum(m.avgRate)} words/day${finish(m.avgCrossT)}`;
       }
       if (series === 'need') {
-        return `${this.fmtNum(m.needRate)} words/day needed to reach ${this.fmtNum(m.goal)} by ${this.fmtDay(m.last.t + 365 * this.DAY, true)}`;
+        return `needed to finish in 1 year · ${this.fmtNum(m.needRate)} words/day${finish(m.last.t + 365 * this.DAY)}`;
       }
       // actual: nearest recorded day to the pointer.
       const g = this._graphGeom;

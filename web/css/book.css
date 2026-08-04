@@ -768,7 +768,8 @@ p.section-break {
   max-height: calc(100vh - 162px);
   overflow-y: auto;
   z-index: 100;
-  padding: 0 12px 12px 16px;
+  /* Top padding gives the nav air below the chrome's tab row + rule. */
+  padding: 12px 12px 12px 16px;
   display: none;
   /* Scrollable but with NO visible scrollbar, in every view (desktop gutter
      and the mobile second bar). Firefox + WebKit/Blink. */
@@ -883,7 +884,8 @@ p.section-break {
   max-height: calc(100vh - 162px);
   overflow-y: auto;
   z-index: 100;
-  padding: 0 12px 12px 18px;
+  /* Top padding mirrors the outline's: air below the tab row + rule. */
+  padding: 12px 12px 12px 18px;
   display: none;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -923,17 +925,6 @@ p.section-break {
 }
 .stats-graph { margin-top: 10px; }
 .stats-graph svg { display: block; width: 100%; height: auto; }
-.stats-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 4px;
-  font: 9px "Helvetica", sans-serif;
-  letter-spacing: 0.03em;
-  color: #999;
-}
-.stats-legend-item { display: inline-flex; align-items: center; gap: 4px; }
-.stats-legend-item svg { display: block; }
 .stats-empty {
   font-size: 11px;
   font-style: italic;

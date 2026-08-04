@@ -135,8 +135,12 @@ function resetMeta() {
   await page.waitForSelector('#stats-margin .stats-graph svg');
   const hits = await page.locator('#stats-margin .stats-hit').evaluateAll(els => els.map(e => e.dataset.series).sort());
   check('graph has 4 hover series', hits.join(',') === 'actual,avg,need,trend', hits.join(','));
-  const legendText = await page.locator('#stats-margin .stats-legend').innerText();
-  check('legend names all series', /actual/.test(legendText) && /recent/.test(legendText) && /average/.test(legendText) && /needed/.test(legendText), legendText);
+  check('no legend — hover is the only hint', (await page.locator('#stats-margin .stats-legend').count()) === 0);
+  // Hovering an extrapolation names it, gives its rate, and its finish day.
+  await page.locator('#stats-margin .stats-hit[data-series="need"]').hover({ force: true });
+  await page.waitForSelector('#stats-tip', { state: 'visible' });
+  const tip = await page.locator('#stats-tip').innerText();
+  check('needed-line hover shows meaning + rate + finish', /needed to finish in 1 year/.test(tip) && /words\/day/.test(tip) && /finish/.test(tip), tip);
   const avgText = await page.locator('#stats-margin .stats-pane').innerText();
   check('average words/day shown', /words\/day/.test(avgText));
 

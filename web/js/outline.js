@@ -122,9 +122,9 @@ const WriteSysOutline = {
 
     const items = [];
 
-    if (outline.title && outline.title.name) {
-      items.push(this.item('outline-title', outline.title.name, outline.title.sentence_id));
-    }
+    // The title stays OUT of the nav (its slug is still resolvable above —
+    // the chrome strip already names the manuscript, so a title row here
+    // was redundant).
     (outline.top_chapters || []).forEach(c => this.pushChapter(items, c));
     (outline.top_anchors || []).forEach(a => this.pushAnchor(items, a));
     (outline.parts || []).forEach(part => {
