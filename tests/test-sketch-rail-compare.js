@@ -6,7 +6,7 @@
 //  - superseded sketches are EXCLUDED from the wordcount representative
 //    ("canonized wins, then most recent non-superseded").
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_MANUSCRIPT_ID, loginAsTestUser, cleanupTestNotes } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 const SYSTEM_TOKEN = 'dev-system-token-not-for-production';
 const API = TEST_URL.replace(/\/$/, '') + '/api';
@@ -114,12 +114,12 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
 
   // Wordcount: link the snippet to the test manuscript, make B the MOST RECENT
   // (but superseded) — the representative must skip it.
-  await page.evaluate(async ({ snippet, bId, csrf }) => {
+  await page.evaluate(async ({ snippet, bId, csrf, mid }) => {
     await fetch(`api/snippets/${snippet}/link`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      body: JSON.stringify({ manuscript_id: 1 }),
+      body: JSON.stringify({ manuscript_id: mid }),
     });
-  }, { snippet: ids.snippet, bId, csrf });
+  }, { snippet: ids.snippet, bId, csrf, mid: TEST_MANUSCRIPT_ID });
   // B superseded → can't save text; flip to draft, give it 3 words (most
   // recent now), then supersede again.
   await put(bId, 'draft');
@@ -130,12 +130,12 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     });
   }, { bId, csrf });
   await put(bId, 'superseded');
-  const wc = await page.evaluate(async (tok) => {
+  const wc = await page.evaluate(async ({ tok, mid }) => {
     await fetch('api/admin/wordcount-compute', { method: 'POST', headers: { Authorization: 'Bearer ' + tok } });
-    const r = await fetch('api/manuscripts/1/wordcount-history');
+    const r = await fetch(`api/manuscripts/${mid}/wordcount-history`);
     const rows = (await r.json()).rows || [];
     return rows.length ? rows[rows.length - 1] : null;
-  }, SYSTEM_TOKEN);
+  }, { tok: SYSTEM_TOKEN, mid: TEST_MANUSCRIPT_ID });
   check('wordcount computed', !!wc, JSON.stringify(wc));
   // A (10 words) represents the group — NOT superseded B (3 words, most recent).
   check('representative skips superseded B (10 words, not 3)',

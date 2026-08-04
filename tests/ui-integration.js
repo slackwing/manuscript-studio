@@ -183,7 +183,9 @@ async function runTests() {
     // Test 16: Short dialogue lines don't have stretched justification
     const dialogueSpacing = await page.evaluate(() => {
       const paragraphs = Array.from(document.querySelectorAll('.pagedjs_page p'));
-      const waitedLine = paragraphs.find(p => p.textContent.trim() === 'I waited a second.');
+      // The paragraph carries the "+" add-sentence affordance glyph at its
+      // end, so match on the sentence text, not textContent equality.
+      const waitedLine = paragraphs.find(p => p.textContent.trim().replace(/\+$/, '').trim() === 'I waited a second.');
       if (!waitedLine) return { found: false };
 
       // Check word spacing - should be normal (0px or close to it), not stretched

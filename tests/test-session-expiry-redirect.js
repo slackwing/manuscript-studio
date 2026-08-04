@@ -41,14 +41,19 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     await context.clearCookies();
     if (withoutSession.length) await context.addCookies(withoutSession);
 
-    // Trigger any authenticatedFetch — its 401 handler is what does the
-    // redirect. (Sentence clicks no longer fetch; they read from the
-    // in-memory annotation cache. So we hit a known authenticated
-    // endpoint directly.)
+    // Trigger any authenticatedFetch — its 401 handler is what surfaces the
+    // expiry. Since the app-wide session guard landed (fe601df), the book
+    // page shows the IN-PLACE re-login modal (unsaved work survives) instead
+    // of hard-redirecting; login.html is only the fallback for pages that
+    // don't load the guard.
     await page.evaluate(() => window.authenticatedFetch('api/session'));
 
-    await page.waitForURL(/login\.html/, { timeout: 5000 });
-    assert(/login\.html/.test(page.url()), `Redirected to login page (got ${page.url()})`);
+    await page.waitForSelector('.msg-overlay', { timeout: 20000 });
+    assert(true, 'in-place re-login modal appears on 401');
+    assert(!/login\.html/.test(page.url()),
+      `stays on the book page, no hard redirect (got ${page.url()})`);
+    const hasUserField = await page.locator('.msg-overlay #msg-user').count();
+    assert(hasUserField === 1, 'modal offers the username field');
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}`);

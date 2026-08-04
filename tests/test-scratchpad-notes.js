@@ -3,7 +3,7 @@
 // the note persists in the DB as a scratchpad note (no sentence).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -70,7 +70,7 @@ const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98
   check('note persisted as a scratchpad note (purple, no sentence, has pad)',
     /purple/.test(row) && /\|t\|t/.test(row.replace(/\s/g, '')), row.trim());
   // The doc stores note_id + text but NO color (one source of truth).
-  const doc = psql(`SELECT doc::text FROM scratchpad WHERE user_id='test' ORDER BY scratchpad_id DESC LIMIT 1`);
+  const doc = psql(`SELECT doc::text FROM scratchpad WHERE user_id='${TEST_USERNAME}' ORDER BY scratchpad_id DESC LIMIT 1`);
   check('doc has the noteRef but NO color (color lives on the note)',
     /noteRef/.test(doc) && !/color/.test(doc), doc.slice(0, 200));
 

@@ -105,6 +105,16 @@ async function cleanupTestNotes() {
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
         )
       );
+      -- Scratchpad/standalone notes have NO sentence, so the sentence-scoped
+      -- wipe above misses them; a crashed test's leftover note then haunts the
+      -- next test's landing page as an orphaned "no context" card.
+      DELETE FROM note_tag WHERE note_id IN (
+        SELECT note_id FROM note WHERE user_id = '${TEST_USERNAME}' AND sentence_id IS NULL
+      );
+      DELETE FROM note_version WHERE note_id IN (
+        SELECT note_id FROM note WHERE user_id = '${TEST_USERNAME}' AND sentence_id IS NULL
+      );
+      DELETE FROM note WHERE user_id = '${TEST_USERNAME}' AND sentence_id IS NULL;
       DELETE FROM suggested_change WHERE sentence_id IN (
         SELECT sentence_id FROM sentence WHERE migration_id IN (
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}

@@ -29,7 +29,9 @@ const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
   await page.keyboard.down('Shift'); for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight'); await page.keyboard.up('Shift');
   await page.waitForTimeout(150);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
-  await page.waitForTimeout(600);
+  // Ref creation is async (note POST + doc transaction) — wait on the ref
+  // atom, not a fixed sleep; the fixed 600ms lost races under suite load.
+  await page.waitForSelector('.sn-note-ref', { timeout: 20000 });
 
   // The ref sits between the two spaces, so textContent shows a gap.
   const before = await page.evaluate(docText);
@@ -38,7 +40,10 @@ const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
   check('ref replaces the highlighted word while present', before === 'one  three', JSON.stringify(before));
 
   // Delete the note via its trash (two-click confirm).
-  await page.locator('.spm-title').click(); await page.waitForTimeout(200);
+  await page.locator('.spm-title').click();
+  // The trash is hover-revealed: attached to the DOM but CSS-hidden, and the
+  // deletion below dispatches events on it directly — so wait on attachment.
+  await page.waitForSelector('.sn-note-ref-trash', { state: 'attached', timeout: 20000 });
   await page.evaluate(() => {
     const t = document.querySelector('.sn-note-ref-trash');
     t.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));

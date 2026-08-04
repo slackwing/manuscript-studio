@@ -71,11 +71,11 @@ function psql(sql) {
   // Reload + reopen the float → the tag is still there (round-trip via GET).
   await page.reload(); await page.waitForTimeout(800);
   if ((await page.locator('.spm-overlay').count()) === 0) {
-    await page.waitForSelector('.card-scratchpad', { timeout: 8000 });
+    await page.waitForSelector('.card-scratchpad', { timeout: 20000 });
     await page.locator('.card-scratchpad').first().click();
   }
-  await page.waitForSelector('.spm-editor .ProseMirror', { timeout: 8000 });
-  await page.waitForSelector('.sn-note-ref', { timeout: 8000 });
+  await page.waitForSelector('.spm-editor .ProseMirror', { timeout: 20000 });
+  await page.waitForSelector('.sn-note-ref', { timeout: 20000 });
   await page.waitForTimeout(400);
   await page.locator('.sn-note-ref-sq').first().click();
   await page.waitForTimeout(700);

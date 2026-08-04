@@ -31,7 +31,7 @@ async function testSpacing(windowWidth, windowHeight, testName) {
 
   // Wait for pages to render, then stabilize layout
   await page.waitForSelector('.pagedjs_page', { timeout: 15000 });
-  await page.waitForSelector('#annotation-margin', { state: 'attached', timeout: 15000 });
+  await page.waitForSelector('#note-margin', { state: 'attached', timeout: 15000 });
   await page.waitForTimeout(1000);
 
   // Click on a sentence to show annotations (and the sticky-notes container)
@@ -43,7 +43,7 @@ async function testSpacing(windowWidth, windowHeight, testName) {
   const measurements = await page.evaluate(() => {
     const pages = document.querySelectorAll('.pagedjs_page');
     const stickyNote = document.getElementById('sticky-notes-container');
-    const annotationMargin = document.getElementById('annotation-margin');
+    const annotationMargin = document.getElementById('note-margin');
 
     // Vertical gap between pages
     let verticalGap = 0;

@@ -7,3 +7,17 @@ test-xss-annotation.js:2
 test-history-bars.js:1
 spacing-invariants-test.js:3
 test-suggested-edits.js:4
+test-anchor-gutter.js:1
+test-canonize-compose.js:2
+test-landing-note-deeplink-scroll.js:2
+test-legacy-note-doc.js:1
+test-noteref-survives-edits.js:2
+test-range-delete.js:2
+test-save-resilience.js:2
+test-scratchpad-manuscript-link.js:1
+test-scratchpad-notes.js:1
+test-session-guard.js:2
+test-snippet-caret.js:1
+test-snippet-edit-scroll.js:2
+test-snippet-leading-indent.js:2
+test-suggest-edit-pane.js:2

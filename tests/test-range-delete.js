@@ -3,13 +3,16 @@
 // server on :5002.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
+const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, loginAsTestUser } = require('./test-utils');
 const BASE = 'http://localhost:5001';
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf-8' }).trim();
 
 (async () => {
-  psql(`DELETE FROM suggested_change WHERE user_id='test'`);
+  // Scoped to THIS worker's user — a blanket user_id='test' wipe nuked
+  // worker 1's in-flight suggestions when this ran on another worker.
+  psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   let failed = false;
@@ -17,13 +20,14 @@ const psql = (sql) => execSync(
 
   // login via API
   await page.goto(`${BASE}/login.html`);
+  await page.evaluate(([u, p]) => { window.__TEST_USER = u; window.__TEST_PASS = p; }, [TEST_USERNAME, TEST_PASSWORD]);
   await page.evaluate(async () => {
     const r = await fetch('api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', body: JSON.stringify({ username: 'test', password: 'test' }) });
+      credentials: 'include', body: JSON.stringify({ username: window.__TEST_USER, password: window.__TEST_PASS }) });
     const d = await r.json();
     localStorage.setItem('csrf_token', d.csrf_token);
   });
-  await page.goto(`${BASE}/index.html?manuscript_id=1`);
+  await page.goto(TEST_URL);
   await page.waitForSelector('.sentence[data-sentence-id]', { timeout: 60000 });
   await page.waitForTimeout(4000);
 
@@ -80,12 +84,12 @@ const psql = (sql) => execSync(
   await page.locator('.range-trash').click();
   const arming = await page.evaluate(() => document.querySelector('.range-trash').classList.contains('confirming'));
   check('first click arms (confirming)', arming);
-  const before = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='test'`);
+  const before = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   check('no suggestions before confirm', before === '0', before);
   await page.locator('.range-trash').click();
   await page.waitForTimeout(2500);
 
-  const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='test' AND text=''`);
+  const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text=''`);
   check('EMPTY suggestion on every sentence in range', rows === String(pair.between.length), `rows=${rows}`);
   const modeOff = await page.evaluate(() => !document.body.classList.contains('range-delete-mode') && !document.querySelector('.range-trash'));
   check('mode exits after apply', modeOff);
@@ -103,7 +107,7 @@ const psql = (sql) => execSync(
 
   // Escape exits a fresh selection without applying
   await page.evaluate(() => window.WriteSysRenderer.scrollToSentence && null);
-  psql(`DELETE FROM suggested_change WHERE user_id='test'`);
+  psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();
   process.exit(failed ? 1 : 0);

@@ -21,10 +21,8 @@ set -u
 FAST_TESTS=(
   test-wordcount
   test-rainbow-slice
-  test-session-expiry-redirect
   test-never-mind-focus
   test-tag-api
-  test-tag-authz
   test-xss-annotation
   alignment-test
   comprehensive-test
@@ -49,7 +47,6 @@ FAST_TESTS=(
   test-login-form
   test-anchor-glyph
   test-anchor-inline
-  test-break-buttons
   test-canonicalize
   test-canon-render-pipeline
   test-cheatsheet
@@ -61,11 +58,27 @@ FAST_TESTS=(
   test-sketch-sibling-refresh
   test-snippet-no-scroll-jump
   test-scratchpad-notes
-  test-legacy-note-doc
-  test-home-notes
+  test-stats-pane
 )
 
 SLOW_TESTS=(
+  test-anchor-gutter
+  test-canonize-compose
+  test-editor-shortcuts
+  test-landing-note-deeplink-scroll
+  test-note-delete-restores-text
+  test-note-manuscript-link
+  test-noteref-survives-edits
+  test-range-delete
+  test-save-resilience
+  test-session-guard
+  test-sketch-rail-compare
+  test-snippet-caret
+  test-snippet-edit-scroll
+  test-snippet-leading-indent
+  test-snippet-save-race
+  test-suggest-edit-pane
+  test-trailing-snippet-caret
   test-scratchpad-canonize
   test-history-bars
   test-suggested-edits
@@ -87,6 +100,19 @@ SLOW_TESTS=(
   test-rainbow-deletion
   test-inline-tag-input
   trash-icon-test
+)
+
+# Tests that are NOT parallel-safe: order-sensitive fixtures or focus
+# contention in the shared Chromium. They run ONE AT A TIME (worker 1)
+# after the parallel pool drains, in every mode. Classify here only as a
+# last resort — prefer fixing the test's isolation.
+SERIAL_TESTS=(
+  test-scratchpad-manuscript-link
+  test-session-expiry-redirect
+  test-legacy-note-doc
+  test-home-notes
+  test-scratchpad-note-tags
+  test-tag-authz
 )
 
 mode="${1:-all}"
@@ -127,7 +153,7 @@ if [ "$run_go" -eq 1 ]; then
 fi
 
 # Sanity check: every entry exists on disk.
-for name in "${js_tests[@]}"; do
+for name in "${js_tests[@]}" "${SERIAL_TESTS[@]}"; do
   if [ ! -f "tests/${name}.js" ]; then
     echo "❌ Missing test file: tests/${name}.js (referenced in test-all.sh)"
     exit 1
@@ -136,7 +162,7 @@ done
 
 # Sanity check: every tests/*.js (other than shared infra) is classified.
 declare -A classified
-for name in "${FAST_TESTS[@]}" "${SLOW_TESTS[@]}"; do classified[$name]=1; done
+for name in "${FAST_TESTS[@]}" "${SLOW_TESTS[@]}" "${SERIAL_TESTS[@]}"; do classified[$name]=1; done
 for f in tests/*.js; do
   name=$(basename "$f" .js)
   case "$name" in test-utils|pw-server|pw-shared|reset-fixture) continue ;; esac
@@ -227,6 +253,11 @@ for w in $(seq 1 "$WORKERS"); do
   worker_pids+=($!)
 done
 for p in "${worker_pids[@]}"; do wait "$p"; done
+
+# Serial phase: the parallel-unsafe stragglers, one at a time on worker 1.
+echo "  --- serial phase (${#SERIAL_TESTS[@]} tests) ---"
+run_worker 1 "${SERIAL_TESTS[@]}"
+js_tests+=("${SERIAL_TESTS[@]}")
 
 suite_end=$(date +%s)
 
