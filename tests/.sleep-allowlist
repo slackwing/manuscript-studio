@@ -21,3 +21,4 @@ test-snippet-caret.js:1
 test-snippet-edit-scroll.js:2
 test-snippet-leading-indent.js:2
 test-suggest-edit-pane.js:2
+test-complete-annotation.js:1

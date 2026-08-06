@@ -137,6 +137,15 @@ func (db *DB) SoftDeleteScratchpad(ctx context.Context, id int) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE scratchpad SET deleted_at = NOW() WHERE scratchpad_id = $1 AND deleted_at IS NULL
 	`, id)
+	if err != nil {
+		return err
+	}
+	// A pad's notes live in its doc (noteRefs) — deleting the pad orphans
+	// them with no UI left to remove them from (they haunted the landing
+	// page as undeletable cards). They go down with the pad.
+	_, err = db.Pool.Exec(ctx, `
+		UPDATE note SET deleted_at = NOW() WHERE scratchpad_id = $1 AND deleted_at IS NULL
+	`, id)
 	return err
 }
 

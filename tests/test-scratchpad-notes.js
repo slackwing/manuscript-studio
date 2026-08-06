@@ -113,6 +113,19 @@ const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98
   check('removing the ref (via bulk edit) soft-deletes the note deterministically (no sweep)',
     /^t$/.test(delRow), delRow);
 
+  // Deleting a PAD takes its notes with it — an orphaned pad note used to
+  // haunt the landing page with no UI left to remove it.
+  const padId = psql(`SELECT scratchpad_id FROM note WHERE note_id=${noteId}`).trim();
+  psql(`UPDATE note SET deleted_at = NULL WHERE note_id=${noteId}`); // resurrect as the pad's note
+  const csrf = await page.evaluate(() => localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token'));
+  const delStatus = await page.evaluate(async ({ padId, csrf }) => {
+    const r = await fetch(`api/scratchpads/${padId}`, { method: 'DELETE', headers: { 'X-CSRF-Token': csrf }, credentials: 'include' });
+    return r.status;
+  }, { padId, csrf });
+  check('pad deleted via API', delStatus === 204 || delStatus === 200, `status=${delStatus}`);
+  const orphanRow = psql(`SELECT deleted_at IS NOT NULL FROM note WHERE note_id=${noteId}`).trim();
+  check('deleting the pad soft-deletes its notes (no orphans)', /^t$/.test(orphanRow), orphanRow);
+
   await browser.close();
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
