@@ -197,6 +197,13 @@ func (s *Server) setupRouter() {
 		})
 	}
 
+	// Durable request log (payload_log.go): every request, bodies included,
+	// into the host-mounted logs dir — placed AFTER the base-path strip so
+	// logged paths are root-relative.
+	if dir := resolvePayloadLogDir(); dir != "" {
+		r.Use(payloadLogMiddleware(dir))
+	}
+
 	// /health: legacy alias for /readyz.
 	r.Get("/livez", s.livezHandler)
 	r.Get("/readyz", s.readyzHandler)
