@@ -1124,6 +1124,10 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 
 // UpdateScratchpadNote mutates a scratchpad note's mutable fields directly (no
 // version row — see CreateScratchpadNote). Only touches notes with the given id.
+// UpdateScratchpadNote directly updates a VERSIONLESS note — scratchpad or
+// snippet notes (neither has a sentence origin, so no note_version rows).
+// The guard makes sentence notes unreachable here: they must go through
+// UpdateNote's versioned path.
 func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *string, body *string, priority *string, flagged *bool) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE note SET
@@ -1132,7 +1136,7 @@ func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *strin
 			priority = COALESCE($5, priority),
 			flagged  = COALESCE($6, flagged),
 			updated_at = NOW()
-		WHERE note_id = $1 AND scratchpad_id IS NOT NULL AND deleted_at IS NULL
+		WHERE note_id = $1 AND (scratchpad_id IS NOT NULL OR snippet_id IS NOT NULL) AND deleted_at IS NULL
 	`, noteID, color, body != nil, body, priority, flagged)
 	return err
 }

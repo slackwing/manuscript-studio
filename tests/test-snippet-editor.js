@@ -132,6 +132,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('derived "snippet" chip present', (await snipChip.count()) === 1);
   check('snippet chip is unremovable (no ×)', (await page.locator('.sn-note-float .tag-chip.snippet-chip .tag-chip-remove').count()) === 0);
 
+  // Typing in the float SAVES (snippet notes are versionless — the update
+  // once 500'd on their empty note_version history).
+  await page.locator('.sn-note-float .note-input').click();
+  await page.keyboard.type('Snippet note body from the square.');
+  await page.waitForTimeout(1600); // debounced save
+  const { execSync: exq } = require('child_process');
+  const savedBody = exq(
+    `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "SELECT coalesce(body,'(null)') FROM note WHERE note_id=${ctxNote.note_id}"`,
+    { encoding: 'utf-8' }).trim();
+  check('typed note body persists to the DB', /Snippet note body from the square/.test(savedBody), savedBody);
+
   // Make it a task, complete it → the square turns into the green check.
   await page.locator('.sn-note-float .priority-chip[data-priority="P1"]').click();
   await page.waitForTimeout(300);

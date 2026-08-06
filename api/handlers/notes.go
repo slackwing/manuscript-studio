@@ -394,11 +394,13 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 		existing.Flagged = *req.Flagged
 	}
 
-	// A scratchpad note has no version history (no sentence origin) — update it
-	// directly. Sentence notes append a version row (audit + migration lineage).
-	if existing.ScratchpadID != nil {
+	// Scratchpad and SNIPPET notes have no version history (no sentence
+	// origin) — update them directly; the versioned path's origin lookup
+	// explodes on their empty note_version history. Sentence notes append a
+	// version row (audit + migration lineage).
+	if existing.ScratchpadID != nil || existing.SnippetID != nil {
 		if err := h.DB.UpdateScratchpadNote(ctx, noteID, req.Color, req.Body, req.Priority, req.Flagged); err != nil {
-			log.Printf("notes: update scratchpad note %d: %v", noteID, err)
+			log.Printf("notes: update versionless note %d: %v", noteID, err)
 			http.Error(w, "Failed to update note", http.StatusInternalServerError)
 			return
 		}
