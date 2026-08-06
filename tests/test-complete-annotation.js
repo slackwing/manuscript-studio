@@ -46,13 +46,36 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
 
     const rainbowBarsBefore = await page.locator('.rainbow-bar').count();
 
+    // Only TASKS (notes with a priority) can be completed: no priority, no
+    // checkmark.
     const check = page.locator('.sticky-note:not(.uncreated-note) .complete-check');
+    const hiddenBefore = await check.evaluate(el => getComputedStyle(el).display === 'none');
+    assert(hiddenBefore, 'Complete button hidden while the note has no priority');
+    await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').click();
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check');
+      return el && getComputedStyle(el).display !== 'none';
+    });
+    assert(true, 'Assigning a priority reveals the complete button');
+    const noteId = await page.locator('.sticky-note:not(.uncreated-note)').first()
+      .evaluate(el => el.dataset.noteId || el.dataset.annotationId);
+
     await check.click();
     const confirming = await check.evaluate(el => el.classList.contains('confirming'));
     assert(confirming, 'First click puts complete button into confirming state');
 
+    // Typed points: a stale first digit ("9") expires after the 1s window,
+    // then "1"+"5" within the window reads as 15, shown in place of the ✓.
+    await page.keyboard.press('9');
+    await page.waitForTimeout(1200);
+    await page.keyboard.press('1');
     await page.waitForTimeout(150);
-    await check.click();
+    await page.keyboard.press('5');
+    const shown = await check.evaluate(el => (el.querySelector('.points-entry') || {}).textContent || '');
+    assert(shown === '15', `Typed points shown in place of the checkmark (got "${shown}")`);
+
+    // Enter completes with those points.
+    await page.keyboard.press('Enter');
 
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated', { timeout: 5000 });
     await page.waitForTimeout(500);
@@ -63,6 +86,13 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const rainbowBarsAfter = await page.locator('.rainbow-bar').count();
     assert(rainbowBarsAfter !== rainbowBarsBefore || rainbowBarsBefore === 0,
       `Rainbow bars updated (before=${rainbowBarsBefore}, after=${rainbowBarsAfter})`);
+
+    // The typed points + completion time landed in the DB.
+    const { execSync } = require('child_process');
+    const row = execSync(
+      `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "SELECT points, (completed_at IS NOT NULL) FROM note WHERE note_id=${parseInt(noteId, 10)}"`,
+      { encoding: 'utf-8' }).trim();
+    assert(row === '15|t', `points=15 + completed_at stored (got "${row}")`);
 
     // Completion must persist after reload.
     await page.reload();

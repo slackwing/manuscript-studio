@@ -30,6 +30,13 @@ placement-agnostic core widget + thin placement adapters.
 
 ---
 
+## Terminology
+
+A note with a priority (P0–P2) is a **TASK**. Only tasks can be completed —
+the checkmark appears once a priority is assigned — and completing one may
+record **points** (0–99, typed on the armed checkmark; stored in
+`note.points`, with `completed_at` recording when).
+
 ## Locked decisions (from author)
 
 1. **Rename in place**, don't rebuild. `annotation` → `note` across DB, Go, JS,

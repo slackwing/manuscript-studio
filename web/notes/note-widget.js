@@ -14,7 +14,7 @@
  *   note      — { note_id, color, body, priority, flagged, tags:[{tag_id,tag_name}],
  *                 manuscript_id, manuscript_name }
  *   handlers  — { onSaveText(text), onColor(color), onPriority(p), onFlag(),
- *                 onDelete(), onComplete(), onAddTag(name), onRemoveTag(tagId),
+ *                 onDelete(), onComplete(points), onAddTag(name), onRemoveTag(tagId),
  *                 onLinkManuscript(id), onUnlinkManuscript(),
  *                 onFocus(), onBlur() }  (all optional)
  *   opts      — { collapsed:false, colors:[...], showComplete:true }
@@ -158,6 +158,10 @@
     });
     const flag = noteEl.querySelector('.flag-chip');
     if (flag) flag.classList.toggle('active', !!note.flagged);
+    // TERMINOLOGY: a note with a priority (P0–P2) is a TASK. Only tasks can
+    // be completed (and pointed) — the checkmark exists only for them.
+    const check = noteEl.querySelector('.complete-check');
+    if (check) check.style.display = (note.priority && note.priority !== 'none') ? '' : 'none';
   }
 
   function autoResize(ta) {
@@ -165,7 +169,69 @@
     ta.style.height = ta.scrollHeight + 'px';
   }
 
-  // Two-click confirm on an icon (trash/complete), matching the manuscript flow.
+  // Completing a TASK, with optional points. First click arms the checkmark
+  // (green, like the old two-click confirm). While armed:
+  //   digit  — types a point value shown IN PLACE of the ✓ (small, so two
+  //            digits fit). A second digit lands within 1s of the first;
+  //            after that window closes, the next digit starts a NEW number.
+  //            Typing points holds the armed state open.
+  //   click / Enter — completes, passing the typed points (null if none).
+  //   Escape — disarms. Arming with no typed points still auto-cancels
+  //            after 2s, matching the old confirm.
+  function armComplete(el, handlers) {
+    if (!el) return;
+    const checkSvg = el.innerHTML;
+    let armed = false, points = null, digitOpen = false, digitTimer, disarmTimer;
+    const show = () => {
+      el.innerHTML = points == null ? checkSvg : `<span class="points-entry">${points}</span>`;
+    };
+    const disarm = () => {
+      armed = false; points = null; digitOpen = false;
+      clearTimeout(digitTimer); clearTimeout(disarmTimer);
+      el.classList.remove('confirming');
+      document.removeEventListener('keydown', onKey, true);
+      show();
+    };
+    const finish = () => {
+      const p = points;
+      disarm();
+      if (handlers.onComplete) handlers.onComplete(p);
+    };
+    const onKey = (e) => {
+      if (!armed) return;
+      // Never hijack real typing (note body, tag input, etc.).
+      if (e.target && /^(input|textarea)$/i.test(e.target.tagName)) return;
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault(); e.stopPropagation();
+        clearTimeout(disarmTimer);
+        const d = parseInt(e.key, 10);
+        points = (digitOpen && points != null && points < 10) ? points * 10 + d : d;
+        digitOpen = true;
+        clearTimeout(digitTimer);
+        digitTimer = setTimeout(() => { digitOpen = false; }, 1000);
+        show();
+      } else if (e.key === 'Enter') {
+        e.preventDefault(); e.stopPropagation();
+        finish();
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        disarm();
+      }
+    };
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!armed) {
+        armed = true;
+        el.classList.add('confirming');
+        document.addEventListener('keydown', onKey, true);
+        disarmTimer = setTimeout(() => { if (points == null) disarm(); }, 2000);
+      } else {
+        finish();
+      }
+    });
+  }
+
+  // Two-click confirm on an icon (trash), matching the manuscript flow.
   function twoClick(el, action) {
     if (!el) return;
     let count = 0, timer;
@@ -322,7 +388,7 @@
     }
 
     twoClick(noteEl.querySelector('.note-trash'), () => handlers.onDelete && handlers.onDelete());
-    twoClick(noteEl.querySelector('.complete-check'), () => handlers.onComplete && handlers.onComplete());
+    armComplete(noteEl.querySelector('.complete-check'), handlers);
 
     // Collapsed cards expand on click (anywhere not on an interactive control).
     if (opts.collapsed && opts.expandable !== false) {

@@ -61,19 +61,23 @@
         text-shadow: inherit;
       }
       .ms-chip-x:hover { color: #fff; }
-      /* Unlinked: just the glyph, quiet until hover invites the link. */
+      /* Unlinked: same dashed-outline language as the note's other buttons
+         (priority chips / trash / checkmark) — normal ink, no gilt until
+         it's actually linked. Keeps the pill shape; +1px padding offsets
+         the thinner border so the outer size doesn't shift. */
       .ms-chip.unlinked {
         background: transparent;
-        border-color: transparent;
-        color: #b0a68f;
+        border: 1px dashed #ccc;
+        padding: 3px 8px;
+        color: #999;
         box-shadow: none;
         text-shadow: none;
         cursor: pointer;
       }
       .ms-chip.unlinked:hover {
-        color: #7a5a34;
-        border-color: #c9a227;
-        background: rgba(201, 162, 39, 0.08);
+        background: #f5f5f5;
+        border-color: #999;
+        color: #666;
       }
     `;
     document.head.appendChild(st);

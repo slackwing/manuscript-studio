@@ -1068,42 +1068,42 @@ p.section-break {
 
 /* Color-specific tag and priority chip colors (darker shades matching sticky) */
 /* Exclude .new-tag and .editable-tag from color styling */
-#sticky-note-container.color-yellow .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-yellow .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 #sticky-note-container.color-yellow .priority-chip.active {
   background: var(--chip-yellow);
   border-color: var(--chip-yellow);
   color: var(--chip-yellow-text);
 }
 
-#sticky-note-container.color-green .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-green .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 #sticky-note-container.color-green .priority-chip.active {
   background: var(--chip-green);
   border-color: var(--chip-green);
   color: var(--chip-green-text);
 }
 
-#sticky-note-container.color-blue .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-blue .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 #sticky-note-container.color-blue .priority-chip.active {
   background: var(--chip-blue);
   border-color: var(--chip-blue);
   color: var(--chip-blue-text);
 }
 
-#sticky-note-container.color-purple .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-purple .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 #sticky-note-container.color-purple .priority-chip.active {
   background: var(--chip-purple);
   border-color: var(--chip-purple);
   color: var(--chip-purple-text);
 }
 
-#sticky-note-container.color-red .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-red .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 #sticky-note-container.color-red .priority-chip.active {
   background: var(--chip-red);
   border-color: var(--chip-red);
   color: var(--chip-red-text);
 }
 
-#sticky-note-container.color-orange .tag-chip:not(.new-tag):not(.editable-tag),
+#sticky-note-container.color-orange .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 #sticky-note-container.color-orange .priority-chip.active {
   background: var(--chip-orange);
   border-color: var(--chip-orange);
@@ -1537,6 +1537,14 @@ p.section-break {
   animation: pulse 0.3s ease-in-out;
 }
 
+/* Typed point value shown IN PLACE of the ✓ while the checkmark is armed —
+   small enough that two digits fit the 28px circle. */
+.complete-check .points-entry {
+  font: 700 11px "Helvetica", sans-serif;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
 .complete-check svg {
   width: 14px;
   height: 14px;
@@ -1616,42 +1624,42 @@ p.section-break {
 .sticky-note.color-orange { background: var(--sticky-orange); }
 
 /* Color-specific tag and priority chip colors */
-.sticky-note.color-yellow .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-yellow .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 .sticky-note.color-yellow .priority-chip.active {
   background: var(--chip-yellow);
   border-color: var(--chip-yellow);
   color: var(--chip-yellow-text);
 }
 
-.sticky-note.color-green .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-green .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 .sticky-note.color-green .priority-chip.active {
   background: var(--chip-green);
   border-color: var(--chip-green);
   color: var(--chip-green-text);
 }
 
-.sticky-note.color-blue .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-blue .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 .sticky-note.color-blue .priority-chip.active {
   background: var(--chip-blue);
   border-color: var(--chip-blue);
   color: var(--chip-blue-text);
 }
 
-.sticky-note.color-purple .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-purple .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 .sticky-note.color-purple .priority-chip.active {
   background: var(--chip-purple);
   border-color: var(--chip-purple);
   color: var(--chip-purple-text);
 }
 
-.sticky-note.color-red .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-red .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 .sticky-note.color-red .priority-chip.active {
   background: var(--chip-red);
   border-color: var(--chip-red);
   color: var(--chip-red-text);
 }
 
-.sticky-note.color-orange .tag-chip:not(.new-tag):not(.editable-tag),
+.sticky-note.color-orange .tag-chip:not(.new-tag):not(.editable-tag):not(.manuscript-chip),
 .sticky-note.color-orange .priority-chip.active {
   background: var(--chip-orange);
   border-color: var(--chip-orange);

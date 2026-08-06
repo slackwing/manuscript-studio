@@ -90,7 +90,11 @@ type Note struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DeletedAt    *time.Time `json:"deleted_at"`
 	CompletedAt  *time.Time `json:"completed_at"`
-	Tags         []Tag      `json:"tags"` // populated via JOIN; always serialize, even empty
+	// Points earned at completion. Terminology: a note with a priority
+	// (P0–P2) is a TASK — only tasks can be completed, and completing one
+	// may assign points (typed on the armed checkmark).
+	Points *int  `json:"points"`
+	Tags   []Tag `json:"tags"` // populated via JOIN; always serialize, even empty
 }
 
 type Tag struct {

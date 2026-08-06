@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Points earned when completing a TASK (a note with a priority —
+         only those can be completed). Typed on the armed checkmark, 0–99;
+         NULL when the task was completed without points, or for plain
+         notes from before this feature. completed_at (004) records when. -->
+    <changeSet id="025-note-points" author="claude">
+        <addColumn tableName="note">
+            <column name="points" type="INTEGER"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

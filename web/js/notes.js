@@ -340,7 +340,7 @@ const WriteSysNotes = {
       onPriority: (p) => this.handlePriorityClick(note, p, noteEl),
       onFlag: () => this.handleFlagClick(note, noteEl),
       onDelete: () => this.deleteNote(note.note_id),
-      onComplete: () => this.completeNote(note.note_id),
+      onComplete: (points) => this.completeNote(note.note_id, points),
       onAddTag: (name) => this.addTagByName(note, noteEl, name),
       onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
       // A sentence note is trivially in its manuscript — the chip would be
@@ -730,10 +730,12 @@ const WriteSysNotes = {
     }
   },
 
-  async completeNote(noteId) {
+  async completeNote(noteId, points) {
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${noteId}/complete`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(points != null ? { points } : {}),
       });
 
       if (!response.ok && response.status !== 204) {
@@ -876,24 +878,11 @@ const WriteSysNotes = {
     }
   },
 
+  // Delegates to the shared widget's updater — one place decides chip
+  // active states AND whether the complete checkmark shows (tasks only,
+  // i.e. priority set). A local copy here once drifted past that gating.
   updatePriorityFlagUIForNote(noteEl, note) {
-    noteEl.querySelectorAll('.priority-chip').forEach(chip => {
-      const priority = chip.dataset.priority;
-      if (note.priority === priority) {
-        chip.classList.add('active');
-      } else {
-        chip.classList.remove('active');
-      }
-    });
-
-    const flagChip = noteEl.querySelector('.flag-chip');
-    if (flagChip) {
-      if (note.flagged) {
-        flagChip.classList.add('active');
-      } else {
-        flagChip.classList.remove('active');
-      }
-    }
+    window.WriteSysNoteWidget.updatePriorityFlagUI(noteEl, note);
   },
 
   // Tag add/remove just mutate note.tags; the shared widget owns the chip

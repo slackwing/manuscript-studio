@@ -521,7 +521,20 @@ func (h *NoteHandlers) HandleCompleteNote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := h.DB.CompleteNote(ctx, noteID); err != nil {
+	// Optional body: {"points": N} — the value typed on the armed checkmark
+	// (two digits max). An empty body completes without points.
+	var body struct {
+		Points *int `json:"points"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body) // empty body is fine
+	}
+	if body.Points != nil && (*body.Points < 0 || *body.Points > 99) {
+		http.Error(w, "points must be 0-99", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.CompleteNote(ctx, noteID, body.Points); err != nil {
 		log.Printf("notes: complete %d: %v", noteID, err)
 		http.Error(w, "Failed to complete", http.StatusInternalServerError)
 		return

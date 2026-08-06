@@ -14,6 +14,10 @@ const WriteSysHome = {
     // Re-render cards whenever the modal closes (titles/snippets change).
     window.addEventListener('scratchpad-modal-closed', () => this.reload());
     window.addEventListener('popstate', () => this.render());
+    // After an in-place re-login (session-guard), the page's data fetches
+    // had 401'd — reload them, else the landing page stays broken until a
+    // manual refresh.
+    document.addEventListener('ms:session-restored', () => this.reload());
     await this.reload();
   },
 

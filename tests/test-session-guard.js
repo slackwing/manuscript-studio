@@ -109,6 +109,25 @@ const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1
   await page.click('#spm-close');
   await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 8000 });
 
+  // 4. The LANDING PAGE recovers after an in-place re-login: its data
+  //    fetches had 401'd, and home.js must reload them on
+  //    ms:session-restored (this exact case once required a manual
+  //    refresh).
+  await context.clearCookies();
+  await page.evaluate(() => window.dispatchEvent(new Event('scratchpad-modal-closed'))); // forces a home reload → 401
+  await page.waitForSelector('.msg-overlay', { timeout: 8000 });
+  check('home: expired reload trips the re-login modal', true);
+  const brokeFirst = await page.evaluate(() => (document.getElementById('home-root') || {}).textContent || '');
+  await page.fill('#msg-user', USERNAME);
+  await page.fill('#msg-pass', 'test');
+  await page.click('.msg-login');
+  await page.waitForSelector('.msg-overlay', { state: 'detached', timeout: 8000 });
+  await page.waitForFunction(() => {
+    const t = (document.getElementById('home-root') || {}).textContent || '';
+    return t && !/Failed to load/.test(t);
+  }, { timeout: 10000 });
+  check('home re-renders after modal login (no manual refresh)', true, `was: ${brokeFirst.slice(0, 40)}`);
+
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();
   process.exit(failed ? 1 : 0);

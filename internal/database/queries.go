@@ -793,7 +793,7 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.points
 		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
@@ -827,6 +827,7 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 			&a.UpdatedAt,
 			&a.DeletedAt,
 			&a.CompletedAt,
+			&a.Points,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
@@ -925,7 +926,7 @@ func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersi
 func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.points
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.user_id = $2
@@ -959,6 +960,7 @@ func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username strin
 			&a.UpdatedAt,
 			&a.DeletedAt,
 			&a.CompletedAt,
+			&a.Points,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
@@ -1318,15 +1320,17 @@ func (db *DB) SoftDeleteNote(ctx context.Context, noteID int) error {
 	return nil
 }
 
-func (db *DB) CompleteNote(ctx context.Context, noteID int) error {
+// CompleteNote stamps completed_at and, when given, the points earned
+// (typed on the armed checkmark — see note-widget.js).
+func (db *DB) CompleteNote(ctx context.Context, noteID int, points *int) error {
 	query := `
 		UPDATE note
-		SET completed_at = NOW()
+		SET completed_at = NOW(), points = $2
 		WHERE note_id = $1
 		  AND deleted_at IS NULL
 		  AND completed_at IS NULL
 	`
-	result, err := db.Pool.Exec(ctx, query, noteID)
+	result, err := db.Pool.Exec(ctx, query, noteID, points)
 	if err != nil {
 		return fmt.Errorf("failed to complete note: %w", err)
 	}
@@ -1384,7 +1388,7 @@ func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.Not
 func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.points
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.deleted_at IS NULL
@@ -1413,6 +1417,7 @@ func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) 
 			&a.UpdatedAt,
 			&a.DeletedAt,
 			&a.CompletedAt,
+			&a.Points,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
@@ -1784,7 +1789,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {
 	query := `
 		SELECT note_id, COALESCE(sentence_id, ''), manuscript_id, scratchpad_id, user_id, color, body,
-		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at
+		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at, points
 		FROM note
 		WHERE note_id = $1
 		  AND deleted_at IS NULL
@@ -1807,6 +1812,7 @@ func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error)
 		&a.UpdatedAt,
 		&a.DeletedAt,
 		&a.CompletedAt,
+		&a.Points,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
