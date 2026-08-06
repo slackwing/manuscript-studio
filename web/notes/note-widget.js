@@ -153,15 +153,23 @@
   }
 
   function updatePriorityFlagUI(noteEl, note) {
+    const hasPriority = !!(note.priority && note.priority !== 'none');
+    // Selecting a priority COLLAPSES the P row to just the chosen level (the
+    // row reads Pn · flag · trash · ✓); clicking it again toggles back to
+    // 'none' and the full P0–P3 palette returns. Buttons keep fixed slot
+    // positions from the left (flex-start + fixed gap), so showing or
+    // hiding any of them never shifts the others.
     noteEl.querySelectorAll('.priority-chip').forEach((chip) => {
-      chip.classList.toggle('active', chip.dataset.priority === note.priority);
+      const active = chip.dataset.priority === note.priority;
+      chip.classList.toggle('active', active);
+      chip.style.display = (!hasPriority || active) ? '' : 'none';
     });
     const flag = noteEl.querySelector('.flag-chip');
     if (flag) flag.classList.toggle('active', !!note.flagged);
-    // TERMINOLOGY: a note with a priority (P0–P2) is a TASK. Only tasks can
+    // TERMINOLOGY: a note with a priority (P0–P3) is a TASK. Only tasks can
     // be completed (and pointed) — the checkmark exists only for them.
     const check = noteEl.querySelector('.complete-check');
-    if (check) check.style.display = (note.priority && note.priority !== 'none') ? '' : 'none';
+    if (check) check.style.display = hasPriority ? '' : 'none';
   }
 
   function autoResize(ta) {
@@ -299,6 +307,7 @@
           <div class="priority-chip" data-priority="P0">P0</div>
           <div class="priority-chip" data-priority="P1">P1</div>
           <div class="priority-chip" data-priority="P2">P2</div>
+          <div class="priority-chip" data-priority="P3">P3</div>
           <div class="flag-chip" data-flag="true" title="Flag">
             <svg width="14" height="14" viewBox="0 0 20 20" class="flag-icon">
               <path class="flag-staff" d="M4 1v18"/>

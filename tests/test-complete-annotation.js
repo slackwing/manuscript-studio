@@ -51,12 +51,24 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const check = page.locator('.sticky-note:not(.uncreated-note) .complete-check');
     const hiddenBefore = await check.evaluate(el => getComputedStyle(el).display === 'none');
     assert(hiddenBefore, 'Complete button hidden while the note has no priority');
+    const chipVis = () => page.evaluate(() => {
+      const vis = {};
+      document.querySelectorAll('.sticky-note:not(.uncreated-note) .priority-chip')
+        .forEach(c => { vis[c.dataset.priority] = getComputedStyle(c).display !== 'none'; });
+      return vis;
+    });
+    const before = await chipVis();
+    assert(before.P0 && before.P1 && before.P2 && before.P3,
+      'All four priority chips (incl. P3) show while unprioritized');
     await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').click();
     await page.waitForFunction(() => {
       const el = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check');
       return el && getComputedStyle(el).display !== 'none';
     });
     assert(true, 'Assigning a priority reveals the complete button');
+    const afterSel = await chipVis();
+    assert(afterSel.P0 && !afterSel.P1 && !afterSel.P2 && !afterSel.P3,
+      'Selecting a priority collapses the row to just that level');
     const noteId = await page.locator('.sticky-note:not(.uncreated-note)').first()
       .evaluate(el => el.dataset.noteId || el.dataset.annotationId);
 

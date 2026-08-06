@@ -1374,7 +1374,11 @@ p.section-break {
 
 .priority-flag-chips {
   display: flex;
-  justify-content: space-between;
+  /* Fixed slots from the LEFT (not space-between): the 16px gap reproduces
+     the old six-across spacing in the 272px margin note, and buttons stay
+     put when others show/hide (checkmark gating, P-row collapse). */
+  justify-content: flex-start;
+  gap: 16px;
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;

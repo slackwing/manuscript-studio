@@ -91,7 +91,7 @@ type Note struct {
 	DeletedAt    *time.Time `json:"deleted_at"`
 	CompletedAt  *time.Time `json:"completed_at"`
 	// Points earned at completion. Terminology: a note with a priority
-	// (P0–P2) is a TASK — only tasks can be completed, and completing one
+	// (P0–P3) is a TASK — only tasks can be completed, and completing one
 	// may assign points (typed on the armed checkmark).
 	Points *int  `json:"points"`
 	Tags   []Tag `json:"tags"` // populated via JOIN; always serialize, even empty
