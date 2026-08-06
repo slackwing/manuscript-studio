@@ -1374,15 +1374,18 @@ p.section-break {
 
 .priority-flag-chips {
   display: flex;
-  /* Fixed slots from the LEFT (not space-between): the 16px gap reproduces
-     the old six-across spacing in the 272px margin note, and buttons stay
-     put when others show/hide (checkmark gating, P-row collapse). */
+  /* Fixed slots from the LEFT (not space-between): 8px gap × 28px buttons
+     is the six-across pitch of the ~208px margin-note row, and buttons stay
+     put when others show/hide (checkmark gating, P-row collapse). flex:none
+     on the buttons stops silent flex-shrink from squashing them. */
   justify-content: flex-start;
-  gap: 16px;
+  gap: 8px;
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;
 }
+
+.priority-flag-chips > * { flex: none; }
 
 .priority-chip {
   display: inline-flex;
@@ -1541,9 +1544,35 @@ p.section-break {
   animation: pulse 0.3s ease-in-out;
 }
 
-/* Typed point value shown IN PLACE of the ✓ while the checkmark is armed —
-   small enough that two digits fit the 28px circle. */
-.complete-check .points-entry {
+/* The SCORING star (tasks only, like the checkmark — but independent):
+   arm it, type 1–2 digits, Enter/click submits one point_event. Yellow,
+   where completion is green. Sits in SLOT 6 — one empty slot after the
+   checkmark (slot pitch 28px button + 8px gap → 36px extra margin). */
+.points-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  border: 1px dashed #ccc;
+  border-radius: 50%;
+  color: #999;
+  margin-left: 36px; /* skip slot 5: pitch = 28px button + 8px gap */
+}
+.points-star:hover { background: #fff8e1; border-color: #e0af00; color: #a87e00; }
+.points-star.scoring {
+  background: #f0c419;
+  border-color: #f0c419;
+  color: #fff;
+  animation: pulse 0.3s ease-in-out;
+}
+/* Typed point value shown IN PLACE of the star while armed — small enough
+   that two digits fit the 28px circle. */
+.points-star .points-entry {
   font: 700 11px "Helvetica", sans-serif;
   line-height: 1;
   letter-spacing: -0.02em;

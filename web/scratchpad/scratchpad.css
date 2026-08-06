@@ -704,3 +704,14 @@
   width: 260px;
   filter: drop-shadow(0 8px 22px rgba(20, 16, 8, 0.35));
 }
+
+/* Standalone note square (026) — the SAME component as the inline ref,
+   minus text: fronts a snippet widget's header, left of the status. */
+.sn-note-solo { display: inline-flex; align-items: center; margin-right: 7px; }
+.sn-note-solo .sn-note-ref-sq { cursor: pointer; }
+/* Completed snippet note: the square turns into a small green check. */
+.sn-note-solo.sn-note-done .sn-note-done-sq {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: #28a745; color: #fff; cursor: pointer;
+}

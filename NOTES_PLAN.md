@@ -32,10 +32,14 @@ placement-agnostic core widget + thin placement adapters.
 
 ## Terminology
 
-A note with a priority (P0–P3) is a **TASK**. Only tasks can be completed —
-the checkmark appears once a priority is assigned — and completing one may
-record **points** (0–99, typed on the armed checkmark; stored in
-`note.points`, with `completed_at` recording when).
+A note with a priority (P0–P3) is a **TASK**. Tasks get two independent
+affordances once a priority is assigned: the green checkmark **completes**
+(`completed_at`), and the yellow star **scores points** — each scoring is
+one `point_event` row (note_id, points 1–99, scored_at; soft-deletable), so
+a task can be scored repeatedly while open, and stats/weekly sums fall out
+of the events table. Every snippet also carries one note (`note.snippet_id`,
+026), minted with it — undeletable, wearing the derived, unremovable
+"snippet" chip.
 
 ## Locked decisions (from author)
 

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Every snippet (group of sketches) carries ONE note, minted with the
+         snippet. The link lives HERE only — note.snippet_id — and the
+         reverse lookup is a join; no mirror column on snippet, so nothing
+         can drift. Snippet rows are never deleted, so the FK can't dangle;
+         at most one LIVE note per snippet (partial unique index). The
+         "snippet" chip in the UI is DERIVED from this column (unremovable
+         by construction — no tag row). -->
+    <changeSet id="026-snippet-note" author="claude">
+        <addColumn tableName="note">
+            <column name="snippet_id" type="VARCHAR(16)"/>
+        </addColumn>
+        <addForeignKeyConstraint
+            baseTableName="note" baseColumnNames="snippet_id"
+            referencedTableName="snippet" referencedColumnNames="snippet_id"
+            constraintName="fk_note_snippet"/>
+        <sql>
+            CREATE UNIQUE INDEX uq_note_snippet_live ON note (snippet_id)
+            WHERE snippet_id IS NOT NULL AND deleted_at IS NULL;
+        </sql>
+        <!-- Backfill: a blank yellow note for every snippet lacking a live
+             one. Manuscript inherited from the snippet's link, else from
+             the home pad (its earliest sketch's scratchpad) — an
+             inherit-at-creation copy, not kept in sync. -->
+        <sql>
+            INSERT INTO note (sentence_id, manuscript_id, scratchpad_id, user_id,
+                              color, body, priority, flagged, position, snippet_id)
+            SELECT NULL,
+                   COALESCE(s.linked_manuscript_id, sp.linked_manuscript_id),
+                   NULL, s.user_id, 'yellow', NULL, 'none', false, 'a0', s.snippet_id
+            FROM snippet s
+            LEFT JOIN LATERAL (
+                SELECT sk.scratchpad_id FROM sketch sk
+                WHERE sk.snippet_id = s.snippet_id AND sk.scratchpad_id IS NOT NULL
+                ORDER BY sk.sketch_id ASC LIMIT 1
+            ) home ON true
+            LEFT JOIN scratchpad sp ON sp.scratchpad_id = home.scratchpad_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM note n
+                WHERE n.snippet_id = s.snippet_id AND n.deleted_at IS NULL
+            );
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

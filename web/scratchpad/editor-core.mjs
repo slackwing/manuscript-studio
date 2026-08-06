@@ -551,6 +551,29 @@ class SnippetView {
         setTimeout(() => b.classList.remove('sn-copied'), 900);
       } catch (err) { alert('Could not copy: ' + err.message); }
     });
+    // The snippet's NOTE square (026) — the exact component that fronts
+    // highlighted text in the doc, minus the text — top-left, left of the
+    // status word. Click opens the same note float. Green check once the
+    // note (as a task) is completed.
+    const noteInfo = this.ctx.note;
+    if (noteInfo && window.WriteSysNoteWidget && window.WriteSysNoteWidget.buildNoteSquare) {
+      const sq = window.WriteSysNoteWidget.buildNoteSquare({
+        color: noteInfo.color,
+        completed: !!noteInfo.completed,
+        title: noteInfo.completed ? 'Snippet note — completed' : 'Snippet note — click to open',
+        onClick: (a) => lockScratchpadScroll(() => openNoteFloatFor(noteInfo.note_id, a)),
+      });
+      sq.dataset.noteId = String(noteInfo.note_id);
+      const statusEl = this.dom.querySelector('.sn-status');
+      statusEl.parentNode.insertBefore(sq, statusEl);
+      // Live recolor via the same registry the inline refs use.
+      if (this._sqAdapter) unregisterNoteRefView(this._sqAdapter.noteId, this._sqAdapter);
+      this._sqAdapter = {
+        noteId: noteInfo.note_id,
+        applyColor: (c) => { if (!sq.classList.contains('sn-note-done')) sq.className = 'sn-note-ref sn-note-solo color-' + (c || 'yellow'); },
+      };
+      registerNoteRefView(noteInfo.note_id, this._sqAdapter);
+    }
     const linkSlot = this.dom.querySelector('.sn-linkslot');
     const chip = window.WriteSysManuscriptChip.build({
       linkedId: sn.linked_manuscript_id,
@@ -896,6 +919,7 @@ class SnippetView {
   }
 
   destroy() {
+    if (this._sqAdapter) unregisterNoteRefView(this._sqAdapter.noteId, this._sqAdapter);
     if (this._saver) this._saver.destroy();
     variationFlushers.delete(this.flush);
     dirtyVariations.delete(this);
@@ -985,7 +1009,7 @@ async function ensureNoteCached(noteId) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '' };
+      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', snippet_id: n.snippet_id || null };
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -1204,6 +1228,18 @@ function onFloatOutside(e) {
 
 // Open the floating note for a note id, positioned below `anchorEl`. Fetches the
 // CURRENT note (body/color/tags) so the reopened float always shows saved data.
+// Flip every solo square of this note (snippet widget corners) to the
+// green-check completed state.
+function markSnippetSquaresCompleted(noteId) {
+  document.querySelectorAll(`.sn-note-solo[data-note-id="${noteId}"]`).forEach((el) => {
+    const fresh = window.WriteSysNoteWidget.buildNoteSquare({
+      completed: true, title: 'Snippet note — completed', onClick: (a) => lockScratchpadScroll(() => openNoteFloatFor(noteId, a)),
+    });
+    fresh.dataset.noteId = String(noteId);
+    el.replaceWith(fresh);
+  });
+}
+
 async function openNoteFloatFor(noteId, anchorEl) {
   closeNoteFloat();
   if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
@@ -1215,7 +1251,9 @@ async function openNoteFloatFor(noteId, anchorEl) {
     color: cached.color, body: cached.body,
     priority: cached.priority || 'none', flagged: !!cached.flagged, tags: cached.tags || [],
     manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
+    snippet_id: cached.snippet_id || null,
   };
+  const isSnippetNote = !!note.snippet_id;
   if (openNoteFloat) return; // a newer open superseded us while fetching
   const float = document.createElement('div');
   float.className = 'sn-note-float';
@@ -1228,14 +1266,23 @@ async function openNoteFloatFor(noteId, anchorEl) {
     },
     onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; cached.priority = note.priority; api.update(noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
     onFlag: () => { note.flagged = !note.flagged; cached.flagged = note.flagged; api.update(noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
-    onDelete: () => { deleteNoteViaDoc(noteId); },
-    onComplete: () => { api.complete(noteId); removeNoteRefNoDelete(noteId); closeNoteFloat(); },
+    // A snippet's note can't be deleted (it lives with the snippet); its
+    // completion greys the widget square to a green check instead of
+    // dissolving a doc ref. Scoring is the same everywhere.
+    onDelete: isSnippetNote ? null : (() => { deleteNoteViaDoc(noteId); }),
+    onComplete: () => {
+      api.complete(noteId);
+      if (isSnippetNote) { cached.completed = true; markSnippetSquaresCompleted(noteId); }
+      else removeNoteRefNoDelete(noteId);
+      closeNoteFloat();
+    },
+    onScorePoints: (points) => { api.scorePoints(noteId, points).catch(() => {}); },
     // Handlers just mutate note.*; the shared widget re-renders the chips.
     onAddTag: async (name) => { try { const r = await api.addTag(noteId, name); note.tags = (r && r.tags) || note.tags; cached.tags = note.tags; } catch (e) {} },
     onRemoveTag: async (tagId) => { try { await api.removeTag(noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); cached.tags = note.tags; } catch (e) {} },
     onLinkManuscript: async (mid) => { try { const r = await api.linkManuscript(noteId, mid); note.manuscript_id = r.manuscript_id || null; note.manuscript_name = r.manuscript_name || ''; } catch (e) {} },
     onUnlinkManuscript: async () => { try { await api.linkManuscript(noteId, 0); note.manuscript_id = null; note.manuscript_name = ''; } catch (e) {} },
-  }, {});
+  }, { showDelete: !isSnippetNote });
   float.appendChild(widget);
   document.body.appendChild(float);
   openNoteFloat = float;

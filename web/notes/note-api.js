@@ -64,6 +64,16 @@
       return jsonOrThrow(resp);
     },
 
+    // One point_event on a task (027) — repeatable; independent of completion.
+    async scorePoints(noteId, points) {
+      const resp = await authFetch(`${BASE}/${noteId}/points`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points }),
+      });
+      return jsonOrThrow(resp);
+    },
+
     async get(noteId) {
       const resp = await authFetch(`${BASE}/id/${noteId}`, { method: 'GET' });
       return jsonOrThrow(resp); // the full note {note_id, color, body, priority, flagged, tags, ...}

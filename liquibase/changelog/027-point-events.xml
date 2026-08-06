@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Points are EVENTS scored on a task (a priority'd note), not a
+         one-shot completion attribute: a task can be scored repeatedly
+         while open, and completing it is entirely independent. One row per
+         scoring (the star button), timestamped — the raw material for
+         weekly sums and stats graphs. Soft-deletable like everything else.
+         Supersedes note.points (025): existing values migrate to one event
+         stamped at their completion time, then the column drops. -->
+    <changeSet id="027-point-events" author="claude">
+        <createTable tableName="point_event">
+            <column name="point_event_id" type="SERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="note_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_point_event_note"
+                             references="note(note_id)"/>
+            </column>
+            <column name="points" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="scored_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="deleted_at" type="TIMESTAMPTZ"/>
+        </createTable>
+        <createIndex tableName="point_event" indexName="idx_point_event_note">
+            <column name="note_id"/>
+        </createIndex>
+        <sql>
+            INSERT INTO point_event (note_id, points, scored_at)
+            SELECT note_id, points, COALESCE(completed_at, NOW())
+            FROM note WHERE points IS NOT NULL;
+        </sql>
+        <dropColumn tableName="note" columnName="points"/>
+    </changeSet>
+
+</databaseChangeLog>

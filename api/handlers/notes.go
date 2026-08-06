@@ -483,7 +483,14 @@ func (h *NoteHandlers) HandleDeleteNote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
+	note := h.requireOwnedNote(w, r, noteID, session.Username)
+	if note == nil {
+		return
+	}
+	// A snippet's note lives and dies with its snippet — and snippets never
+	// die. Deleting it would strand the widget's square (026).
+	if note.SnippetID != nil {
+		http.Error(w, "snippet notes cannot be deleted", http.StatusBadRequest)
 		return
 	}
 
@@ -521,25 +528,54 @@ func (h *NoteHandlers) HandleCompleteNote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Optional body: {"points": N} — the value typed on the armed checkmark
-	// (two digits max). An empty body completes without points.
-	var body struct {
-		Points *int `json:"points"`
-	}
-	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&body) // empty body is fine
-	}
-	if body.Points != nil && (*body.Points < 0 || *body.Points > 99) {
-		http.Error(w, "points must be 0-99", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.DB.CompleteNote(ctx, noteID, body.Points); err != nil {
+	if err := h.DB.CompleteNote(ctx, noteID); err != nil {
 		log.Printf("notes: complete %d: %v", noteID, err)
 		http.Error(w, "Failed to complete", http.StatusInternalServerError)
 		return
 	}
 
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleScoreNotePoints: POST /api/notes/{note_id}/points {"points": N}.
+// Records a point_event on a TASK (priority'd note) — repeatable while the
+// task stays open; completion is entirely independent (027).
+func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	note := h.requireOwnedNote(w, r, noteID, session.Username)
+	if note == nil {
+		return
+	}
+	if note.Priority == "" || note.Priority == "none" {
+		http.Error(w, "only tasks (priority set) can score points", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Points int `json:"points"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Points < 1 || body.Points > 99 {
+		http.Error(w, "points must be 1-99", http.StatusBadRequest)
+		return
+	}
+	if err := h.DB.ScorePoints(ctx, noteID, body.Points); err != nil {
+		log.Printf("notes: score %d on %d: %v", body.Points, noteID, err)
+		http.Error(w, "Failed to score points", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

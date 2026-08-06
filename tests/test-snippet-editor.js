@@ -105,6 +105,43 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const letters = await page.evaluate(() => Array.from(document.querySelectorAll('.sn-widget .sn-rail-btn')).length);
   check('new widget shows the sibling rail', letters >= 2, `rail buttons=${letters}`);
 
+  // 5. The snippet's NOTE (026): a colored square — the same component that
+  //    fronts highlighted text — sits top-left of the widget; clicking opens
+  //    the note float (no trash, derived unremovable "snippet" chip).
+  const sq = page.locator('.sn-widget .sn-note-solo').first();
+  check('note square present in the widget header', (await sq.count()) === 1);
+  const sqBeforeStatus = await page.evaluate(() => {
+    const kids = Array.from(document.querySelector('.sn-widget .sn-header').children ? document.querySelectorAll('.sn-widget .sn-header > *') : []);
+    const si = kids.findIndex(k => k.classList.contains('sn-note-solo'));
+    const st = kids.findIndex(k => k.classList.contains('sn-status'));
+    return { si, st };
+  });
+  check('square sits left of SNIPPET status', sqBeforeStatus.si === sqBeforeStatus.st - 1, JSON.stringify(sqBeforeStatus));
+  const ctxNote = await page.evaluate(async () => {
+    const id = document.querySelector('.sn-widget').dataset.sketchId;
+    const r = await fetch(`api/sketches/${id}`, { credentials: 'include' });
+    return (await r.json()).note || null;
+  });
+  check('sketch context embeds the snippet note', !!ctxNote && ctxNote.note_id > 0 && ctxNote.color === 'yellow', JSON.stringify(ctxNote));
+
+  await sq.dispatchEvent('mousedown');
+  await page.waitForSelector('.sn-note-float .sticky-note', { timeout: 10000 });
+  check('clicking the square opens the note float', true);
+  check('snippet note has NO trash (lives with the snippet)', (await page.locator('.sn-note-float .note-trash').count()) === 0);
+  const snipChip = page.locator('.sn-note-float .tag-chip.snippet-chip');
+  check('derived "snippet" chip present', (await snipChip.count()) === 1);
+  check('snippet chip is unremovable (no ×)', (await page.locator('.sn-note-float .tag-chip.snippet-chip .tag-chip-remove').count()) === 0);
+
+  // Make it a task, complete it → the square turns into the green check.
+  await page.locator('.sn-note-float .priority-chip[data-priority="P1"]').click();
+  await page.waitForTimeout(300);
+  const fcheck = page.locator('.sn-note-float .complete-check');
+  await fcheck.click();
+  await page.waitForTimeout(150);
+  await fcheck.click();
+  await page.waitForSelector('.sn-widget .sn-note-solo.sn-note-done', { timeout: 8000 });
+  check('completing the snippet note turns the square into a green check', true);
+
   const fs = require('fs');
   if (!fs.existsSync('tests/screenshots')) fs.mkdirSync('tests/screenshots', { recursive: true });
   await page.screenshot({ path: 'tests/screenshots/snippet-editor.png' });

@@ -266,6 +266,7 @@ func (s *Server) setupRouter() {
 			r.Put("/notes/{note_id}/manuscript", s.noteHandlers.HandleLinkNoteManuscript)
 			r.Delete("/notes/{note_id}", s.noteHandlers.HandleDeleteNote)
 			r.Post("/notes/{note_id}/complete", s.noteHandlers.HandleCompleteNote)
+			r.Post("/notes/{note_id}/points", s.noteHandlers.HandleScoreNotePoints)
 
 			r.Get("/notes/{note_id}/tags", s.noteHandlers.HandleGetTagsForNote)
 			r.Post("/notes/{note_id}/tags", s.noteHandlers.HandleAddTagToNote)

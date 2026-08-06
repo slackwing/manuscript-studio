@@ -32,5 +32,7 @@
     <include file="changelog/023-manuscript-birthday-goal.xml"/>
     <include file="changelog/024-wordcount-rates.xml"/>
     <include file="changelog/025-note-points.xml"/>
+    <include file="changelog/026-snippet-note.xml"/>
+    <include file="changelog/027-point-events.xml"/>
 
 </databaseChangeLog>

@@ -72,22 +72,55 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const noteId = await page.locator('.sticky-note:not(.uncreated-note)').first()
       .evaluate(el => el.dataset.noteId || el.dataset.annotationId);
 
-    await check.click();
-    const confirming = await check.evaluate(el => el.classList.contains('confirming'));
-    assert(confirming, 'First click puts complete button into confirming state');
+    // The SCORING STAR (yellow, slot 6 — one slot gap after the checkmark):
+    // typed points live here now, fully independent of completion.
+    const star = page.locator('.sticky-note:not(.uncreated-note) .points-star');
+    const starVisible = await star.evaluate(el => getComputedStyle(el).display !== 'none');
+    assert(starVisible, 'Star appears for tasks alongside the checkmark');
+    const slots = await page.evaluate(() => {
+      const c = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
+      const st = document.querySelector('.sticky-note:not(.uncreated-note) .points-star').getBoundingClientRect();
+      return Math.round(st.left - c.left);
+    });
+    assert(slots === 72, `Star sits in slot 6 (one slot skipped; offset ${slots}px, want 72)`);
 
-    // Typed points: a stale first digit ("9") expires after the 1s window,
-    // then "1"+"5" within the window reads as 15, shown in place of the ✓.
+    await star.click();
+    const scoring = await star.evaluate(el => el.classList.contains('scoring'));
+    assert(scoring, 'First click arms the star (scoring state)');
+    // A stale first digit ("9") expires after the 1s window, then "1"+"5"
+    // within the window reads as 15, shown in place of the star.
     await page.keyboard.press('9');
     await page.waitForTimeout(1200);
     await page.keyboard.press('1');
     await page.waitForTimeout(150);
     await page.keyboard.press('5');
-    const shown = await check.evaluate(el => (el.querySelector('.points-entry') || {}).textContent || '');
-    assert(shown === '15', `Typed points shown in place of the checkmark (got "${shown}")`);
-
-    // Enter completes with those points.
+    const shown = await star.evaluate(el => (el.querySelector('.points-entry') || {}).textContent || '');
+    assert(shown === '15', `Typed points shown in place of the star (got "${shown}")`);
     await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    const { execSync: ex1 } = require('child_process');
+    const psq = (sql) => ex1(
+      `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
+      { encoding: 'utf-8' }).trim();
+    const ev1 = psq(`SELECT points FROM point_event WHERE note_id=${parseInt(noteId, 10)} ORDER BY point_event_id`);
+    assert(ev1 === '15', `First point_event recorded (got "${ev1}")`);
+    const notDone = psq(`SELECT completed_at IS NULL FROM note WHERE note_id=${parseInt(noteId, 10)}`);
+    assert(notDone === 't', 'Scoring did NOT complete the task');
+
+    // Score AGAIN — points are repeatable events.
+    await star.click();
+    await page.keyboard.press('7');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+    const evs = psq(`SELECT string_agg(points::text, ',' ORDER BY point_event_id) FROM point_event WHERE note_id=${parseInt(noteId, 10)}`);
+    assert(evs === '15,7', `Second scoring appended (got "${evs}")`);
+
+    // Completion is its own act: plain two-click green checkmark.
+    await check.click();
+    const confirming = await check.evaluate(el => el.classList.contains('confirming'));
+    assert(confirming, 'First click puts complete button into confirming state');
+    await page.waitForTimeout(150);
+    await check.click();
 
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated', { timeout: 5000 });
     await page.waitForTimeout(500);
@@ -99,12 +132,12 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     assert(rainbowBarsAfter !== rainbowBarsBefore || rainbowBarsBefore === 0,
       `Rainbow bars updated (before=${rainbowBarsBefore}, after=${rainbowBarsAfter})`);
 
-    // The typed points + completion time landed in the DB.
+    // Completion time landed; the point events survive independently.
     const { execSync } = require('child_process');
     const row = execSync(
-      `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "SELECT points, (completed_at IS NOT NULL) FROM note WHERE note_id=${parseInt(noteId, 10)}"`,
+      `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "SELECT (completed_at IS NOT NULL), (SELECT SUM(points) FROM point_event WHERE note_id=${parseInt(noteId, 10)}) FROM note WHERE note_id=${parseInt(noteId, 10)}"`,
       { encoding: 'utf-8' }).trim();
-    assert(row === '15|t', `points=15 + completed_at stored (got "${row}")`);
+    assert(row === 't|22', `completed_at stored + events sum 22 (got "${row}")`);
 
     // Completion must persist after reload.
     await page.reload();

@@ -340,7 +340,8 @@ const WriteSysNotes = {
       onPriority: (p) => this.handlePriorityClick(note, p, noteEl),
       onFlag: () => this.handleFlagClick(note, noteEl),
       onDelete: () => this.deleteNote(note.note_id),
-      onComplete: (points) => this.completeNote(note.note_id, points),
+      onComplete: () => this.completeNote(note.note_id),
+      onScorePoints: (points) => this.scorePoints(note.note_id, points),
       onAddTag: (name) => this.addTagByName(note, noteEl, name),
       onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
       // A sentence note is trivially in its manuscript — the chip would be
@@ -730,12 +731,24 @@ const WriteSysNotes = {
     }
   },
 
-  async completeNote(noteId, points) {
+  // One point_event on the task (027) — repeatable; independent of completion.
+  async scorePoints(noteId, points) {
+    try {
+      const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${noteId}/points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points }),
+      });
+      if (!response.ok && response.status !== 204) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      console.error('Failed to score points:', error);
+    }
+  },
+
+  async completeNote(noteId) {
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${noteId}/complete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(points != null ? { points } : {}),
       });
 
       if (!response.ok && response.status !== 204) {

@@ -14,7 +14,7 @@
  *   note      — { note_id, color, body, priority, flagged, tags:[{tag_id,tag_name}],
  *                 manuscript_id, manuscript_name }
  *   handlers  — { onSaveText(text), onColor(color), onPriority(p), onFlag(),
- *                 onDelete(), onComplete(points), onAddTag(name), onRemoveTag(tagId),
+ *                 onDelete(), onComplete(), onScorePoints(points), onAddTag(name), onRemoveTag(tagId),
  *                 onLinkManuscript(id), onUnlinkManuscript(),
  *                 onFocus(), onBlur() }  (all optional)
  *   opts      — { collapsed:false, colors:[...], showComplete:true }
@@ -88,6 +88,18 @@
     const list = noteEl.querySelector('.tags-list');
     if (!list) return;
     list.innerHTML = '';
+    // Derived "snippet" chip (026): present iff the note belongs to a
+    // snippet — unremovable BY CONSTRUCTION (no tag row, no ×), first in
+    // the row. Wears the plain tag skin.
+    if (note.snippet_id) {
+      const sc = document.createElement('div');
+      sc.className = 'tag-chip snippet-chip';
+      sc.title = 'This is a snippet\u2019s note — it lives with the snippet';
+      const nm = document.createElement('span');
+      nm.textContent = 'snippet';
+      sc.appendChild(nm);
+      list.appendChild(sc);
+    }
     (note.tags || []).forEach((tag) => {
       const chip = document.createElement('div');
       chip.className = 'tag-chip';
@@ -167,9 +179,13 @@
     const flag = noteEl.querySelector('.flag-chip');
     if (flag) flag.classList.toggle('active', !!note.flagged);
     // TERMINOLOGY: a note with a priority (P0–P3) is a TASK. Only tasks can
-    // be completed (and pointed) — the checkmark exists only for them.
+    // be completed (checkmark, green) or scored (star, yellow) — both
+    // affordances exist only for them, and they're INDEPENDENT: a task
+    // accumulates point events while open; completing it is its own act.
     const check = noteEl.querySelector('.complete-check');
     if (check) check.style.display = hasPriority ? '' : 'none';
+    const star = noteEl.querySelector('.points-star');
+    if (star) star.style.display = hasPriority ? '' : 'none';
   }
 
   function autoResize(ta) {
@@ -177,16 +193,16 @@
     ta.style.height = ta.scrollHeight + 'px';
   }
 
-  // Completing a TASK, with optional points. First click arms the checkmark
-  // (green, like the old two-click confirm). While armed:
-  //   digit  — types a point value shown IN PLACE of the ✓ (small, so two
-  //            digits fit). A second digit lands within 1s of the first;
-  //            after that window closes, the next digit starts a NEW number.
-  //            Typing points holds the armed state open.
-  //   click / Enter — completes, passing the typed points (null if none).
-  //   Escape — disarms. Arming with no typed points still auto-cancels
-  //            after 2s, matching the old confirm.
-  function armComplete(el, handlers) {
+  // Scoring points on a TASK (the yellow star). First click arms it. While
+  // armed:
+  //   digit  — types a point value shown IN PLACE of the star (small, so
+  //            two digits fit). A second digit lands within 1s of the
+  //            first; after that window closes, the next digit starts a
+  //            NEW number. Typing holds the armed state open.
+  //   click / Enter — submits the typed points as one point_event (a task
+  //            can be scored again and again; completion is independent).
+  //   Escape — disarms. Arming with nothing typed auto-cancels after 2s.
+  function armStar(el, handlers) {
     if (!el) return;
     const checkSvg = el.innerHTML;
     let armed = false, points = null, digitOpen = false, digitTimer, disarmTimer;
@@ -196,14 +212,14 @@
     const disarm = () => {
       armed = false; points = null; digitOpen = false;
       clearTimeout(digitTimer); clearTimeout(disarmTimer);
-      el.classList.remove('confirming');
+      el.classList.remove('scoring');
       document.removeEventListener('keydown', onKey, true);
       show();
     };
     const finish = () => {
       const p = points;
       disarm();
-      if (handlers.onComplete) handlers.onComplete(p);
+      if (p != null && handlers.onScorePoints) handlers.onScorePoints(p);
     };
     const onKey = (e) => {
       if (!armed) return;
@@ -230,7 +246,7 @@
       e.stopPropagation();
       if (!armed) {
         armed = true;
-        el.classList.add('confirming');
+        el.classList.add('scoring');
         document.addEventListener('keydown', onKey, true);
         disarmTimer = setTimeout(() => { if (points == null) disarm(); }, 2000);
       } else {
@@ -283,15 +299,20 @@
       ? `<div class="note-readonly-body"></div>`
       : `<textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>`;
     // The action icons (trash/complete) and color circle are edit-only.
+    const showDelete = opts.showDelete !== false;
     const actionsHtml = readOnly ? '' : `
-          <div class="note-trash" title="Delete note">
+          ${showDelete ? `<div class="note-trash" title="Delete note">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-          </div>
+          </div>` : ''}
           ${showComplete ? `<div class="complete-check" title="Mark complete">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div><div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
             </svg>
           </div>` : ''}`;
 
@@ -397,7 +418,8 @@
     }
 
     twoClick(noteEl.querySelector('.note-trash'), () => handlers.onDelete && handlers.onDelete());
-    armComplete(noteEl.querySelector('.complete-check'), handlers);
+    twoClick(noteEl.querySelector('.complete-check'), () => handlers.onComplete && handlers.onComplete());
+    armStar(noteEl.querySelector('.points-star'), handlers);
 
     // Collapsed cards expand on click (anywhere not on an interactive control).
     if (opts.collapsed && opts.expandable !== false) {
@@ -445,6 +467,31 @@
     input.addEventListener('blur', commit);
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, renderTags, updatePriorityFlagUI, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  // The colored note square (the same one that sits left of highlighted
+  // text in a pad) as a standalone component — text is optional; without
+  // it you get JUST the square (e.g. a snippet widget's corner note).
+  // completed=true renders the green-check state instead of the color.
+  function buildNoteSquare({ color, completed, text, title, onClick }) {
+    const el = document.createElement('span');
+    el.className = 'sn-note-ref sn-note-solo color-' + (color || 'yellow') + (completed ? ' sn-note-done' : '');
+    if (title) el.title = title;
+    el.innerHTML = completed
+      ? '<span class="sn-note-ref-sq sn-note-done-sq"><svg width="9" height="9" viewBox="0 0 20 20"><path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+      : '<span class="sn-note-ref-sq"></span>';
+    if (text) {
+      const t = document.createElement('span');
+      t.className = 'sn-note-ref-text';
+      t.textContent = text;
+      el.appendChild(t);
+    }
+    if (onClick) {
+      el.style.cursor = 'pointer';
+      el.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); onClick(el); });
+      el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    }
+    return el;
+  }
+
+  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, renderTags, updatePriorityFlagUI, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

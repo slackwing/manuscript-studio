@@ -30,18 +30,21 @@
         height: auto;
         margin: 0;
         box-sizing: border-box;
-        padding: 2px 7px;
+        /* UNIFIED with tag chips: same outer geometry (a tag chip is 4px/10px
+           padding, 16px pill, 11px type, no border) — here the 2px gilt edge
+           lives INSIDE that outline, so both chips are exactly the same size
+           (2+2=4, 8+2=10). */
+        padding: 2px 8px;
         /* 2px, not 1 — at 1px the gilt edge was too thin to read as gold
            against the leather and just looked like fuzz. */
         border: 2px solid #c9a227;
-        border-radius: 9px;
+        border-radius: 16px;
         /* Flat vertical leather — a diagonal gradient + inset sheen smeared
            around the pill's rounded ends and read as blotches. */
         background: linear-gradient(#66492b, #573d21);
         background-clip: padding-box;
         color: #f3e6c4;
-        font: 10px "Helvetica", sans-serif;
-        line-height: 1.5;
+        font: 11px "Helvetica", sans-serif;
         white-space: nowrap;
         box-shadow: none;
         text-shadow: none;
@@ -68,7 +71,7 @@
       .ms-chip.unlinked {
         background: transparent;
         border: 1px dashed #ccc;
-        padding: 3px 8px;
+        padding: 3px 9px;
         color: #999;
         box-shadow: none;
         text-shadow: none;

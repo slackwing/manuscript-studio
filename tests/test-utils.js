@@ -86,6 +86,18 @@ let TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
 async function cleanupTestNotes() {
   try {
     psql(`
+      -- point_event FKs to note (027) — clear this worker's events before
+      -- any note delete or the FK blocks the wipe (N11's cousin).
+      DELETE FROM point_event WHERE note_id IN (
+        SELECT note_id FROM note WHERE user_id = '${TEST_USERNAME}'
+      );
+      DELETE FROM point_event WHERE note_id IN (
+        SELECT note_id FROM note WHERE sentence_id IN (
+          SELECT sentence_id FROM sentence WHERE migration_id IN (
+            SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
+          )
+        )
+      );
       DELETE FROM note_tag WHERE note_id IN (
         SELECT note_id FROM note WHERE sentence_id IN (
           SELECT sentence_id FROM sentence WHERE migration_id IN (

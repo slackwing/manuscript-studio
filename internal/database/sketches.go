@@ -68,6 +68,16 @@ type SketchContext struct {
 	Snippet  SnippetInfo `json:"snippet"`
 	Siblings []SketchRef `json:"siblings"`
 	Canon    *Sketch     `json:"canon,omitempty"` // text = as-canonized snapshot
+	// The snippet's note (026) — just what the widget's square needs; the
+	// float fetches the full note (with tags) through the notes API.
+	Note *SnippetNoteInfo `json:"note,omitempty"`
+}
+
+// SnippetNoteInfo is the square's slice of the snippet note.
+type SnippetNoteInfo struct {
+	NoteID    int    `json:"note_id"`
+	Color     string `json:"color"`
+	Completed bool   `json:"completed"`
 }
 
 // PickerSketch is one row of the Based-on / canonize pickers. Link and canon
@@ -137,6 +147,15 @@ func (db *DB) CreateSnippet(ctx context.Context, userID string, scratchpadID *in
 		RETURNING `+sketchCols, snippetID, scratchpadID))
 	if err != nil {
 		return nil, fmt.Errorf("create sketch A: %w", err)
+	}
+	// Every snippet carries ONE note (026), minted with it — blank, yellow,
+	// manuscript inherited from the host pad's link (a copy, not synced).
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO note (manuscript_id, user_id, color, priority, flagged, position, snippet_id)
+		SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
+		       $2, 'yellow', 'none', false, 'a0', $3
+	`, scratchpadID, userID, snippetID); err != nil {
+		return nil, fmt.Errorf("create snippet note: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -235,6 +254,19 @@ func (db *DB) GetSketchContext(ctx context.Context, userID string, id int) (*Ske
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	// The snippet's note (026) — the square's color + completed state. Old
+	// snippets without one (pre-backfill edge) just omit it.
+	var sn SnippetNoteInfo
+	var completedAt *time.Time
+	err = db.Pool.QueryRow(ctx, `
+		SELECT note_id, color, completed_at FROM note
+		WHERE snippet_id = $1 AND deleted_at IS NULL
+	`, out.Sketch.SnippetID).Scan(&sn.NoteID, &sn.Color, &completedAt)
+	if err == nil {
+		sn.Completed = completedAt != nil
+		out.Note = &sn
 	}
 
 	if out.Snippet.CanonSketchID != 0 {
