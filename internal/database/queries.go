@@ -1748,7 +1748,14 @@ type HomeNote struct {
 func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) ([]HomeNote, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT n.note_id, n.color, n.body, n.priority, n.flagged, n.updated_at,
-		       n.manuscript_id, n.scratchpad_id, COALESCE(n.sentence_id, ''),
+		       n.manuscript_id,
+		       -- A snippet note has no pad of its own — its card deep-links
+		       -- to the snippet's HOME pad (earliest sketch's scratchpad).
+		       COALESCE(n.scratchpad_id,
+		           (SELECT sk.scratchpad_id FROM sketch sk
+		            WHERE sk.snippet_id = n.snippet_id AND sk.scratchpad_id IS NOT NULL
+		            ORDER BY sk.sketch_id LIMIT 1)),
+		       COALESCE(n.sentence_id, ''),
 		       -- Fallback manuscript label (used only when the note has a
 		       -- manuscript_id but the handler can't resolve a config name):
 		       -- display_name, else the repo folder name (minus a trailing .git).

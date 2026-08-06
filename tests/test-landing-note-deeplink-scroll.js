@@ -66,7 +66,7 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
     await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
     await page.waitForTimeout(900);
     return page.evaluate(() => {
-      const ref = document.querySelector('.spm-editor .sn-note-ref');
+      const ref = document.querySelector('.spm-editor .ProseMirror .sn-note-ref');
       return ref && parseInt(ref.dataset.noteId, 10);
     });
   });
