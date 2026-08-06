@@ -136,11 +136,16 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   // once 500'd on their empty note_version history).
   await page.locator('.sn-note-float .note-input').click();
   await page.keyboard.type('Snippet note body from the square.');
-  await page.waitForTimeout(1600); // debounced save
+  // Condition-wait on the debounced save landing in the DB (no fixed sleep).
   const { execSync: exq } = require('child_process');
-  const savedBody = exq(
+  const readBody = () => exq(
     `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "SELECT coalesce(body,'(null)') FROM note WHERE note_id=${ctxNote.note_id}"`,
     { encoding: 'utf-8' }).trim();
+  let savedBody = '';
+  for (let i = 0; i < 40 && !/Snippet note body from the square/.test(savedBody); i++) {
+    await page.waitForTimeout(250);
+    savedBody = readBody();
+  }
   check('typed note body persists to the DB', /Snippet note body from the square/.test(savedBody), savedBody);
 
   // Make it a task, complete it → the square turns into the green check.
