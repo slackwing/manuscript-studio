@@ -90,15 +90,25 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
       failed++;
     }
 
-    // Test 4: Click P1 — radio (P0 deactivates, P1 activates)
-    console.log('\nTest 4: Priority radio behavior...');
+    // Test 4: Selecting collapses the row — the other P chips hide, so
+    // switching levels means toggling off first, then picking anew.
+    console.log('\nTest 4: Collapse + reselect behavior...');
     const p1 = page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P1"]').first();
+    const p1HiddenWhileP0 = await p1.evaluate(el => getComputedStyle(el).display === 'none');
+    if (p1HiddenWhileP0) {
+      console.log('✓ Other P chips hidden while P0 is selected (collapsed row)');
+    } else {
+      console.log('✗ P1 should be hidden while P0 is selected');
+      failed++;
+    }
+    await p0.click(); // toggle P0 off — the full P row returns
+    await page.waitForTimeout(500);
     await p1.click();
     await page.waitForTimeout(500);
     const p0StillActive = await p0.evaluate(el => el.classList.contains('active'));
     const p1Active = await p1.evaluate(el => el.classList.contains('active'));
     if (!p0StillActive && p1Active) {
-      console.log('✓ P0 deactivated, P1 activated');
+      console.log('✓ Toggle-off then P1: P0 inactive, P1 active');
     } else {
       console.log(`✗ Expected P0 inactive & P1 active (P0 active=${p0StillActive}, P1 active=${p1Active})`);
       failed++;
