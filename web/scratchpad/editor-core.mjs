@@ -296,6 +296,15 @@ const TRASH_SVG = window.WriteSysIcons.trash(12);
 const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M8 1v14M1.9 4.5l12.2 7M14.1 4.5l-12.2 7M8 1l-1.8 1.8M8 1l1.8 1.8M8 15l-1.8-1.8M8 15l1.8-1.8M1.9 4.5l.6 2.4M1.9 4.5l2.4-.6M14.1 11.5l-.6-2.4M14.1 11.5l-2.4.6M14.1 4.5l-2.4-.6M14.1 4.5l-.6 2.4M1.9 11.5l2.4.6M1.9 11.5l.6-2.4"/></svg>';
 // Superseded: a plain down arrow (reddens on hover / while set).
 const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
+const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1c0-.55-.45-1-1-1H3.5c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h1"/></svg>';
+
+// Clipboard snippet reference (the copy button on each widget writes this;
+// the ⧉ Snippet ▾ → "From clipboard" option reads it back anywhere).
+const SKETCH_REF_PREFIX = 'ms-sketch:';
+const parseSketchRef = (text) => {
+  const m = /^\s*ms-sketch:(\d+)\s*$/.exec(text || '');
+  return m ? parseInt(m[1], 10) : null;
+};
 const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
 
 
@@ -515,6 +524,7 @@ class SnippetView {
               <button type="button" data-act="remove" class="sn-trash" title="Delete this sketch (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
               <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
               <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+              <button type="button" data-act="copyref" class="sn-copyref" title="Copy snippet reference — start a related sketch anywhere via ⧉ Snippet ▾ → From clipboard">${COPY_SVG}</button>
             </span>
           </div>
           <div class="sn-body"></div>
@@ -533,6 +543,14 @@ class SnippetView {
       this.setSketchState(this.frozen() ? 'draft' : 'frozen'));
     this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
       this.setSketchState(this.superseded() ? 'draft' : 'superseded'));
+    this.dom.querySelector('[data-act="copyref"]').addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(SKETCH_REF_PREFIX + this.sketchId);
+        b.classList.add('sn-copied');
+        setTimeout(() => b.classList.remove('sn-copied'), 900);
+      } catch (err) { alert('Could not copy: ' + err.message); }
+    });
     const linkSlot = this.dom.querySelector('.sn-linkslot');
     const chip = window.WriteSysManuscriptChip.build({
       linkedId: sn.linked_manuscript_id,
@@ -1399,6 +1417,7 @@ function buildSnippetMenu(toolbarEl, getView) {
     pop.innerHTML = `
       <button type="button" class="sn-ins-new">New snippet</button>
       <button type="button" class="sn-ins-based">Related to…</button>
+      <button type="button" class="sn-ins-clip" disabled title="Copy a snippet reference first (the copy button on a snippet widget)">From clipboard</button>
       <button type="button" class="sn-ins-restore">Restore…</button>`;
     pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
       try { insertVariation(await sketchApi.createNew()); }
@@ -1406,6 +1425,25 @@ function buildSnippetMenu(toolbarEl, getView) {
     });
     pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
     pop.querySelector('.sn-ins-restore').addEventListener('click', renderRestore);
+    // "From clipboard" lights up only when the clipboard holds a VALID
+    // snippet reference (copied via a widget's copy button) — parsed, then
+    // confirmed against the API so a stale/foreign id stays disabled.
+    (async () => {
+      const clipBtn = pop.querySelector('.sn-ins-clip');
+      try {
+        const id = parseSketchRef(await navigator.clipboard.readText());
+        if (id == null) return;
+        const ctx = await sketchApi.context(id);
+        if (!clipBtn.isConnected) return; // menu re-rendered/closed meanwhile
+        const preview = ((ctx.sketch && ctx.sketch.text) || '').trim().slice(0, 40);
+        clipBtn.disabled = false;
+        clipBtn.title = `New sketch related to the copied one${preview ? `: “${preview}”` : ''}`;
+        clipBtn.addEventListener('click', async () => {
+          try { insertVariation(await sketchApi.createFrom(id)); }
+          catch (err) { alert('Could not create sketch: ' + err.message); }
+        });
+      } catch (_) { /* no clipboard access or invalid reference — stays disabled */ }
+    })();
   };
 
   // Restore… picker: soft-deleted variations, newest deletion first. Selecting

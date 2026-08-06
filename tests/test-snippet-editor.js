@@ -62,6 +62,49 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('overlay has a tab marker', overlay && overlay.markers >= 1, JSON.stringify(overlay));
   check('marker draws → glyph', overlay && /→|2192|→/.test(overlay.arrow), JSON.stringify(overlay && overlay.arrow));
 
+  // 4. Copy-reference → "From clipboard" round trip. The widget's copy
+  //    button (right of freeze) writes ms-sketch:<id>; the ⧉ Snippet menu's
+  //    "From clipboard" option enables only for a VALID copied reference
+  //    and mints a related sibling sketch.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5001' });
+  const copyBtn = page.locator('.sn-widget .sn-copyref').first();
+  check('copy button present (right of freeze)', (await copyBtn.count()) === 1);
+  const order = await page.evaluate(() => {
+    const kids = Array.from(document.querySelectorAll('.sn-widget .sn-actions > *')).map(e => e.className);
+    return { freeze: kids.findIndex(c => /sn-freeze/.test(c)), copy: kids.findIndex(c => /sn-copyref/.test(c)) };
+  });
+  check('copy sits right of freeze', order.copy === order.freeze + 1, JSON.stringify(order));
+  await copyBtn.click();
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  const sketchId = await page.evaluate(() => document.querySelector('.sn-widget').dataset.sketchId);
+  check('copies ms-sketch:<id>', clip === `ms-sketch:${sketchId}`, clip);
+
+  // With junk in the clipboard the option stays disabled.
+  await page.evaluate(() => navigator.clipboard.writeText('just some prose'));
+  await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
+  await page.waitForSelector('.sn-insertpop .sn-ins-clip');
+  await page.waitForTimeout(400); // async validation settles
+  check('From clipboard disabled for junk', await page.locator('.sn-ins-clip').isDisabled());
+  // Toggle the menu closed with the real button, then reopen fresh.
+  await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
+  await page.waitForSelector('.sn-insertpop', { state: 'hidden' });
+
+  // With a valid reference it enables, and clicking mints a sibling.
+  await page.evaluate((t) => navigator.clipboard.writeText(t), `ms-sketch:${sketchId}`);
+  await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
+  await page.waitForSelector('.sn-insertpop .sn-ins-clip');
+  await page.waitForFunction(() => {
+    const b = document.querySelector('.sn-ins-clip');
+    return b && !b.disabled;
+  }, { timeout: 8000 });
+  check('From clipboard enables for a valid reference', true);
+  const widgetsBefore = await page.locator('.sn-widget').count();
+  await page.locator('.sn-ins-clip').click();
+  await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, widgetsBefore, { timeout: 10000 });
+  check('clicking it inserts a related sibling sketch', true);
+  const letters = await page.evaluate(() => Array.from(document.querySelectorAll('.sn-widget .sn-rail-btn')).length);
+  check('new widget shows the sibling rail', letters >= 2, `rail buttons=${letters}`);
+
   const fs = require('fs');
   if (!fs.existsSync('tests/screenshots')) fs.mkdirSync('tests/screenshots', { recursive: true });
   await page.screenshot({ path: 'tests/screenshots/snippet-editor.png' });
