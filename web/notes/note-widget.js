@@ -300,7 +300,14 @@
       : `<textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>`;
     // The action icons (trash/complete) and color circle are edit-only.
     const showDelete = opts.showDelete !== false;
+    // Row order: priorities/blocked · flag · STAR · trash · CHECK — the
+    // check is pinned to the far right (CSS margin-left:auto).
     const actionsHtml = readOnly ? '' : `
+          ${showComplete ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
+            </svg>
+          </div>` : ''}
           ${showDelete ? `<div class="note-trash" title="Delete note">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
@@ -309,10 +316,6 @@
           ${showComplete ? `<div class="complete-check" title="Mark complete">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div><div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
             </svg>
           </div>` : ''}`;
 
@@ -329,6 +332,9 @@
           <div class="priority-chip" data-priority="P1">P1</div>
           <div class="priority-chip" data-priority="P2">P2</div>
           <div class="priority-chip" data-priority="P3">P3</div>
+          <div class="priority-chip priority-blocked" data-priority="blocked" title="Blocked — a task with no further action right now">
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5.5 5.5l9 9"/></svg>
+          </div>
           <div class="flag-chip" data-flag="true" title="Flag">
             <svg width="14" height="14" viewBox="0 0 20 20" class="flag-icon">
               <path class="flag-staff" d="M4 1v18"/>

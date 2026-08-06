@@ -34,5 +34,6 @@
     <include file="changelog/025-note-points.xml"/>
     <include file="changelog/026-snippet-note.xml"/>
     <include file="changelog/027-point-events.xml"/>
+    <include file="changelog/028-priority-blocked.xml"/>
 
 </databaseChangeLog>

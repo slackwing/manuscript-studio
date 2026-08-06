@@ -58,8 +58,8 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
       return vis;
     });
     const before = await chipVis();
-    assert(before.P0 && before.P1 && before.P2 && before.P3,
-      'All four priority chips (incl. P3) show while unprioritized');
+    assert(before.P0 && before.P1 && before.P2 && before.P3 && before.blocked,
+      'All five priority chips (incl. P3 + blocked) show while unprioritized');
     await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').click();
     await page.waitForFunction(() => {
       const el = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check');
@@ -77,12 +77,15 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const star = page.locator('.sticky-note:not(.uncreated-note) .points-star');
     const starVisible = await star.evaluate(el => getComputedStyle(el).display !== 'none');
     assert(starVisible, 'Star appears for tasks alongside the checkmark');
-    const slots = await page.evaluate(() => {
-      const c = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
+    const layout = await page.evaluate(() => {
+      const row = document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips').getBoundingClientRect();
+      const fl = document.querySelector('.sticky-note:not(.uncreated-note) .flag-chip').getBoundingClientRect();
       const st = document.querySelector('.sticky-note:not(.uncreated-note) .points-star').getBoundingClientRect();
-      return Math.round(st.left - c.left);
+      const ck = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
+      return { starAfterFlag: Math.round(st.left - fl.left), checkRightGap: Math.round(row.right - ck.right) };
     });
-    assert(slots === 72, `Star sits in slot 6 (one slot skipped; offset ${slots}px, want 72)`);
+    assert(layout.starAfterFlag === 30, `Star sits right after the flag (pitch ${layout.starAfterFlag}, want 30)`);
+    assert(Math.abs(layout.checkRightGap) <= 1, `Check pinned to the far right (gap ${layout.checkRightGap})`);
 
     await star.click();
     const scoring = await star.evaluate(el => el.classList.contains('scoring'));
@@ -114,6 +117,28 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     await page.waitForTimeout(400);
     const evs = psq(`SELECT string_agg(points::text, ',' ORDER BY point_event_id) FROM point_event WHERE note_id=${parseInt(noteId, 10)}`);
     assert(evs === '15,7', `Second scoring appended (got "${evs}")`);
+
+    // BLOCKED is a fifth priority-like state: mutually exclusive, collapses
+    // the row, and makes the note a task (star + check show).
+    await p0Toggle(page);
+    async function p0Toggle(pg) {
+      await pg.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').click();
+      await pg.waitForTimeout(300);
+    }
+    await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="blocked"]').click();
+    await page.waitForTimeout(300);
+    const blockedVis = await chipVis();
+    assert(blockedVis.blocked && !blockedVis.P0 && !blockedVis.P1,
+      'Selecting blocked collapses the row to just blocked');
+    const taskWhileBlocked = await page.evaluate(() => {
+      const q = (sel) => getComputedStyle(document.querySelector(`.sticky-note:not(.uncreated-note) ${sel}`)).display !== 'none';
+      return q('.complete-check') && q('.points-star');
+    });
+    assert(taskWhileBlocked, 'Blocked notes are tasks (check + star show)');
+    // Back to P0 for the completion below.
+    await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="blocked"]').click();
+    await page.waitForTimeout(300);
+    await p0Toggle(page);
 
     // Completion is its own act: plain two-click green checkmark.
     await check.click();

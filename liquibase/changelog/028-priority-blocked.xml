@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- "blocked" is a fifth priority-like state (mutually exclusive with
+         P0-P3, collapses the row the same way) meaning "no further action
+         on this for now" — and like any priority it makes the note a TASK
+         (completable + scorable). -->
+    <changeSet id="028-priority-blocked" author="claude">
+        <sql>
+            ALTER TABLE note DROP CONSTRAINT chk_note_priority;
+            ALTER TABLE note ADD CONSTRAINT chk_note_priority
+                CHECK (priority::text = ANY (ARRAY['none', 'P0', 'P1', 'P2', 'P3', 'blocked']::text[]));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

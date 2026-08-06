@@ -1374,12 +1374,12 @@ p.section-break {
 
 .priority-flag-chips {
   display: flex;
-  /* Fixed slots from the LEFT (not space-between): 8px gap × 28px buttons
-     is the six-across pitch of the ~208px margin-note row, and buttons stay
-     put when others show/hide (checkmark gating, P-row collapse). flex:none
-     on the buttons stops silent flex-shrink from squashing them. */
+  /* Fixed slots from the LEFT (not space-between): 4px gap × 26px buttons
+     lets SEVEN slots (P0–P3 + blocked + flag + trash) fit the ~208px
+     margin-note row, and buttons stay put when others show/hide (task
+     gating, P-row collapse). flex:none stops silent flex-shrink. */
   justify-content: flex-start;
-  gap: 8px;
+  gap: 4px;
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;
@@ -1391,8 +1391,8 @@ p.section-break {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   box-sizing: border-box;
   border-radius: 50%;
   background: transparent;
@@ -1422,8 +1422,8 @@ p.section-break {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   box-sizing: border-box;
   border-radius: 50%;
   background: transparent;
@@ -1485,8 +1485,8 @@ p.section-break {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s;
@@ -1520,8 +1520,8 @@ p.section-break {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s;
@@ -1529,6 +1529,8 @@ p.section-break {
   border: 1px dashed #ccc;
   border-radius: 50%;
   color: #999;
+  /* ALWAYS rightmost — completion is the row's terminal act. */
+  margin-left: auto;
 }
 
 .complete-check:hover {
@@ -1547,13 +1549,13 @@ p.section-break {
 /* The SCORING star (tasks only, like the checkmark — but independent):
    arm it, type 1–2 digits, Enter/click submits one point_event. Yellow,
    where completion is green. Sits in SLOT 6 — one empty slot after the
-   checkmark (slot pitch 28px button + 8px gap → 36px extra margin). */
+   checkmark, which is pinned to the far right). */
 .points-star {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.2s;
@@ -1561,7 +1563,6 @@ p.section-break {
   border: 1px dashed #ccc;
   border-radius: 50%;
   color: #999;
-  margin-left: 36px; /* skip slot 5: pitch = 28px button + 8px gap */
 }
 .points-star:hover { background: #fff8e1; border-color: #e0af00; color: #a87e00; }
 .points-star.scoring {

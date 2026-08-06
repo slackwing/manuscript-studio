@@ -32,7 +32,9 @@ placement-agnostic core widget + thin placement adapters.
 
 ## Terminology
 
-A note with a priority (P0–P3) is a **TASK**. Tasks get two independent
+A note with a priority (P0–P3) — or marked **blocked** (a fifth,
+mutually-exclusive priority-like state: "no further action for now") —
+is a **TASK**. Tasks get two independent
 affordances once a priority is assigned: the green checkmark **completes**
 (`completed_at`), and the yellow star **scores points** — each scoring is
 one `point_event` row (note_id, points 1–99, scored_at; soft-deletable), so
