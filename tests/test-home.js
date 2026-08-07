@@ -65,6 +65,18 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       Array.from(document.querySelectorAll('.card-scratchpad .card-title'))
         .some(t => t.textContent === 'SearchMe42'), null, { timeout: 10000 });
     check('new pad card appears after close (title saved)', true);
+    // The pad card's preview must wear its clamped small-serif style — the
+    // class emitted by home.js and the rule in home.css drifted apart once
+    // (rename fallout) and previews blew up to full-size body text.
+    const previewStyle = await page.evaluate(() => {
+      const el = document.querySelector('.card-scratchpad .card-sketch');
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return { size: cs.fontSize, clamp: cs.webkitLineClamp, overflow: cs.overflow };
+    });
+    check('pad preview styled (12px, clamped)',
+      !!previewStyle && previewStyle.size === '12px' && String(previewStyle.clamp) === '6' && previewStyle.overflow === 'hidden',
+      JSON.stringify(previewStyle));
 
     // --- search: manuscript navigates ---
     await page.fill('#gs-input', TEST_MANUSCRIPT_NAME.slice(0, 6));
