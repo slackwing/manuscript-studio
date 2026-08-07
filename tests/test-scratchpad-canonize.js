@@ -1,5 +1,5 @@
 // Variations + Canonize end-to-end (VARIATIONS_PLAN.md): create a pad and a
-// snippet (variation A), write via the preview-first click-to-edit widget,
+// sketch (variation A), write via the preview-first click-to-edit widget,
 // link/unlink the GROUP, branch variation B (freezing A), then dub B canon
 // from the book view's + affordance — one suggested edit wrapping B's text
 // in &snippet#<id>{label} … &end#<id>. Verify the region renders in the
@@ -74,7 +74,7 @@ function noisyPng(w, h) {
 
   let padId = null;
   let boundaryId = null;
-  let snippetId = null;
+  let sketchId = null;
   let varA = null;
   let varB = null;
   const BLOCK_TEXT = 'The keg arrived at noon. Nobody signed for it.\n\n\tBy dusk the yard was full.';
@@ -92,16 +92,16 @@ function noisyPng(w, h) {
     check('pad created + modal editor loaded (hash carries id)', Number.isInteger(padId), `id ${padId}`);
 
     await page.fill('#spm-title', 'E2E pad');
-    const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+    const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
     varA = ctxA.variation.variation_id;
-    snippetId = ctxA.snippet.snippet_id;
-    check('snippet group + variation A created', ctxA.variation.ordinal === 1 && /^[a-z0-9]{10}$/.test(snippetId), `#${snippetId}`);
+    sketchId = ctxA.sketch.sketch_id;
+    check('sketch group + variation A created', ctxA.variation.ordinal === 1 && /^[a-z0-9]{10}$/.test(sketchId), `#${sketchId}`);
 
     // Preview-first: fresh variation shows its (empty) preview; a single
     // click flips into the monospace editor; blur returns to preview.
     await page.waitForSelector('.sn-widget .sn-render .sn-empty', { timeout: 10000 });
     const draftStatus = await page.textContent('.sn-widget .sn-status');
-    check('status reads Snippet · A · draft', /Snippet · A · draft/.test(draftStatus), draftStatus.trim());
+    check('status reads Sketch · A · draft', /Sketch · A · draft/.test(draftStatus), draftStatus.trim());
     await page.click('.sn-widget .sn-render');
     await page.waitForSelector('.sn-widget .sn-text', { timeout: 5000 });
     await page.fill('.sn-widget .sn-text', BLOCK_TEXT);
@@ -205,9 +205,9 @@ function noisyPng(w, h) {
         content,
         outlineRow: !!outlineRow,
       };
-    }, snippetId);
+    }, sketchId);
     check('&snippet region opener renders in book (suggested)', book.openerFound);
-    check('snippet label lists in the outline', book.outlineRow);
+    check('sketch label lists in the outline', book.outlineRow);
     check('canonized prose renders in book', book.content === true);
     check('&end NEVER visible in the book (raw-text only)', !book.endVisibleWhileSuggested);
 
@@ -216,7 +216,7 @@ function noisyPng(w, h) {
       if (!opener) return null;
       const host = opener.dataset.sentenceId ? opener : opener.closest('.sentence');
       return host ? host.dataset.sentenceId : null;
-    }, snippetId);
+    }, sketchId);
     boundaryId = boundary;
     check('one suggestion carries the region', !!boundaryId, boundaryId);
 

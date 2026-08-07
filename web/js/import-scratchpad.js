@@ -130,8 +130,8 @@ const WriteSysImportScratchpad = {
     const overlay = document.createElement('div');
     overlay.id = 'import-modal-overlay';
     overlay.innerHTML = `
-      <div id="import-modal" role="dialog" aria-label="canonize a snippet variation">
-        <h3>canonize a snippet variation</h3>
+      <div id="import-modal" role="dialog" aria-label="canonize a sketch variation">
+        <h3>canonize a sketch variation</h3>
         <p class="im-hint">${target.mode === 'replace'
           ? `Replaces placeholder <code>#${this.esc(target.slug)}</code> with the variation's text, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit. (The placeholder's own slug retires.)`
           : 'Inserts the variation\'s text after this paragraph, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit.'}</p>
@@ -182,7 +182,7 @@ const WriteSysImportScratchpad = {
       const data = await fetchJSON(`api/variations?q=${encodeURIComponent(q)}`, {}, false);
       const rows = (data.variations || []).filter(v => (v.preview || '').trim());
       if (rows.length === 0) {
-        holder.innerHTML = '<span class="im-muted">No variations with text yet — write in a snippet widget first.</span>';
+        holder.innerHTML = '<span class="im-muted">No variations with text yet — write in a sketch widget first.</span>';
         return;
       }
       // Ineligible: already-canonized groups, and groups linked elsewhere.
@@ -216,7 +216,7 @@ const WriteSysImportScratchpad = {
     const target = this.target;
     if (!sel || !target) return;
     const label = document.getElementById('im-label').value.trim();
-    const slug = sel.snippet_id; // the region slug IS the global snippet ID
+    const slug = sel.sketch_id; // the region slug IS the global sketch ID
 
     // Fresh full text + eligibility straight from the source of truth.
     let ctx;
@@ -225,11 +225,11 @@ const WriteSysImportScratchpad = {
     } catch (e) {
       return this.showError('Could not load the variation: ' + e.message);
     }
-    if (ctx.snippet.canon_variation_id) {
-      return this.showError('This snippet already has a canon variation.');
+    if (ctx.sketch.canon_variation_id) {
+      return this.showError('This sketch already has a canon variation.');
     }
-    if (ctx.snippet.linked_manuscript_id && ctx.snippet.linked_manuscript_id !== r.manuscriptId) {
-      return this.showError(`This snippet is linked to ${ctx.snippet.linked_manuscript_name || 'another manuscript'}.`);
+    if (ctx.sketch.linked_manuscript_id && ctx.sketch.linked_manuscript_id !== r.manuscriptId) {
+      return this.showError(`This sketch is linked to ${ctx.sketch.linked_manuscript_name || 'another manuscript'}.`);
     }
     // Paranoia: the globally-unique ID should never collide with anything
     // already in the effective manuscript.
@@ -293,7 +293,7 @@ const WriteSysImportScratchpad = {
       // unfrozen later. Best-effort — a failure here doesn't undo the canonize.
       if (window.confirm('Freeze all variations? (You can unfreeze select ones individually.)')) {
         try {
-          await fetch(`api/snippets/${encodeURIComponent(slug)}/freeze-all`, {
+          await fetch(`api/sketches/${encodeURIComponent(slug)}/freeze-all`, {
             method: 'POST', headers: { 'X-CSRF-Token': this.csrf() },
           });
         } catch (e) { /* non-fatal */ }

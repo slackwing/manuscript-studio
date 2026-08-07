@@ -39,9 +39,9 @@ affordances once a priority is assigned: the green checkmark **completes**
 (`completed_at`), and the yellow star **scores points** — each scoring is
 one `point_event` row (note_id, points 1–99, scored_at; soft-deletable), so
 a task can be scored repeatedly while open, and stats/weekly sums fall out
-of the events table. Every snippet also carries one note (`note.snippet_id`,
-026), minted with it — undeletable, wearing the derived, unremovable
-"snippet" chip.
+of the events table. Every sketch (né snippet) also carries one note (`note.sketch_id`,
+026/030), minted with it — undeletable, wearing the derived, unremovable
+"sketch" chip.
 
 ## Locked decisions (from author)
 

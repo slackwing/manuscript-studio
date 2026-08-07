@@ -446,3 +446,11 @@ the DB level — all users are `author`-role; access is gated by
   to this file instead of diverging.
 - If you're unsure, ask the user rather than guessing.
 - Keep this file terse. Agents skim; walls of prose get ignored.
+
+### Naming (2026-08-07 swap, changesets 029+030)
+
+A **SKETCH** (table `sketch`, was "snippet") is the group; its lettered
+sibling drafts are **VARIATIONS** (table `variation`, was "sketch").
+LEGACY NAMES kept on purpose: the `&snippet#…` command syntax inside
+manuscript text, the `"snippet"` ProseMirror node type inside stored pad
+docs, the `sn-` CSS prefix, and old test FILE names. Don't "fix" them.

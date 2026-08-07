@@ -10,24 +10,24 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Variations (VARIATIONS_PLAN.md, as clarified): a snippet is an abstract GROUP —
+// Variations (VARIATIONS_PLAN.md, as clarified): a sketch is an abstract GROUP —
 // global ID, manuscript link, canon pointer — and a variation is one flat sibling
 // draft: text, integer ordinal rendered as a letter (1=A; NULL = the hidden
 // canon variation), frozen flag, and a home scratchpad (where its one widget
 // lives). Variations have NO parent/child lineage; siblings can variation different
-// parts of a snippet and be composed freely. All functions verify ownership via
-// snippet.user_id.
+// parts of a sketch and be composed freely. All functions verify ownership via
+// sketch.user_id.
 
 // Sentinel errors, mapped to HTTP statuses by the handlers.
 var (
 	ErrVariationFrozen     = errors.New("variation is frozen")
 	ErrVariationSuperseded = errors.New("variation is superseded")
 	ErrVariationCanon      = errors.New("the canon variation is permanently frozen")
-	ErrOrdinalCap       = errors.New("variation limit reached (26 per snippet)")
+	ErrOrdinalCap       = errors.New("variation limit reached (26 per sketch)")
 	ErrNotOwner         = errors.New("not found")
-	ErrLinkedElsewhere  = errors.New("snippet is linked to a different manuscript")
-	ErrAlreadyCanonized = errors.New("snippet already has a canon variation")
-	ErrSnippetCanonized = errors.New("a canonized snippet's link is permanent")
+	ErrLinkedElsewhere  = errors.New("sketch is linked to a different manuscript")
+	ErrAlreadyCanonized = errors.New("sketch already has a canon variation")
+	ErrSketchCanonized = errors.New("a canonized sketch's link is permanent")
 	ErrVariationNoLetter   = errors.New("cannot base a variation on the canon variation")
 )
 
@@ -37,7 +37,7 @@ const MaxVariationOrdinal = 26
 
 type Variation struct {
 	VariationID     int       `json:"variation_id"`
-	SnippetID    string    `json:"snippet_id"`
+	SketchID    string    `json:"sketch_id"`
 	Ordinal      *int      `json:"ordinal"` // nil = the hidden canon variation
 	Text         string    `json:"text"`
 	State        string    `json:"state"` // draft | frozen | superseded
@@ -53,8 +53,8 @@ type VariationRef struct {
 	State    string `json:"state"`
 }
 
-type SnippetInfo struct {
-	SnippetID            string `json:"snippet_id"`
+type SketchInfo struct {
+	SketchID            string `json:"sketch_id"`
 	LinkedManuscriptID   int    `json:"linked_manuscript_id"`
 	LinkedManuscriptName string `json:"linked_manuscript_name"`
 	CanonVariationID        int    `json:"canon_variation_id"` // 0 = none
@@ -65,16 +65,16 @@ type SnippetInfo struct {
 // tab list), and the canon variation snapshot when one exists.
 type VariationContext struct {
 	Variation   Variation      `json:"variation"`
-	Snippet  SnippetInfo `json:"snippet"`
+	Sketch  SketchInfo `json:"sketch"`
 	Siblings []VariationRef `json:"siblings"`
 	Canon    *Variation     `json:"canon,omitempty"` // text = as-canonized snapshot
-	// The snippet's note (026) — just what the widget's square needs; the
+	// The sketch's note (026) — just what the widget's square needs; the
 	// float fetches the full note (with tags) through the notes API.
-	Note *SnippetNoteInfo `json:"note,omitempty"`
+	Note *SketchNoteInfo `json:"note,omitempty"`
 }
 
-// SnippetNoteInfo is the square's slice of the snippet note.
-type SnippetNoteInfo struct {
+// SketchNoteInfo is the square's slice of the sketch note.
+type SketchNoteInfo struct {
 	NoteID    int    `json:"note_id"`
 	Color     string `json:"color"`
 	Completed bool   `json:"completed"`
@@ -84,7 +84,7 @@ type SnippetNoteInfo struct {
 // facts ride along so the canonize modal can grey out ineligible rows.
 type PickerVariation struct {
 	VariationID             int       `json:"variation_id"`
-	SnippetID            string    `json:"snippet_id"`
+	SketchID            string    `json:"sketch_id"`
 	Ordinal              int       `json:"ordinal"`
 	Preview              string    `json:"preview"`
 	State                string    `json:"state"`
@@ -94,68 +94,68 @@ type PickerVariation struct {
 	Canonized            bool      `json:"canonized"`
 }
 
-const snippetIDAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+const sketchIDAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// newSnippetID generates the globally-unique, slug-shaped snippet ID that also
-// appears in the manuscript as &snippet#<id> (10 base36 chars ≈ 52 bits —
+// newSketchID generates the globally-unique, slug-shaped sketch ID that also
+// appears in the manuscript as &snippet#<id> (LEGACY SYNTAX NAME in book text) (10 base36 chars ≈ 52 bits —
 // collision-free at any personal scale, retried on conflict anyway).
-func newSnippetID() (string, error) {
+func newSketchID() (string, error) {
 	buf := make([]byte, 10)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
 	out := make([]byte, len(buf))
 	for i, b := range buf {
-		out[i] = snippetIDAlphabet[int(b)%len(snippetIDAlphabet)]
+		out[i] = sketchIDAlphabet[int(b)%len(sketchIDAlphabet)]
 	}
 	return string(out), nil
 }
 
 func scanVariation(row pgx.Row) (Variation, error) {
 	var s Variation
-	err := row.Scan(&s.VariationID, &s.SnippetID, &s.Ordinal, &s.Text, &s.State,
+	err := row.Scan(&s.VariationID, &s.SketchID, &s.Ordinal, &s.Text, &s.State,
 		&s.ScratchpadID, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 
-const variationCols = `variation_id, snippet_id, ordinal, text, state, scratchpad_id, created_at, updated_at`
+const variationCols = `variation_id, sketch_id, ordinal, text, state, scratchpad_id, created_at, updated_at`
 
-// CreateSnippet makes a fresh group: snippet row + variation A. scratchpadID is
+// CreateSketch makes a fresh group: sketch row + variation A. scratchpadID is
 // the variation's home (the scratchpad whose widget is being created).
-func (db *DB) CreateSnippet(ctx context.Context, userID string, scratchpadID *int) (*VariationContext, error) {
+func (db *DB) CreateSketch(ctx context.Context, userID string, scratchpadID *int) (*VariationContext, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	var snippetID string
+	var sketchID string
 	for attempt := 0; ; attempt++ {
-		snippetID, err = newSnippetID()
+		sketchID, err = newSketchID()
 		if err != nil {
 			return nil, err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO snippet (snippet_id, user_id) VALUES ($1, $2)`, snippetID, userID)
+		_, err = tx.Exec(ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`, sketchID, userID)
 		if err == nil {
 			break
 		}
 		if attempt >= 3 {
-			return nil, fmt.Errorf("create snippet: %w", err)
+			return nil, fmt.Errorf("create sketch: %w", err)
 		}
 	}
 	s, err := scanVariation(tx.QueryRow(ctx, `
-		INSERT INTO variation (snippet_id, ordinal, scratchpad_id) VALUES ($1, 1, $2)
-		RETURNING `+variationCols, snippetID, scratchpadID))
+		INSERT INTO variation (sketch_id, ordinal, scratchpad_id) VALUES ($1, 1, $2)
+		RETURNING `+variationCols, sketchID, scratchpadID))
 	if err != nil {
 		return nil, fmt.Errorf("create variation A: %w", err)
 	}
-	// Every snippet carries ONE note (026), minted with it — blank, yellow,
+	// Every sketch carries ONE note (026), minted with it — blank, yellow,
 	// manuscript inherited from the host pad's link (a copy, not synced).
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO note (manuscript_id, user_id, color, priority, flagged, position, snippet_id)
+		INSERT INTO note (manuscript_id, user_id, color, priority, flagged, position, sketch_id)
 		SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
 		       $2, 'yellow', 'none', false, 'a0', $3
-	`, scratchpadID, userID, snippetID); err != nil {
-		return nil, fmt.Errorf("create snippet note: %w", err)
+	`, scratchpadID, userID, sketchID); err != nil {
+		return nil, fmt.Errorf("create sketch note: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -172,13 +172,13 @@ func (db *DB) CreateVariationFrom(ctx context.Context, userID string, sourceID i
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	var srcSnippet, owner, srcText string
+	var srcSketch, owner, srcText string
 	var srcOrdinal *int
 	err = tx.QueryRow(ctx, `
-		SELECT v.snippet_id, v.ordinal, v.text, s.user_id
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		SELECT v.sketch_id, v.ordinal, v.text, s.user_id
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 FOR UPDATE OF v
-	`, sourceID).Scan(&srcSnippet, &srcOrdinal, &srcText, &owner)
+	`, sourceID).Scan(&srcSketch, &srcOrdinal, &srcText, &owner)
 	if err != nil || owner != userID {
 		return nil, ErrNotOwner
 	}
@@ -187,17 +187,17 @@ func (db *DB) CreateVariationFrom(ctx context.Context, userID string, sourceID i
 	}
 	var next int
 	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(MAX(ordinal), 0) + 1 FROM variation WHERE snippet_id = $1
-	`, srcSnippet).Scan(&next); err != nil {
+		SELECT COALESCE(MAX(ordinal), 0) + 1 FROM variation WHERE sketch_id = $1
+	`, srcSketch).Scan(&next); err != nil {
 		return nil, err
 	}
 	if next > MaxVariationOrdinal {
 		return nil, ErrOrdinalCap
 	}
 	s, err := scanVariation(tx.QueryRow(ctx, `
-		INSERT INTO variation (snippet_id, ordinal, text, scratchpad_id)
+		INSERT INTO variation (sketch_id, ordinal, text, scratchpad_id)
 		VALUES ($1, $2, $3, $4)
-		RETURNING `+variationCols, srcSnippet, next, srcText, scratchpadID))
+		RETURNING `+variationCols, srcSketch, next, srcText, scratchpadID))
 	if err != nil {
 		return nil, fmt.Errorf("create variation: %w", err)
 	}
@@ -215,32 +215,32 @@ func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*
 	var owner string
 	var linkedID, canonID *int
 	err := db.Pool.QueryRow(ctx, `
-		SELECT v.variation_id, v.snippet_id, v.ordinal, v.text, v.state, v.scratchpad_id, v.created_at, v.updated_at,
+		SELECT v.variation_id, v.sketch_id, v.ordinal, v.text, v.state, v.scratchpad_id, v.created_at, v.updated_at,
 		       s.user_id, s.linked_manuscript_id, s.linked_manuscript_name, s.canon_variation_id
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 AND v.deleted_at IS NULL
-	`, id).Scan(&out.Variation.VariationID, &out.Variation.SnippetID, &out.Variation.Ordinal,
+	`, id).Scan(&out.Variation.VariationID, &out.Variation.SketchID, &out.Variation.Ordinal,
 		&out.Variation.Text, &out.Variation.State, &out.Variation.ScratchpadID,
 		&out.Variation.CreatedAt, &out.Variation.UpdatedAt,
-		&owner, &linkedID, &out.Snippet.LinkedManuscriptName, &canonID)
+		&owner, &linkedID, &out.Sketch.LinkedManuscriptName, &canonID)
 	if err != nil || owner != userID {
 		return nil, ErrNotOwner
 	}
-	out.Snippet.SnippetID = out.Variation.SnippetID
+	out.Sketch.SketchID = out.Variation.SketchID
 	if linkedID != nil {
-		out.Snippet.LinkedManuscriptID = *linkedID
+		out.Sketch.LinkedManuscriptID = *linkedID
 	}
 	if canonID != nil {
-		out.Snippet.CanonVariationID = *canonID
+		out.Sketch.CanonVariationID = *canonID
 	}
 
 	// Siblings = every lettered variation in this group (including this one), by
 	// letter — the tab list. The frontend orders "current first, then others".
 	rows, err := db.Pool.Query(ctx, `
 		SELECT variation_id, ordinal, state FROM variation
-		WHERE snippet_id = $1 AND ordinal IS NOT NULL AND deleted_at IS NULL
+		WHERE sketch_id = $1 AND ordinal IS NOT NULL AND deleted_at IS NULL
 		ORDER BY ordinal
-	`, out.Variation.SnippetID)
+	`, out.Variation.SketchID)
 	if err != nil {
 		return nil, err
 	}
@@ -256,23 +256,23 @@ func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*
 		return nil, err
 	}
 
-	// The snippet's note (026) — the square's color + completed state. Old
-	// snippets without one (pre-backfill edge) just omit it.
-	var sn SnippetNoteInfo
+	// The sketch's note (026) — the square's color + completed state. Old
+	// sketches without one (pre-backfill edge) just omit it.
+	var sn SketchNoteInfo
 	var completedAt *time.Time
 	err = db.Pool.QueryRow(ctx, `
 		SELECT note_id, color, completed_at FROM note
-		WHERE snippet_id = $1 AND deleted_at IS NULL
-	`, out.Variation.SnippetID).Scan(&sn.NoteID, &sn.Color, &completedAt)
+		WHERE sketch_id = $1 AND deleted_at IS NULL
+	`, out.Variation.SketchID).Scan(&sn.NoteID, &sn.Color, &completedAt)
 	if err == nil {
 		sn.Completed = completedAt != nil
 		out.Note = &sn
 	}
 
-	if out.Snippet.CanonVariationID != 0 {
+	if out.Sketch.CanonVariationID != 0 {
 		canon, err := scanVariation(db.Pool.QueryRow(ctx, `
 			SELECT `+variationCols+` FROM variation WHERE variation_id = $1
-		`, out.Snippet.CanonVariationID))
+		`, out.Sketch.CanonVariationID))
 		if err == nil {
 			out.Canon = &canon
 		}
@@ -292,7 +292,7 @@ func (db *DB) UpdateVariationText(ctx context.Context, userID string, id int, te
 	var ordinal *int
 	err = tx.QueryRow(ctx, `
 		SELECT s.user_id, v.state, v.ordinal
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 FOR UPDATE OF v
 	`, id).Scan(&owner, &state, &ordinal)
 	if err != nil || owner != userID {
@@ -332,7 +332,7 @@ func (db *DB) SetVariationState(ctx context.Context, userID string, id int, stat
 	var ordinal *int
 	err := db.Pool.QueryRow(ctx, `
 		SELECT s.user_id, v.ordinal
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, id).Scan(&owner, &ordinal)
 	if err != nil || owner != userID {
@@ -345,16 +345,16 @@ func (db *DB) SetVariationState(ctx context.Context, userID string, id int, stat
 	return err
 }
 
-// FreezeAllVariations freezes every lettered variation in a snippet group (the
-// canonize "Freeze all variations?" option). Owner-checked via the snippet.
-func (db *DB) FreezeAllVariations(ctx context.Context, userID, snippetID string) error {
+// FreezeAllVariations freezes every lettered variation in a sketch group (the
+// canonize "Freeze all variations?" option). Owner-checked via the sketch.
+func (db *DB) FreezeAllVariations(ctx context.Context, userID, sketchID string) error {
 	var owner string
-	if err := db.Pool.QueryRow(ctx, `SELECT user_id FROM snippet WHERE snippet_id = $1`, snippetID).Scan(&owner); err != nil || owner != userID {
+	if err := db.Pool.QueryRow(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1`, sketchID).Scan(&owner); err != nil || owner != userID {
 		return ErrNotOwner
 	}
 	_, err := db.Pool.Exec(ctx, `
-		UPDATE variation SET state = 'frozen' WHERE snippet_id = $1 AND ordinal IS NOT NULL AND state = 'draft'
-	`, snippetID)
+		UPDATE variation SET state = 'frozen' WHERE sketch_id = $1 AND ordinal IS NOT NULL AND state = 'draft'
+	`, sketchID)
 	return err
 }
 
@@ -365,10 +365,10 @@ func (db *DB) FreezeAllVariations(ctx context.Context, userID, snippetID string)
 // related variations nor a canonize candidate (un-supersede first).
 func (db *DB) ListVariationsForPicker(ctx context.Context, userID, q string) ([]PickerVariation, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT v.variation_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.state, v.updated_at,
+		SELECT v.variation_id, v.sketch_id, v.ordinal, LEFT(v.text, 160), v.state, v.updated_at,
 		       COALESCE(s.linked_manuscript_id, 0), s.linked_manuscript_name,
 		       (s.canon_variation_id IS NOT NULL) AS canonized
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NULL
 		  AND v.state <> 'superseded'
 		  AND ($2 = '' OR v.text ILIKE '%' || $2 || '%')
@@ -382,7 +382,7 @@ func (db *DB) ListVariationsForPicker(ctx context.Context, userID, q string) ([]
 	out := []PickerVariation{}
 	for rows.Next() {
 		var p PickerVariation
-		if err := rows.Scan(&p.VariationID, &p.SnippetID, &p.Ordinal, &p.Preview, &p.State, &p.UpdatedAt,
+		if err := rows.Scan(&p.VariationID, &p.SketchID, &p.Ordinal, &p.Preview, &p.State, &p.UpdatedAt,
 			&p.LinkedManuscriptID, &p.LinkedManuscriptName, &p.Canonized); err != nil {
 			return nil, err
 		}
@@ -394,7 +394,7 @@ func (db *DB) ListVariationsForPicker(ctx context.Context, userID, q string) ([]
 // DeletedVariation is a soft-deleted variation shown in the Restore… picker.
 type DeletedVariation struct {
 	VariationID             int       `json:"variation_id"`
-	SnippetID            string    `json:"snippet_id"`
+	SketchID            string    `json:"sketch_id"`
 	Ordinal              int       `json:"ordinal"`
 	Preview              string    `json:"preview"`
 	State                string    `json:"state"`
@@ -408,7 +408,7 @@ func (db *DB) SoftDeleteVariation(ctx context.Context, userID string, id int) er
 	var owner string
 	var ordinal *int
 	err := db.Pool.QueryRow(ctx, `
-		SELECT s.user_id, v.ordinal FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		SELECT s.user_id, v.ordinal FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, id).Scan(&owner, &ordinal)
 	if err != nil || owner != userID {
@@ -425,7 +425,7 @@ func (db *DB) SoftDeleteVariation(ctx context.Context, userID string, id int) er
 func (db *DB) RestoreVariation(ctx context.Context, userID string, id int) error {
 	var owner string
 	err := db.Pool.QueryRow(ctx, `
-		SELECT s.user_id FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		SELECT s.user_id FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, id).Scan(&owner)
 	if err != nil || owner != userID {
@@ -439,9 +439,9 @@ func (db *DB) RestoreVariation(ctx context.Context, userID string, id int) error
 // lettered variations, most recently DELETED first. q filters on text.
 func (db *DB) ListDeletedVariations(ctx context.Context, userID, q string) ([]DeletedVariation, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT v.variation_id, v.snippet_id, v.ordinal, LEFT(v.text, 160), v.state,
+		SELECT v.variation_id, v.sketch_id, v.ordinal, LEFT(v.text, 160), v.state,
 		       v.deleted_at, s.linked_manuscript_name
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE s.user_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NOT NULL
 		  AND ($2 = '' OR v.text ILIKE '%' || $2 || '%')
 		ORDER BY v.deleted_at DESC
@@ -454,7 +454,7 @@ func (db *DB) ListDeletedVariations(ctx context.Context, userID, q string) ([]De
 	out := []DeletedVariation{}
 	for rows.Next() {
 		var d DeletedVariation
-		if err := rows.Scan(&d.VariationID, &d.SnippetID, &d.Ordinal, &d.Preview, &d.State,
+		if err := rows.Scan(&d.VariationID, &d.SketchID, &d.Ordinal, &d.Preview, &d.State,
 			&d.DeletedAt, &d.LinkedManuscriptName); err != nil {
 			return nil, err
 		}
@@ -463,29 +463,29 @@ func (db *DB) ListDeletedVariations(ctx context.Context, userID, q string) ([]De
 	return out, rows.Err()
 }
 
-// LinkSnippet sets (or, with manuscriptID 0, clears) the group's manuscript
+// LinkSketch sets (or, with manuscriptID 0, clears) the group's manuscript
 // link. Refused once canonized — canon pins the link permanently.
-func (db *DB) LinkSnippet(ctx context.Context, userID, snippetID string, manuscriptID int, manuscriptName string) error {
+func (db *DB) LinkSketch(ctx context.Context, userID, sketchID string, manuscriptID int, manuscriptName string) error {
 	var owner string
 	var canonID *int
 	err := db.Pool.QueryRow(ctx, `
-		SELECT user_id, canon_variation_id FROM snippet WHERE snippet_id = $1
-	`, snippetID).Scan(&owner, &canonID)
+		SELECT user_id, canon_variation_id FROM sketch WHERE sketch_id = $1
+	`, sketchID).Scan(&owner, &canonID)
 	if err != nil || owner != userID {
 		return ErrNotOwner
 	}
 	if canonID != nil {
-		return ErrSnippetCanonized
+		return ErrSketchCanonized
 	}
 	if manuscriptID == 0 {
 		_, err = db.Pool.Exec(ctx, `
-			UPDATE snippet SET linked_manuscript_id = NULL, linked_manuscript_name = '' WHERE snippet_id = $1
-		`, snippetID)
+			UPDATE sketch SET linked_manuscript_id = NULL, linked_manuscript_name = '' WHERE sketch_id = $1
+		`, sketchID)
 		return err
 	}
 	_, err = db.Pool.Exec(ctx, `
-		UPDATE snippet SET linked_manuscript_id = $2, linked_manuscript_name = $3 WHERE snippet_id = $1
-	`, snippetID, manuscriptID, manuscriptName)
+		UPDATE sketch SET linked_manuscript_id = $2, linked_manuscript_name = $3 WHERE sketch_id = $1
+	`, sketchID, manuscriptID, manuscriptName)
 	return err
 }
 
@@ -493,7 +493,7 @@ func (db *DB) LinkSnippet(ctx context.Context, userID, snippetID string, manuscr
 // letter, permanently frozen, text = the immutable as-canonized snapshot), sets
 // the group's canon pointer, and auto-links the group to the manuscript. The
 // manuscript text itself is inserted client-side as a suggestion wrapping the
-// text in &snippet#<snippet-id>{label} … &end#<snippet-id> (canon truth stays
+// text in &snippet#<sketch-id>{label} … &end#<sketch-id> (legacy syntax name) (canon truth stays
 // in the manuscript — VARIATIONS_PLAN.md §2).
 func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID, manuscriptID int, manuscriptName string) (*VariationContext, error) {
 	tx, err := db.Pool.Begin(ctx)
@@ -501,13 +501,13 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	var owner, snippetID, text string
+	var owner, sketchID, text string
 	var ordinal, linkedID, canonID *int
 	err = tx.QueryRow(ctx, `
-		SELECT s.user_id, s.snippet_id, s.linked_manuscript_id, s.canon_variation_id, v.ordinal, v.text
-		FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		SELECT s.user_id, s.sketch_id, s.linked_manuscript_id, s.canon_variation_id, v.ordinal, v.text
+		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 FOR UPDATE OF s
-	`, variationID).Scan(&owner, &snippetID, &linkedID, &canonID, &ordinal, &text)
+	`, variationID).Scan(&owner, &sketchID, &linkedID, &canonID, &ordinal, &text)
 	if err != nil || owner != userID {
 		return nil, ErrNotOwner
 	}
@@ -522,16 +522,16 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 	}
 	var newCanonID int
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO variation (snippet_id, ordinal, text, state)
+		INSERT INTO variation (sketch_id, ordinal, text, state)
 		VALUES ($1, NULL, $2, 'frozen')
 		RETURNING variation_id
-	`, snippetID, text).Scan(&newCanonID); err != nil {
+	`, sketchID, text).Scan(&newCanonID); err != nil {
 		return nil, fmt.Errorf("create canon variation: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE snippet SET canon_variation_id = $2, linked_manuscript_id = $3, linked_manuscript_name = $4
-		WHERE snippet_id = $1
-	`, snippetID, newCanonID, manuscriptID, manuscriptName); err != nil {
+		UPDATE sketch SET canon_variation_id = $2, linked_manuscript_id = $3, linked_manuscript_name = $4
+		WHERE sketch_id = $1
+	`, sketchID, newCanonID, manuscriptID, manuscriptName); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -549,19 +549,19 @@ func (db *DB) CountCanonizedAmong(ctx context.Context, variationIDs []int) (int,
 	var n int
 	err := db.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM variation v
-		JOIN snippet s ON s.snippet_id = v.snippet_id
+		JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = ANY($1) AND s.canon_variation_id IS NOT NULL
 	`, variationIDs).Scan(&n)
 	return n, err
 }
 
-// SnippetHomeScratchpad returns the home scratchpad id for the variation that is a
-// snippet group's given... (helper for navigate-to-source). Returns 0 if none.
+// SketchHomeScratchpad returns the home scratchpad id for the variation that is a
+// sketch group's given... (helper for navigate-to-source). Returns 0 if none.
 func (db *DB) VariationHomeScratchpad(ctx context.Context, userID string, variationID int) (int, error) {
 	var owner string
 	var spid *int
 	err := db.Pool.QueryRow(ctx, `
-		SELECT s.user_id, v.scratchpad_id FROM variation v JOIN snippet s ON s.snippet_id = v.snippet_id
+		SELECT s.user_id, v.scratchpad_id FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, variationID).Scan(&owner, &spid)
 	if err != nil || owner != userID {

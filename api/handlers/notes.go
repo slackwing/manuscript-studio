@@ -191,7 +191,7 @@ func (h *NoteHandlers) fillManuscriptName(ctx context.Context, note *models.Note
 
 // HandleLinkNoteManuscript links (manuscript_id != 0) or unlinks (0) a note to a
 // manuscript. This is what puts a note into "all my Wildfire notes" — the note
-// chip in every view calls it. Mirrors the snippet linker: user must own the
+// chip in every view calls it. Mirrors the sketch linker: user must own the
 // note and have access to the target manuscript.
 func (h *NoteHandlers) HandleLinkNoteManuscript(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -394,11 +394,11 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 		existing.Flagged = *req.Flagged
 	}
 
-	// Scratchpad and SNIPPET notes have no version history (no sentence
+	// Scratchpad and SKETCH notes have no version history (no sentence
 	// origin) — update them directly; the versioned path's origin lookup
 	// explodes on their empty note_version history. Sentence notes append a
 	// version row (audit + migration lineage).
-	if existing.ScratchpadID != nil || existing.SnippetID != nil {
+	if existing.ScratchpadID != nil || existing.SketchID != nil {
 		if err := h.DB.UpdateScratchpadNote(ctx, noteID, req.Color, req.Body, req.Priority, req.Flagged); err != nil {
 			log.Printf("notes: update versionless note %d: %v", noteID, err)
 			http.Error(w, "Failed to update note", http.StatusInternalServerError)
@@ -489,10 +489,10 @@ func (h *NoteHandlers) HandleDeleteNote(w http.ResponseWriter, r *http.Request) 
 	if note == nil {
 		return
 	}
-	// A snippet's note lives and dies with its snippet — and snippets never
+	// A sketch's note lives and dies with its sketch — and sketches never
 	// die. Deleting it would strand the widget's square (026).
-	if note.SnippetID != nil {
-		http.Error(w, "snippet notes cannot be deleted", http.StatusBadRequest)
+	if note.SketchID != nil {
+		http.Error(w, "sketch notes cannot be deleted", http.StatusBadRequest)
 		return
 	}
 

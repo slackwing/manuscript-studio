@@ -1,6 +1,6 @@
 /**
  * WriteSysManuscriptChip — THE linked-manuscript chip, one component for every
- * surface: snippet widgets, the scratchpad title bar, and note cards. One
+ * surface: sketch widgets, the scratchpad title bar, and note cards. One
  * look (the old-library bookbinding leather with a gilt edge — canon = "in
  * the book", the chip names which book), one behavior:
  *

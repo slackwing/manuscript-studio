@@ -1,5 +1,5 @@
-// A snippet whose variation text STARTS with a Tab renders its first paragraph
-// indented (class "indented") — a snippet is often a mid-chapter excerpt, so
+// A sketch whose variation text STARTS with a Tab renders its first paragraph
+// indented (class "indented") — a sketch is often a mid-chapter excerpt, so
 // a leading indent is meaningful. Without the leading Tab, the first paragraph
 // stays flush (book convention). Display-only: the stored text keeps the \t.
 const { chromium } = require('playwright');
@@ -19,7 +19,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
 
-  await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   await page.waitForSelector('.spm-editor .sn-widget .sn-render');
 
   // Enter edit and type: Tab first (the editor's Tab handler inserts a real
@@ -55,7 +55,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   });
   check('stored variation text keeps the leading tab', stored.startsWith('\t'), JSON.stringify(stored.slice(0, 12)));
 
-  // Control: a snippet WITHOUT a leading Tab stays flush.
+  // Control: a sketch WITHOUT a leading Tab stays flush.
   await page.evaluate(() => {
     const view = window.WriteSysScratchpad.view;
     const Sel = view.state.selection.constructor;
@@ -64,7 +64,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     view.dispatch(view.state.tr.setSelection(Sel.near(view.state.doc.resolve(view.state.doc.content.size), -1)));
     view.focus();
   });
-  await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   await page.waitForTimeout(600);
   const w2 = page.locator('.spm-editor .sn-widget').last();
   await w2.locator('.sn-render').click();

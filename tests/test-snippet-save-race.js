@@ -1,4 +1,4 @@
-// Regression: a snippet's edit-mode registers a "flusher" that fires on every
+// Regression: a sketch's edit-mode registers a "flusher" that fires on every
 // scratchpad doc-save. renderEdit() runs on every enter-edit / tab-switch /
 // rebuild; if it added a NEW flusher without removing the prior one, stale
 // flushers accumulated, each holding an OLD text snapshot. The next doc-save
@@ -30,10 +30,10 @@ function psql(sql) {
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
-  // Insert a snippet widget; capture its variation_id for DB assertions.
-  const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  // Insert a sketch widget; capture its variation_id for DB assertions.
+  const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   const variationId = ctx && ctx.variation && ctx.variation.variation_id;
-  check('snippet inserted', !!variationId, `variation_id=${variationId}`);
+  check('sketch inserted', !!variationId, `variation_id=${variationId}`);
   await page.waitForSelector('.sn-widget .sn-clickable, .sn-widget .sn-render', { timeout: 6000 });
   await page.waitForTimeout(300);
 

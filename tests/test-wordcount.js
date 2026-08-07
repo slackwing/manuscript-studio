@@ -1,14 +1,14 @@
 // Wordcount history e2e (API-level, no browser): the optional
 // wordcount_history feature — enabled in dev config — computes one row per
-// manuscript per day (committed / effective / linked-snippet words, all
+// manuscript per day (committed / effective / linked-sketch words, all
 // users) and the homepage + info-header wordcounts source from it.
 //
-// Variation semantics (VARIATIONS_PLAN §6): a linked, non-canonized snippet
+// Variation semantics (VARIATIONS_PLAN §6): a linked, non-canonized sketch
 // group contributes exactly ONE representative — its most recently updated
 // variation — because sibling variations are alternatives of one passage.
 //
 // Flow: baseline compute → linked group with TWO variations (7-word A,
-// 9-word B updated later) + an unlinked group → recompute → words_snippets
+// 9-word B updated later) + an unlinked group → recompute → words_sketches
 // counts B only (9), and /api/home + /api/migrations/latest serve the
 // table-sourced total.
 const {
@@ -63,42 +63,42 @@ const REP_WORDS = 9;
       return rows.find(row => row.manuscript_id === TEST_MANUSCRIPT_ID);
     };
 
-    // --- baseline: clean fixture, no suggestions, no snippets ---
+    // --- baseline: clean fixture, no suggestions, no sketches ---
     const base = await compute();
     check('compute returns a row for the test manuscript', !!base);
     check('baseline committed words > 0', base.words_committed > 0, `${base.words_committed}`);
     check('baseline effective == committed (no suggestions)', base.words_effective === base.words_committed);
-    check('baseline snippet words == 0', base.words_snippets === 0);
+    check('baseline sketch words == 0', base.words_sketches === 0);
 
     // --- a LINKED group with two variations + an unlinked group ---
-    const groupCtx = await (await authed('/snippets', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
+    const groupCtx = await (await authed('/sketches', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
     const varA = groupCtx.variation.variation_id;
-    check('snippet group + variation A created', groupCtx.variation.ordinal === 1, `#${groupCtx.snippet.snippet_id}`);
+    check('sketch group + variation A created', groupCtx.variation.ordinal === 1, `#${groupCtx.sketch.sketch_id}`);
     let r = await authed(`/variations/${varA}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_A }) });
     check('A text saved', r.status === 204);
-    r = await authed(`/snippets/${groupCtx.snippet.snippet_id}/link`, {
+    r = await authed(`/sketches/${groupCtx.sketch.sketch_id}/link`, {
       method: 'PUT', body: JSON.stringify({ manuscript_id: TEST_MANUSCRIPT_ID }),
     });
     check('group linked to the test manuscript', r.ok);
     // Variation B, based on A, updated later → the representative.
-    const ctxB = await (await authed('/snippets', {
+    const ctxB = await (await authed('/sketches', {
       method: 'POST', body: JSON.stringify({ mode: 'variation', source_variation_id: varA }),
     })).json();
     r = await authed(`/variations/${ctxB.variation.variation_id}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_B }) });
     check('B text saved (most recently updated)', r.status === 204);
     // An UNLINKED group must not count toward any manuscript.
-    const loose = await (await authed('/snippets', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
+    const loose = await (await authed('/sketches', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
     await authed(`/variations/${loose.variation.variation_id}`, {
       method: 'PUT', body: JSON.stringify({ text: 'These words float free of any book.' }),
     });
 
     const after = await compute();
-    check('ONE representative counted (B, not A+B)', after.words_snippets === REP_WORDS,
-      `got ${after.words_snippets}, want ${REP_WORDS}`);
-    check('committed unchanged by snippets', after.words_committed === base.words_committed);
+    check('ONE representative counted (B, not A+B)', after.words_sketches === REP_WORDS,
+      `got ${after.words_sketches}, want ${REP_WORDS}`);
+    check('committed unchanged by sketches', after.words_committed === base.words_committed);
 
     // --- read paths source from the table (feature enabled in dev) ---
-    const total = after.words_effective + after.words_snippets;
+    const total = after.words_effective + after.words_sketches;
     const home = await (await authed('/home')).json();
     const hm = (home.manuscripts || []).find(m => m.manuscript_id === TEST_MANUSCRIPT_ID);
     check('/api/home word_count is table-sourced total', hm && hm.word_count === total,
@@ -111,7 +111,7 @@ const REP_WORDS = 9;
     const hist = await (await authed(`/manuscripts/${TEST_MANUSCRIPT_ID}/wordcount-history`)).json();
     check('history endpoint enabled', hist.enabled === true);
     const today = (hist.rows || [])[hist.rows.length - 1];
-    check('history endpoint returns today\'s row', today && today.words_snippets === REP_WORDS);
+    check('history endpoint returns today\'s row', today && today.words_sketches === REP_WORDS);
 
     // --- per-day rates (024): NULL without a birthday; computed with one ---
     check('rates are null while no birthday is set', today && today.rate_average === null && today.projected_end === null,
@@ -138,7 +138,7 @@ const REP_WORDS = 9;
       psql(`UPDATE manuscript SET birthday = NULL, word_goal = 40000 WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}`);
       psql(`UPDATE wordcount_history SET rate_average = NULL, rate_past_30d = NULL, projected_end = NULL WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}`);
     } catch (e) { /* best effort */ }
-    // cleanupTestAnnotations wipes this user's snippets/variations; then
+    // cleanupTestAnnotations wipes this user's sketches/variations; then
     // recompute so the table stays consistent for other consumers.
     await cleanupTestAnnotations();
     try { await admin('/admin/wordcount-compute', { method: 'POST' }); } catch (e) { /* best effort */ }

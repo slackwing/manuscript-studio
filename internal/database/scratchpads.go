@@ -110,7 +110,7 @@ func (db *DB) GetScratchpadLinkedManuscript(ctx context.Context, id int) (*int, 
 }
 
 // UpdateScratchpad saves title + doc (autosave): updates the row and
-// appends a revision — one transaction. (Snippet text lives in the
+// appends a revision — one transaction. (Sketch text lives in the
 // variation table since VARIATIONS_PLAN; the doc carries only placements.)
 func (db *DB) UpdateScratchpad(ctx context.Context, id int, title string, doc json.RawMessage) error {
 	tx, err := db.Pool.Begin(ctx)
@@ -171,7 +171,7 @@ func (db *DB) GetScratchpadImage(ctx context.Context, imageID string) (userID, c
 }
 
 // ListScratchpadsWithDocs returns the user's non-deleted scratchpads WITH
-// their docs (home cards need snippets/counts derived from the doc).
+// their docs (home cards need sketches/counts derived from the doc).
 func (db *DB) ListScratchpadsWithDocs(ctx context.Context, userID string) ([]models.Scratchpad, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT scratchpad_id, user_id, title, doc, schema_version, created_at, updated_at

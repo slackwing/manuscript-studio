@@ -1,4 +1,4 @@
-// Regression: interacting with a snippet widget (click-to-edit, freeze, tab
+// Regression: interacting with a sketch widget (click-to-edit, freeze, tab
 // switch) must NOT scroll the pad back to the top of the widget. Root cause was
 // DOM rebuilds + textarea focus re-anchoring scroll; fixed by preserveScroll +
 // focus({preventScroll:true}).
@@ -24,19 +24,19 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
-  // Type enough lines ABOVE the snippet that the pad scrolls, then insert a
-  // snippet at the end and give it content.
+  // Type enough lines ABOVE the sketch that the pad scrolls, then insert a
+  // sketch at the end and give it content.
   await page.click('.spm-editor .ProseMirror');
-  // Type many newlines to create scroll height above the snippet.
+  // Type many newlines to create scroll height above the sketch.
   await page.keyboard.type('Top of pad.');
   for (let i = 0; i < 40; i++) await page.keyboard.press('Enter');
-  const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   const vid = ctx.variation.variation_id;
   await page.waitForSelector(`.sn-widget[data-variation-id="${vid}"] .sn-render`);
   // give it text so preview renders (click to edit, type, blur)
   await page.click(`.sn-widget[data-variation-id="${vid}"] .sn-render`);
   await page.waitForSelector(`.sn-widget[data-variation-id="${vid}"] .sn-text`);
-  await page.fill(`.sn-widget[data-variation-id="${vid}"] .sn-text`, 'Line one.\n\nLine two of the snippet.');
+  await page.fill(`.sn-widget[data-variation-id="${vid}"] .sn-text`, 'Line one.\n\nLine two of the sketch.');
   await page.locator(`.sn-widget[data-variation-id="${vid}"] .sn-text`).blur();
   await page.waitForTimeout(600);
 

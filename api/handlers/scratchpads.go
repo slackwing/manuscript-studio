@@ -133,8 +133,8 @@ func (h *ScratchpadHandlers) fillLinkedManuscriptName(r *http.Request, s *models
 }
 
 // HandleLinkScratchpad sets (manuscript_id != 0) or clears (0) a scratchpad's
-// manuscript default. New notes/snippets created in the pad afterward inherit
-// it (live default, not retroactive). Mirrors the note/snippet linkers: owns
+// manuscript default. New notes/sketches created in the pad afterward inherit
+// it (live default, not retroactive). Mirrors the note/sketch linkers: owns
 // the pad + has access to the target manuscript.
 func (h *ScratchpadHandlers) HandleLinkScratchpad(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.requireSession(w, r)

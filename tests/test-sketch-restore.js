@@ -1,6 +1,6 @@
 /**
- * Soft-delete + Restore… for snippet variations: trash soft-deletes (widget
- * removed, variation kept as deleted), the Snippet ▾ menu → Restore… lists it
+ * Soft-delete + Restore… for sketch variations: trash soft-deletes (widget
+ * removed, variation kept as deleted), the Sketch ▾ menu → Restore… lists it
  * (newest deletion first) and restoring re-inserts the widget.
  */
 const { chromium } = require('playwright');
@@ -21,8 +21,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
 
-  // Create a snippet, write identifying text so we can find it in the list.
-  const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  // Create a sketch, write identifying text so we can find it in the list.
+  const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   const varId = ctx.variation.variation_id;
   await page.waitForSelector('.sn-widget .sn-render', { timeout: 10000 });
   await page.click('.sn-widget .sn-render');
@@ -47,8 +47,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('appears in deleted list after trash', !!deletedRow, JSON.stringify(afterDel.variations && afterDel.variations.map(v => v.preview)));
   check('deleted row carries deletion date', deletedRow && !!deletedRow.deleted_at, deletedRow && deletedRow.deleted_at);
 
-  // Open the Snippet ▾ menu → Restore… and restore it.
-  await page.click('.sn-btn'); // ⧉ Snippet ▾
+  // Open the Sketch ▾ menu → Restore… and restore it.
+  await page.click('.sn-btn'); // ⧉ Sketch ▾
   await page.waitForSelector('.sn-ins-restore', { timeout: 5000 });
   await page.click('.sn-ins-restore');
   await page.waitForSelector('.sn-ins-list button[data-vid]', { timeout: 5000 });

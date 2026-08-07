@@ -91,15 +91,15 @@ async function makeNote(page, text) {
     !!card && / · /.test(card.context) && card.context.includes(pickedName.trim()),
     card && card.context);
 
-  // (3c) A snippet created in the linked pad also inherits the manuscript and
+  // (3c) A sketch created in the linked pad also inherits the manuscript and
   //      shows its link chip immediately (parity with notes).
-  const snipCtx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  const snipCtx = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   await page.waitForTimeout(1000);
-  const snippetId = snipCtx && snipCtx.snippet && snipCtx.snippet.snippet_id;
-  const snipLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM snippet WHERE snippet_id='${snippetId}'`).trim();
-  check('snippet in a linked pad INHERITS the manuscript', /^[0-9]+$/.test(snipLink), `linked=${snipLink}`);
+  const sketchId = snipCtx && snipCtx.sketch && snipCtx.sketch.sketch_id;
+  const snipLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM sketch WHERE sketch_id='${sketchId}'`).trim();
+  check('sketch in a linked pad INHERITS the manuscript', /^[0-9]+$/.test(snipLink), `linked=${snipLink}`);
   const snipChip = await page.locator('.sn-widget .sn-linkchip .ms-chip-name').first().textContent().catch(() => '');
-  check('snippet shows its manuscript link chip immediately', (snipChip || '').trim() === pickedName.trim(), `chip="${snipChip}"`);
+  check('sketch shows its manuscript link chip immediately', (snipChip || '').trim() === pickedName.trim(), `chip="${snipChip}"`);
 
   // The earlier note is still untouched (not retroactively linked).
   const preMid2 = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${preNote}`).trim();

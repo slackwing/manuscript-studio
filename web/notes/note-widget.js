@@ -26,11 +26,11 @@
   const COLORS = ['yellow', 'green', 'blue', 'purple', 'red', 'orange'];
   const esc = (s) => String(s == null ? '' : s);
 
-  // Link glyph shown on the manuscript-link chip (matches the snippet linker).
+  // Link glyph shown on the manuscript-link chip (matches the sketch linker).
   const LINK_SVG = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/></svg>';
 
   // The user's manuscripts, fetched once per page from /api/home (the same list
-  // the snippet linker and global search use). Cached; a failure resets so a
+  // the sketch linker and global search use). Cached; a failure resets so a
   // later open retries. [{id, name}]
   let manuscriptsPromise = null;
   // Manuscript list + picker are owned by the shared chip component
@@ -88,15 +88,15 @@
     const list = noteEl.querySelector('.tags-list');
     if (!list) return;
     list.innerHTML = '';
-    // Derived "snippet" chip (026): present iff the note belongs to a
-    // snippet — unremovable BY CONSTRUCTION (no tag row, no ×), first in
+    // Derived "sketch" chip (026): present iff the note belongs to a
+    // sketch — unremovable BY CONSTRUCTION (no tag row, no ×), first in
     // the row. Wears the plain tag skin.
-    if (note.snippet_id) {
+    if (note.sketch_id) {
       const sc = document.createElement('div');
-      sc.className = 'tag-chip snippet-chip';
-      sc.title = 'This is a snippet\u2019s note — it lives with the snippet';
+      sc.className = 'tag-chip sketch-chip';
+      sc.title = 'This is a sketch\u2019s note — it lives with the sketch';
       const nm = document.createElement('span');
-      nm.textContent = 'snippet';
+      nm.textContent = 'sketch';
       sc.appendChild(nm);
       list.appendChild(sc);
     }
@@ -475,7 +475,7 @@
 
   // The colored note square (the same one that sits left of highlighted
   // text in a pad) as a standalone component — text is optional; without
-  // it you get JUST the square (e.g. a snippet widget's corner note).
+  // it you get JUST the square (e.g. a sketch widget's corner note).
   // completed=true renders the green-check state instead of the color.
   function buildNoteSquare({ color, completed, text, title, onClick }) {
     const el = document.createElement('span');

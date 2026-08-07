@@ -10,7 +10,7 @@ const WriteSysScratchpadModal = {
 
   async _load() {
     if (!this._mod) {
-      this._mod = await import(new URL('scratchpad/modal.mjs?v=43', document.baseURI).href);
+      this._mod = await import(new URL('scratchpad/modal.mjs?v=44', document.baseURI).href);
     }
     return this._mod;
   },
@@ -32,7 +32,7 @@ const WriteSysScratchpadModal = {
     const h = window.location.hash || '';
     const sp = h.match(/[#&]scratchpad=(\d+)/);
     if (!sp) return;
-    const snM = h.match(/[#&]snippet=([a-z0-9]+)/i);
+    const snM = h.match(/[#&]sketch=([a-z0-9]+)/i);
     const ordM = h.match(/[#&]variation=(\d+)/);
     const spid = parseInt(sp[1], 10);
     if (this._mod && this._mod.ScratchpadModal.currentId() === spid) {

@@ -14,8 +14,8 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/database"
 )
 
-// Variations (VARIATIONS_PLAN.md, as clarified): snippet groups + flat sibling
-// variation content rows. Everything here is user-owned (snippet.user_id);
+// Variations (VARIATIONS_PLAN.md, as clarified): sketch groups + flat sibling
+// variation content rows. Everything here is user-owned (sketch.user_id);
 // mutations need CSRF.
 type VariationHandlers struct {
 	DB           *database.DB
@@ -51,7 +51,7 @@ func writeVariationError(w http.ResponseWriter, err error) {
 		errors.Is(err, database.ErrOrdinalCap),
 		errors.Is(err, database.ErrLinkedElsewhere),
 		errors.Is(err, database.ErrAlreadyCanonized),
-		errors.Is(err, database.ErrSnippetCanonized),
+		errors.Is(err, database.ErrSketchCanonized),
 		errors.Is(err, database.ErrVariationNoLetter):
 		http.Error(w, err.Error(), http.StatusConflict)
 	default:
@@ -68,12 +68,12 @@ func optScratchpadID(v int) *int {
 	return &v
 }
 
-// HandleCreateSnippet: POST /api/snippets
+// HandleCreateSketch: POST /api/sketches
 // {mode:"new", scratchpad_id} → fresh group + variation A homed in that scratchpad.
 // {mode:"variation", source_variation_id, scratchpad_id} → next-letter sibling variation,
 // text copied from the source, homed in that scratchpad. (No lineage, no source
 // freezing.)
-func (h *VariationHandlers) HandleCreateSnippet(w http.ResponseWriter, r *http.Request) {
+func (h *VariationHandlers) HandleCreateSketch(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.requireSession(w, r)
 	if !ok || !h.requireCSRF(w, r) {
 		return
@@ -91,7 +91,7 @@ func (h *VariationHandlers) HandleCreateSnippet(w http.ResponseWriter, r *http.R
 	var err error
 	switch req.Mode {
 	case "new", "":
-		ctxOut, err = h.DB.CreateSnippet(r.Context(), session.Username, optScratchpadID(req.ScratchpadID))
+		ctxOut, err = h.DB.CreateSketch(r.Context(), session.Username, optScratchpadID(req.ScratchpadID))
 	case "variation", "sketch": // "sketch" kept for any in-flight old client
 		if req.SourceVariationID <= 0 {
 			http.Error(w, "source_variation_id required", http.StatusBadRequest)
@@ -106,9 +106,9 @@ func (h *VariationHandlers) HandleCreateSnippet(w http.ResponseWriter, r *http.R
 		writeVariationError(w, err)
 		return
 	}
-	// Live default: a snippet created in a manuscript-linked scratchpad inherits
-	// the manuscript, mirroring notes (Phase C). Only NEW snippets; a "variation"
-	// sibling reuses an existing snippet, so it already carries the group's link.
+	// Live default: a sketch created in a manuscript-linked scratchpad inherits
+	// the manuscript, mirroring notes (Phase C). Only NEW sketches; a "variation"
+	// sibling reuses an existing sketch, so it already carries the group's link.
 	if req.Mode == "new" || req.Mode == "" {
 		h.inheritScratchpadManuscript(r, session.Username, req.ScratchpadID, ctxOut)
 	}
@@ -117,9 +117,9 @@ func (h *VariationHandlers) HandleCreateSnippet(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(ctxOut)
 }
 
-// inheritScratchpadManuscript links a just-created snippet to its scratchpad's
+// inheritScratchpadManuscript links a just-created sketch to its scratchpad's
 // linked manuscript (if any), so it's browsable without hand-linking — the same
-// live-default behavior notes have. Best-effort: a failure leaves the snippet
+// live-default behavior notes have. Best-effort: a failure leaves the sketch
 // unlinked rather than failing the create. Updates ctxOut so the response (and
 // thus the just-mounted widget) shows the link immediately.
 func (h *VariationHandlers) inheritScratchpadManuscript(r *http.Request, username string, scratchpadID int, ctxOut *database.VariationContext) {
@@ -131,11 +131,11 @@ func (h *VariationHandlers) inheritScratchpadManuscript(r *http.Request, usernam
 		return
 	}
 	name := manuscriptDisplayName(r.Context(), h.DB, h.Config, *mid)
-	if err := h.DB.LinkSnippet(r.Context(), username, ctxOut.Snippet.SnippetID, *mid, name); err != nil {
+	if err := h.DB.LinkSketch(r.Context(), username, ctxOut.Sketch.SketchID, *mid, name); err != nil {
 		return
 	}
-	ctxOut.Snippet.LinkedManuscriptID = *mid
-	ctxOut.Snippet.LinkedManuscriptName = name
+	ctxOut.Sketch.LinkedManuscriptID = *mid
+	ctxOut.Sketch.LinkedManuscriptName = name
 }
 
 // HandleListVariations: GET /api/variations?q=… — the Based-on picker (lettered
@@ -220,7 +220,7 @@ func (h *VariationHandlers) variationID(w http.ResponseWriter, r *http.Request) 
 }
 
 // writeVariationContext loads + emits a variation's widget payload, re-resolving the
-// linked manuscript name fresh (never trust the stored snippet column, so a
+// linked manuscript name fresh (never trust the stored sketch column, so a
 // stale value self-heals and later renames propagate).
 func (h *VariationHandlers) writeVariationContext(w http.ResponseWriter, r *http.Request, userID string, id int) {
 	out, err := h.DB.GetVariationContext(r.Context(), userID, id)
@@ -228,8 +228,8 @@ func (h *VariationHandlers) writeVariationContext(w http.ResponseWriter, r *http
 		writeVariationError(w, err)
 		return
 	}
-	if out.Snippet.LinkedManuscriptID != 0 {
-		out.Snippet.LinkedManuscriptName = h.manuscriptDisplayName(r, out.Snippet.LinkedManuscriptID)
+	if out.Sketch.LinkedManuscriptID != 0 {
+		out.Sketch.LinkedManuscriptName = h.manuscriptDisplayName(r, out.Sketch.LinkedManuscriptID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
@@ -323,28 +323,28 @@ func (h *VariationHandlers) HandleSetVariationState(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleFreezeAllVariations: POST /api/snippets/{snippet_id}/freeze-all — freeze
+// HandleFreezeAllVariations: POST /api/sketches/{sketch_id}/freeze-all — freeze
 // every lettered variation in a group (canonize's "Freeze all variations?").
 func (h *VariationHandlers) HandleFreezeAllVariations(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.requireSession(w, r)
 	if !ok || !h.requireCSRF(w, r) {
 		return
 	}
-	snippetID := chi.URLParam(r, "snippet_id")
-	if err := h.DB.FreezeAllVariations(r.Context(), session.Username, snippetID); err != nil {
+	sketchID := chi.URLParam(r, "sketch_id")
+	if err := h.DB.FreezeAllVariations(r.Context(), session.Username, sketchID); err != nil {
 		writeVariationError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleLinkSnippet: PUT /api/snippets/{snippet_id}/link {manuscript_id}.
-func (h *VariationHandlers) HandleLinkSnippet(w http.ResponseWriter, r *http.Request) {
+// HandleLinkSketch: PUT /api/sketches/{sketch_id}/link {manuscript_id}.
+func (h *VariationHandlers) HandleLinkSketch(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.requireSession(w, r)
 	if !ok || !h.requireCSRF(w, r) {
 		return
 	}
-	snippetID := chi.URLParam(r, "snippet_id")
+	sketchID := chi.URLParam(r, "sketch_id")
 	var req struct {
 		ManuscriptID int `json:"manuscript_id"`
 	}
@@ -359,7 +359,7 @@ func (h *VariationHandlers) HandleLinkSnippet(w http.ResponseWriter, r *http.Req
 		}
 		name = h.manuscriptDisplayName(r, req.ManuscriptID)
 	}
-	if err := h.DB.LinkSnippet(r.Context(), session.Username, snippetID, req.ManuscriptID, name); err != nil {
+	if err := h.DB.LinkSketch(r.Context(), session.Username, sketchID, req.ManuscriptID, name); err != nil {
 		writeVariationError(w, err)
 		return
 	}

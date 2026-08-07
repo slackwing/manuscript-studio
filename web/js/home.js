@@ -11,7 +11,7 @@ const WriteSysHome = {
   async init() {
     if (this._inited) return;
     this._inited = true;
-    // Re-render cards whenever the modal closes (titles/snippets change).
+    // Re-render cards whenever the modal closes (titles/sketches change).
     window.addEventListener('scratchpad-modal-closed', () => this.reload());
     window.addEventListener('popstate', () => this.render());
     // After an in-place re-login (session-guard), the page's data fetches
@@ -58,19 +58,19 @@ const WriteSysHome = {
     return `<a class="card card-manuscript" href="./?manuscript_id=${m.manuscript_id}">
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.display_name || m.name)}</p>
-      <p class="card-snippet">${words}</p>
+      <p class="card-sketch">${words}</p>
       <p class="card-meta"><span>${this.esc(updated)}</span>${created ? `<span>${this.esc(created)}</span>` : ''}</p>
     </a>`;
   },
 
   scratchpadCard(s) {
     const badge = s.block_count
-      ? `<span class="card-badge" title="${s.canonized_count} of ${s.block_count} snippets have been placed into a book (their text now lives in the manuscript)">⧉ ${s.canonized_count}/${s.block_count}</span>` : '';
+      ? `<span class="card-badge" title="${s.canonized_count} of ${s.block_count} sketches have been placed into a book (their text now lives in the manuscript)">⧉ ${s.canonized_count}/${s.block_count}</span>` : '';
     return `<div class="card card-scratchpad" data-scratchpad-id="${s.scratchpad_id}" tabindex="0" role="button">
       <span class="card-kindbar"></span>
       <button type="button" class="card-del" title="Delete scratchpad">${window.WriteSysIcons.trash(13)}</button>
       <p class="card-title">${this.esc(s.title)}</p>
-      <p class="card-snippet">${this.esc(s.snippet || '')}</p>
+      <p class="card-sketch">${this.esc(s.sketch || '')}</p>
       <p class="card-meta"><span>updated ${this.esc(this.when(s.updated_at))}</span>${badge}</p>
     </div>`;
   },

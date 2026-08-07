@@ -1,6 +1,6 @@
 // REGRESSION (the long-standing "one of the clicks sends me back to the top"):
 // with ProseMirror's selection far away — at doc START, as after opening a pad
-// and wheel-scrolling down without clicking prose — clicking a snippet preview
+// and wheel-scrolling down without clicking prose — clicking a sketch preview
 // to edit must NOT scroll the pad. Firefox restores/reveals PM's faraway DOM
 // selection on the focus churn; the fix parks the PM selection beside the
 // widget on renderEdit. Run with BROWSER=firefox to exercise the real engine
@@ -31,13 +31,13 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     view.dispatch(tr);
     const Sel = view.state.selection.constructor;
     view.dispatch(view.state.tr.setSelection(Sel.near(view.state.doc.resolve(view.state.doc.content.size), -1)));
-    await ed.insertSnippet();
+    await ed.insertSketch();
   });
   await page.waitForTimeout(600);
   // Give the variation text THROUGH THE UI so the widget's ctx has it.
   await page.locator('.sn-widget .sn-render').last().click();
   await page.waitForSelector('.sn-widget textarea');
-  await page.keyboard.type('bottom snippet text for editing here and more words to fill');
+  await page.keyboard.type('bottom sketch text for editing here and more words to fill');
   // Blur WITHOUT giving ProseMirror focus (click the widget's own header) —
   // the jump only reproduces when PM is unfocused while its selection sits
   // far away, so the DOM-selection reveal happens later, on entering edit.

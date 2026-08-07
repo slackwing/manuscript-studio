@@ -19,8 +19,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
-  // A: a fresh snippet (variation A). B: a sibling of A. Now two widgets exist.
-  const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  // A: a fresh sketch (variation A). B: a sibling of A. Now two widgets exist.
+  const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   const varA = ctxA.variation.variation_id;
   await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"]`);
   const ctxB = await page.evaluate((src) => window.WriteSysScratchpad.insertVariationOf(src), varA);

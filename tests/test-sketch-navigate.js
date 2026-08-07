@@ -15,7 +15,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.goto(HOME_URL);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
-  const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   const varA = ctxA.variation.variation_id;
   await page.waitForSelector('.sn-widget .sn-render'); await page.click('.sn-widget .sn-render');
   await page.waitForSelector('.sn-widget .sn-text');
@@ -33,7 +33,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('.sn-goto-source').first().click();
   await page.waitForTimeout(800);
   const hash = await page.evaluate(() => window.location.hash);
-  check('hash carries scratchpad + snippet + ordinal (deep link)', /scratchpad=\d+&snippet=[a-z0-9]+&variation=\d+/.test(hash), hash);
+  check('hash carries scratchpad + sketch + ordinal (deep link)', /scratchpad=\d+&sketch=[a-z0-9]+&variation=\d+/.test(hash), hash);
   // The flash class lands on A's widget.
   const flashed = await page.evaluate((vid) => {
     const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);

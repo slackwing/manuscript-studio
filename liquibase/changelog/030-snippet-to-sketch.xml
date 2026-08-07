@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Naming swap, step 2 of 2 (029 renamed sketch→variation): the GROUP
+         of variations — until now "snippet" — becomes the SKETCH. Pure
+         renames; live rows survive. NOTE the two deliberate legacy names
+         that do NOT change: the &snippet#… command syntax inside manuscript
+         text, and the "snippet" ProseMirror node type inside stored pad
+         docs — both are storage formats, renamed only in the UI/entity
+         layer. -->
+    <changeSet id="030-snippet-to-sketch" author="claude">
+        <sql>
+            ALTER TABLE snippet RENAME TO sketch;
+            ALTER TABLE sketch RENAME COLUMN snippet_id TO sketch_id;
+            ALTER TABLE variation RENAME COLUMN snippet_id TO sketch_id;
+            ALTER TABLE note RENAME COLUMN snippet_id TO sketch_id;
+            ALTER TABLE wordcount_history RENAME COLUMN words_snippets TO words_sketches;
+
+            ALTER TABLE sketch RENAME CONSTRAINT snippet_pkey TO sketch_pkey;
+            ALTER TABLE sketch RENAME CONSTRAINT fk_snippet_user TO fk_sketch_user;
+            ALTER TABLE sketch RENAME CONSTRAINT fk_snippet_canon_variation TO fk_sketch_canon_variation;
+            ALTER TABLE variation RENAME CONSTRAINT fk_variation_snippet TO fk_variation_sketch;
+            ALTER TABLE note RENAME CONSTRAINT fk_note_snippet TO fk_note_sketch;
+
+            ALTER INDEX idx_snippet_user RENAME TO idx_sketch_user;
+            ALTER INDEX idx_variation_snippet_ordinal RENAME TO idx_variation_sketch_ordinal;
+            ALTER INDEX idx_variation_snippet_canon RENAME TO idx_variation_sketch_canon;
+            ALTER INDEX uq_note_snippet_live RENAME TO uq_note_sketch_live;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

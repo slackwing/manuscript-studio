@@ -7,8 +7,8 @@ import (
 
 // BackfillVariationHomes populates variation.scratchpad_id for variations created
 // before homes were tracked (migration 017 added the column nullable). It walks
-// every scratchpad's ProseMirror doc, finds each snippet-placement node (a
-// `snippet` node whose attrs carry the variation id as `variationId`), and sets
+// every scratchpad's ProseMirror doc, finds each sketch-placement node (a
+// `sketch` node whose attrs carry the variation id as `variationId`), and sets
 // that variation's home to the scratchpad it was found in — but only where the
 // home is still NULL, so it is idempotent and never re-homes an already-homed
 // variation. Returns the number of variations updated.
@@ -57,15 +57,15 @@ func (db *DB) BackfillVariationHomes(ctx context.Context) (int, error) {
 }
 
 // variationIDsInDoc walks a ProseMirror doc node recursively and collects the
-// variation ids of every snippet-placement node. A snippet node looks like
-// {"type":"snippet","attrs":{"variationId":N}} ("variationId" is the historical
+// variation ids of every sketch-placement node. A sketch node looks like
+// {"type":"sketch","attrs":{"variationId":N}} ("variationId" is the historical
 // attr name for what is now the variation id).
 func variationIDsInDoc(node map[string]any) []int {
 	var out []int
 	if node == nil {
 		return out
 	}
-	if t, _ := node["type"].(string); t == "snippet" {
+	if t, _ := node["type"].(string); t == "sketch" {
 		if attrs, ok := node["attrs"].(map[string]any); ok {
 			if vid, ok := attrs["variationId"].(float64); ok && int(vid) > 0 {
 				out = append(out, int(vid))

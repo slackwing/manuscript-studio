@@ -85,7 +85,7 @@ func (h *MigrationHandlers) HandleGetLatestMigration(w http.ResponseWriter, r *h
 
 	// Word count rides along for the manuscript-chrome strip (HOME_PLAN).
 	// With wordcount_history enabled the table (effective + linked
-	// snippets) is the source; live count is the fallback pre-first-run.
+	// sketches) is the source; live count is the fallback pre-first-run.
 	wordCount, _ := h.DB.GetMigrationWordCount(ctx, migration.MigrationID)
 	if h.Config.WordcountHistory.Enabled {
 		if wr, err := h.DB.GetLatestWordcount(ctx, migration.ManuscriptID); err == nil && wr != nil {

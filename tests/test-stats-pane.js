@@ -91,10 +91,10 @@ function resetMeta() {
     const total = 1000 + (10 - i) * 100;
     const avg = 100 + (10 - i) * 3;
     const p30 = 40 + (10 - i) * 8;
-    psql(`INSERT INTO wordcount_history (manuscript_id, day, words_committed, words_effective, words_snippets, rate_average, rate_past_30d, projected_end)
+    psql(`INSERT INTO wordcount_history (manuscript_id, day, words_committed, words_effective, words_sketches, rate_average, rate_past_30d, projected_end)
           VALUES (${TEST_MANUSCRIPT_ID}, CURRENT_DATE - ${i}, ${total}, ${total}, 0, ${avg}, ${p30}, CURRENT_DATE + 120)
           ON CONFLICT (manuscript_id, day) DO UPDATE SET words_committed = EXCLUDED.words_committed,
-            words_effective = EXCLUDED.words_effective, words_snippets = EXCLUDED.words_snippets,
+            words_effective = EXCLUDED.words_effective, words_sketches = EXCLUDED.words_sketches,
             rate_average = EXCLUDED.rate_average, rate_past_30d = EXCLUDED.rate_past_30d, projected_end = EXCLUDED.projected_end`);
   }
 

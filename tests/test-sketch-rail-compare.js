@@ -1,4 +1,4 @@
-// The snippet widget's RIGHT RAIL (replaced the tab bar + ▾ overflow):
+// The sketch widget's RIGHT RAIL (replaced the tab bar + ▾ overflow):
 //  - self letter on top, every sibling below it — ALL of them, no overflow;
 //  - clicking a sibling opens a SPLIT compare (left self/editable, right the
 //    sibling read-only); same letter closes it, another letter swaps it;
@@ -18,21 +18,21 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   let failed = false;
   const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
 
-  await cleanupTestNotes(); // stray linked snippets skew the wordcount check
+  await cleanupTestNotes(); // stray linked sketches skew the wordcount check
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
 
-  // Snippet with 9 extra variations → 10 letters total.
+  // Sketch with 9 extra variations → 10 letters total.
   const ids = await page.evaluate(async () => {
     const ed = window.WriteSysScratchpad;
-    const a = await ed.insertSnippet();
+    const a = await ed.insertSketch();
     await ed.variationApi.saveText(a.variation.variation_id, 'alpha alpha alpha alpha alpha alpha alpha alpha alpha alpha'); // 10 words
     const sibs = [];
     for (let i = 0; i < 9; i++) sibs.push((await ed.variationApi.createFrom(a.variation.variation_id)).variation.variation_id);
-    return { a: a.variation.variation_id, sibs, snippet: a.snippet.snippet_id };
+    return { a: a.variation.variation_id, sibs, sketch: a.sketch.sketch_id };
   });
   const padId = await page.evaluate(() => window.WriteSysScratchpad.scratchpadId);
   await page.click('#spm-close');
@@ -112,14 +112,14 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   check('picker excludes superseded B', !picker.includes(bId), JSON.stringify(picker.slice(0, 8)));
   check('picker still includes frozen C', picker.includes(cId));
 
-  // Wordcount: link the snippet to the test manuscript, make B the MOST RECENT
+  // Wordcount: link the sketch to the test manuscript, make B the MOST RECENT
   // (but superseded) — the representative must skip it.
-  await page.evaluate(async ({ snippet, bId, csrf, mid }) => {
-    await fetch(`api/snippets/${snippet}/link`, {
+  await page.evaluate(async ({ sketch, bId, csrf, mid }) => {
+    await fetch(`api/sketches/${sketch}/link`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ manuscript_id: mid }),
     });
-  }, { snippet: ids.snippet, bId, csrf, mid: TEST_MANUSCRIPT_ID });
+  }, { sketch: ids.sketch, bId, csrf, mid: TEST_MANUSCRIPT_ID });
   // B superseded → can't save text; flip to draft, give it 3 words (most
   // recent now), then supersede again.
   await put(bId, 'draft');
@@ -139,7 +139,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   check('wordcount computed', !!wc, JSON.stringify(wc));
   // A (10 words) represents the group — NOT superseded B (3 words, most recent).
   check('representative skips superseded B (10 words, not 3)',
-    wc && wc.words_snippets === 10, `words_snippets=${wc && wc.words_snippets}`);
+    wc && wc.words_sketches === 10, `words_sketches=${wc && wc.words_sketches}`);
 
   await browser.close();
   process.exit(failed ? 1 : 0);

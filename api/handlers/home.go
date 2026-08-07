@@ -39,7 +39,7 @@ type homeScratchpad struct {
 	Title        string    `json:"title"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
-	Snippet      string    `json:"snippet"`
+	Sketch      string    `json:"sketch"`
 	BlockCount   int       `json:"block_count"`
 	Canonized    int       `json:"canonized_count"`
 }
@@ -106,7 +106,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 				hm.WordCount = wc
 			}
 			// wordcount_history enabled → the table (effective + linked
-			// snippets, all users) is the source of truth; the live count
+			// sketches, all users) is the source of truth; the live count
 			// above stays as the fallback until the cron's first run.
 			if h.Config.WordcountHistory.Enabled {
 				if wr, err := h.DB.GetLatestWordcount(ctx, opt.ManuscriptID); err == nil && wr != nil {
@@ -142,7 +142,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pads {
 		hs := homeScratchpad{ScratchpadID: p.ScratchpadID, Title: p.Title, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt}
 		if preview, variationIDs, err := scratchpad.Summary(p.Doc, 140); err == nil {
-			hs.Snippet, hs.BlockCount = preview, len(variationIDs)
+			hs.Sketch, hs.BlockCount = preview, len(variationIDs)
 			if canonized, err := h.DB.CountCanonizedAmong(ctx, variationIDs); err == nil {
 				hs.Canonized = canonized
 			}
@@ -182,9 +182,9 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 					manuscript = name
 				}
 			}
-			// A snippet note's context is the SKETCH itself, not whichever
+			// A sketch note's context is the SKETCH itself, not whichever
 			// pad happens to host it — its variations can span several.
-			if n.SnippetID != nil {
+			if n.SketchID != nil {
 				hn.Context = joinContext(manuscript, "Sketch")
 			} else {
 				hn.Context = joinContext(manuscript, n.ScratchpadTitle)

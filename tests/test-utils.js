@@ -138,16 +138,16 @@ async function cleanupTestNotes() {
       );
       DELETE FROM scratchpad WHERE user_id = '${TEST_USERNAME}';
       DELETE FROM scratchpad_image WHERE user_id = '${TEST_USERNAME}';
-      UPDATE snippet SET canon_variation_id = NULL WHERE user_id = '${TEST_USERNAME}';
+      UPDATE sketch SET canon_variation_id = NULL WHERE user_id = '${TEST_USERNAME}';
       DELETE FROM variation_revision WHERE variation_id IN (
-        SELECT variation_id FROM variation WHERE snippet_id IN (
-          SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
+        SELECT variation_id FROM variation WHERE sketch_id IN (
+          SELECT sketch_id FROM sketch WHERE user_id = '${TEST_USERNAME}'
         )
       );
-      DELETE FROM variation WHERE snippet_id IN (
-        SELECT snippet_id FROM snippet WHERE user_id = '${TEST_USERNAME}'
+      DELETE FROM variation WHERE sketch_id IN (
+        SELECT sketch_id FROM sketch WHERE user_id = '${TEST_USERNAME}'
       );
-      DELETE FROM snippet WHERE user_id = '${TEST_USERNAME}';
+      DELETE FROM sketch WHERE user_id = '${TEST_USERNAME}';
     `);
     console.log(`[CLEANUP] fast wipe done (worker ${WORKER}, manuscript_id=${TEST_MANUSCRIPT_ID})`);
   } catch (error) {

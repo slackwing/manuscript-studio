@@ -28,7 +28,7 @@ const psql = (sql) => execSync(
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
   const variationId = await page.evaluate(async () => {
-    const ctx = await window.WriteSysScratchpad.insertSnippet();
+    const ctx = await window.WriteSysScratchpad.insertSketch();
     return ctx.variation.variation_id;
   });
   await page.waitForSelector('.sn-widget .sn-render');

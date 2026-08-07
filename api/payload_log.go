@@ -14,7 +14,7 @@ import (
 
 // Durable request log: EVERY request is appended to a daily JSONL file
 // BEFORE its handler runs, bodies included, so anything a user typed
-// survives even when the save itself fails (a silent snippet-note save bug
+// survives even when the save itself fails (a silent sketch-note save bug
 // once ate real writing — and the docker logs that might have helped died
 // with the container on the next redeploy).
 //

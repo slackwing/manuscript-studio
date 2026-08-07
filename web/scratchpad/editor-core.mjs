@@ -3,8 +3,8 @@
  * scratchpad page died; the singleton modal (modal.mjs) is the only host.
  *
  * ProseMirror (vendored bundle — scripts/vendor-prosemirror.sh) drives the
- * SCRATCHPAD surface only. Snippet content is NEVER edited with PM — since
- * VARIATIONS_PLAN.md a snippet node is a PLACEMENT marker {variationId};
+ * SCRATCHPAD surface only. Sketch content is NEVER edited with PM — since
+ * VARIATIONS_PLAN.md a sketch node is a PLACEMENT marker {variationId};
  * the text lives in the variation tables and is edited in a monospace
  * textarea, previewed through the real book pipeline (scratch-render.js →
  * renderer.js in a shadow root with book.css).
@@ -81,8 +81,10 @@ const coreNodes = {
       class: 'scratch-image',
     }],
   },
-  // A snippet PLACEMENT (VARIATIONS_PLAN.md): atom marker for one variation.
+  // A sketch PLACEMENT (VARIATIONS_PLAN.md): atom marker for one variation.
   // All content/state lives server-side; the NodeView fetches its context.
+  // LEGACY STORAGE NAME: the sketch widget's PM node is still typed
+  // 'snippet' — every saved pad doc embeds it; renaming would break them.
   snippet: {
     group: 'block', atom: true, selectable: true,
     attrs: { variationId: { default: 0 } },
@@ -143,7 +145,7 @@ const withTables = withLists.append(tableNodes({
 export const schema = new Schema({ nodes: withTables, marks: base.spec.marks });
 
 // Bring a stored doc up to the current schema so it always opens:
-//  - drop pre-variations snippet nodes ("book_content", or "snippet" without a
+//  - drop pre-variations sketch nodes ("book_content", or "snippet" without a
 //    positive variationId).
 //  - CONVERT the pre-atomic note representation (a `noteAnchor` inline node +
 //    a `noteHighlight` mark on the following text, both tagged with noteId)
@@ -205,7 +207,7 @@ function modernizeDoc(json) {
 // ------------------------------------------------- manuscript data cache
 
 // Per-target-manuscript effective data for Canon views; module-level so
-// several snippets targeting one book share fetches within a page.
+// several sketches targeting one book share fetches within a page.
 export const bookData = {
   cache: {},
   async load(manuscriptId, force = false) {
@@ -251,17 +253,17 @@ export function setCurrentScratchpadId(id) { currentScratchpadId = id | 0; }
 export const variationApi = {
   context: (id) => fetchJSON(`api/variations/${id}`, {}, false),
   list: (q) => fetchJSON(`api/variations?q=${encodeURIComponent(q || '')}`, {}, false),
-  createNew: () => apiCall('POST', 'api/snippets', { mode: 'new', scratchpad_id: currentScratchpadId }),
+  createNew: () => apiCall('POST', 'api/sketches', { mode: 'new', scratchpad_id: currentScratchpadId }),
   // Based on a source variation → a new sibling variation (next letter, text copied).
   // No source freezing; the source is left as-is.
-  createFrom: (sourceId) => apiCall('POST', 'api/snippets',
+  createFrom: (sourceId) => apiCall('POST', 'api/sketches',
     { mode: 'variation', source_variation_id: sourceId, scratchpad_id: currentScratchpadId }),
   saveText: (id, text) => apiCall('PUT', `api/variations/${id}`, { text }),
   // ONE lifecycle state (draft | frozen | superseded) — setting frozen or
   // superseded cancels the other (single column server-side).
   setState: (id, state) => apiCall('PUT', `api/variations/${id}/state`, { state }),
-  freezeAll: (snippetId) => apiCall('POST', `api/snippets/${snippetId}/freeze-all`),
-  link: (snippetId, manuscriptId) => apiCall('PUT', `api/snippets/${snippetId}/link`, { manuscript_id: manuscriptId }),
+  freezeAll: (sketchId) => apiCall('POST', `api/sketches/${sketchId}/freeze-all`),
+  link: (sketchId, manuscriptId) => apiCall('PUT', `api/sketches/${sketchId}/link`, { manuscript_id: manuscriptId }),
   canonize: (id, manuscriptId) => apiCall('POST', `api/variations/${id}/canonize`, { manuscript_id: manuscriptId }),
   softDelete: (id) => apiCall('DELETE', `api/variations/${id}`),
   restore: (id) => apiCall('POST', `api/variations/${id}/restore`),
@@ -282,7 +284,7 @@ function fmtDeleted(iso) {
 // render AA/AB — for now the server refuses past Z.
 export const letterOf = (ordinal) => ordinal ? String.fromCharCode(64 + ordinal) : '·';
 
-// ----------------------------------------------------------- snippet view
+// ----------------------------------------------------------- sketch view
 
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -298,8 +300,8 @@ const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" st
 const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
 const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1c0-.55-.45-1-1-1H3.5c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h1"/></svg>';
 
-// Clipboard snippet reference (the copy button on each widget writes this;
-// the ⧉ Snippet ▾ → "From clipboard" option reads it back anywhere).
+// Clipboard sketch reference (the copy button on each widget writes this;
+// the ⧉ Sketch ▾ → "From clipboard" option reads it back anywhere).
 const VARIATION_REF_PREFIX = 'ms-variation:';
 const parseVariationRef = (text) => {
   const m = /^\s*ms-variation:(\d+)\s*$/.exec(text || '');
@@ -313,27 +315,27 @@ const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" st
 // mirrors which views still hold unsaved text — isDirty() consults it.
 const variationFlushers = new Set();
 const dirtyVariations = new Set();
-// Every live SnippetView, so a group-level change (e.g. linking a manuscript,
-// which is a property of the snippet GROUP, not one variation) can refresh every
-// sibling widget showing the same snippet — otherwise siblings hold a stale
+// Every live SketchView, so a group-level change (e.g. linking a manuscript,
+// which is a property of the sketch GROUP, not one variation) can refresh every
+// sibling widget showing the same sketch — otherwise siblings hold a stale
 // link chip (or a stale tab list) until the next reload.
-const liveSnippetViews = new Set();
+const liveSketchViews = new Set();
 
-// Refresh every EXISTING widget of the given snippet group except one (usually
+// Refresh every EXISTING widget of the given sketch group except one (usually
 // a just-created variation, which mounts fresh). Used after a group-level change so
 // siblings pick it up immediately — e.g. a new related variation appearing in their
 // tab bar, or a manuscript link updating their chip.
-function refreshSnippetSiblings(snippetId, exceptVariationId) {
-  if (!snippetId) return;
-  return Promise.all(Array.from(liveSnippetViews)
-    .filter(v => v.ctx && v.ctx.snippet && v.ctx.snippet.snippet_id === snippetId
+function refreshSketchSiblings(sketchId, exceptVariationId) {
+  if (!sketchId) return;
+  return Promise.all(Array.from(liveSketchViews)
+    .filter(v => v.ctx && v.ctx.sketch && v.ctx.sketch.sketch_id === sketchId
       && v.variationId !== exceptVariationId)
     .map(v => v.refresh()));
 }
 
 function renderBookText(host, text) {
   const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-  // A snippet is often a MID-CHAPTER excerpt, so a Tab typed at the very start
+  // A sketch is often a MID-CHAPTER excerpt, so a Tab typed at the very start
   // means "the first paragraph is indented". Normalize that leading \t to a
   // real \n\t marker — canonicalize preserves a single leading marker and the
   // renderer classes the paragraph 'indented' — instead of letting the prose
@@ -400,7 +402,7 @@ function holdScroll(host, ms, deltaFn) {
   if (deltaFn) h.fns.push(deltaFn);
 }
 
-class SnippetView {
+class SketchView {
   constructor(node, view, getPos) {
     this.node = node;
     this.view = view;
@@ -409,13 +411,13 @@ class SnippetView {
     this.dom = document.createElement('div');
     this.dom.className = 'sn-widget';
     this.dom.dataset.variationId = String(this.variationId); // PM node attr name; also the navigate-to-source target
-    this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Snippet · loading…</span></div><div class="sn-body"></div>';
+    this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Sketch · loading…</span></div><div class="sn-body"></div>';
     this.compare = null;     // null | sibling variation_id (number) | 'canon'
     this.mode = 'preview';   // 'preview' | 'edit' (the SELF pane, split or not)
     this.peerCache = {};     // variationId → context (parent/child tabs)
     this.dirty = false;
     this.flush = async () => true;
-    liveSnippetViews.add(this);
+    liveSketchViews.add(this);
     this.load();
   }
 
@@ -425,7 +427,7 @@ class SnippetView {
     } catch (e) {
       this.dom.innerHTML = `
         <div class="sn-header">
-          <span class="sn-status">Snippet · unavailable</span>
+          <span class="sn-status">Sketch · unavailable</span>
           <span class="sn-save"></span>
           <span class="sn-actions"><button type="button" data-act="remove" class="sn-trash" title="Remove widget">${TRASH_SVG}</button></span>
         </div>
@@ -455,7 +457,7 @@ class SnippetView {
   // jump — usually to the top of the widget. Everything that tears down and
   // rebuilds the widget (build/renderBody/setCompare/setVariationState) runs through
   // preserveScroll so the reader stays put. This is the single, root-cause fix
-  // for "clicking a snippet scrolls me to the top."
+  // for "clicking a sketch scrolls me to the top."
   scrollHost() {
     return this.dom.closest('.spm-editor') || this.dom.closest('[data-scroll-host]') || null;
   }
@@ -477,7 +479,7 @@ class SnippetView {
     return r;
   }
 
-  canonized() { return this.ctx.snippet.canon_variation_id > 0; }
+  canonized() { return this.ctx.sketch.canon_variation_id > 0; }
   stateName() { return this.ctx.variation.state || 'draft'; }
   frozen() { return this.stateName() === 'frozen'; }
   superseded() { return this.stateName() === 'superseded'; }
@@ -486,16 +488,16 @@ class SnippetView {
 
   build() {
     const v = this.ctx.variation;
-    const sn = this.ctx.snippet;
-    // Identity for navigate-to-source: (snippet, ordinal). The global variation_id
+    const sn = this.ctx.sketch;
+    // Identity for navigate-to-source: (sketch, ordinal). The global variation_id
     // stays as data-variation-id/data-variation-id for the PM node + back-compat.
-    this.dom.dataset.snippetId = sn.snippet_id;
+    this.dom.dataset.sketchId = sn.sketch_id;
     if (v.ordinal != null) this.dom.dataset.ordinal = String(v.ordinal);
     this.dom.classList.toggle('sn-canon', this.canonized());
     this.dom.classList.toggle('sn-state-frozen', this.frozen());
     this.dom.classList.toggle('sn-state-superseded', this.superseded());
-    const status = `Snippet · ${this.letter()} · ${this.stateName()}`;
-    const statusHint = `Variation ${this.letter()} of snippet #${sn.snippet_id}. ` +
+    const status = `Sketch · ${this.letter()} · ${this.stateName()}`;
+    const statusHint = `Variation ${this.letter()} of sketch #${sn.sketch_id}. ` +
       (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). '
         : this.superseded() ? 'Superseded: no longer the preferred variation — read-only until un-superseded (↓). '
         : 'Click the preview to edit. ') +
@@ -507,7 +509,7 @@ class SnippetView {
     const linkBit = '<span class="sn-linkslot"></span>';
 
     const openBook = this.canonized() && sn.linked_manuscript_id
-      ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.snippet_id)}" title="Open in book">Open in book ↗</a>`
+      ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.sketch_id)}" title="Open in book">Open in book ↗</a>`
       : '';
     // Layout: main column (header + body) plus the letter RAIL down the right
     // edge — a symmetric "titlebar" whose top button is THIS variation's letter
@@ -523,7 +525,7 @@ class SnippetView {
               <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
               <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
               <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-              <button type="button" data-act="copyref" class="sn-copyref" title="Copy snippet reference — start a related variation anywhere via ⧉ Snippet ▾ → From clipboard">${COPY_SVG}</button>
+              <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
             </span>
           </div>
           <div class="sn-body"></div>
@@ -550,7 +552,7 @@ class SnippetView {
         setTimeout(() => b.classList.remove('sn-copied'), 900);
       } catch (err) { alert('Could not copy: ' + err.message); }
     });
-    // The snippet's NOTE square (026) — the exact component that fronts
+    // The sketch's NOTE square (026) — the exact component that fronts
     // highlighted text in the doc, minus the text — top-left, left of the
     // status word. Click opens the same note float. Green check once the
     // note (as a task) is completed.
@@ -559,7 +561,7 @@ class SnippetView {
       const sq = window.WriteSysNoteWidget.buildNoteSquare({
         color: noteInfo.color,
         completed: !!noteInfo.completed,
-        title: noteInfo.completed ? 'Snippet note — completed' : 'Snippet note — click to open',
+        title: noteInfo.completed ? 'Sketch note — completed' : 'Sketch note — click to open',
         onClick: (a) => lockScratchpadScroll(() => openNoteFloatFor(noteInfo.note_id, a)),
       });
       sq.dataset.noteId = String(noteInfo.note_id);
@@ -578,7 +580,7 @@ class SnippetView {
       linkedId: sn.linked_manuscript_id,
       linkedName: sn.linked_manuscript_name,
       removable: !this.canonized(),
-      hintLinked: `Linked to ${sn.linked_manuscript_name} — this snippet can only be canonized into that manuscript. Click × to unlink.`,
+      hintLinked: `Linked to ${sn.linked_manuscript_name} — this sketch can only be canonized into that manuscript. Click × to unlink.`,
       hintReadonly: `Linked to ${sn.linked_manuscript_name} — canon pinned the link permanently.`,
       hintUnlinked: 'Link to manuscript',
       onUnlink: () => this.setLink(0),
@@ -703,7 +705,7 @@ class SnippetView {
     // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
     const pane = window.WriteSysEditPane.createMonoEditor({
       value: restored ? draft.t : serverText,
-      placeholder: 'Snippet in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).',
+      placeholder: 'Sketch in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).',
       // Mirror the text into the overlay, rendering each tab as a faint grey
       // → glyph so invisible whitespace is visible. Everything else is neutral
       // (the textarea's own text sits transparent on top).
@@ -750,7 +752,7 @@ class SnippetView {
     // "\n\t" paragraph break is typeable) instead of moving focus. Shift-Tab
     // still escapes the field so the author is never trapped.
     ta.addEventListener('keydown', (e) => {
-      // Escape exits the snippet edit ONLY — stopPropagation so the modal's
+      // Escape exits the sketch edit ONLY — stopPropagation so the modal's
       // document-level Escape handler doesn't also close the whole pad.
       if (e.key === 'Escape') { e.stopPropagation(); ta.blur(); return; }
       if (e.key === 'Tab' && !e.shiftKey) {
@@ -762,7 +764,7 @@ class SnippetView {
     target.appendChild(pane.wrap);
     this.ta = ta;
     // preventScroll: focusing the textarea would otherwise scroll it into view
-    // (jumping to the top of the snippet) — the main "click-to-edit scrolls me
+    // (jumping to the top of the sketch) — the main "click-to-edit scrolls me
     // up" trigger. preserveScroll (around renderBody) is the backstop.
     ta.focus({ preventScroll: true });
     ta.setSelectionRange(ta.value.length, ta.value.length);
@@ -793,11 +795,11 @@ class SnippetView {
     pane.innerHTML = `
       <div class="sn-note"><strong>${letter}</strong> · read-only${st !== 'draft' ? ` · ${esc(st)}` : ''} · <a href="#" class="sn-goto-source">open source ↗</a></div>
       <div class="sn-render sn-peer"></div>`;
-    const snippetId = ctx.variation.snippet_id;
+    const sketchId = ctx.variation.sketch_id;
     const ordinal = ctx.variation.ordinal;
     pane.querySelector('.sn-goto-source').addEventListener('click', (e) => {
       e.preventDefault();
-      this.gotoVariationSource(variationId, snippetId, ordinal);
+      this.gotoVariationSource(variationId, sketchId, ordinal);
     });
     const host = pane.querySelector('.sn-render');
     // Swallow mousedown so a click doesn't place a caret / fall through to the
@@ -810,24 +812,24 @@ class SnippetView {
 
   // Navigate to a variation's home widget: ask the server which scratchpad hosts
   // it, then set the URL hash to open that scratchpad and scroll to the widget.
-  // Identity is (snippet, ordinal) — NOT the global variation_id — so the URL is
-  // human-readable and stable: #scratchpad=N&snippet=ID&variation=<ordinal>.
-  async gotoVariationSource(variationId, snippetId, ordinal) {
+  // Identity is (sketch, ordinal) — NOT the global variation_id — so the URL is
+  // human-readable and stable: #scratchpad=N&sketch=ID&variation=<ordinal>.
+  async gotoVariationSource(variationId, sketchId, ordinal) {
     let spID = 0;
     try { spID = (await variationApi.home(variationId)).scratchpad_id | 0; } catch (e) { /* fall through */ }
     if (spID > 0) {
-      window.location.hash = `#scratchpad=${spID}&snippet=${encodeURIComponent(snippetId)}&variation=${ordinal}`;
+      window.location.hash = `#scratchpad=${spID}&sketch=${encodeURIComponent(sketchId)}&variation=${ordinal}`;
     } else {
       alert('That variation has no home scratchpad on record yet.');
     }
   }
 
   // Canon truth derives from the manuscript (VARIATIONS_PLAN §2): resolve
-  // the &snippet#id … &end#id region from the effective manuscript; the
+  // the &snippet#id … &end#id region (legacy syntax name) from the effective manuscript; the
   // canon variation's text is the immutable as-canonized snapshot, used as
   // fallback and via the in-body toggle.
   async renderCanon(showSnapshot, pane) {
-    const sn = this.ctx.snippet;
+    const sn = this.ctx.sketch;
     const snap = this.ctx.canon ? this.ctx.canon.text : '';
     const canonizedOn = this.ctx.canon ? (this.ctx.canon.created_at || '').slice(0, 10) : '';
     if (showSnapshot) {
@@ -843,11 +845,11 @@ class SnippetView {
     try {
       const data = await bookData.load(sn.linked_manuscript_id, false);
       const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-      const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.snippet_id, window.WriteSysCommand, canon);
+      const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, canon);
       if (this.compare !== 'canon' || !pane.isConnected) return;
       if (res.status !== 'ok') {
         pane.querySelector('.sn-note').innerHTML =
-          `<span class="sn-error">Region #${esc(sn.snippet_id)} ${res.status === 'missing-anchor'
+          `<span class="sn-error">Region #${esc(sn.sketch_id)} ${res.status === 'missing-anchor'
             ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the as-canonized snapshot.</span>`;
         renderBookText(host, snap);
         return;
@@ -868,20 +870,20 @@ class SnippetView {
       await variationApi.setState(this.variationId, state);
       await this.refresh();
       // Sibling rails color-code THIS variation's state — update them live.
-      await refreshSnippetSiblings(this.ctx.snippet.snippet_id, this.variationId);
+      await refreshSketchSiblings(this.ctx.sketch.sketch_id, this.variationId);
     } catch (e) {
       alert('Could not update variation state: ' + e.message);
     }
   }
 
   async setLink(manuscriptId) {
-    const snippetId = this.ctx.snippet.snippet_id;
+    const sketchId = this.ctx.sketch.sketch_id;
     try {
-      await variationApi.link(snippetId, manuscriptId);
-      // The link belongs to the snippet GROUP: refresh every live widget of
-      // this snippet (including this one) so their chips update now, not only
+      await variationApi.link(sketchId, manuscriptId);
+      // The link belongs to the sketch GROUP: refresh every live widget of
+      // this sketch (including this one) so their chips update now, not only
       // after a reload.
-      await refreshSnippetSiblings(snippetId, null);
+      await refreshSketchSiblings(sketchId, null);
     } catch (e) {
       alert('Could not update link: ' + e.message);
     }
@@ -892,7 +894,7 @@ class SnippetView {
     if (pos == null) return;
     const label = broken
       ? 'Remove this widget?'
-      : `Delete variation ${this.letter()}? It's soft-deleted — bring it back any time via the ⧉ Snippet ▾ menu → Restore…`;
+      : `Delete variation ${this.letter()}? It's soft-deleted — bring it back any time via the ⧉ Sketch ▾ menu → Restore…`;
     if (!window.confirm(label)) return;
     // Soft-delete the variation first (a broken widget has no live variation to
     // delete). If the delete fails, keep the widget so nothing is lost.
@@ -922,7 +924,7 @@ class SnippetView {
     if (this._saver) this._saver.destroy();
     variationFlushers.delete(this.flush);
     dirtyVariations.delete(this);
-    liveSnippetViews.delete(this);
+    liveSketchViews.delete(this);
   }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
@@ -1008,7 +1010,7 @@ async function ensureNoteCached(noteId) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', snippet_id: n.snippet_id || null };
+      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null };
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -1227,12 +1229,12 @@ function onFloatOutside(e) {
 
 // Open the floating note for a note id, positioned below `anchorEl`. Fetches the
 // CURRENT note (body/color/tags) so the reopened float always shows saved data.
-// Flip every solo square of this note (snippet widget corners) to the
+// Flip every solo square of this note (sketch widget corners) to the
 // green-check completed state.
-function markSnippetSquaresCompleted(noteId) {
+function markSketchSquaresCompleted(noteId) {
   document.querySelectorAll(`.sn-note-solo[data-note-id="${noteId}"]`).forEach((el) => {
     const fresh = window.WriteSysNoteWidget.buildNoteSquare({
-      completed: true, title: 'Snippet note — completed', onClick: (a) => lockScratchpadScroll(() => openNoteFloatFor(noteId, a)),
+      completed: true, title: 'Sketch note — completed', onClick: (a) => lockScratchpadScroll(() => openNoteFloatFor(noteId, a)),
     });
     fresh.dataset.noteId = String(noteId);
     el.replaceWith(fresh);
@@ -1250,9 +1252,9 @@ async function openNoteFloatFor(noteId, anchorEl) {
     color: cached.color, body: cached.body,
     priority: cached.priority || 'none', flagged: !!cached.flagged, tags: cached.tags || [],
     manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
-    snippet_id: cached.snippet_id || null,
+    sketch_id: cached.sketch_id || null,
   };
-  const isSnippetNote = !!note.snippet_id;
+  const isSketchNote = !!note.sketch_id;
   if (openNoteFloat) return; // a newer open superseded us while fetching
   const float = document.createElement('div');
   float.className = 'sn-note-float';
@@ -1265,13 +1267,13 @@ async function openNoteFloatFor(noteId, anchorEl) {
     },
     onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; cached.priority = note.priority; api.update(noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
     onFlag: () => { note.flagged = !note.flagged; cached.flagged = note.flagged; api.update(noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
-    // A snippet's note can't be deleted (it lives with the snippet); its
+    // A sketch's note can't be deleted (it lives with the sketch); its
     // completion greys the widget square to a green check instead of
     // dissolving a doc ref. Scoring is the same everywhere.
-    onDelete: isSnippetNote ? null : (() => { deleteNoteViaDoc(noteId); }),
+    onDelete: isSketchNote ? null : (() => { deleteNoteViaDoc(noteId); }),
     onComplete: () => {
       api.complete(noteId);
-      if (isSnippetNote) { cached.completed = true; markSnippetSquaresCompleted(noteId); }
+      if (isSketchNote) { cached.completed = true; markSketchSquaresCompleted(noteId); }
       else removeNoteRefNoDelete(noteId);
       closeNoteFloat();
     },
@@ -1281,7 +1283,7 @@ async function openNoteFloatFor(noteId, anchorEl) {
     onRemoveTag: async (tagId) => { try { await api.removeTag(noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); cached.tags = note.tags; } catch (e) {} },
     onLinkManuscript: async (mid) => { try { const r = await api.linkManuscript(noteId, mid); note.manuscript_id = r.manuscript_id || null; note.manuscript_name = r.manuscript_name || ''; } catch (e) {} },
     onUnlinkManuscript: async () => { try { await api.linkManuscript(noteId, 0); note.manuscript_id = null; note.manuscript_name = ''; } catch (e) {} },
-  }, { showDelete: !isSnippetNote });
+  }, { showDelete: !isSketchNote });
   float.appendChild(widget);
   document.body.appendChild(float);
   openNoteFloat = float;
@@ -1423,16 +1425,16 @@ function buildTablePicker(toolbarEl, getView) {
   toolbarEl.appendChild(wrap);
 }
 
-// The ⧉ Snippet ▾ menu: New snippet, or Based on… (variation picker sorted
+// The ⧉ Sketch ▾ menu: New sketch, or Based on… (variation picker sorted
 // by variation updated_at, then a freeze-the-source choice).
-function buildSnippetMenu(toolbarEl, getView) {
+function buildSketchMenu(toolbarEl, getView) {
   const wrap = document.createElement('span');
   wrap.className = 'tb-tablewrap';
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'sn-btn';
-  btn.title = 'Insert a Manuscript Snippet (new, or a variation based on an existing one)';
-  btn.textContent = '⧉ Snippet ▾';
+  btn.title = 'Insert a Manuscript Sketch (new, or a variation based on an existing one)';
+  btn.textContent = '⧉ Sketch ▾';
   const pop = document.createElement('div');
   pop.className = 'sn-insertpop';
   pop.hidden = true;
@@ -1451,28 +1453,28 @@ function buildSnippetMenu(toolbarEl, getView) {
     close();
     view.focus();
     // A new sibling changes the group's variation list, so every EXISTING widget of
-    // the same snippet must refresh to show the new one in its tab bar (the new
+    // the same sketch must refresh to show the new one in its tab bar (the new
     // widget just mounted fresh with the full list). Without this, related
     // widgets don't get the new tab until a reload.
-    const snippetId = (ctx.snippet && ctx.snippet.snippet_id)
-      || (ctx.variation && ctx.variation.snippet_id);
-    refreshSnippetSiblings(snippetId, ctx.variation.variation_id);
+    const sketchId = (ctx.sketch && ctx.sketch.sketch_id)
+      || (ctx.variation && ctx.variation.sketch_id);
+    refreshSketchSiblings(sketchId, ctx.variation.variation_id);
   };
 
   const renderRoot = () => {
     pop.innerHTML = `
-      <button type="button" class="sn-ins-new">New snippet</button>
+      <button type="button" class="sn-ins-new">New sketch</button>
       <button type="button" class="sn-ins-based">Related to…</button>
-      <button type="button" class="sn-ins-clip" disabled title="Copy a snippet reference first (the copy button on a snippet widget)">From clipboard</button>
+      <button type="button" class="sn-ins-clip" disabled title="Copy a sketch reference first (the copy button on a sketch widget)">From clipboard</button>
       <button type="button" class="sn-ins-restore">Restore…</button>`;
     pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
       try { insertVariation(await variationApi.createNew()); }
-      catch (e) { alert('Could not create snippet: ' + e.message); }
+      catch (e) { alert('Could not create sketch: ' + e.message); }
     });
     pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
     pop.querySelector('.sn-ins-restore').addEventListener('click', renderRestore);
     // "From clipboard" lights up only when the clipboard holds a VALID
-    // snippet reference (copied via a widget's copy button) — parsed, then
+    // sketch reference (copied via a widget's copy button) — parsed, then
     // confirmed against the API so a stale/foreign id stays disabled.
     (async () => {
       const clipBtn = pop.querySelector('.sn-ins-clip');
@@ -1696,7 +1698,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { sep: true },
     { table: true },
     { label: 'Image', title: 'Insert image', run: () => { els.imageInput.click(); return true; } },
-    { snippetMenu: true },
+    { sketchMenu: true },
     { sep: true, show: showInTable },
     { label: '+ Row', title: 'Add row below', run: addRowAfter, show: showInTable },
     { label: '− Row', title: 'Delete row', run: deleteRow, show: showInTable },
@@ -1718,8 +1720,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
       buildTablePicker(els.toolbarEl, () => view);
       continue;
     }
-    if (it.snippetMenu) {
-      buildSnippetMenu(els.toolbarEl, () => view);
+    if (it.sketchMenu) {
+      buildSketchMenu(els.toolbarEl, () => view);
       continue;
     }
     if (it.noteColors) {
@@ -1794,7 +1796,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       columnResizing(),
       tableEditing(),
       // Trailing-node guarantee: the doc always ends with an empty paragraph.
-      // A snippet/table/image as the LAST node leaves nowhere obvious to put
+      // A sketch/table/image as the LAST node leaves nowhere obvious to put
       // the caret to keep writing (the gap cursor exists but is undiscoverable
       // at the doc edge) — so any edit that leaves a non-paragraph last child
       // gets a paragraph appended, and there's always a line to click below.
@@ -1813,7 +1815,9 @@ export async function createScratchpadEditor(els, scratchpadId) {
   view = new EditorView(els.editorEl, {
     state,
     nodeViews: {
-      snippet: (node, v, getPos) => new SnippetView(node, v, getPos),
+      // keyed by the PM node's LEGACY STORAGE NAME ('snippet' — see the
+      // schema def), not the UI term.
+      snippet: (node, v, getPos) => new SketchView(node, v, getPos),
       noteRef: (node, v, getPos) => new NoteRefView(node, v, getPos),
     },
     dispatchTransaction(tr) {
@@ -1825,7 +1829,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     },
   });
   activeView = view;
-  // Docs SAVED with a trailing snippet/table/image predate the trailing-node
+  // Docs SAVED with a trailing sketch/table/image predate the trailing-node
   // plugin (which only runs on edits) — normalize once at open.
   if (!view.state.doc.lastChild
       || view.state.doc.lastChild.type !== schema.nodes.paragraph) {
@@ -1866,7 +1870,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     get view() { return view; },
     saveNow,
     // Programmatic inserts (tests / power use): create server-side, place.
-    insertSnippet: async () => {
+    insertSketch: async () => {
       const ctx = await variationApi.createNew();
       insertBlockSafely(view.state, view.dispatch,
         schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
@@ -1878,9 +1882,9 @@ export async function createScratchpadEditor(els, scratchpadId) {
       insertBlockSafely(view.state, view.dispatch,
         schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
       // Existing siblings must show the new variation in their tab bar now.
-      const snippetId = (ctx.snippet && ctx.snippet.snippet_id)
-        || (ctx.variation && ctx.variation.snippet_id);
-      await refreshSnippetSiblings(snippetId, ctx.variation.variation_id);
+      const sketchId = (ctx.sketch && ctx.sketch.sketch_id)
+        || (ctx.variation && ctx.variation.sketch_id);
+      await refreshSketchSiblings(sketchId, ctx.variation.variation_id);
       return ctx;
     },
     pm: { Selection, TextSelection, NodeSelection },

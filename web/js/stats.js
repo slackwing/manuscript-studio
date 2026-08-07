@@ -4,7 +4,7 @@
  * words/day since birthday, and a mini progress graph:
  *
  *   black dotted — assumed ramp from (birthday, 0) to the first cron row
- *   black solid  — actual daily totals (wordcount_history: effective+snippets)
+ *   black solid  — actual daily totals (wordcount_history: effective+sketches)
  *   red   solid  — extrapolation at the recent 30-day pace
  *   blue  solid  — extrapolation at the average-since-birthday pace
  *   purple solid — the pace needed to reach the goal one year from today
@@ -93,7 +93,7 @@ const WriteSysStats = {
     if (!d) return null;
     const rows = (d.rows || []).map(r => ({
       t: this.parseDay(r.day),
-      total: (r.words_effective || 0) + (r.words_snippets || 0),
+      total: (r.words_effective || 0) + (r.words_sketches || 0),
       avg: r.rate_average,
       trend: r.rate_past_30d,
     })).sort((a, b) => a.t - b.t);

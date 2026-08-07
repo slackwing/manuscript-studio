@@ -245,11 +245,11 @@ func (s *Server) setupRouter() {
 			r.Put("/scratchpads/{scratchpad_id}/link", s.scratchpadHandlers.HandleLinkScratchpad)
 			r.Delete("/scratchpads/{scratchpad_id}", s.scratchpadHandlers.HandleDelete)
 			r.Post("/scratchpads/{scratchpad_id}/opened", s.scratchpadHandlers.HandleOpened)
-			// Snippets/variations (VARIATIONS_PLAN.md): content lives in
+			// Sketches/variations (VARIATIONS_PLAN.md): content lives in
 			// rows, the doc carries placements; canonize step 2 is here.
-			r.Post("/snippets", s.variationHandlers.HandleCreateSnippet)
-			r.Put("/snippets/{snippet_id}/link", s.variationHandlers.HandleLinkSnippet)
-			r.Post("/snippets/{snippet_id}/freeze-all", s.variationHandlers.HandleFreezeAllVariations)
+			r.Post("/sketches", s.variationHandlers.HandleCreateSketch)
+			r.Put("/sketches/{sketch_id}/link", s.variationHandlers.HandleLinkSketch)
+			r.Post("/sketches/{sketch_id}/freeze-all", s.variationHandlers.HandleFreezeAllVariations)
 			r.Get("/variations", s.variationHandlers.HandleListVariations)
 			// Static path before the {variation_id} pattern so chi doesn't
 			// treat "deleted" as an id.

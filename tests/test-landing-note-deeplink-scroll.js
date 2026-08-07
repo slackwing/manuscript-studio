@@ -1,5 +1,5 @@
 // REGRESSION: clicking a note card on the landing page must open its
-// scratchpad AND actually land on the note — even while snippet widgets are
+// scratchpad AND actually land on the note — even while sketch widgets are
 // still loading/growing during the scroll (API latency is injected to force
 // that). Broke once when a shared scroll hold kept re-arming with a stale base
 // during widget builds, yanking the settle-scroll back to the top.
@@ -23,7 +23,7 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
 
-  // Long pad: prose + snippets WITH TEXT above the note, so on reopen the
+  // Long pad: prose + sketches WITH TEXT above the note, so on reopen the
   // widgets mount async and grow, shifting the note's position while the
   // deep-link scroll is settling. Note goes near the BOTTOM.
   const focusEnd = () => page.evaluate(() => {
@@ -40,7 +40,7 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
     await page.keyboard.press('Enter');
     await page.evaluate(async () => {
       const ed = window.WriteSysScratchpad;
-      const ctx = await ed.insertSnippet();
+      const ctx = await ed.insertSketch();
       await ed.variationApi.saveText(ctx.variation.variation_id,
         Array.from({ length: 40 }, (_, i) => `Widget filler line ${i}.`).join('\n\n'));
     });

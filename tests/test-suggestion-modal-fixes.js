@@ -81,7 +81,7 @@ function psql(sql) {
 
     // ---- Raw variation-editor mode: newlines and tabs stay LITERAL ----
     // (The glyph conversion died with the old modal — the pane now edits raw
-    // .manuscript text exactly like a snippet variation: Enter = \n, Tab = \t.)
+    // .manuscript text exactly like a sketch variation: Enter = \n, Tab = \t.)
 
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });

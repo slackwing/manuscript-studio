@@ -25,7 +25,7 @@ const psql = (sql) => execSync(
   await page.locator('.spm-editor .ProseMirror').click();
   await page.evaluate(async () => {
     const ed = window.WriteSysScratchpad;
-    const ctx = await ed.insertSnippet();
+    const ctx = await ed.insertSketch();
     await ed.variationApi.saveText(ctx.variation.variation_id, 'Composed canon region text.');
     window.__sk = ctx.variation.variation_id;
   });
@@ -82,7 +82,7 @@ const psql = (sql) => execSync(
   check('ONE suggestion holds the edit AND the region',
     sug.includes('EDITED FIRST.') && sug.includes('&snippet#') && sug.includes('&end#'),
     JSON.stringify(sug.slice(0, 80)));
-  const canonized = psql(`SELECT canon_variation_id IS NOT NULL FROM snippet WHERE snippet_id = (SELECT snippet_id FROM variation WHERE variation_id=${sk})`);
+  const canonized = psql(`SELECT canon_variation_id IS NOT NULL FROM sketch WHERE sketch_id = (SELECT sketch_id FROM variation WHERE variation_id=${sk})`);
   check('variation group canonized', canonized === 't');
 
   // cleanup: remove the composed suggestion + decanonize fixture leftovers

@@ -80,10 +80,10 @@ type Note struct {
 	// time (single source of truth, no denormalized drift). Empty when unlinked.
 	ManuscriptName string `json:"manuscript_name,omitempty"`
 	ScratchpadID   *int   `json:"scratchpad_id"` // nullable context
-	// The snippet this note belongs to (026): every snippet mints ONE note
-	// at creation. Set = the note is a snippet note (undeletable; wears the
-	// derived, unremovable "snippet" chip).
-	SnippetID *string `json:"snippet_id"`
+	// The sketch this note belongs to (026): every sketch mints ONE note
+	// at creation. Set = the note is a sketch note (undeletable; wears the
+	// derived, unremovable "sketch" chip).
+	SketchID *string `json:"sketch_id"`
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Body         *string    `json:"body"`

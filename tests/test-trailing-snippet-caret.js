@@ -1,4 +1,4 @@
-// Trailing-node guarantee: when a snippet is the last element in a pad, the
+// Trailing-node guarantee: when a sketch is the last element in a pad, the
 // editor appends an empty paragraph, so there is ALWAYS a place to click and
 // keep writing below the widget (gap cursor exists but is undiscoverable at
 // the doc edge). Deleting that paragraph just re-appends it.
@@ -20,18 +20,18 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('.spm-editor .ProseMirror').click();
   await page.keyboard.type('prose before the widget');
 
-  // Insert a snippet with the cursor at the very end — the snippet becomes the
+  // Insert a sketch with the cursor at the very end — the sketch becomes the
   // last content node, and the plugin must append a paragraph after it.
-  await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   await page.waitForSelector('.spm-editor .sn-widget');
   await page.waitForTimeout(300);
 
   const shape = () => page.evaluate(() =>
     window.WriteSysScratchpad.view.state.doc.content.content.map(n => n.type.name));
   let types = await shape();
-  check('snippet inserted', types.includes('snippet'), JSON.stringify(types));
-  check('doc auto-ends with a paragraph after the snippet',
-    types[types.length - 1] === 'paragraph' && types[types.indexOf('snippet') - 0 + 1] !== undefined,
+  check('sketch inserted', types.includes('snippet' /* legacy PM node name */), JSON.stringify(types));
+  check('doc auto-ends with a paragraph after the sketch',
+    types[types.length - 1] === 'paragraph' && types[types.indexOf('snippet' /* legacy PM node name */) - 0 + 1] !== undefined,
     JSON.stringify(types));
 
   // The trailing paragraph is CLICKABLE: click it and type.

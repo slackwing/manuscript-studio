@@ -1,5 +1,5 @@
 /**
- * Snippet editor literal-editing behaviors: Tab inserts \t (Shift-Tab escapes),
+ * Sketch editor literal-editing behaviors: Tab inserts \t (Shift-Tab escapes),
  * auto-grow (no internal scroll), and the grey → tab-marker overlay aligns with
  * the textarea's tabs. Drives the real scratchpad modal on dev.
  */
@@ -16,11 +16,11 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await cleanupTestAnnotations();
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  // Create a pad (opens the modal), insert a snippet, flip into the editor.
+  // Create a pad (opens the modal), insert a sketch, flip into the editor.
   await page.waitForSelector('#home-new-pad', { timeout: 20000 });
   await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
-  await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
+  await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   await page.waitForSelector('.sn-widget .sn-render', { timeout: 10000 });
   await page.click('.sn-widget .sn-render');
   await page.waitForSelector('.sn-widget .sn-text', { timeout: 5000 });
@@ -63,7 +63,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('marker draws → glyph', overlay && /→|2192|→/.test(overlay.arrow), JSON.stringify(overlay && overlay.arrow));
 
   // 4. Copy-reference → "From clipboard" round trip. The widget's copy
-  //    button (right of freeze) writes ms-variation:<id>; the ⧉ Snippet menu's
+  //    button (right of freeze) writes ms-variation:<id>; the ⧉ Sketch menu's
   //    "From clipboard" option enables only for a VALID copied reference
   //    and mints a related sibling variation.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5001' });
@@ -81,17 +81,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
 
   // With junk in the clipboard the option stays disabled.
   await page.evaluate(() => navigator.clipboard.writeText('just some prose'));
-  await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
+  await page.locator('.sn-btn', { hasText: 'Sketch' }).dispatchEvent('mousedown');
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
   await page.waitForTimeout(400); // async validation settles
   check('From clipboard disabled for junk', await page.locator('.sn-ins-clip').isDisabled());
   // Toggle the menu closed with the real button, then reopen fresh.
-  await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
+  await page.locator('.sn-btn', { hasText: 'Sketch' }).dispatchEvent('mousedown');
   await page.waitForSelector('.sn-insertpop', { state: 'hidden' });
 
   // With a valid reference it enables, and clicking mints a sibling.
   await page.evaluate((t) => navigator.clipboard.writeText(t), `ms-variation:${variationId}`);
-  await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
+  await page.locator('.sn-btn', { hasText: 'Sketch' }).dispatchEvent('mousedown');
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
   await page.waitForFunction(() => {
     const b = document.querySelector('.sn-ins-clip');
@@ -105,9 +105,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const letters = await page.evaluate(() => Array.from(document.querySelectorAll('.sn-widget .sn-rail-btn')).length);
   check('new widget shows the sibling rail', letters >= 2, `rail buttons=${letters}`);
 
-  // 5. The snippet's NOTE (026): a colored square — the same component that
+  // 5. The sketch's NOTE (026): a colored square — the same component that
   //    fronts highlighted text — sits top-left of the widget; clicking opens
-  //    the note float (no trash, derived unremovable "snippet" chip).
+  //    the note float (no trash, derived unremovable "sketch" chip).
   const sq = page.locator('.sn-widget .sn-note-solo').first();
   check('note square present in the widget header', (await sq.count()) === 1);
   const sqBeforeStatus = await page.evaluate(() => {
@@ -116,37 +116,37 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     const st = kids.findIndex(k => k.classList.contains('sn-status'));
     return { si, st };
   });
-  check('square sits left of SNIPPET status', sqBeforeStatus.si === sqBeforeStatus.st - 1, JSON.stringify(sqBeforeStatus));
+  check('square sits left of SKETCH status', sqBeforeStatus.si === sqBeforeStatus.st - 1, JSON.stringify(sqBeforeStatus));
   const ctxNote = await page.evaluate(async () => {
     const id = document.querySelector('.sn-widget').dataset.variationId;
     const r = await fetch(`api/variations/${id}`, { credentials: 'include' });
     return (await r.json()).note || null;
   });
-  check('variation context embeds the snippet note', !!ctxNote && ctxNote.note_id > 0 && ctxNote.color === 'yellow', JSON.stringify(ctxNote));
+  check('variation context embeds the sketch note', !!ctxNote && ctxNote.note_id > 0 && ctxNote.color === 'yellow', JSON.stringify(ctxNote));
 
   await sq.dispatchEvent('mousedown');
   await page.waitForSelector('.sn-note-float .sticky-note', { timeout: 10000 });
   check('clicking the square opens the note float', true);
-  check('snippet note has NO trash (lives with the snippet)', (await page.locator('.sn-note-float .note-trash').count()) === 0);
-  const snipChip = page.locator('.sn-note-float .tag-chip.snippet-chip');
-  check('derived "snippet" chip present', (await snipChip.count()) === 1);
-  check('snippet chip is unremovable (no ×)', (await page.locator('.sn-note-float .tag-chip.snippet-chip .tag-chip-remove').count()) === 0);
+  check('sketch note has NO trash (lives with the sketch)', (await page.locator('.sn-note-float .note-trash').count()) === 0);
+  const snipChip = page.locator('.sn-note-float .tag-chip.sketch-chip');
+  check('derived "sketch" chip present', (await snipChip.count()) === 1);
+  check('sketch chip is unremovable (no ×)', (await page.locator('.sn-note-float .tag-chip.sketch-chip .tag-chip-remove').count()) === 0);
 
-  // Typing in the float SAVES (snippet notes are versionless — the update
+  // Typing in the float SAVES (sketch notes are versionless — the update
   // once 500'd on their empty note_version history).
   await page.locator('.sn-note-float .note-input').click();
-  await page.keyboard.type('Snippet note body from the square.');
+  await page.keyboard.type('Sketch note body from the square.');
   // Condition-wait on the debounced save landing in the DB (no fixed sleep).
   const { execSync: exq } = require('child_process');
   const readBody = () => exq(
     `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "SELECT coalesce(body,'(null)') FROM note WHERE note_id=${ctxNote.note_id}"`,
     { encoding: 'utf-8' }).trim();
   let savedBody = '';
-  for (let i = 0; i < 40 && !/Snippet note body from the square/.test(savedBody); i++) {
+  for (let i = 0; i < 40 && !/Sketch note body from the square/.test(savedBody); i++) {
     await page.waitForTimeout(250);
     savedBody = readBody();
   }
-  check('typed note body persists to the DB', /Snippet note body from the square/.test(savedBody), savedBody);
+  check('typed note body persists to the DB', /Sketch note body from the square/.test(savedBody), savedBody);
 
   // Make it a task, complete it → the square turns into the green check.
   await page.locator('.sn-note-float .priority-chip[data-priority="P1"]').click();
@@ -156,12 +156,12 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForTimeout(150);
   await fcheck.click();
   await page.waitForSelector('.sn-widget .sn-note-solo.sn-note-done', { timeout: 8000 });
-  check('completing the snippet note turns the square into a green check', true);
+  check('completing the sketch note turns the square into a green check', true);
 
   const fs = require('fs');
   if (!fs.existsSync('tests/screenshots')) fs.mkdirSync('tests/screenshots', { recursive: true });
-  await page.screenshot({ path: 'tests/screenshots/snippet-editor.png' });
-  console.log('📸 tests/screenshots/snippet-editor.png');
+  await page.screenshot({ path: 'tests/screenshots/sketch-editor.png' });
+  console.log('📸 tests/screenshots/sketch-editor.png');
 
   await browser.close();
   process.exit(failed ? 1 : 0);

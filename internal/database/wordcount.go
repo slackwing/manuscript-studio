@@ -10,7 +10,7 @@ import (
 )
 
 // WordcountRow is one day's wordcount for one manuscript, aggregated across
-// ALL users (only authors can suggest or link snippets, so this is the
+// ALL users (only authors can suggest or link sketches, so this is the
 // combined progress of everyone writing toward the book). The rate columns
 // (024-wordcount-rates) are that day's writing pace as computed ON that
 // day — nil while the manuscript has no birthday.
@@ -19,7 +19,7 @@ type WordcountRow struct {
 	Day            time.Time  `json:"day"`
 	WordsCommitted int        `json:"words_committed"`
 	WordsEffective int        `json:"words_effective"`
-	WordsSnippets  int        `json:"words_snippets"`
+	WordsSketches  int        `json:"words_sketches"`
 	ComputedAt     time.Time  `json:"computed_at"`
 	RateAverage    *float64   `json:"rate_average"`
 	RatePast30d    *float64   `json:"rate_past_30d"`
@@ -27,10 +27,10 @@ type WordcountRow struct {
 }
 
 // Total is the headline number: the effective book (committed with pending
-// suggestions substituted in) plus linked, not-yet-canonized snippet words.
-// A canonized snippet's text lives in the book as a suggestion, so it is
-// counted by WordsEffective and excluded from WordsSnippets — never both.
-func (r WordcountRow) Total() int { return r.WordsEffective + r.WordsSnippets }
+// suggestions substituted in) plus linked, not-yet-canonized sketch words.
+// A canonized sketch's text lives in the book as a suggestion, so it is
+// counted by WordsEffective and excluded from WordsSketches — never both.
+func (r WordcountRow) Total() int { return r.WordsEffective + r.WordsSketches }
 
 // ComputeRates derives each day's rate columns from the totals history —
 // the same math the stats pane uses live, frozen per day:
@@ -89,27 +89,27 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		loc = time.UTC
 	}
 	day := time.Now().In(loc).Format("2006-01-02")
-	// Linked draft snippet words per manuscript (all users). Sibling
+	// Linked draft sketch words per manuscript (all users). Sibling
 	// variations are alternatives of ONE passage, so each linked,
 	// NON-canonized group contributes exactly one representative: its most
 	// recently updated lettered variation (VARIATIONS_PLAN §6). Superseded
 	// variations are never the representative — "canonized wins, then most
 	// recent non-superseded". Canonized
 	// groups count via words_effective only — never both.
-	snippetWords := map[int]int{}
+	sketchWords := map[int]int{}
 	repRows, err := db.Pool.Query(ctx, `
 		SELECT s.linked_manuscript_id, v.text
-		FROM snippet s
+		FROM sketch s
 		JOIN LATERAL (
 			SELECT text FROM variation
-			WHERE snippet_id = s.snippet_id AND ordinal IS NOT NULL AND deleted_at IS NULL
+			WHERE sketch_id = s.sketch_id AND ordinal IS NOT NULL AND deleted_at IS NULL
 			  AND state <> 'superseded'
 			ORDER BY updated_at DESC LIMIT 1
 		) v ON true
 		WHERE s.linked_manuscript_id IS NOT NULL AND s.canon_variation_id IS NULL
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("list linked snippet representatives: %w", err)
+		return nil, fmt.Errorf("list linked sketch representatives: %w", err)
 	}
 	defer repRows.Close()
 	for repRows.Next() {
@@ -118,7 +118,7 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 		if err := repRows.Scan(&mid, &text); err != nil {
 			return nil, err
 		}
-		snippetWords[mid] += sentence.CountProseWords(text)
+		sketchWords[mid] += sentence.CountProseWords(text)
 	}
 	if err := repRows.Err(); err != nil {
 		return nil, err
@@ -193,18 +193,18 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 			ManuscriptID:   mid,
 			WordsCommitted: committed,
 			WordsEffective: effective,
-			WordsSnippets:  snippetWords[mid],
+			WordsSketches:  sketchWords[mid],
 		}
 		if err := db.Pool.QueryRow(ctx, `
-			INSERT INTO wordcount_history (manuscript_id, day, words_committed, words_effective, words_snippets, computed_at)
+			INSERT INTO wordcount_history (manuscript_id, day, words_committed, words_effective, words_sketches, computed_at)
 			VALUES ($1, $5::date, $2, $3, $4, NOW())
 			ON CONFLICT (manuscript_id, day) DO UPDATE SET
 				words_committed = EXCLUDED.words_committed,
 				words_effective = EXCLUDED.words_effective,
-				words_snippets = EXCLUDED.words_snippets,
+				words_sketches = EXCLUDED.words_sketches,
 				computed_at = EXCLUDED.computed_at
 			RETURNING day, computed_at
-		`, mid, committed, effective, row.WordsSnippets, day).Scan(&row.Day, &row.ComputedAt); err != nil {
+		`, mid, committed, effective, row.WordsSketches, day).Scan(&row.Day, &row.ComputedAt); err != nil {
 			return nil, fmt.Errorf("upsert wordcount for manuscript %d: %w", mid, err)
 		}
 		// Rates: recompute TODAY's row every run (last write of the day
@@ -243,10 +243,10 @@ func (db *DB) ComputeWordcountHistory(ctx context.Context, loc *time.Location) (
 func (db *DB) GetLatestWordcount(ctx context.Context, manuscriptID int) (*WordcountRow, error) {
 	var r WordcountRow
 	err := db.Pool.QueryRow(ctx, `
-		SELECT manuscript_id, day, words_committed, words_effective, words_snippets, computed_at, rate_average, rate_past_30d, projected_end
+		SELECT manuscript_id, day, words_committed, words_effective, words_sketches, computed_at, rate_average, rate_past_30d, projected_end
 		FROM wordcount_history WHERE manuscript_id = $1
 		ORDER BY day DESC LIMIT 1
-	`, manuscriptID).Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSnippets, &r.ComputedAt, &r.RateAverage, &r.RatePast30d, &r.ProjectedEnd)
+	`, manuscriptID).Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSketches, &r.ComputedAt, &r.RateAverage, &r.RatePast30d, &r.ProjectedEnd)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
 			return nil, nil
@@ -260,7 +260,7 @@ func (db *DB) GetLatestWordcount(ctx context.Context, manuscriptID int) (*Wordco
 // order — the wordcount-over-time graph's data.
 func (db *DB) ListWordcountHistory(ctx context.Context, manuscriptID int) ([]WordcountRow, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT manuscript_id, day, words_committed, words_effective, words_snippets, computed_at, rate_average, rate_past_30d, projected_end
+		SELECT manuscript_id, day, words_committed, words_effective, words_sketches, computed_at, rate_average, rate_past_30d, projected_end
 		FROM wordcount_history WHERE manuscript_id = $1
 		ORDER BY day ASC
 	`, manuscriptID)
@@ -271,7 +271,7 @@ func (db *DB) ListWordcountHistory(ctx context.Context, manuscriptID int) ([]Wor
 	out := []WordcountRow{}
 	for rows.Next() {
 		var r WordcountRow
-		if err := rows.Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSnippets, &r.ComputedAt, &r.RateAverage, &r.RatePast30d, &r.ProjectedEnd); err != nil {
+		if err := rows.Scan(&r.ManuscriptID, &r.Day, &r.WordsCommitted, &r.WordsEffective, &r.WordsSketches, &r.ComputedAt, &r.RateAverage, &r.RatePast30d, &r.ProjectedEnd); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

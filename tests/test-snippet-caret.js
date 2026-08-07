@@ -1,4 +1,4 @@
-// REGRESSION: basic caret behavior in a snippet's edit textarea — on the
+// REGRESSION: basic caret behavior in a sketch's edit textarea — on the
 // FIRST-CREATED widget (the reported breakage), not just re-entered ones.
 // Create via the real toolbar menu, click into the empty widget, type, then:
 //   - clicking mid-text MOVES the caret there;
@@ -25,7 +25,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('.spm-editor .ProseMirror').click();
 
   // FIRST CREATE via the real toolbar path.
-  await page.locator('#spm-toolbar .sn-btn', { hasText: 'Snippet' }).click();
+  await page.locator('#spm-toolbar .sn-btn', { hasText: 'Sketch' }).click();
   await page.locator('.sn-ins-new').click();
   await page.waitForSelector('.sn-widget .sn-render');
   await page.waitForTimeout(400);

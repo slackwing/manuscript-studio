@@ -793,7 +793,7 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.snippet_id
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
@@ -827,7 +827,7 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 			&a.UpdatedAt,
 			&a.DeletedAt,
 			&a.CompletedAt,
-			&a.SnippetID,
+			&a.SketchID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
@@ -926,7 +926,7 @@ func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersi
 func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.snippet_id
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.user_id = $2
@@ -960,7 +960,7 @@ func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username strin
 			&a.UpdatedAt,
 			&a.DeletedAt,
 			&a.CompletedAt,
-			&a.SnippetID,
+			&a.SketchID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
@@ -1125,7 +1125,7 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 // UpdateScratchpadNote mutates a scratchpad note's mutable fields directly (no
 // version row — see CreateScratchpadNote). Only touches notes with the given id.
 // UpdateScratchpadNote directly updates a VERSIONLESS note — scratchpad or
-// snippet notes (neither has a sentence origin, so no note_version rows).
+// sketch notes (neither has a sentence origin, so no note_version rows).
 // The guard makes sentence notes unreachable here: they must go through
 // UpdateNote's versioned path.
 func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *string, body *string, priority *string, flagged *bool) error {
@@ -1136,7 +1136,7 @@ func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *strin
 			priority = COALESCE($5, priority),
 			flagged  = COALESCE($6, flagged),
 			updated_at = NOW()
-		WHERE note_id = $1 AND (scratchpad_id IS NOT NULL OR snippet_id IS NOT NULL) AND deleted_at IS NULL
+		WHERE note_id = $1 AND (scratchpad_id IS NOT NULL OR sketch_id IS NOT NULL) AND deleted_at IS NULL
 	`, noteID, color, body != nil, body, priority, flagged)
 	return err
 }
@@ -1401,7 +1401,7 @@ func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.Not
 func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.snippet_id
+		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.deleted_at IS NULL
@@ -1430,7 +1430,7 @@ func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) 
 			&a.UpdatedAt,
 			&a.DeletedAt,
 			&a.CompletedAt,
-			&a.SnippetID,
+			&a.SketchID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
@@ -1743,9 +1743,9 @@ type HomeNote struct {
 	SentenceID      string
 	Context         string // fallback manuscript label (repo basename etc.); the handler prefers the config name
 	ScratchpadTitle string // the scratchpad title, if the note lives on one — shown alongside the manuscript
-	// Set for a snippet note (026): its card context shows "Sketch", not a
-	// pad title — a snippet's variations can live across multiple pads.
-	SnippetID *string
+	// Set for a sketch note (026): its card context shows "Sketch", not a
+	// pad title — a sketch's variations can live across multiple pads.
+	SketchID *string
 	Tags      []models.Tag
 }
 
@@ -1756,11 +1756,11 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 	rows, err := db.Pool.Query(ctx, `
 		SELECT n.note_id, n.color, n.body, n.priority, n.flagged, n.updated_at,
 		       n.manuscript_id,
-		       -- A snippet note has no pad of its own — its card deep-links
-		       -- to the snippet's HOME pad (earliest variation's scratchpad).
+		       -- A sketch note has no pad of its own — its card deep-links
+		       -- to the sketch's HOME pad (earliest variation's scratchpad).
 		       COALESCE(n.scratchpad_id,
 		           (SELECT sk.scratchpad_id FROM variation sk
-		            WHERE sk.snippet_id = n.snippet_id AND sk.scratchpad_id IS NOT NULL
+		            WHERE sk.sketch_id = n.sketch_id AND sk.scratchpad_id IS NOT NULL
 		            ORDER BY sk.variation_id LIMIT 1)),
 		       COALESCE(n.sentence_id, ''),
 		       -- Fallback manuscript label (used only when the note has a
@@ -1772,7 +1772,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		           ''
 		       ) AS context,
 		       COALESCE(sp.title, '') AS scratchpad_title,
-		       n.snippet_id,
+		       n.sketch_id,
 		       -- Tags for the card (read-only chips). Aggregated here to avoid an
 		       -- N+1 per note; empty array when none.
 		       COALESCE(
@@ -1799,7 +1799,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.Flagged, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SnippetID, &tagsJSON); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
 		if len(tagsJSON) > 0 {
@@ -1813,7 +1813,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {
 	query := `
 		SELECT note_id, COALESCE(sentence_id, ''), manuscript_id, scratchpad_id, user_id, color, body,
-		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at, snippet_id
+		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at, sketch_id
 		FROM note
 		WHERE note_id = $1
 		  AND deleted_at IS NULL
@@ -1836,7 +1836,7 @@ func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error)
 		&a.UpdatedAt,
 		&a.DeletedAt,
 		&a.CompletedAt,
-		&a.SnippetID,
+		&a.SketchID,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil

@@ -54,7 +54,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     view.dispatch(view.state.tr.insert(view.state.doc.content.size, sc.nodes.paragraph.create()));
     view.dispatch(view.state.tr.setSelection(Sel.near(view.state.doc.resolve(view.state.doc.content.size), -1)));
     view.focus();
-    await window.WriteSysScratchpad.insertSnippet();
+    await window.WriteSysScratchpad.insertSketch();
   });
   await page.waitForSelector('.sn-widget .sn-render');
   await page.waitForTimeout(300);
