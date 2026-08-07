@@ -570,18 +570,24 @@
   border-left-color: #e2d3ac;
 }
 
-/* The canon button itself: a gilt fleuron stamped into leather. */
+/* The canon button itself: a gilt fleuron stamped into leather. The glyph
+   wears the GILDING's gold, and the gilt edge is 2px (1px read as fuzz —
+   same lesson as the manuscript chip); padding drops 1px so the outer size
+   matches its rail siblings. */
 .sn-rail-canon {
-  color: #f3e6c4;
+  color: #c9a227;
   background: linear-gradient(170deg, #7a5a34 0%, #5b3f22 60%, #6b4a28 100%);
-  border: 1px solid #c9a227;
+  border: 2px solid #c9a227;
+  border-radius: 3px;
+  padding: 2px 0;
   box-shadow: inset 0 1px 0 rgba(255, 236, 180, 0.35);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
   font-size: 12px;
 }
 .sn-rail-canon:hover { filter: brightness(1.12); }
+/* Active: brighten the leather only — the old 1px gold OUTLINE drew a
+   second rim outside the border with its own corner geometry, which is
+   exactly what read as sloppy gilding. */
 .sn-rail-canon.active {
-  outline: 1px solid #c9a227;
   background: linear-gradient(170deg, #8a6a40 0%, #6b4a28 60%, #7a5a34 100%);
 }
 
