@@ -1374,12 +1374,15 @@ p.section-break {
 
 .priority-flag-chips {
   display: flex;
-  /* Fixed slots from the LEFT (not space-between): 4px gap × 26px buttons
-     lets SEVEN slots (P0–P3 + blocked + flag + trash) fit the ~208px
-     margin-note row, and buttons stay put when others show/hide (task
-     gating, P-row collapse). flex:none stops silent flex-shrink. */
+  /* SEVEN fixed, equidistant slots — always spaced as if all seven
+     buttons are present, even when fewer show: the percentage gap IS the
+     7-across pitch (7 × 26px buttons spread edge to edge), so the
+     unprioritized row fills the grid exactly, and the collapsed task row
+     (Pn · flag · ★ · trash) occupies the leftmost slots at the SAME
+     pitch with the ✓ pinned on the rightmost slot. flex:none stops
+     silent flex-shrink. */
   justify-content: flex-start;
-  gap: 4px;
+  column-gap: calc((100% - 182px) / 6);
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;
@@ -1529,7 +1532,7 @@ p.section-break {
   border: 1px dashed #ccc;
   border-radius: 50%;
   color: #999;
-  /* ALWAYS rightmost — completion is the row's terminal act. */
+  /* ALWAYS the rightmost slot — completion is the row's terminal act. */
   margin-left: auto;
 }
 

@@ -78,13 +78,17 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const starVisible = await star.evaluate(el => getComputedStyle(el).display !== 'none');
     assert(starVisible, 'Star appears for tasks alongside the checkmark');
     const layout = await page.evaluate(() => {
-      const row = document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips').getBoundingClientRect();
+      const rowEl = document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips');
+      const row = rowEl.getBoundingClientRect();
       const fl = document.querySelector('.sticky-note:not(.uncreated-note) .flag-chip').getBoundingClientRect();
       const st = document.querySelector('.sticky-note:not(.uncreated-note) .points-star').getBoundingClientRect();
       const ck = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
-      return { starAfterFlag: Math.round(st.left - fl.left), checkRightGap: Math.round(row.right - ck.right) };
+      // The 7-across pitch: buttons stay on this grid however few show.
+      const pitch = 26 + (row.width - 182) / 6;
+      return { starAfterFlag: st.left - fl.left, pitch, checkRightGap: Math.round(row.right - ck.right) };
     });
-    assert(layout.starAfterFlag === 30, `Star sits right after the flag (pitch ${layout.starAfterFlag}, want 30)`);
+    assert(Math.abs(layout.starAfterFlag - layout.pitch) <= 1,
+      `Star sits one 7-grid slot after the flag (${layout.starAfterFlag.toFixed(1)} vs pitch ${layout.pitch.toFixed(1)})`);
     assert(Math.abs(layout.checkRightGap) <= 1, `Check pinned to the far right (gap ${layout.checkRightGap})`);
 
     await star.click();
