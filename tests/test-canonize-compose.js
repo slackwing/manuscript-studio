@@ -18,7 +18,7 @@ const psql = (sql) => execSync(
   const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
 
   await loginAsTestUser(page);
-  // a sketch to canonize
+  // a variation to canonize
   await page.goto(new URL('home.html', TEST_URL).href);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
@@ -26,8 +26,8 @@ const psql = (sql) => execSync(
   await page.evaluate(async () => {
     const ed = window.WriteSysScratchpad;
     const ctx = await ed.insertSnippet();
-    await ed.sketchApi.saveText(ctx.sketch.sketch_id, 'Composed canon region text.');
-    window.__sk = ctx.sketch.sketch_id;
+    await ed.variationApi.saveText(ctx.variation.variation_id, 'Composed canon region text.');
+    window.__sk = ctx.variation.variation_id;
   });
   const sk = await page.evaluate(() => window.__sk);
   await page.click('#spm-close');
@@ -64,16 +64,16 @@ const psql = (sql) => execSync(
   }, boundary);
   await page.waitForSelector('#im-blocks .im-block, #im-blocks button, #import-modal', { timeout: 10000 });
   await page.waitForTimeout(800);
-  // pick our sketch (search narrows it)
+  // pick our variation (search narrows it)
   await page.fill('#im-q', 'Composed canon region');
   await page.waitForTimeout(600);
   const picked = await page.evaluate(() => {
-    const b = document.querySelector('#im-blocks [data-sketch-id], #im-blocks .im-block');
+    const b = document.querySelector('#im-blocks [data-variation-id], #im-blocks .im-block');
     if (!b) return false;
     b.click();
     return true;
   });
-  check('sketch picked in modal', picked);
+  check('variation picked in modal', picked);
   await page.fill('#im-label', 'Compose Test');
   await page.click('#im-go');
   await page.waitForSelector('#import-modal', { state: 'detached', timeout: 20000 });
@@ -82,8 +82,8 @@ const psql = (sql) => execSync(
   check('ONE suggestion holds the edit AND the region',
     sug.includes('EDITED FIRST.') && sug.includes('&snippet#') && sug.includes('&end#'),
     JSON.stringify(sug.slice(0, 80)));
-  const canonized = psql(`SELECT canon_sketch_id IS NOT NULL FROM snippet WHERE snippet_id = (SELECT snippet_id FROM sketch WHERE sketch_id=${sk})`);
-  check('sketch group canonized', canonized === 't');
+  const canonized = psql(`SELECT canon_variation_id IS NOT NULL FROM snippet WHERE snippet_id = (SELECT snippet_id FROM variation WHERE variation_id=${sk})`);
+  check('variation group canonized', canonized === 't');
 
   // cleanup: remove the composed suggestion + decanonize fixture leftovers
   psql(`DELETE FROM suggested_change WHERE sentence_id='${boundary}' AND user_id='${TEST_USERNAME}'`);

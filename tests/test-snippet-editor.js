@@ -63,9 +63,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('marker draws → glyph', overlay && /→|2192|→/.test(overlay.arrow), JSON.stringify(overlay && overlay.arrow));
 
   // 4. Copy-reference → "From clipboard" round trip. The widget's copy
-  //    button (right of freeze) writes ms-sketch:<id>; the ⧉ Snippet menu's
+  //    button (right of freeze) writes ms-variation:<id>; the ⧉ Snippet menu's
   //    "From clipboard" option enables only for a VALID copied reference
-  //    and mints a related sibling sketch.
+  //    and mints a related sibling variation.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5001' });
   const copyBtn = page.locator('.sn-widget .sn-copyref').first();
   check('copy button present (right of freeze)', (await copyBtn.count()) === 1);
@@ -76,8 +76,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('copy sits right of freeze', order.copy === order.freeze + 1, JSON.stringify(order));
   await copyBtn.click();
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  const sketchId = await page.evaluate(() => document.querySelector('.sn-widget').dataset.sketchId);
-  check('copies ms-sketch:<id>', clip === `ms-sketch:${sketchId}`, clip);
+  const variationId = await page.evaluate(() => document.querySelector('.sn-widget').dataset.variationId);
+  check('copies ms-variation:<id>', clip === `ms-variation:${variationId}`, clip);
 
   // With junk in the clipboard the option stays disabled.
   await page.evaluate(() => navigator.clipboard.writeText('just some prose'));
@@ -90,7 +90,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('.sn-insertpop', { state: 'hidden' });
 
   // With a valid reference it enables, and clicking mints a sibling.
-  await page.evaluate((t) => navigator.clipboard.writeText(t), `ms-sketch:${sketchId}`);
+  await page.evaluate((t) => navigator.clipboard.writeText(t), `ms-variation:${variationId}`);
   await page.locator('.sn-btn', { hasText: 'Snippet' }).dispatchEvent('mousedown');
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
   await page.waitForFunction(() => {
@@ -101,7 +101,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const widgetsBefore = await page.locator('.sn-widget').count();
   await page.locator('.sn-ins-clip').click();
   await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, widgetsBefore, { timeout: 10000 });
-  check('clicking it inserts a related sibling sketch', true);
+  check('clicking it inserts a related sibling variation', true);
   const letters = await page.evaluate(() => Array.from(document.querySelectorAll('.sn-widget .sn-rail-btn')).length);
   check('new widget shows the sibling rail', letters >= 2, `rail buttons=${letters}`);
 
@@ -118,11 +118,11 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   });
   check('square sits left of SNIPPET status', sqBeforeStatus.si === sqBeforeStatus.st - 1, JSON.stringify(sqBeforeStatus));
   const ctxNote = await page.evaluate(async () => {
-    const id = document.querySelector('.sn-widget').dataset.sketchId;
-    const r = await fetch(`api/sketches/${id}`, { credentials: 'include' });
+    const id = document.querySelector('.sn-widget').dataset.variationId;
+    const r = await fetch(`api/variations/${id}`, { credentials: 'include' });
     return (await r.json()).note || null;
   });
-  check('sketch context embeds the snippet note', !!ctxNote && ctxNote.note_id > 0 && ctxNote.color === 'yellow', JSON.stringify(ctxNote));
+  check('variation context embeds the snippet note', !!ctxNote && ctxNote.note_id > 0 && ctxNote.color === 'yellow', JSON.stringify(ctxNote));
 
   await sq.dispatchEvent('mousedown');
   await page.waitForSelector('.sn-note-float .sticky-note', { timeout: 10000 });

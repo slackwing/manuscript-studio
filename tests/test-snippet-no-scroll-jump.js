@@ -31,13 +31,13 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.keyboard.type('Top of pad.');
   for (let i = 0; i < 40; i++) await page.keyboard.press('Enter');
   const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
-  const vid = ctx.sketch.sketch_id;
-  await page.waitForSelector(`.sn-widget[data-sketch-id="${vid}"] .sn-render`);
+  const vid = ctx.variation.variation_id;
+  await page.waitForSelector(`.sn-widget[data-variation-id="${vid}"] .sn-render`);
   // give it text so preview renders (click to edit, type, blur)
-  await page.click(`.sn-widget[data-sketch-id="${vid}"] .sn-render`);
-  await page.waitForSelector(`.sn-widget[data-sketch-id="${vid}"] .sn-text`);
-  await page.fill(`.sn-widget[data-sketch-id="${vid}"] .sn-text`, 'Line one.\n\nLine two of the snippet.');
-  await page.locator(`.sn-widget[data-sketch-id="${vid}"] .sn-text`).blur();
+  await page.click(`.sn-widget[data-variation-id="${vid}"] .sn-render`);
+  await page.waitForSelector(`.sn-widget[data-variation-id="${vid}"] .sn-text`);
+  await page.fill(`.sn-widget[data-variation-id="${vid}"] .sn-text`, 'Line one.\n\nLine two of the snippet.');
+  await page.locator(`.sn-widget[data-variation-id="${vid}"] .sn-text`).blur();
   await page.waitForTimeout(600);
 
   const host = '.spm-editor';
@@ -50,20 +50,20 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const beforeEdit = await page.evaluate((sel) => document.querySelector(sel).scrollTop, host);
 
   // 1) Click to edit — must not jump.
-  await page.click(`.sn-widget[data-sketch-id="${vid}"] .sn-render`);
-  await page.waitForSelector(`.sn-widget[data-sketch-id="${vid}"] .sn-text`);
+  await page.click(`.sn-widget[data-variation-id="${vid}"] .sn-render`);
+  await page.waitForSelector(`.sn-widget[data-variation-id="${vid}"] .sn-text`);
   await page.waitForTimeout(250);
   const afterEdit = await page.evaluate((sel) => document.querySelector(sel).scrollTop, host);
   check('click-to-edit does not scroll the pad', Math.abs(afterEdit - beforeEdit) <= 8,
     `before=${beforeEdit} after=${afterEdit}`);
 
   // blur back to preview
-  await page.locator(`.sn-widget[data-sketch-id="${vid}"] .sn-text`).blur();
+  await page.locator(`.sn-widget[data-variation-id="${vid}"] .sn-text`).blur();
   await page.waitForTimeout(300);
   const beforeFreeze = await page.evaluate((sel) => document.querySelector(sel).scrollTop, host);
 
   // 2) Toggle freeze — must not jump.
-  await page.click(`.sn-widget[data-sketch-id="${vid}"] [data-act="freeze"]`);
+  await page.click(`.sn-widget[data-variation-id="${vid}"] [data-act="freeze"]`);
   await page.waitForTimeout(350);
   const afterFreeze = await page.evaluate((sel) => document.querySelector(sel).scrollTop, host);
   check('freeze does not scroll the pad', Math.abs(afterFreeze - beforeFreeze) <= 8,
@@ -71,10 +71,10 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
 
   // 3) frozen preview shows the light-blue background.
   const frozenBg = await page.evaluate((v) => {
-    const r = document.querySelector(`.sn-widget[data-sketch-id="${v}"] .sn-render.sn-frozen`);
+    const r = document.querySelector(`.sn-widget[data-variation-id="${v}"] .sn-render.sn-frozen`);
     return r ? getComputedStyle(r).backgroundColor : null;
   }, vid);
-  check('frozen sketch preview has the light-blue background',
+  check('frozen variation preview has the light-blue background',
     frozenBg === 'rgb(238, 244, 251)', `bg=${frozenBg}`);
 
   await browser.close();

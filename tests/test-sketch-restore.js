@@ -1,6 +1,6 @@
 /**
  * Soft-delete + Restore… for snippet variations: trash soft-deletes (widget
- * removed, sketch kept as deleted), the Snippet ▾ menu → Restore… lists it
+ * removed, variation kept as deleted), the Snippet ▾ menu → Restore… lists it
  * (newest deletion first) and restoring re-inserts the widget.
  */
 const { chromium } = require('playwright');
@@ -23,7 +23,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
 
   // Create a snippet, write identifying text so we can find it in the list.
   const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
-  const varId = ctx.sketch.sketch_id;
+  const varId = ctx.variation.variation_id;
   await page.waitForSelector('.sn-widget .sn-render', { timeout: 10000 });
   await page.click('.sn-widget .sn-render');
   await page.waitForSelector('.sn-widget .sn-text', { timeout: 5000 });
@@ -31,9 +31,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('.sn-widget .sn-text').blur();
   await page.waitForTimeout(800);
 
-  // API check: it's a LIVE sketch now (not in deleted list).
-  const beforeDel = await page.evaluate(() => fetch('api/sketches/deleted').then(r => r.json()));
-  check('not deleted before trash', !(beforeDel.sketches || []).some(v => /RESTOREME/.test(v.preview)));
+  // API check: it's a LIVE variation now (not in deleted list).
+  const beforeDel = await page.evaluate(() => fetch('api/variations/deleted').then(r => r.json()));
+  check('not deleted before trash', !(beforeDel.variations || []).some(v => /RESTOREME/.test(v.preview)));
 
   // Click the trash button → soft-delete + remove widget.
   await page.click('.sn-widget .sn-trash');
@@ -42,9 +42,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('widget removed after trash', widgetGone === 0, String(widgetGone));
 
   // API check: now it IS in the deleted list.
-  const afterDel = await page.evaluate(() => fetch('api/sketches/deleted').then(r => r.json()));
-  const deletedRow = (afterDel.sketches || []).find(v => /RESTOREME/.test(v.preview));
-  check('appears in deleted list after trash', !!deletedRow, JSON.stringify(afterDel.sketches && afterDel.sketches.map(v => v.preview)));
+  const afterDel = await page.evaluate(() => fetch('api/variations/deleted').then(r => r.json()));
+  const deletedRow = (afterDel.variations || []).find(v => /RESTOREME/.test(v.preview));
+  check('appears in deleted list after trash', !!deletedRow, JSON.stringify(afterDel.variations && afterDel.variations.map(v => v.preview)));
   check('deleted row carries deletion date', deletedRow && !!deletedRow.deleted_at, deletedRow && deletedRow.deleted_at);
 
   // Open the Snippet ▾ menu → Restore… and restore it.
@@ -53,15 +53,15 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.click('.sn-ins-restore');
   await page.waitForSelector('.sn-ins-list button[data-vid]', { timeout: 5000 });
   const restoreBtn = page.locator(`.sn-ins-list button[data-vid="${varId}"]`);
-  check('deleted sketch shown in Restore… picker', await restoreBtn.count() === 1);
+  check('deleted variation shown in Restore… picker', await restoreBtn.count() === 1);
   await restoreBtn.click();
   await page.waitForTimeout(800);
 
   // Widget re-inserted, and it's no longer in the deleted list.
   const backWidget = await page.locator('.sn-widget').count();
   check('widget re-inserted after restore', backWidget >= 1, String(backWidget));
-  const afterRestore = await page.evaluate(() => fetch('api/sketches/deleted').then(r => r.json()));
-  check('gone from deleted list after restore', !(afterRestore.sketches || []).some(v => /RESTOREME/.test(v.preview)));
+  const afterRestore = await page.evaluate(() => fetch('api/variations/deleted').then(r => r.json()));
+  check('gone from deleted list after restore', !(afterRestore.variations || []).some(v => /RESTOREME/.test(v.preview)));
 
   await browser.close();
   process.exit(failed ? 1 : 0);

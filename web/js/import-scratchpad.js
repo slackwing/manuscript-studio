@@ -5,8 +5,8 @@
  * &snippet#<snippet-id>{label} … &end#<snippet-id>.
  *
  * Step 1 is the ordinary suggestion PUT (stale-migration guard included);
- * step 2 is POST /api/sketches/{id}/canonize which creates the hidden
- * canon sketch (immutable snapshot) and pins the group's link. Import
+ * step 2 is POST /api/variations/{id}/canonize which creates the hidden
+ * canon variation (immutable snapshot) and pins the group's link. Import
  * targets must be committed sentences with no pending suggestion.
  */
 const WriteSysImportScratchpad = {
@@ -130,13 +130,13 @@ const WriteSysImportScratchpad = {
     const overlay = document.createElement('div');
     overlay.id = 'import-modal-overlay';
     overlay.innerHTML = `
-      <div id="import-modal" role="dialog" aria-label="canonize a snippet sketch">
-        <h3>canonize a snippet sketch</h3>
+      <div id="import-modal" role="dialog" aria-label="canonize a snippet variation">
+        <h3>canonize a snippet variation</h3>
         <p class="im-hint">${target.mode === 'replace'
-          ? `Replaces placeholder <code>#${this.esc(target.slug)}</code> with the sketch's text, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit. (The placeholder's own slug retires.)`
-          : 'Inserts the sketch\'s text after this paragraph, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit.'}</p>
-        <input type="text" id="im-q" placeholder="Search sketches…" autocomplete="off">
-        <div id="im-blocks" class="im-blocks"><span class="im-muted">Loading sketches…</span></div>
+          ? `Replaces placeholder <code>#${this.esc(target.slug)}</code> with the variation's text, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit. (The placeholder's own slug retires.)`
+          : 'Inserts the variation\'s text after this paragraph, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit.'}</p>
+        <input type="text" id="im-q" placeholder="Search variations…" autocomplete="off">
+        <div id="im-blocks" class="im-blocks"><span class="im-muted">Loading variations…</span></div>
         <div class="im-row">
           <label>Label (outline) <input id="im-label" type="text" placeholder="optional"></label>
         </div>
@@ -153,15 +153,15 @@ const WriteSysImportScratchpad = {
     let t = null;
     document.getElementById('im-q').addEventListener('input', () => {
       clearTimeout(t);
-      t = setTimeout(() => this.loadSketches(), 250);
+      t = setTimeout(() => this.loadVariations(), 250);
     });
-    await this.loadSketches();
+    await this.loadVariations();
   },
 
   closeModal() {
     const el = document.getElementById('import-modal-overlay');
     if (el) el.remove();
-    this.selectedSketch = null;
+    this.selectedVariation = null;
   },
 
   showError(msg) {
@@ -171,18 +171,18 @@ const WriteSysImportScratchpad = {
     el.hidden = false;
   },
 
-  async loadSketches() {
-    this.selectedSketch = null;
+  async loadVariations() {
+    this.selectedVariation = null;
     const goBtn = document.getElementById('im-go');
     if (goBtn) goBtn.disabled = true;
     const holder = document.getElementById('im-blocks');
     if (!holder) return;
     const q = (document.getElementById('im-q') || { value: '' }).value.trim();
     try {
-      const data = await fetchJSON(`api/sketches?q=${encodeURIComponent(q)}`, {}, false);
-      const rows = (data.sketches || []).filter(v => (v.preview || '').trim());
+      const data = await fetchJSON(`api/variations?q=${encodeURIComponent(q)}`, {}, false);
+      const rows = (data.variations || []).filter(v => (v.preview || '').trim());
       if (rows.length === 0) {
-        holder.innerHTML = '<span class="im-muted">No sketches with text yet — write in a snippet widget first.</span>';
+        holder.innerHTML = '<span class="im-muted">No variations with text yet — write in a snippet widget first.</span>';
         return;
       }
       // Ineligible: already-canonized groups, and groups linked elsewhere.
@@ -200,19 +200,19 @@ const WriteSysImportScratchpad = {
       }).join('');
       holder.querySelectorAll('input[name="im-block"]').forEach(inp => {
         inp.addEventListener('change', () => {
-          this.selectedSketch = rows[parseInt(inp.value, 10)];
+          this.selectedVariation = rows[parseInt(inp.value, 10)];
           document.getElementById('im-go').disabled = false;
         });
       });
     } catch (e) {
-      this.showError('Failed to list sketches: ' + e.message);
+      this.showError('Failed to list variations: ' + e.message);
     }
   },
 
   async canonize() {
     const r = window.WriteSysRenderer;
     const cmdLib = window.WriteSysCommand;
-    const sel = this.selectedSketch;
+    const sel = this.selectedVariation;
     const target = this.target;
     if (!sel || !target) return;
     const label = document.getElementById('im-label').value.trim();
@@ -221,12 +221,12 @@ const WriteSysImportScratchpad = {
     // Fresh full text + eligibility straight from the source of truth.
     let ctx;
     try {
-      ctx = await fetchJSON(`api/sketches/${sel.sketch_id}`, {}, false);
+      ctx = await fetchJSON(`api/variations/${sel.variation_id}`, {}, false);
     } catch (e) {
-      return this.showError('Could not load the sketch: ' + e.message);
+      return this.showError('Could not load the variation: ' + e.message);
     }
-    if (ctx.snippet.canon_sketch_id) {
-      return this.showError('This snippet already has a canon sketch.');
+    if (ctx.snippet.canon_variation_id) {
+      return this.showError('This snippet already has a canon variation.');
     }
     if (ctx.snippet.linked_manuscript_id && ctx.snippet.linked_manuscript_id !== r.manuscriptId) {
       return this.showError(`This snippet is linked to ${ctx.snippet.linked_manuscript_name || 'another manuscript'}.`);
@@ -247,7 +247,7 @@ const WriteSysImportScratchpad = {
     // sentence's current (effective) text.
     const pending = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
     const base = pending[target.sentenceId] !== undefined ? pending[target.sentenceId] : committed;
-    const content = ctx.sketch.text.replace(/\s+$/, '');
+    const content = ctx.variation.text.replace(/\s+$/, '');
     const openLine = `&snippet#${slug}{${label}}`;
     const endLine = `&end#${slug}`;
     // Tight structure: single \n around the region markers so the canonized
@@ -269,7 +269,7 @@ const WriteSysImportScratchpad = {
     go.textContent = 'Canonizing…';
     try {
       // Step 1: the suggestion (existing endpoint: validation, CSRF, stale
-      // guard). Step 2: dub the sketch canon (snapshot + group pointer).
+      // guard). Step 2: dub the variation canon (snapshot + group pointer).
       const put = await fetch(`api/sentences/${encodeURIComponent(target.sentenceId)}/suggestion`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
@@ -278,20 +278,20 @@ const WriteSysImportScratchpad = {
       if (put.status === 409) throw new Error('The manuscript changed under you — reload the page and retry.');
       if (!put.ok) throw new Error(`suggestion rejected (${put.status}): ${(await put.text()).slice(0, 200)}`);
 
-      const can = await fetch(`api/sketches/${sel.sketch_id}/canonize`, {
+      const can = await fetch(`api/variations/${sel.variation_id}/canonize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
         body: JSON.stringify({ manuscript_id: r.manuscriptId }),
       });
       if (!can.ok) {
-        throw new Error(`Suggestion saved, but dubbing the sketch canon failed (${(await can.text()).slice(0, 200)}). ` +
+        throw new Error(`Suggestion saved, but dubbing the variation canon failed (${(await can.text()).slice(0, 200)}). ` +
           'Delete the suggestion or retry canonize from a fresh modal.');
       }
 
-      // Now that this snippet is canonized, offer to freeze all its sketches
+      // Now that this snippet is canonized, offer to freeze all its variations
       // (they're no longer a work-in-progress). Individual ones can be
       // unfrozen later. Best-effort — a failure here doesn't undo the canonize.
-      if (window.confirm('Freeze all sketches? (You can unfreeze select ones individually.)')) {
+      if (window.confirm('Freeze all variations? (You can unfreeze select ones individually.)')) {
         try {
           await fetch(`api/snippets/${encodeURIComponent(slug)}/freeze-all`, {
             method: 'POST', headers: { 'X-CSRF-Token': this.csrf() },

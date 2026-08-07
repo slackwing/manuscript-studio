@@ -1,5 +1,5 @@
 /**
- * Suggestion-modal robustness: raw sketch-editor input + failed-save
+ * Suggestion-modal robustness: raw variation-editor input + failed-save
  * preservation.
  *
  * Input: the pane edits RAW .manuscript text (shared edit-pane) — Enter and
@@ -79,9 +79,9 @@ function psql(sql) {
     });
     assert(!!first && !!first.id, `Found a prose sentence (${first && first.id.slice(0, 12)}...)`);
 
-    // ---- Raw sketch-editor mode: newlines and tabs stay LITERAL ----
+    // ---- Raw variation-editor mode: newlines and tabs stay LITERAL ----
     // (The glyph conversion died with the old modal — the pane now edits raw
-    // .manuscript text exactly like a snippet sketch: Enter = \n, Tab = \t.)
+    // .manuscript text exactly like a snippet variation: Enter = \n, Tab = \t.)
 
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
@@ -96,7 +96,7 @@ function psql(sql) {
     await ta.press('Tab');
     const tabbed = await ta.inputValue();
     assert(tabbed === 'abc\ndef\t',
-      `Tab inserts a literal \\t like the sketch editor (got ${JSON.stringify(tabbed)})`);
+      `Tab inserts a literal \\t like the variation editor (got ${JSON.stringify(tabbed)})`);
     // The shared overlay renders the tab as a → marker.
     const overlayTabs = await page.evaluate(() =>
       document.querySelectorAll('#suggestion-modal .sn-text-overlay .sn-tab').length);

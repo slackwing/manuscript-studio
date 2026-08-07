@@ -147,8 +147,8 @@ const WriteSysSuggestions = {
     }).join('');
     // EXACTLY the snippet widget's chrome (scratchpad.css): sn-cols → sn-main
     // (sn-header + sn-body with the split) + sn-rail down the right edge, the
-    // * button in the corner where a widget shows its sketch letter. The edit
-    // pane IS the sketch editor — raw .manuscript text, real newlines, Tab
+    // * button in the corner where a widget shows its variation letter. The edit
+    // pane IS the variation editor — raw .manuscript text, real newlines, Tab
     // inserts a literal \t (rendered as → by the shared overlay). No glyphs,
     // no break buttons.
     modal.innerHTML = `
@@ -287,7 +287,7 @@ const WriteSysSuggestions = {
         close();
       }
     });
-    // Sketch-editor keys: Tab inserts a literal \t (a "\n\t" paragraph break
+    // Variation-editor keys: Tab inserts a literal \t (a "\n\t" paragraph break
     // is typeable); Shift-Tab still escapes the field.
     textarea.addEventListener('keydown', (e) => {
       if (e.key === 'Tab' && !e.shiftKey) {

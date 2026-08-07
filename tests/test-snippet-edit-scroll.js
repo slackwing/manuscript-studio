@@ -34,7 +34,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     await ed.insertSnippet();
   });
   await page.waitForTimeout(600);
-  // Give the sketch text THROUGH THE UI so the widget's ctx has it.
+  // Give the variation text THROUGH THE UI so the widget's ctx has it.
   await page.locator('.sn-widget .sn-render').last().click();
   await page.waitForSelector('.sn-widget textarea');
   await page.keyboard.type('bottom snippet text for editing here and more words to fill');

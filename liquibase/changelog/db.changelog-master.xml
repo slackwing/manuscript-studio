@@ -35,5 +35,6 @@
     <include file="changelog/026-snippet-note.xml"/>
     <include file="changelog/027-point-events.xml"/>
     <include file="changelog/028-priority-blocked.xml"/>
+    <include file="changelog/029-sketch-to-variation.xml"/>
 
 </databaseChangeLog>

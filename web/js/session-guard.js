@@ -2,7 +2,7 @@
 //
 // When the session expires ANYWHERE in Manuscript Studio, this dims the page
 // and offers an in-place re-login modal — no reload, so unsaved work
-// (scratchpad autosaves, sketch edits, note bodies) survives and their retry
+// (scratchpad autosaves, variation edits, note bodies) survives and their retry
 // ladders succeed on the next tick after login.
 //
 // Installed at the DOCUMENT level: it patches window.fetch once, so every
@@ -137,7 +137,7 @@
   // CSRF SELF-HEAL: a 403 "Invalid CSRF token" means our stored token no
   // longer matches the session — the classic cause being a re-login in
   // ANOTHER tab rotating the session cookie (this exact skew once 403'd four
-  // minutes of sketch autosaves and lost the writing). The fix is silent:
+  // minutes of variation autosaves and lost the writing). The fix is silent:
   // GET /api/session returns the session's current csrf_token; resync it and
   // the caller's own retry ladder succeeds on its next attempt. If the
   // session itself is dead, /api/session 401s and the login modal takes over.

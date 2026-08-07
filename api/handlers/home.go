@@ -182,7 +182,13 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 					manuscript = name
 				}
 			}
-			hn.Context = joinContext(manuscript, n.ScratchpadTitle)
+			// A snippet note's context is the SKETCH itself, not whichever
+			// pad happens to host it — its variations can span several.
+			if n.SnippetID != nil {
+				hn.Context = joinContext(manuscript, "Sketch")
+			} else {
+				hn.Context = joinContext(manuscript, n.ScratchpadTitle)
+			}
 			notes = append(notes, hn)
 		}
 	}

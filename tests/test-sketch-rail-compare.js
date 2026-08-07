@@ -3,7 +3,7 @@
 //  - clicking a sibling opens a SPLIT compare (left self/editable, right the
 //    sibling read-only); same letter closes it, another letter swaps it;
 //  - sibling letters color-code state (frozen bluish, superseded reddish);
-//  - superseded sketches are EXCLUDED from the wordcount representative
+//  - superseded variations are EXCLUDED from the wordcount representative
 //    ("canonized wins, then most recent non-superseded").
 const { chromium } = require('playwright');
 const { TEST_URL, TEST_MANUSCRIPT_ID, loginAsTestUser, cleanupTestNotes } = require('./test-utils');
@@ -25,14 +25,14 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
 
-  // Snippet with 9 extra sketches → 10 letters total.
+  // Snippet with 9 extra variations → 10 letters total.
   const ids = await page.evaluate(async () => {
     const ed = window.WriteSysScratchpad;
     const a = await ed.insertSnippet();
-    await ed.sketchApi.saveText(a.sketch.sketch_id, 'alpha alpha alpha alpha alpha alpha alpha alpha alpha alpha'); // 10 words
+    await ed.variationApi.saveText(a.variation.variation_id, 'alpha alpha alpha alpha alpha alpha alpha alpha alpha alpha'); // 10 words
     const sibs = [];
-    for (let i = 0; i < 9; i++) sibs.push((await ed.sketchApi.createFrom(a.sketch.sketch_id)).sketch.sketch_id);
-    return { a: a.sketch.sketch_id, sibs, snippet: a.snippet.snippet_id };
+    for (let i = 0; i < 9; i++) sibs.push((await ed.variationApi.createFrom(a.variation.variation_id)).variation.variation_id);
+    return { a: a.variation.variation_id, sibs, snippet: a.snippet.snippet_id };
   });
   const padId = await page.evaluate(() => window.WriteSysScratchpad.scratchpadId);
   await page.click('#spm-close');
@@ -52,7 +52,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   });
   check('rail lists ALL 10 letters, self on top, no overflow',
     rail.letters.length === 10 && rail.selfTop && !rail.overflow, JSON.stringify(rail.letters));
-  check('sibling tooltip says "Compare to sketch …"', /^Compare to sketch [A-Z]\./.test(rail.firstTitle), rail.firstTitle);
+  check('sibling tooltip says "Compare to variation …"', /^Compare to variation [A-Z]\./.test(rail.firstTitle), rail.firstTitle);
 
   // Open compare with B, swap to C, close on second click.
   const w = page.locator('.sn-widget').first();
@@ -81,7 +81,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   const csrf = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
   const bId = ids.sibs[0], cId = ids.sibs[1];
   const put = (id, state) => page.evaluate(async ({ id, state, csrf }) => {
-    const r = await fetch(`api/sketches/${id}/state`, {
+    const r = await fetch(`api/variations/${id}/state`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ state }),
     });
@@ -104,10 +104,10 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   check('B rail letter reddish (superseded)', /st-superseded/.test(colors.B), colors.B);
   check('C rail letter bluish (frozen)', /st-frozen/.test(colors.C), colors.C);
 
-  // The Related/Based-on picker EXCLUDES superseded sketches (frozen stay).
+  // The Related/Based-on picker EXCLUDES superseded variations (frozen stay).
   const picker = await page.evaluate(async () => {
-    const r = await fetch('api/sketches?q=');
-    return (await r.json()).sketches.map((x) => x.sketch_id);
+    const r = await fetch('api/variations?q=');
+    return (await r.json()).variations.map((x) => x.variation_id);
   });
   check('picker excludes superseded B', !picker.includes(bId), JSON.stringify(picker.slice(0, 8)));
   check('picker still includes frozen C', picker.includes(cId));
@@ -124,7 +124,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   // recent now), then supersede again.
   await put(bId, 'draft');
   await page.evaluate(async ({ bId, csrf }) => {
-    await fetch(`api/sketches/${bId}`, {
+    await fetch(`api/variations/${bId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ text: 'beta beta beta' }),
     });

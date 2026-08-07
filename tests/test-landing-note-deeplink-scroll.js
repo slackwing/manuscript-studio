@@ -41,7 +41,7 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
     await page.evaluate(async () => {
       const ed = window.WriteSysScratchpad;
       const ctx = await ed.insertSnippet();
-      await ed.sketchApi.saveText(ctx.sketch.sketch_id,
+      await ed.variationApi.saveText(ctx.variation.variation_id,
         Array.from({ length: 40 }, (_, i) => `Widget filler line ${i}.`).join('\n\n'));
     });
   }

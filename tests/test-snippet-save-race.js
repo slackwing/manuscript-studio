@@ -4,7 +4,7 @@
 // flushers accumulated, each holding an OLD text snapshot. The next doc-save
 // fired them all at once — a race where an old snapshot could land last and
 // CLOBBER current work (real data-loss bug, observed live). This drives many
-// enter/leave-edit cycles then forces doc-saves, and asserts the sketch's
+// enter/leave-edit cycles then forces doc-saves, and asserts the variation's
 // PERSISTED text (DB — the source of truth) is the final version, not a stale
 // snapshot.
 const { chromium } = require('playwright');
@@ -30,10 +30,10 @@ function psql(sql) {
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
-  // Insert a snippet widget; capture its sketch_id for DB assertions.
+  // Insert a snippet widget; capture its variation_id for DB assertions.
   const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSnippet());
-  const sketchId = ctx && ctx.sketch && ctx.sketch.sketch_id;
-  check('snippet inserted', !!sketchId, `sketch_id=${sketchId}`);
+  const variationId = ctx && ctx.variation && ctx.variation.variation_id;
+  check('snippet inserted', !!variationId, `variation_id=${variationId}`);
   await page.waitForSelector('.sn-widget .sn-clickable, .sn-widget .sn-render', { timeout: 6000 });
   await page.waitForTimeout(300);
 
@@ -51,7 +51,7 @@ function psql(sql) {
   for (const s of stages) {
     const ta = await enterEdit();
     await ta.fill(s);
-    await page.waitForTimeout(700); // debounced sketch-save fires
+    await page.waitForTimeout(700); // debounced variation-save fires
     await leaveEdit();
   }
 
@@ -71,13 +71,13 @@ function psql(sql) {
   await page.waitForTimeout(800);
 
   // The PERSISTED text must be the final version — not a stale earlier snapshot.
-  const dbText = psql(`SELECT text FROM sketch WHERE sketch_id=${sketchId}`).trim();
-  check('persisted sketch text is the FINAL version (no stale-snapshot clobber)',
+  const dbText = psql(`SELECT text FROM variation WHERE variation_id=${variationId}`).trim();
+  check('persisted variation text is the FINAL version (no stale-snapshot clobber)',
     dbText === FINAL, JSON.stringify(dbText.slice(0, 90)));
 
   // And it survives a reload (came from the DB, so this is belt-and-suspenders).
   await page.reload(); await page.waitForTimeout(800);
-  const dbAfter = psql(`SELECT text FROM sketch WHERE sketch_id=${sketchId}`).trim();
+  const dbAfter = psql(`SELECT text FROM variation WHERE variation_id=${variationId}`).trim();
   check('final text still persisted after reload', dbAfter === FINAL, JSON.stringify(dbAfter.slice(0, 90)));
 
   await browser.close();

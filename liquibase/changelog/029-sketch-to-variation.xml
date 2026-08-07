@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Naming swap, step 1 of 2 (029 then 030): the lettered sibling draft
+         goes back to its original name "VARIATION" (017 renamed it to
+         "sketch"; the author's mental model settled the other way), freeing
+         "sketch" for step 2, where the GROUP (today's "snippet") takes it.
+         Pure renames — live rows survive; constraint/index names follow. -->
+    <changeSet id="029-sketch-to-variation" author="claude">
+        <sql>
+            -- Rename tables.
+            ALTER TABLE sketch RENAME TO variation;
+            ALTER TABLE sketch_revision RENAME TO variation_revision;
+
+            -- Rename columns.
+            ALTER TABLE variation RENAME COLUMN sketch_id TO variation_id;
+            ALTER TABLE variation_revision RENAME COLUMN sketch_id TO variation_id;
+            ALTER TABLE snippet RENAME COLUMN canon_sketch_id TO canon_variation_id;
+
+            -- Constraints + indexes follow the rename (Postgres keeps old
+            -- names otherwise; tidy them so future migrations read cleanly).
+            ALTER TABLE variation RENAME CONSTRAINT fk_sketch_snippet TO fk_variation_snippet;
+            ALTER TABLE variation_revision RENAME CONSTRAINT fk_sketch_revision_sketch TO fk_variation_revision_variation;
+            ALTER TABLE snippet RENAME CONSTRAINT fk_snippet_canon_sketch TO fk_snippet_canon_variation;
+
+            ALTER TABLE variation RENAME CONSTRAINT sketch_state_check TO variation_state_check;
+            ALTER TABLE variation RENAME CONSTRAINT sketch_scratchpad_id_fkey TO variation_scratchpad_id_fkey;
+
+            ALTER INDEX idx_sketch_snippet_ordinal RENAME TO idx_variation_snippet_ordinal;
+            ALTER INDEX idx_sketch_snippet_canon   RENAME TO idx_variation_snippet_canon;
+            ALTER INDEX idx_sketch_updated         RENAME TO idx_variation_updated;
+            ALTER INDEX idx_sketch_revision_sketch RENAME TO idx_variation_revision_variation;
+            ALTER INDEX idx_sketch_deleted_at      RENAME TO idx_variation_deleted_at;
+            ALTER INDEX idx_sketch_scratchpad      RENAME TO idx_variation_scratchpad;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,5 +1,5 @@
 // Scratchpad keyboard shortcuts:
-//   Alt+D   → inserts today's date as "Saturday, August 1" (prose AND sketch
+//   Alt+D   → inserts today's date as "Saturday, August 1" (prose AND variation
 //             textareas via the shared edit pane);
 //   Ctrl+Alt+1-4 → headings H1-H4 (plain Alt+N = Firefox tab switching);
 //   Ctrl+Shift+8/7/9 → bullet / numbered / blockquote;
@@ -46,7 +46,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const hasUl = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.toString().includes('bullet_list'));
   check('Ctrl+Shift+8 wraps in a bullet list', hasUl);
 
-  // Alt+D inside a sketch textarea (shared edit pane).
+  // Alt+D inside a variation textarea (shared edit pane).
   await page.evaluate(async () => {
     const view = window.WriteSysScratchpad.view;
     const Sel = view.state.selection.constructor;
@@ -63,7 +63,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.keyboard.type('date: ');
   await page.keyboard.press('Alt+KeyD');
   const taVal = await page.locator('.sn-widget textarea').inputValue();
-  check(`Alt+D types the date in a sketch textarea`, taVal === 'date: ' + wantDate, JSON.stringify(taVal));
+  check(`Alt+D types the date in a variation textarea`, taVal === 'date: ' + wantDate, JSON.stringify(taVal));
 
   // Toolbar hints advertise shortcuts.
   const hints = await page.evaluate(() => {

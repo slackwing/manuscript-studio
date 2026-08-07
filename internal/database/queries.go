@@ -1743,7 +1743,10 @@ type HomeNote struct {
 	SentenceID      string
 	Context         string // fallback manuscript label (repo basename etc.); the handler prefers the config name
 	ScratchpadTitle string // the scratchpad title, if the note lives on one — shown alongside the manuscript
-	Tags            []models.Tag
+	// Set for a snippet note (026): its card context shows "Sketch", not a
+	// pad title — a snippet's variations can live across multiple pads.
+	SnippetID *string
+	Tags      []models.Tag
 }
 
 // ListNotesForHome returns a user's most-recently-touched active notes with a
@@ -1754,11 +1757,11 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		SELECT n.note_id, n.color, n.body, n.priority, n.flagged, n.updated_at,
 		       n.manuscript_id,
 		       -- A snippet note has no pad of its own — its card deep-links
-		       -- to the snippet's HOME pad (earliest sketch's scratchpad).
+		       -- to the snippet's HOME pad (earliest variation's scratchpad).
 		       COALESCE(n.scratchpad_id,
-		           (SELECT sk.scratchpad_id FROM sketch sk
+		           (SELECT sk.scratchpad_id FROM variation sk
 		            WHERE sk.snippet_id = n.snippet_id AND sk.scratchpad_id IS NOT NULL
-		            ORDER BY sk.sketch_id LIMIT 1)),
+		            ORDER BY sk.variation_id LIMIT 1)),
 		       COALESCE(n.sentence_id, ''),
 		       -- Fallback manuscript label (used only when the note has a
 		       -- manuscript_id but the handler can't resolve a config name):
@@ -1769,6 +1772,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		           ''
 		       ) AS context,
 		       COALESCE(sp.title, '') AS scratchpad_title,
+		       n.snippet_id,
 		       -- Tags for the card (read-only chips). Aggregated here to avoid an
 		       -- N+1 per note; empty array when none.
 		       COALESCE(
@@ -1795,7 +1799,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.Flagged, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &tagsJSON); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SnippetID, &tagsJSON); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
 		if len(tagsJSON) > 0 {

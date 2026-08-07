@@ -1,4 +1,4 @@
-// A snippet whose sketch text STARTS with a Tab renders its first paragraph
+// A snippet whose variation text STARTS with a Tab renders its first paragraph
 // indented (class "indented") — a snippet is often a mid-chapter excerpt, so
 // a leading indent is meaningful. Without the leading Tab, the first paragraph
 // stays flush (book convention). Display-only: the stored text keeps the \t.
@@ -49,11 +49,11 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   // Stored text keeps the literal leading \t (display-only transform).
   const stored = await page.evaluate(async () => {
     const ed = window.WriteSysScratchpad;
-    const vid = parseInt(document.querySelector('.sn-widget').dataset.sketchId, 10);
-    const ctx = await ed.sketchApi.context(vid);
-    return ctx.sketch.text;
+    const vid = parseInt(document.querySelector('.sn-widget').dataset.variationId, 10);
+    const ctx = await ed.variationApi.context(vid);
+    return ctx.variation.text;
   });
-  check('stored sketch text keeps the leading tab', stored.startsWith('\t'), JSON.stringify(stored.slice(0, 12)));
+  check('stored variation text keeps the leading tab', stored.startsWith('\t'), JSON.stringify(stored.slice(0, 12)));
 
   // Control: a snippet WITHOUT a leading Tab stays flush.
   await page.evaluate(() => {

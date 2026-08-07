@@ -74,7 +74,7 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
     assert(true, 'Re-click opens suggestion modal');
 
-    // The edit pane shows RAW .manuscript text (sketch-editor mode — real
+    // The edit pane shows RAW .manuscript text (variation-editor mode — real
     // newlines/tabs, → overlay for tabs; no glyphs).
     const textareaValue = await page.locator('.suggestion-modal-textarea').inputValue();
     assert(textareaValue === first.text,

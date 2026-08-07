@@ -70,11 +70,11 @@ const REP_WORDS = 9;
     check('baseline effective == committed (no suggestions)', base.words_effective === base.words_committed);
     check('baseline snippet words == 0', base.words_snippets === 0);
 
-    // --- a LINKED group with two sketches + an unlinked group ---
+    // --- a LINKED group with two variations + an unlinked group ---
     const groupCtx = await (await authed('/snippets', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
-    const varA = groupCtx.sketch.sketch_id;
-    check('snippet group + sketch A created', groupCtx.sketch.ordinal === 1, `#${groupCtx.snippet.snippet_id}`);
-    let r = await authed(`/sketches/${varA}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_A }) });
+    const varA = groupCtx.variation.variation_id;
+    check('snippet group + variation A created', groupCtx.variation.ordinal === 1, `#${groupCtx.snippet.snippet_id}`);
+    let r = await authed(`/variations/${varA}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_A }) });
     check('A text saved', r.status === 204);
     r = await authed(`/snippets/${groupCtx.snippet.snippet_id}/link`, {
       method: 'PUT', body: JSON.stringify({ manuscript_id: TEST_MANUSCRIPT_ID }),
@@ -82,13 +82,13 @@ const REP_WORDS = 9;
     check('group linked to the test manuscript', r.ok);
     // Variation B, based on A, updated later → the representative.
     const ctxB = await (await authed('/snippets', {
-      method: 'POST', body: JSON.stringify({ mode: 'sketch', source_sketch_id: varA }),
+      method: 'POST', body: JSON.stringify({ mode: 'variation', source_variation_id: varA }),
     })).json();
-    r = await authed(`/sketches/${ctxB.sketch.sketch_id}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_B }) });
+    r = await authed(`/variations/${ctxB.variation.variation_id}`, { method: 'PUT', body: JSON.stringify({ text: TEXT_B }) });
     check('B text saved (most recently updated)', r.status === 204);
     // An UNLINKED group must not count toward any manuscript.
     const loose = await (await authed('/snippets', { method: 'POST', body: JSON.stringify({ mode: 'new' }) })).json();
-    await authed(`/sketches/${loose.sketch.sketch_id}`, {
+    await authed(`/variations/${loose.variation.variation_id}`, {
       method: 'PUT', body: JSON.stringify({ text: 'These words float free of any book.' }),
     });
 

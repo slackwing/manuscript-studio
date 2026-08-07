@@ -74,7 +74,7 @@
   overflow-y: auto;
   padding: 18px 22px 60px;
   /* Native scroll anchoring: when a widget ABOVE the viewport changes height
-     (e.g. another sketch's edit textarea collapses to a preview on blur),
+     (e.g. another variation's edit textarea collapses to a preview on blur),
      the browser keeps the visible content from jumping. */
   overflow-anchor: auto;
 }
@@ -293,7 +293,7 @@
 .sn-rail-peer:hover { background: #fff; border-color: #d0c8b8; }
 /* The OPEN comparison reads as pressed/disabled grey, like its right pane. */
 .sn-rail-peer.active { background: #ddd8cc; border-color: #c2baa8; }
-/* Sketch state at a glance: frozen letters bluish, superseded reddish. */
+/* Variation state at a glance: frozen letters bluish, superseded reddish. */
 .sn-rail-btn.st-frozen { color: #2a6fb0; background: #e8f0f8; }
 .sn-rail-btn.st-frozen:hover { background: #f2f7fc; }
 .sn-rail-btn.st-superseded { color: #b04038; background: #f6e7e4; }
@@ -321,11 +321,11 @@
 /* The (self) preview/edit surface is white; the shadow render is transparent
    and sits on top, so this bg is what shows through. */
 .sn-render { background: #fff; }
-/* A FROZEN sketch's own preview wears a light blue so it reads as read-only at
+/* A FROZEN variation's own preview wears a light blue so it reads as read-only at
    a glance (matching the snowflake/canon blue family). */
 .sn-render.sn-frozen { background: #eef4fb; }
-/* A SUPERSEDED sketch reads like frozen but in a reddish hue — no longer the
-   preferred sketch, read-only until un-superseded. */
+/* A SUPERSEDED variation reads like frozen but in a reddish hue — no longer the
+   preferred variation, read-only until un-superseded. */
 .sn-render.sn-superseded { background: #faf0ee; }
 /* A sibling shown as a read-only PREVIEW: darker (disabled) background, but
    full-strength text (not lightened). It ABSORBS clicks (cursor:default; a JS

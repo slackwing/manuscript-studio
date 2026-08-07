@@ -226,7 +226,7 @@ export const bookData = {
   },
 };
 
-// ------------------------------------------------------ sketch API
+// ------------------------------------------------------ variation API
 
 async function apiCall(method, url, body) {
   const r = await fetch(url, {
@@ -243,30 +243,30 @@ async function apiCall(method, url, body) {
   return r.status === 204 ? null : r.json();
 }
 
-// currentScratchpadId: the scratchpad a newly-created sketch is homed in. The
+// currentScratchpadId: the scratchpad a newly-created variation is homed in. The
 // modal sets this when it opens a scratchpad (from #scratchpad=N).
 let currentScratchpadId = 0;
 export function setCurrentScratchpadId(id) { currentScratchpadId = id | 0; }
 
-export const sketchApi = {
-  context: (id) => fetchJSON(`api/sketches/${id}`, {}, false),
-  list: (q) => fetchJSON(`api/sketches?q=${encodeURIComponent(q || '')}`, {}, false),
+export const variationApi = {
+  context: (id) => fetchJSON(`api/variations/${id}`, {}, false),
+  list: (q) => fetchJSON(`api/variations?q=${encodeURIComponent(q || '')}`, {}, false),
   createNew: () => apiCall('POST', 'api/snippets', { mode: 'new', scratchpad_id: currentScratchpadId }),
-  // Based on a source sketch → a new sibling sketch (next letter, text copied).
+  // Based on a source variation → a new sibling variation (next letter, text copied).
   // No source freezing; the source is left as-is.
   createFrom: (sourceId) => apiCall('POST', 'api/snippets',
-    { mode: 'sketch', source_sketch_id: sourceId, scratchpad_id: currentScratchpadId }),
-  saveText: (id, text) => apiCall('PUT', `api/sketches/${id}`, { text }),
+    { mode: 'variation', source_variation_id: sourceId, scratchpad_id: currentScratchpadId }),
+  saveText: (id, text) => apiCall('PUT', `api/variations/${id}`, { text }),
   // ONE lifecycle state (draft | frozen | superseded) — setting frozen or
   // superseded cancels the other (single column server-side).
-  setState: (id, state) => apiCall('PUT', `api/sketches/${id}/state`, { state }),
+  setState: (id, state) => apiCall('PUT', `api/variations/${id}/state`, { state }),
   freezeAll: (snippetId) => apiCall('POST', `api/snippets/${snippetId}/freeze-all`),
   link: (snippetId, manuscriptId) => apiCall('PUT', `api/snippets/${snippetId}/link`, { manuscript_id: manuscriptId }),
-  canonize: (id, manuscriptId) => apiCall('POST', `api/sketches/${id}/canonize`, { manuscript_id: manuscriptId }),
-  softDelete: (id) => apiCall('DELETE', `api/sketches/${id}`),
-  restore: (id) => apiCall('POST', `api/sketches/${id}/restore`),
-  listDeleted: (q) => fetchJSON(`api/sketches/deleted?q=${encodeURIComponent(q || '')}`, {}, false),
-  home: (id) => fetchJSON(`api/sketches/${id}/home`, {}, false),
+  canonize: (id, manuscriptId) => apiCall('POST', `api/variations/${id}/canonize`, { manuscript_id: manuscriptId }),
+  softDelete: (id) => apiCall('DELETE', `api/variations/${id}`),
+  restore: (id) => apiCall('POST', `api/variations/${id}/restore`),
+  listDeleted: (q) => fetchJSON(`api/variations/deleted?q=${encodeURIComponent(q || '')}`, {}, false),
+  home: (id) => fetchJSON(`api/variations/${id}/home`, {}, false),
 };
 
 // fmtDeleted renders a deleted_at ISO timestamp as a short local date for the
@@ -300,9 +300,9 @@ const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" st
 
 // Clipboard snippet reference (the copy button on each widget writes this;
 // the ⧉ Snippet ▾ → "From clipboard" option reads it back anywhere).
-const SKETCH_REF_PREFIX = 'ms-sketch:';
-const parseSketchRef = (text) => {
-  const m = /^\s*ms-sketch:(\d+)\s*$/.exec(text || '');
+const VARIATION_REF_PREFIX = 'ms-variation:';
+const parseVariationRef = (text) => {
+  const m = /^\s*ms-variation:(\d+)\s*$/.exec(text || '');
   return m ? parseInt(m[1], 10) : null;
 };
 const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
@@ -314,20 +314,20 @@ const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" st
 const variationFlushers = new Set();
 const dirtyVariations = new Set();
 // Every live SnippetView, so a group-level change (e.g. linking a manuscript,
-// which is a property of the snippet GROUP, not one sketch) can refresh every
+// which is a property of the snippet GROUP, not one variation) can refresh every
 // sibling widget showing the same snippet — otherwise siblings hold a stale
 // link chip (or a stale tab list) until the next reload.
 const liveSnippetViews = new Set();
 
 // Refresh every EXISTING widget of the given snippet group except one (usually
-// a just-created sketch, which mounts fresh). Used after a group-level change so
-// siblings pick it up immediately — e.g. a new related sketch appearing in their
+// a just-created variation, which mounts fresh). Used after a group-level change so
+// siblings pick it up immediately — e.g. a new related variation appearing in their
 // tab bar, or a manuscript link updating their chip.
-function refreshSnippetSiblings(snippetId, exceptSketchId) {
+function refreshSnippetSiblings(snippetId, exceptVariationId) {
   if (!snippetId) return;
   return Promise.all(Array.from(liveSnippetViews)
     .filter(v => v.ctx && v.ctx.snippet && v.ctx.snippet.snippet_id === snippetId
-      && v.sketchId !== exceptSketchId)
+      && v.variationId !== exceptVariationId)
     .map(v => v.refresh()));
 }
 
@@ -337,7 +337,7 @@ function renderBookText(host, text) {
   // means "the first paragraph is indented". Normalize that leading \t to a
   // real \n\t marker — canonicalize preserves a single leading marker and the
   // renderer classes the paragraph 'indented' — instead of letting the prose
-  // whitespace-trim eat it. Display-only: the stored sketch text keeps the \t.
+  // whitespace-trim eat it. Display-only: the stored variation text keeps the \t.
   let t = String(text == null ? '' : text);
   if (t.startsWith('\t')) t = '\n' + t;
   window.WriteSysScratchRender.renderText(host, canon(t));
@@ -356,7 +356,7 @@ function renderBookText(host, text) {
 // after a fetch) is compensated for as long as any hold is active.
 const scrollHolds = new Map(); // host → {base, fns, until, pin}
 // While a DELIBERATE scroll is in progress (deep-link settle-scroll to a note,
-// navigate-to-sketch), holds must not fight it: suspended holds ABSORB the
+// navigate-to-variation), holds must not fight it: suspended holds ABSORB the
 // current position (rebase) instead of pinning, then defend the new position
 // once the suspension lapses. Without this, widgets building during a pad open
 // re-arm the hold and yank the settle-scroll back to the top — the deep-link
@@ -405,13 +405,12 @@ class SnippetView {
     this.node = node;
     this.view = view;
     this.getPos = getPos;
-    this.sketchId = node.attrs.variationId;
+    this.variationId = node.attrs.variationId;
     this.dom = document.createElement('div');
     this.dom.className = 'sn-widget';
-    this.dom.dataset.variationId = String(this.sketchId); // legacy attr (PM node)
-    this.dom.dataset.sketchId = String(this.sketchId);     // navigate-to-source target
+    this.dom.dataset.variationId = String(this.variationId); // PM node attr name; also the navigate-to-source target
     this.dom.innerHTML = '<div class="sn-header"><span class="sn-status">Snippet · loading…</span></div><div class="sn-body"></div>';
-    this.compare = null;     // null | sibling sketch_id (number) | 'canon'
+    this.compare = null;     // null | sibling variation_id (number) | 'canon'
     this.mode = 'preview';   // 'preview' | 'edit' (the SELF pane, split or not)
     this.peerCache = {};     // variationId → context (parent/child tabs)
     this.dirty = false;
@@ -422,7 +421,7 @@ class SnippetView {
 
   async load() {
     try {
-      this.ctx = await sketchApi.context(this.sketchId);
+      this.ctx = await variationApi.context(this.variationId);
     } catch (e) {
       this.dom.innerHTML = `
         <div class="sn-header">
@@ -430,7 +429,7 @@ class SnippetView {
           <span class="sn-save"></span>
           <span class="sn-actions"><button type="button" data-act="remove" class="sn-trash" title="Remove widget">${TRASH_SVG}</button></span>
         </div>
-        <div class="sn-body"><div class="sn-note"><span class="sn-error">Sketch ${this.sketchId} could not be loaded (${esc(e.message)}).</span></div></div>`;
+        <div class="sn-body"><div class="sn-note"><span class="sn-error">Variation ${this.variationId} could not be loaded (${esc(e.message)}).</span></div></div>`;
       this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(true));
       return;
     }
@@ -441,12 +440,12 @@ class SnippetView {
     const compare = this.compare;
     this.peerCache = {};
     try {
-      this.ctx = await sketchApi.context(this.sketchId);
+      this.ctx = await variationApi.context(this.variationId);
     } catch (e) { /* keep the stale view rather than blanking */ }
     // Keep the comparison open across a refresh — unless its target vanished.
     const still = compare === 'canon'
       ? this.canonized()
-      : (this.ctx.siblings || []).some(x => x.sketch_id === compare);
+      : (this.ctx.siblings || []).some(x => x.variation_id === compare);
     this.compare = still ? compare : null;
     this.preserveScroll(() => this.build());
   }
@@ -454,7 +453,7 @@ class SnippetView {
   // The scrollable host for this widget (the modal body). Rebuilding the widget's
   // DOM, or focusing an element inside it, makes the browser re-anchor scroll and
   // jump — usually to the top of the widget. Everything that tears down and
-  // rebuilds the widget (build/renderBody/setCompare/setSketchState) runs through
+  // rebuilds the widget (build/renderBody/setCompare/setVariationState) runs through
   // preserveScroll so the reader stays put. This is the single, root-cause fix
   // for "clicking a snippet scrolls me to the top."
   scrollHost() {
@@ -478,27 +477,27 @@ class SnippetView {
     return r;
   }
 
-  canonized() { return this.ctx.snippet.canon_sketch_id > 0; }
-  stateName() { return this.ctx.sketch.state || 'draft'; }
+  canonized() { return this.ctx.snippet.canon_variation_id > 0; }
+  stateName() { return this.ctx.variation.state || 'draft'; }
   frozen() { return this.stateName() === 'frozen'; }
   superseded() { return this.stateName() === 'superseded'; }
   readonly() { return this.frozen() || this.superseded(); }
-  letter() { return letterOf(this.ctx.sketch.ordinal); }
+  letter() { return letterOf(this.ctx.variation.ordinal); }
 
   build() {
-    const v = this.ctx.sketch;
+    const v = this.ctx.variation;
     const sn = this.ctx.snippet;
-    // Identity for navigate-to-source: (snippet, ordinal). The global sketch_id
-    // stays as data-variation-id/data-sketch-id for the PM node + back-compat.
+    // Identity for navigate-to-source: (snippet, ordinal). The global variation_id
+    // stays as data-variation-id/data-variation-id for the PM node + back-compat.
     this.dom.dataset.snippetId = sn.snippet_id;
     if (v.ordinal != null) this.dom.dataset.ordinal = String(v.ordinal);
     this.dom.classList.toggle('sn-canon', this.canonized());
     this.dom.classList.toggle('sn-state-frozen', this.frozen());
     this.dom.classList.toggle('sn-state-superseded', this.superseded());
     const status = `Snippet · ${this.letter()} · ${this.stateName()}`;
-    const statusHint = `Sketch ${this.letter()} of snippet #${sn.snippet_id}. ` +
+    const statusHint = `Variation ${this.letter()} of snippet #${sn.snippet_id}. ` +
       (this.frozen() ? 'Frozen: read-only until unfrozen (snowflake). '
-        : this.superseded() ? 'Superseded: no longer the preferred sketch — read-only until un-superseded (↓). '
+        : this.superseded() ? 'Superseded: no longer the preferred variation — read-only until un-superseded (↓). '
         : 'Click the preview to edit. ') +
       `Created ${esc((v.created_at || '').slice(0, 10))}.`;
 
@@ -511,7 +510,7 @@ class SnippetView {
       ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.snippet_id)}" title="Open in book">Open in book ↗</a>`
       : '';
     // Layout: main column (header + body) plus the letter RAIL down the right
-    // edge — a symmetric "titlebar" whose top button is THIS sketch's letter
+    // edge — a symmetric "titlebar" whose top button is THIS variation's letter
     // (the upper-right corner identity), with every sibling below it and the
     // canon fleuron at the bottom. The widget always grows to fit the rail.
     this.dom.innerHTML = `
@@ -521,10 +520,10 @@ class SnippetView {
             <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
             <span class="sn-actions">
               ${openBook}
-              <button type="button" data-act="remove" class="sn-trash" title="Delete this sketch (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
+              <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
               <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
               <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-              <button type="button" data-act="copyref" class="sn-copyref" title="Copy snippet reference — start a related sketch anywhere via ⧉ Snippet ▾ → From clipboard">${COPY_SVG}</button>
+              <button type="button" data-act="copyref" class="sn-copyref" title="Copy snippet reference — start a related variation anywhere via ⧉ Snippet ▾ → From clipboard">${COPY_SVG}</button>
             </span>
           </div>
           <div class="sn-body"></div>
@@ -540,13 +539,13 @@ class SnippetView {
     });
     this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(false));
     this.dom.querySelector('[data-act="freeze"]').addEventListener('click', () =>
-      this.setSketchState(this.frozen() ? 'draft' : 'frozen'));
+      this.setVariationState(this.frozen() ? 'draft' : 'frozen'));
     this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
-      this.setSketchState(this.superseded() ? 'draft' : 'superseded'));
+      this.setVariationState(this.superseded() ? 'draft' : 'superseded'));
     this.dom.querySelector('[data-act="copyref"]').addEventListener('click', async (e) => {
       const b = e.currentTarget;
       try {
-        await navigator.clipboard.writeText(SKETCH_REF_PREFIX + this.sketchId);
+        await navigator.clipboard.writeText(VARIATION_REF_PREFIX + this.variationId);
         b.classList.add('sn-copied');
         setTimeout(() => b.classList.remove('sn-copied'), 900);
       } catch (err) { alert('Could not copy: ' + err.message); }
@@ -594,12 +593,12 @@ class SnippetView {
   // (click = split-compare, colored by state), canon fleuron at the bottom.
   railHTML() {
     const btns = [];
-    btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}" title="This widget is sketch ${this.letter()}.">${esc(this.letter())}</button>`);
-    const others = (this.ctx.siblings || []).filter(x => x.sketch_id !== this.sketchId);
+    btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</button>`);
+    const others = (this.ctx.siblings || []).filter(x => x.variation_id !== this.variationId);
     for (const x of others) {
       const st = x.state || 'draft';
       const stNote = st === 'superseded' ? ' (superseded)' : st === 'frozen' ? ' (frozen)' : '';
-      btns.push(`<button type="button" data-compare="${x.sketch_id}" class="sn-rail-btn sn-rail-peer st-${st}${this.compare === x.sketch_id ? ' active' : ''}" title="Compare to sketch ${letterOf(x.ordinal)}.${stNote}">${esc(letterOf(x.ordinal))}</button>`);
+      btns.push(`<button type="button" data-compare="${x.variation_id}" class="sn-rail-btn sn-rail-peer st-${st}${this.compare === x.variation_id ? ' active' : ''}" title="Compare to variation ${letterOf(x.ordinal)}.${stNote}">${esc(letterOf(x.ordinal))}</button>`);
     }
     if (this.canonized()) {
       btns.push(`<button type="button" data-compare="canon" class="sn-rail-btn sn-rail-canon${this.compare === 'canon' ? ' active' : ''}" title="Compare to the canon version — the text placed into the book.">❦</button>`);
@@ -654,11 +653,11 @@ class SnippetView {
       : 'Click to edit';
     target.innerHTML = `<div class="sn-render${roCls}" title="${roTitle}"></div>`;
     const host = target.firstChild;
-    const text = this.ctx.sketch.text;
+    const text = this.ctx.variation.text;
     if (text.trim()) {
       renderBookText(host, text);
     } else {
-      host.innerHTML = `<div class="sn-empty">${ro ? `Empty (${this.stateName()}) sketch.` : 'Click to write.'}</div>`;
+      host.innerHTML = `<div class="sn-empty">${ro ? `Empty (${this.stateName()}) variation.` : 'Click to write.'}</div>`;
     }
     // Swallow mousedown: in FIREFOX the native mousedown on a non-editable
     // island inside the contenteditable pad moves/reveals the DOM selection —
@@ -695,11 +694,11 @@ class SnippetView {
     // localStorage (saves were failing when the widget last lived — CSRF
     // skew, expiry, crash, reload), seed the editor with IT, not the stale
     // server text, and let the autosaver push it up immediately.
-    const draftKey = `ms-draft-sketch-${this.sketchId}`;
+    const draftKey = `ms-draft-variation-${this.variationId}`;
     const draft = window.WriteSysEditPane.readDraft(draftKey);
-    const serverText = this.ctx.sketch.text;
+    const serverText = this.ctx.variation.text;
     const restored = !!(draft && draft.t !== serverText
-      && draft.at > Date.parse(this.ctx.sketch.updated_at || 0));
+      && draft.at > Date.parse(this.ctx.variation.updated_at || 0));
     // The SHARED edit-pane machinery (edit-pane.js) — same autosave/debounce,
     // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
     const pane = window.WriteSysEditPane.createMonoEditor({
@@ -716,11 +715,11 @@ class SnippetView {
       initialValue: serverText, // server truth — a restored draft counts as dirty
       draftKey,
       getValue: () => ta.value,
-      save: (text) => sketchApi.saveText(this.sketchId, text),
+      save: (text) => variationApi.saveText(this.variationId, text),
       statusEl: this.saveEl,
       onDirty: (d) => { if (d) dirtyVariations.add(this); else dirtyVariations.delete(this); },
       onSaved: (text, changed) => {
-        this.ctx.sketch.text = text;
+        this.ctx.variation.text = text;
         // Blur may have flipped to preview before this save resolved —
         // re-render so the preview shows what was just saved.
         if (changed && this.mode === 'preview') this.renderBody();
@@ -774,52 +773,52 @@ class SnippetView {
     }
   }
 
-  // The RIGHT HALF of a split-compare: a sibling sketch, read-only on a
+  // The RIGHT HALF of a split-compare: a sibling variation, read-only on a
   // disabled background, with a mini header naming it and linking to its
   // home widget.
-  async renderComparePeer(sketchId, pane) {
-    pane.innerHTML = '<div class="sn-note">Loading sketch…</div>';
-    let ctx = this.peerCache[sketchId];
+  async renderComparePeer(variationId, pane) {
+    pane.innerHTML = '<div class="sn-note">Loading variation…</div>';
+    let ctx = this.peerCache[variationId];
     if (!ctx) {
       try {
-        ctx = this.peerCache[sketchId] = await sketchApi.context(sketchId);
+        ctx = this.peerCache[variationId] = await variationApi.context(variationId);
       } catch (e) {
-        pane.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load sketch (${esc(e.message)}).</span></div>`;
+        pane.innerHTML = `<div class="sn-note"><span class="sn-error">Could not load variation (${esc(e.message)}).</span></div>`;
         return;
       }
     }
-    if (this.compare !== sketchId || !pane.isConnected) return; // switched away while loading
-    const letter = esc(letterOf(ctx.sketch.ordinal));
-    const st = ctx.sketch.state || 'draft';
+    if (this.compare !== variationId || !pane.isConnected) return; // switched away while loading
+    const letter = esc(letterOf(ctx.variation.ordinal));
+    const st = ctx.variation.state || 'draft';
     pane.innerHTML = `
       <div class="sn-note"><strong>${letter}</strong> · read-only${st !== 'draft' ? ` · ${esc(st)}` : ''} · <a href="#" class="sn-goto-source">open source ↗</a></div>
       <div class="sn-render sn-peer"></div>`;
-    const snippetId = ctx.sketch.snippet_id;
-    const ordinal = ctx.sketch.ordinal;
+    const snippetId = ctx.variation.snippet_id;
+    const ordinal = ctx.variation.ordinal;
     pane.querySelector('.sn-goto-source').addEventListener('click', (e) => {
       e.preventDefault();
-      this.gotoSketchSource(sketchId, snippetId, ordinal);
+      this.gotoVariationSource(variationId, snippetId, ordinal);
     });
     const host = pane.querySelector('.sn-render');
     // Swallow mousedown so a click doesn't place a caret / fall through to the
     // ProseMirror editor behind the widget (which would move the PM selection
     // and scroll the pad). Text stays selectable via drag (that's mousemove).
     host.addEventListener('mousedown', (e) => { e.preventDefault(); });
-    if (ctx.sketch.text.trim()) renderBookText(host, ctx.sketch.text);
-    else host.innerHTML = '<div class="sn-empty">Empty sketch.</div>';
+    if (ctx.variation.text.trim()) renderBookText(host, ctx.variation.text);
+    else host.innerHTML = '<div class="sn-empty">Empty variation.</div>';
   }
 
-  // Navigate to a sketch's home widget: ask the server which scratchpad hosts
+  // Navigate to a variation's home widget: ask the server which scratchpad hosts
   // it, then set the URL hash to open that scratchpad and scroll to the widget.
-  // Identity is (snippet, ordinal) — NOT the global sketch_id — so the URL is
-  // human-readable and stable: #scratchpad=N&snippet=ID&sketch=<ordinal>.
-  async gotoSketchSource(sketchId, snippetId, ordinal) {
+  // Identity is (snippet, ordinal) — NOT the global variation_id — so the URL is
+  // human-readable and stable: #scratchpad=N&snippet=ID&variation=<ordinal>.
+  async gotoVariationSource(variationId, snippetId, ordinal) {
     let spID = 0;
-    try { spID = (await sketchApi.home(sketchId)).scratchpad_id | 0; } catch (e) { /* fall through */ }
+    try { spID = (await variationApi.home(variationId)).scratchpad_id | 0; } catch (e) { /* fall through */ }
     if (spID > 0) {
-      window.location.hash = `#scratchpad=${spID}&snippet=${encodeURIComponent(snippetId)}&sketch=${ordinal}`;
+      window.location.hash = `#scratchpad=${spID}&snippet=${encodeURIComponent(snippetId)}&variation=${ordinal}`;
     } else {
-      alert('That sketch has no home scratchpad on record yet.');
+      alert('That variation has no home scratchpad on record yet.');
     }
   }
 
@@ -864,21 +863,21 @@ class SnippetView {
     }
   }
 
-  async setSketchState(state) {
+  async setVariationState(state) {
     try {
-      await sketchApi.setState(this.sketchId, state);
+      await variationApi.setState(this.variationId, state);
       await this.refresh();
-      // Sibling rails color-code THIS sketch's state — update them live.
-      await refreshSnippetSiblings(this.ctx.snippet.snippet_id, this.sketchId);
+      // Sibling rails color-code THIS variation's state — update them live.
+      await refreshSnippetSiblings(this.ctx.snippet.snippet_id, this.variationId);
     } catch (e) {
-      alert('Could not update sketch state: ' + e.message);
+      alert('Could not update variation state: ' + e.message);
     }
   }
 
   async setLink(manuscriptId) {
     const snippetId = this.ctx.snippet.snippet_id;
     try {
-      await sketchApi.link(snippetId, manuscriptId);
+      await variationApi.link(snippetId, manuscriptId);
       // The link belongs to the snippet GROUP: refresh every live widget of
       // this snippet (including this one) so their chips update now, not only
       // after a reload.
@@ -897,9 +896,9 @@ class SnippetView {
     if (!window.confirm(label)) return;
     // Soft-delete the variation first (a broken widget has no live variation to
     // delete). If the delete fails, keep the widget so nothing is lost.
-    if (!broken && this.sketchId) {
+    if (!broken && this.variationId) {
       try {
-        await sketchApi.softDelete(this.sketchId);
+        await variationApi.softDelete(this.variationId);
       } catch (e) {
         alert('Could not delete variation: ' + e.message);
         return;
@@ -913,7 +912,7 @@ class SnippetView {
 
   update(node) {
     if (node.type !== this.node.type) return false;
-    if (node.attrs.variationId !== this.sketchId) return false;
+    if (node.attrs.variationId !== this.variationId) return false;
     this.node = node;
     return true;
   }
@@ -1448,16 +1447,16 @@ function buildSnippetMenu(toolbarEl, getView) {
   const insertVariation = (ctx) => {
     const view = getView();
     insertBlockSafely(view.state, view.dispatch,
-      schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
+      schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
     close();
     view.focus();
-    // A new sibling changes the group's sketch list, so every EXISTING widget of
+    // A new sibling changes the group's variation list, so every EXISTING widget of
     // the same snippet must refresh to show the new one in its tab bar (the new
     // widget just mounted fresh with the full list). Without this, related
     // widgets don't get the new tab until a reload.
     const snippetId = (ctx.snippet && ctx.snippet.snippet_id)
-      || (ctx.sketch && ctx.sketch.snippet_id);
-    refreshSnippetSiblings(snippetId, ctx.sketch.sketch_id);
+      || (ctx.variation && ctx.variation.snippet_id);
+    refreshSnippetSiblings(snippetId, ctx.variation.variation_id);
   };
 
   const renderRoot = () => {
@@ -1467,7 +1466,7 @@ function buildSnippetMenu(toolbarEl, getView) {
       <button type="button" class="sn-ins-clip" disabled title="Copy a snippet reference first (the copy button on a snippet widget)">From clipboard</button>
       <button type="button" class="sn-ins-restore">Restore…</button>`;
     pop.querySelector('.sn-ins-new').addEventListener('click', async () => {
-      try { insertVariation(await sketchApi.createNew()); }
+      try { insertVariation(await variationApi.createNew()); }
       catch (e) { alert('Could not create snippet: ' + e.message); }
     });
     pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
@@ -1478,16 +1477,16 @@ function buildSnippetMenu(toolbarEl, getView) {
     (async () => {
       const clipBtn = pop.querySelector('.sn-ins-clip');
       try {
-        const id = parseSketchRef(await navigator.clipboard.readText());
+        const id = parseVariationRef(await navigator.clipboard.readText());
         if (id == null) return;
-        const ctx = await sketchApi.context(id);
+        const ctx = await variationApi.context(id);
         if (!clipBtn.isConnected) return; // menu re-rendered/closed meanwhile
-        const preview = ((ctx.sketch && ctx.sketch.text) || '').trim().slice(0, 40);
+        const preview = ((ctx.variation && ctx.variation.text) || '').trim().slice(0, 40);
         clipBtn.disabled = false;
-        clipBtn.title = `New sketch related to the copied one${preview ? `: “${preview}”` : ''}`;
+        clipBtn.title = `New variation related to the copied one${preview ? `: “${preview}”` : ''}`;
         clipBtn.addEventListener('click', async () => {
-          try { insertVariation(await sketchApi.createFrom(id)); }
-          catch (err) { alert('Could not create sketch: ' + err.message); }
+          try { insertVariation(await variationApi.createFrom(id)); }
+          catch (err) { alert('Could not create variation: ' + err.message); }
         });
       } catch (_) { /* no clipboard access or invalid reference — stays disabled */ }
     })();
@@ -1505,14 +1504,14 @@ function buildSnippetMenu(toolbarEl, getView) {
     const load = async () => {
       let rows;
       try {
-        rows = (await sketchApi.listDeleted(q.value.trim())).sketches || [];
+        rows = (await variationApi.listDeleted(q.value.trim())).variations || [];
       } catch (e) {
         list.innerHTML = '<span class="sn-linkpop-empty">Could not load deleted variations</span>';
         return;
       }
       list.innerHTML = rows.length
         ? rows.map(r => `
-          <button type="button" data-vid="${r.sketch_id}">
+          <button type="button" data-vid="${r.variation_id}">
             <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
             <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
             <span class="sn-ins-deleted">${esc(fmtDeleted(r.deleted_at))}</span>
@@ -1526,7 +1525,7 @@ function buildSnippetMenu(toolbarEl, getView) {
       const b = e.target.closest('button[data-vid]');
       if (!b) return;
       try {
-        const ctx = await sketchApi.restore(parseInt(b.dataset.vid, 10));
+        const ctx = await variationApi.restore(parseInt(b.dataset.vid, 10));
         insertVariation(ctx);
       } catch (err) { alert('Could not restore variation: ' + err.message); }
     });
@@ -1535,7 +1534,7 @@ function buildSnippetMenu(toolbarEl, getView) {
 
   const renderPicker = async () => {
     pop.innerHTML = `
-      <input type="text" class="sn-ins-q" placeholder="Search sketches…" autocomplete="off">
+      <input type="text" class="sn-ins-q" placeholder="Search variations…" autocomplete="off">
       <div class="sn-ins-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
     const q = pop.querySelector('.sn-ins-q');
     const list = pop.querySelector('.sn-ins-list');
@@ -1543,29 +1542,29 @@ function buildSnippetMenu(toolbarEl, getView) {
     const load = async () => {
       let rows;
       try {
-        rows = (await sketchApi.list(q.value.trim())).sketches || [];
+        rows = (await variationApi.list(q.value.trim())).variations || [];
       } catch (e) {
-        list.innerHTML = '<span class="sn-linkpop-empty">Could not load sketches</span>';
+        list.innerHTML = '<span class="sn-linkpop-empty">Could not load variations</span>';
         return;
       }
       list.innerHTML = rows.length
         ? rows.map(r => `
-          <button type="button" data-vid="${r.sketch_id}">
+          <button type="button" data-vid="${r.variation_id}">
             <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
             <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
           </button>`).join('')
-        : '<span class="sn-linkpop-empty">No sketches yet</span>';
+        : '<span class="sn-linkpop-empty">No variations yet</span>';
     };
     let t;
     q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
     q.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-    // Picking a source sketch mints a NEW sibling sketch directly (next letter,
+    // Picking a source variation mints a NEW sibling variation directly (next letter,
     // text copied). No freeze dialog — the source is left as-is.
     list.addEventListener('click', async (e) => {
       const b = e.target.closest('button[data-vid]');
       if (!b) return;
-      try { insertVariation(await sketchApi.createFrom(parseInt(b.dataset.vid, 10))); }
-      catch (err) { alert('Could not create sketch: ' + err.message); }
+      try { insertVariation(await variationApi.createFrom(parseInt(b.dataset.vid, 10))); }
+      catch (err) { alert('Could not create variation: ' + err.message); }
     });
     await load();
   };
@@ -1863,25 +1862,25 @@ export async function createScratchpadEditor(els, scratchpadId) {
     scratchpadId,
     schema,
     bookData,
-    sketchApi,
+    variationApi,
     get view() { return view; },
     saveNow,
     // Programmatic inserts (tests / power use): create server-side, place.
     insertSnippet: async () => {
-      const ctx = await sketchApi.createNew();
+      const ctx = await variationApi.createNew();
       insertBlockSafely(view.state, view.dispatch,
-        schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
+        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
       return ctx;
     },
-    // Based-on: mint a new sibling sketch (next letter) and place it.
-    insertSketchOf: async (sourceId) => {
-      const ctx = await sketchApi.createFrom(sourceId);
+    // Based-on: mint a new sibling variation (next letter) and place it.
+    insertVariationOf: async (sourceId) => {
+      const ctx = await variationApi.createFrom(sourceId);
       insertBlockSafely(view.state, view.dispatch,
-        schema.nodes.snippet.create({ variationId: ctx.sketch.sketch_id }));
-      // Existing siblings must show the new sketch in their tab bar now.
+        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+      // Existing siblings must show the new variation in their tab bar now.
       const snippetId = (ctx.snippet && ctx.snippet.snippet_id)
-        || (ctx.sketch && ctx.sketch.snippet_id);
-      await refreshSnippetSiblings(snippetId, ctx.sketch.sketch_id);
+        || (ctx.variation && ctx.variation.snippet_id);
+      await refreshSnippetSiblings(snippetId, ctx.variation.variation_id);
       return ctx;
     },
     pm: { Selection, TextSelection, NodeSelection },
