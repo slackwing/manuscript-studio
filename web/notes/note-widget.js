@@ -624,7 +624,7 @@
   // reusable component (settings page uses it for task-type colors).
   function buildColorDot({ colors, current, onPick, title }) {
     const wrap = document.createElement('span');
-    wrap.className = 'sticky-note-color-circle color-dot-solo';
+    wrap.className = 'color-dot-solo';
     if (title) wrap.title = title;
     const dot = document.createElement('span');
     dot.className = 'color-dot-current';
