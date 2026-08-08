@@ -36,6 +36,7 @@ type Server struct {
 	scratchpadHandlers *handlers.ScratchpadHandlers
 	variationHandlers    *handlers.VariationHandlers
 	taskTypeHandlers     *handlers.TaskTypeHandlers
+	noteActionHandlers   *handlers.NoteActionHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
@@ -80,6 +81,10 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config:       cfg,
 		},
 		taskTypeHandlers: &handlers.TaskTypeHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+		},
+		noteActionHandlers: &handlers.NoteActionHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 		},
@@ -286,6 +291,11 @@ func (s *Server) setupRouter() {
 			r.Put("/task-types/order", s.taskTypeHandlers.HandleReorder)
 			r.Put("/task-types/{name}/color", s.taskTypeHandlers.HandleSetColor)
 			r.Delete("/task-types/{name}", s.taskTypeHandlers.HandleDelete)
+			// Note actions (settings audit table) + undos.
+			r.Get("/note-actions", s.noteActionHandlers.HandleList)
+			r.Delete("/point-events/{event_id}", s.noteActionHandlers.HandleUnaward)
+			r.Post("/notes/{note_id}/restore", s.noteActionHandlers.HandleRestore)
+			r.Post("/notes/{note_id}/uncomplete", s.noteActionHandlers.HandleUncomplete)
 
 			r.Get("/notes/{note_id}/tags", s.noteHandlers.HandleGetTagsForNote)
 			r.Post("/notes/{note_id}/tags", s.noteHandlers.HandleAddTagToNote)

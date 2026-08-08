@@ -47,10 +47,10 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   check('chrome.css loaded', await page.evaluate(() =>
     [...document.querySelectorAll('link[rel=stylesheet]')].some(l => l.href.includes('chrome.css'))));
 
-  // --- Copy: two bare section heads, no description paragraphs ---
+  // --- Copy: bare section heads (non-task first), no descriptions ---
   const heads = await page.locator('.home-section-head h2').allInnerTexts();
-  check('sections are "Task types" + "Non-task types"',
-    heads.map(h => h.trim()).join('|') === 'Task types|Non-task types', heads.join('|'));
+  check('sections: non-task, task, note actions',
+    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Note actions', heads.join('|'));
 
   // --- Categories: reminder is non-task; tasks hold the built-ins ---
   const ttNames = await page.locator('#tt-chips .tt-chip > span:first-child').allInnerTexts();
@@ -215,6 +215,60 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.waitForTimeout(800);
   const changed = psql(`SELECT task_type FROM note WHERE note_id = ${noteId}`).trim();
   check('changing away from a deleted type sticks', changed === 'write', changed);
+
+  // --- Note actions: award / complete / delete → audit rows with undo ---
+  const csrf2 = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
+  const api = (method, path, body) => page.evaluate(async ({ method, path, body, csrf }) => {
+    const r = await fetch(path, { method, credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: body ? JSON.stringify(body) : undefined });
+    return r.status;
+  }, { method, path, body, csrf: csrf2 });
+  check('award 7 points', (await api('POST', `api/notes/${noteId}/points`, { points: 7 })) < 300);
+  check('complete note', (await api('POST', `api/notes/${noteId}/complete`)) < 300);
+  // A completed note leaves the UI (and the delete path), so the deleted
+  // action gets its own note.
+  const padId = psql(`SELECT scratchpad_id FROM scratchpad WHERE user_id='${TEST_USERNAME}' ORDER BY scratchpad_id DESC LIMIT 1`).trim();
+  const delNoteId = await page.evaluate(async ({ padId, csrf }) => {
+    const r = await fetch('api/notes', { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ scratchpad_id: parseInt(padId, 10), color: 'yellow', body: 'Delete me please.' }) });
+    return (await r.json()).note_id;
+  }, { padId, csrf: csrf2 });
+  check('delete note', (await api('DELETE', `api/notes/${delNoteId}`)) < 300);
+  await page.goto(SETTINGS_URL);
+  await page.waitForSelector('.na-row', { timeout: 5000 });
+  const kinds = await page.locator('.na-row').evaluateAll(rows => rows.map(r => r.className));
+  check('three action rows, newest first (deleted, completed, points)',
+    kinds.length >= 3 && kinds[0].includes('na-deleted') && kinds[1].includes('na-completed') && kinds[2].includes('na-points'),
+    kinds.join(';'));
+  check('rows carry the note-UI icons', await page.locator('.na-row .na-icon svg').count() >= 3);
+  check('preview shows the note body', (await page.locator('.na-row.na-points .na-prev').innerText()).includes('Recolor me'));
+  check('deleted row previews its own note', (await page.locator('.na-row.na-deleted .na-prev').innerText()).includes('Delete me'));
+  check('when column shows date + time', /[A-Za-z]+ \d+.*\d+:\d\d/.test(await page.locator('.na-row .na-when').first().innerText()),
+    await page.locator('.na-row .na-when').first().innerText());
+  await page.locator('.na-row.na-deleted .na-undo').first().click();
+  await page.waitForTimeout(700);
+  check('undo delete restores the note', psql(`SELECT deleted_at IS NULL FROM note WHERE note_id=${delNoteId}`).trim() === 't');
+  await page.locator('.na-row.na-completed .na-undo').first().click();
+  await page.waitForTimeout(700);
+  check('undo complete restores the note', psql(`SELECT completed_at IS NULL FROM note WHERE note_id=${noteId}`).trim() === 't');
+  const unawardLabel = (await page.locator('.na-row.na-points .na-undo').first().innerText()).trim();
+  check('unaward button names the points', unawardLabel === 'unaward 7 points', unawardLabel);
+  await page.locator('.na-row.na-points .na-undo').first().click();
+  await page.waitForTimeout(700);
+  check('unaward hard-deletes the event', psql(`SELECT count(*) FROM point_event WHERE note_id=${noteId}`).trim() === '0');
+  check('all three rows undone (table empty)', await page.locator('.na-row').count() === 0);
+
+  // Back into the pad for the sketch checks below.
+  await page.goto(HOME_URL);
+  try {
+    await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 4000 });
+  } catch (e) {
+    await page.waitForSelector('#home-new-pad');
+    await page.locator('.card-scratchpad').first().click();
+    await page.waitForSelector('.spm-overlay .ProseMirror');
+  }
 
   // --- Sketch notes: untyped too (no default anywhere) ---
   await page.evaluate(() => window.WriteSysScratchpad.insertSketch());

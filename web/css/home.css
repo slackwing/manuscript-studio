@@ -289,5 +289,33 @@ body.home-page {
   cursor: pointer;
 }
 .tt-chip.tt-armed .tt-del:hover { background: #c0392b; color: #fff; }
+/* Note actions audit table: when · preview · icon · undo. */
+.na-section { max-width: 720px; }
+.na-table { width: 100%; border-collapse: collapse; font-family: "Helvetica", sans-serif; }
+.na-row td { padding: 7px 10px 7px 0; border-top: 1px solid #efece5; vertical-align: middle; }
+.na-row:first-child td { border-top: none; }
+.na-when { white-space: nowrap; color: #8a8378; font-size: 12px; }
+.na-prev {
+  max-width: 0; /* let the table column, not the text, set the width */
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #222;
+}
+.na-icon { color: #666; }
+.na-icon svg { display: block; }
+.na-undo-cell { text-align: right; }
+.na-undo {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font: 12px "Helvetica", sans-serif;
+  color: #2a6fb0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.na-undo:hover { text-decoration: underline; }
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }

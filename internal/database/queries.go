@@ -1991,3 +1991,89 @@ func (db *DB) SetTaskTypeColor(ctx context.Context, name, color string) (bool, e
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// NoteAction: one row of the settings page's "Note actions" audit table —
+// points awarded, note (soft-)deleted, or note completed.
+type NoteAction struct {
+	Kind    string    `json:"kind"` // 'points' | 'deleted' | 'completed'
+	At      time.Time `json:"at"`
+	NoteID  int       `json:"note_id"`
+	EventID *int      `json:"event_id,omitempty"` // point_event_id, points rows only
+	Points  *int      `json:"points,omitempty"`
+	Color   string    `json:"color"`
+	Body    string    `json:"body"` // clamped server-side; preview only
+}
+
+// ListNoteActions: the user's newest note actions across all three sources.
+func (db *DB) ListNoteActions(ctx context.Context, username string, limit int) ([]NoteAction, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT kind, at, note_id, event_id, points, color, body FROM (
+			SELECT 'points' AS kind, pe.scored_at AS at, n.note_id,
+			       pe.point_event_id AS event_id, pe.points, n.color,
+			       LEFT(COALESCE(n.body, ''), 300) AS body
+			  FROM point_event pe JOIN note n ON n.note_id = pe.note_id
+			 WHERE n.user_id = $1 AND pe.deleted_at IS NULL
+			UNION ALL
+			SELECT 'deleted', n.deleted_at, n.note_id, NULL, NULL, n.color,
+			       LEFT(COALESCE(n.body, ''), 300)
+			  FROM note n WHERE n.user_id = $1 AND n.deleted_at IS NOT NULL
+			UNION ALL
+			SELECT 'completed', n.completed_at, n.note_id, NULL, NULL, n.color,
+			       LEFT(COALESCE(n.body, ''), 300)
+			  FROM note n WHERE n.user_id = $1 AND n.completed_at IS NOT NULL
+		) x ORDER BY at DESC LIMIT $2
+	`, username, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []NoteAction{}
+	for rows.Next() {
+		var a NoteAction
+		if err := rows.Scan(&a.Kind, &a.At, &a.NoteID, &a.EventID, &a.Points, &a.Color, &a.Body); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// DeletePointEvent HARD-deletes one point event (the "unaward" undo — the
+// award never happened). Ownership via the event's note. false = no such
+// event owned by this user.
+func (db *DB) DeletePointEvent(ctx context.Context, eventID int, username string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		DELETE FROM point_event pe USING note n
+		WHERE pe.point_event_id = $1 AND n.note_id = pe.note_id AND n.user_id = $2
+	`, eventID, username)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// RestoreNote undoes a soft delete. false = no such deleted note owned by
+// this user.
+func (db *DB) RestoreNote(ctx context.Context, noteID int, username string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE note SET deleted_at = NULL, updated_at = NOW()
+		WHERE note_id = $1 AND user_id = $2 AND deleted_at IS NOT NULL
+	`, noteID, username)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// UncompleteNote undoes a completion. false = no such completed note owned
+// by this user.
+func (db *DB) UncompleteNote(ctx context.Context, noteID int, username string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE note SET completed_at = NULL, updated_at = NOW()
+		WHERE note_id = $1 AND user_id = $2 AND completed_at IS NOT NULL
+	`, noteID, username)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

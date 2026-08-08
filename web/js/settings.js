@@ -17,7 +17,7 @@ const WriteSysSettings = {
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.tt-chip')) this.disarmAll();
     });
-    await this.reload();
+    await Promise.all([this.reload(), this.reloadActions()]);
   },
 
   csrf() {
@@ -174,6 +174,68 @@ const WriteSysSettings = {
       status.textContent = 'Failed to add: ' + e.message;
     }
   },
+};
+
+// ---- Note actions: the last 20 (points awarded / deleted / completed),
+// each with an undo. Icons are the EXACT svgs the note UI's bottom row
+// uses (star / trash / check).
+WriteSysSettings.ACTION_ICONS = {
+  points: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  deleted: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  completed: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
+WriteSysSettings.reloadActions = async function () {
+  const status = document.getElementById('na-status');
+  let actions;
+  try {
+    const r = await fetch('api/note-actions', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    actions = (await r.json()).actions || [];
+  } catch (e) {
+    status.textContent = 'Failed to load note actions.';
+    return;
+  }
+  const rows = document.getElementById('na-rows');
+  rows.innerHTML = '';
+  status.textContent = actions.length ? '' : 'No actions yet.';
+  actions.forEach((a) => {
+    const tr = document.createElement('tr');
+    tr.className = `na-row na-${a.kind}`;
+    const d = new Date(a.at);
+    const when = document.createElement('td');
+    when.className = 'na-when';
+    when.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    tr.appendChild(when);
+    const prev = document.createElement('td');
+    prev.className = 'na-prev';
+    prev.textContent = a.body || '(no text)';
+    tr.appendChild(prev);
+    const icon = document.createElement('td');
+    icon.className = 'na-icon';
+    icon.innerHTML = this.ACTION_ICONS[a.kind] || '';
+    tr.appendChild(icon);
+    const undoTd = document.createElement('td');
+    undoTd.className = 'na-undo-cell';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'na-undo';
+    const req = { credentials: 'same-origin', headers: { 'X-CSRF-Token': this.csrf() } };
+    if (a.kind === 'points') {
+      btn.textContent = `unaward ${a.points} point${a.points === 1 ? '' : 's'}`;
+      btn.onclick = () => fetch(`api/point-events/${a.event_id}`, { ...req, method: 'DELETE' }).then(() => this.reloadActions());
+    } else if (a.kind === 'deleted') {
+      btn.textContent = 'undo delete';
+      btn.onclick = () => fetch(`api/notes/${a.note_id}/restore`, { ...req, method: 'POST' }).then(() => this.reloadActions());
+    } else {
+      btn.textContent = 'undo complete';
+      btn.onclick = () => fetch(`api/notes/${a.note_id}/uncomplete`, { ...req, method: 'POST' }).then(() => this.reloadActions());
+    }
+    undoTd.appendChild(btn);
+    tr.appendChild(undoTd);
+    rows.appendChild(tr);
+  });
 };
 
 if (typeof window !== 'undefined') {

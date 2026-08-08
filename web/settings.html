@@ -6,7 +6,7 @@
   <title>Settings — Manuscript Studio</title>
   <link rel="stylesheet" href="css/book.css?v=157">
   <link rel="stylesheet" href="css/chrome.css?v=3">
-  <link rel="stylesheet" href="css/home.css?v=16">
+  <link rel="stylesheet" href="css/home.css?v=17">
 </head>
 <body class="home-page">
 
@@ -34,6 +34,16 @@
   <main class="home-main" id="settings-root">
     <section class="home-section">
       <div class="home-section-head">
+        <h2>Non-task types</h2>
+      </div>
+      <div class="settings-section">
+        <div id="nt-chips" class="tt-chips"></div>
+        <input id="nt-input" type="text" placeholder="new-type another-type …" autocomplete="off">
+        <div id="nt-status" class="settings-hint"></div>
+      </div>
+    </section>
+    <section class="home-section">
+      <div class="home-section-head">
         <h2>Task types</h2>
       </div>
       <div class="settings-section">
@@ -44,12 +54,11 @@
     </section>
     <section class="home-section">
       <div class="home-section-head">
-        <h2>Non-task types</h2>
+        <h2>Note actions</h2>
       </div>
-      <div class="settings-section">
-        <div id="nt-chips" class="tt-chips"></div>
-        <input id="nt-input" type="text" placeholder="new-type another-type …" autocomplete="off">
-        <div id="nt-status" class="settings-hint"></div>
+      <div class="settings-section na-section">
+        <table class="na-table"><tbody id="na-rows"></tbody></table>
+        <div id="na-status" class="settings-hint"></div>
       </div>
     </section>
   </main>
@@ -66,6 +75,6 @@
       if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
     })();
   </script>
-  <script src="js/settings.js?v=3"></script>
+  <script src="js/settings.js?v=4"></script>
 </body>
 </html>
