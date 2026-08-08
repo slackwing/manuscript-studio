@@ -151,9 +151,9 @@ func (db *DB) CreateSketch(ctx context.Context, userID string, scratchpadID *int
 	// Every sketch carries ONE note (026), minted with it — blank, yellow,
 	// manuscript inherited from the host pad's link (a copy, not synced).
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO note (manuscript_id, user_id, color, priority, flagged, position, sketch_id)
+		INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
 		SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
-		       $2, 'yellow', 'none', false, 'a0', $3
+		       $2, 'yellow', 'none', 'a0', $3
 	`, scratchpadID, userID, sketchID); err != nil {
 		return nil, fmt.Errorf("create sketch note: %w", err)
 	}

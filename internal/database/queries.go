@@ -793,7 +793,7 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		       a.priority, a.task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
@@ -821,7 +821,9 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 			&a.Color,
 			&a.Body,
 			&a.Priority,
-			&a.Flagged,
+			&a.TaskType,
+			&a.Impact,
+			&a.Blocked,
 			&a.Position,
 			&a.CreatedAt,
 			&a.UpdatedAt,
@@ -926,7 +928,7 @@ func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersi
 func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		       a.priority, a.task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.user_id = $2
@@ -954,7 +956,9 @@ func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username strin
 			&a.Color,
 			&a.Body,
 			&a.Priority,
-			&a.Flagged,
+			&a.TaskType,
+			&a.Impact,
+			&a.Blocked,
 			&a.Position,
 			&a.CreatedAt,
 			&a.UpdatedAt,
@@ -1015,8 +1019,8 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 	}
 
 	query1 := `
-		INSERT INTO note (sentence_id, user_id, color, body, priority, flagged, position)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO note (sentence_id, user_id, color, body, priority, task_type, impact, blocked, position)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING note_id, created_at, updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
@@ -1025,7 +1029,9 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 		note.Color,
 		note.Body,
 		note.Priority,
-		note.Flagged,
+		note.TaskType,
+		note.Impact,
+		note.Blocked,
 		nextPosition,
 	).Scan(
 		&note.NoteID,
@@ -1070,7 +1076,7 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 	version.Color = note.Color
 	version.Body = note.Body
 	version.Priority = note.Priority
-	version.Flagged = note.Flagged
+	version.Flagged = false // note.flagged is gone (031); the version column is legacy
 	version.OriginSentenceID = note.SentenceID
 	version.OriginMigrationID = &migrationID
 	version.OriginCommitHash = commitHash
@@ -1108,11 +1114,11 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 	}
 
 	err = db.Pool.QueryRow(ctx, `
-		INSERT INTO note (user_id, color, body, priority, flagged, position, scratchpad_id, manuscript_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO note (user_id, color, body, priority, task_type, impact, blocked, position, scratchpad_id, manuscript_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING note_id, created_at, updated_at
 	`,
-		note.UserID, note.Color, note.Body, note.Priority, note.Flagged, nextPosition, scratchpadID, note.ManuscriptID,
+		note.UserID, note.Color, note.Body, note.Priority, note.TaskType, note.Impact, note.Blocked, nextPosition, scratchpadID, note.ManuscriptID,
 	).Scan(&note.NoteID, &note.CreatedAt, &note.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create scratchpad note: %w", err)
@@ -1128,16 +1134,18 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 // sketch notes (neither has a sentence origin, so no note_version rows).
 // The guard makes sentence notes unreachable here: they must go through
 // UpdateNote's versioned path.
-func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *string, body *string, priority *string, flagged *bool) error {
+func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *string, body *string, priority *string, taskType *string, impact *string, blocked *bool) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE note SET
-			color    = COALESCE($2, color),
-			body     = CASE WHEN $3::boolean THEN $4 ELSE body END,
-			priority = COALESCE($5, priority),
-			flagged  = COALESCE($6, flagged),
+			color     = COALESCE($2, color),
+			body      = CASE WHEN $3::boolean THEN $4 ELSE body END,
+			priority  = COALESCE($5, priority),
+			task_type = COALESCE($6, task_type),
+			impact    = COALESCE($7, impact),
+			blocked   = COALESCE($8, blocked),
 			updated_at = NOW()
 		WHERE note_id = $1 AND (scratchpad_id IS NOT NULL OR sketch_id IS NOT NULL) AND deleted_at IS NULL
-	`, noteID, color, body != nil, body, priority, flagged)
+	`, noteID, color, body != nil, body, priority, taskType, impact, blocked)
 	return err
 }
 
@@ -1151,8 +1159,8 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 
 	query1 := `
 		UPDATE note
-		SET sentence_id = $1, color = $2, body = $3, priority = $4, flagged = $5, updated_at = NOW()
-		WHERE note_id = $6
+		SET sentence_id = $1, color = $2, body = $3, priority = $4, task_type = $5, impact = $6, blocked = $7, updated_at = NOW()
+		WHERE note_id = $8
 		RETURNING updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
@@ -1160,7 +1168,9 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 		note.Color,
 		note.Body,
 		note.Priority,
-		note.Flagged,
+		note.TaskType,
+		note.Impact,
+		note.Blocked,
 		noteID,
 	).Scan(&note.UpdatedAt)
 	if err != nil {
@@ -1189,7 +1199,7 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 	version.Color = note.Color
 	version.Body = note.Body
 	version.Priority = note.Priority
-	version.Flagged = note.Flagged
+	version.Flagged = false // note.flagged is gone (031); the version column is legacy
 	version.OriginSentenceID = originSentenceID
 	version.OriginMigrationID = originMigrationID
 	version.OriginCommitHash = originCommitHash
@@ -1401,7 +1411,7 @@ func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.Not
 func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
-		       a.priority, a.flagged, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		       a.priority, a.task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.deleted_at IS NULL
@@ -1424,7 +1434,9 @@ func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) 
 			&a.Color,
 			&a.Body,
 			&a.Priority,
-			&a.Flagged,
+			&a.TaskType,
+			&a.Impact,
+			&a.Blocked,
 			&a.Position,
 			&a.CreatedAt,
 			&a.UpdatedAt,
@@ -1736,7 +1748,9 @@ type HomeNote struct {
 	Color           string
 	Body            *string
 	Priority        string
-	Flagged         bool
+	TaskType        string
+	Impact          string
+	Blocked         bool
 	UpdatedAt       time.Time
 	ManuscriptID    *int
 	ScratchpadID    *int
@@ -1754,7 +1768,7 @@ type HomeNote struct {
 // sentence notes show the manuscript's display name (falls back to name).
 func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) ([]HomeNote, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT n.note_id, n.color, n.body, n.priority, n.flagged, n.updated_at,
+		SELECT n.note_id, n.color, n.body, n.priority, n.task_type, n.impact, n.blocked, n.updated_at,
 		       n.manuscript_id,
 		       -- A sketch note has no pad of its own — its card deep-links
 		       -- to the sketch's HOME pad (earliest variation's scratchpad).
@@ -1798,7 +1812,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 	for rows.Next() {
 		var h HomeNote
 		var tagsJSON []byte
-		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.Flagged, &h.UpdatedAt,
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
@@ -1813,7 +1827,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {
 	query := `
 		SELECT note_id, COALESCE(sentence_id, ''), manuscript_id, scratchpad_id, user_id, color, body,
-		       priority, flagged, position, created_at, updated_at, deleted_at, completed_at, sketch_id
+		       priority, task_type, impact, blocked, position, created_at, updated_at, deleted_at, completed_at, sketch_id
 		FROM note
 		WHERE note_id = $1
 		  AND deleted_at IS NULL
@@ -1830,7 +1844,9 @@ func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error)
 		&a.Color,
 		&a.Body,
 		&a.Priority,
-		&a.Flagged,
+		&a.TaskType,
+		&a.Impact,
+		&a.Blocked,
 		&a.Position,
 		&a.CreatedAt,
 		&a.UpdatedAt,
@@ -1860,4 +1876,59 @@ func (db *DB) SetNoteManuscript(ctx context.Context, noteID int, manuscriptID *i
 		return fmt.Errorf("failed to set note manuscript: %w", err)
 	}
 	return nil
+}
+
+// ---- Task types (031/032) ----
+
+// TaskType is one first-dimension option. 'gray' color = no behavior; a
+// real note color means "picking this type recolors the note".
+type TaskType struct {
+	Name    string `json:"name"`
+	BuiltIn bool   `json:"built_in"`
+	Color   string `json:"color"`
+}
+
+// ListTaskTypes: 'reminder' first (the default), then built-ins, then
+// customs, alphabetical within each band.
+func (db *DB) ListTaskTypes(ctx context.Context) ([]TaskType, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT name, built_in, color FROM task_type
+		ORDER BY (name = 'reminder') DESC, built_in DESC, name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []TaskType{}
+	for rows.Next() {
+		var t TaskType
+		if err := rows.Scan(&t.Name, &t.BuiltIn, &t.Color); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// AddTaskTypes inserts custom types; names that already exist are skipped
+// (idempotent — the settings field re-submits the whole list).
+func (db *DB) AddTaskTypes(ctx context.Context, names []string) error {
+	for _, n := range names {
+		if _, err := db.Pool.Exec(ctx, `
+			INSERT INTO task_type (name, built_in) VALUES ($1, false)
+			ON CONFLICT (name) DO NOTHING
+		`, n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetTaskTypeColor updates one type's color; false = no such type.
+func (db *DB) SetTaskTypeColor(ctx context.Context, name, color string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `UPDATE task_type SET color = $2 WHERE name = $1`, name, color)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }

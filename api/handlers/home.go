@@ -51,7 +51,9 @@ type homeNote struct {
 	Color        string    `json:"color"`
 	Body         string    `json:"body"`
 	Priority     string    `json:"priority"`
-	Flagged      bool      `json:"flagged"`
+	TaskType     string    `json:"task_type"`
+	Impact       string    `json:"impact"`
+	Blocked      bool      `json:"blocked"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	Context      string    `json:"context"`               // display label
 	ManuscriptID *int      `json:"manuscript_id,omitempty"`
@@ -165,7 +167,8 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	if rows, err := h.DB.ListNotesForHome(ctx, session.Username, 60); err == nil {
 		for _, n := range rows {
 			hn := homeNote{
-				NoteID: n.NoteID, Color: n.Color, Priority: n.Priority, Flagged: n.Flagged,
+				NoteID: n.NoteID, Color: n.Color, Priority: n.Priority,
+				TaskType: n.TaskType, Impact: n.Impact, Blocked: n.Blocked,
 				UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
 				SentenceID: n.SentenceID, Tags: n.Tags,
 			}

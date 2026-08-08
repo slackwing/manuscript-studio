@@ -21,7 +21,7 @@ function psql(sql) {
 
   // Seed a scratchpad + a scratchpad note directly (independent of the editor).
   const padId = psql(`INSERT INTO scratchpad (user_id, title, doc, schema_version) VALUES ('test','My Pad', json_build_object('type','doc','content', json_build_array())::jsonb, 1) RETURNING scratchpad_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
-  psql(`INSERT INTO note (user_id, color, body, priority, flagged, position, scratchpad_id) VALUES ('test','orange','A landing-grid note.','P1',true,'a0',${padId})`);
+  psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, scratchpad_id) VALUES ('test','orange','A landing-grid note.','should','write','a0',${padId})`);
 
   await page.goto(HOME_URL);
   await page.waitForSelector('.home-section');

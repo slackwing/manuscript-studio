@@ -29,7 +29,6 @@ const { loginAsTestUser } = require('./test-utils');
         color: 'yellow',
         note: 'Test note',
         priority: 'none',
-        flagged: false,
         tags: []
       };
 

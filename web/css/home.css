@@ -259,3 +259,17 @@ body.home-page {
 .sticky-note-card .flag-chip svg { width: 15px; height: 15px; }
 .sticky-note-card .tags-list { gap: 4px; align-items: center; }
 .sticky-note-card .priority-flag-chips { gap: 4px; }
+
+/* ---- Settings page (task types) ---- */
+#settings-root { max-width: 720px; margin: 80px auto 40px; padding: 0 20px; font-family: "Helvetica", sans-serif; }
+#settings-root h2 { font-family: Georgia, serif; font-weight: 400; }
+.settings-section { background: #fff; border: 1px solid #e3e0d8; border-radius: 10px; padding: 18px 22px; margin-top: 18px; }
+.settings-section h3 { margin: 0 0 6px; font-size: 15px; }
+.settings-hint { font-size: 12px; color: #8a8378; line-height: 1.5; }
+.tt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.tt-chip { display: inline-flex; align-items: center; gap: 7px; }
+.tt-chip.tt-builtin { background: #eceae4; }
+#tt-input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; }
+#tt-input:focus { outline: none; border-color: #999; }
+#settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
+#settings-link:hover { color: #57503f; }

@@ -1374,21 +1374,59 @@ p.section-break {
 
 .priority-flag-chips {
   display: flex;
-  /* SEVEN fixed, equidistant slots — always spaced as if all seven
-     buttons are present, even when fewer show: the percentage gap IS the
-     7-across pitch (7 × 26px buttons spread edge to edge), so the
-     unprioritized row fills the grid exactly, and the collapsed task row
-     (Pn · flag · ★ · trash) occupies the leftmost slots at the SAME
-     pitch with the ✓ pinned on the rightmost slot. flex:none stops
-     silent flex-shrink. */
+  /* EIGHT fixed, equidistant slots: the percentage gap IS the 8-across
+     pitch (8 × 26px circles spread edge to edge). The linked-manuscript
+     chip spans slots 1-4 (.note-ms-slot, empty when unlinked), then
+     ⊘blocked(5) ★(6) ✓(7) — tasks only — and the trash ALWAYS holds
+     slot 8 (right-pinned). flex:none stops silent flex-shrink. */
   justify-content: flex-start;
-  column-gap: calc((100% - 182px) / 6);
+  column-gap: calc((100% - 208px) / 7);
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;
 }
 
 .priority-flag-chips > * { flex: none; }
+
+.blocked-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px dashed #ccc;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.blocked-chip:hover { background: #f6e7e4; border-color: #b04038; color: #b04038; }
+.blocked-chip.active {
+  background: #b04038;
+  border-color: #b04038;
+  color: #fff;
+}
+
+/* The bottom row's manuscript span: exactly FOUR slots wide (4 circles +
+   3 gaps) whether or not a chip lives in it, so blocked/star/check/trash
+   keep their slots. */
+.note-ms-slot {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(104px + 3 * ((100% - 208px) / 7));
+  min-width: 0;
+  flex: none;
+}
+.note-ms-slot .ms-chip { max-width: 100%; }
+
+/* Dimension dropdown chips (task type / priority / impact) — tag-chip
+   geometry, interactive. */
+.dim-chip { cursor: pointer; }
+.dim-chip:hover { background: #d4d4d4; }
+.dim-pop .note-linkpop-list button.dim-current { font-weight: 700; }
 
 .priority-chip {
   display: inline-flex;
@@ -1483,7 +1521,7 @@ p.section-break {
   fill: #dc3545;
 }
 
-/* Trash icon in priority container */
+/* Trash icon — ALWAYS slot 8, right-pinned. */
 .note-trash {
   display: inline-flex;
   align-items: center;
@@ -1491,6 +1529,7 @@ p.section-break {
   width: 26px;
   height: 26px;
   box-sizing: border-box;
+  margin-left: auto;
   cursor: pointer;
   transition: all 0.2s;
   background: transparent;
@@ -1574,6 +1613,22 @@ p.section-break {
   color: #fff;
   animation: pulse 0.3s ease-in-out;
 }
+/* Generic color dot (settings page task-type colors). */
+.color-dot-solo {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.color-dot-solo .color-dot-current {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  box-sizing: border-box;
+}
+
 /* Typed point value shown IN PLACE of the star while armed — small enough
    that two digits fit the 28px circle. */
 .points-star .points-entry {

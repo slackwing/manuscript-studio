@@ -93,7 +93,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     // Test 5: Add second tag
     await addTagViaUI('second-tag');
     await refreshSentence(sentenceId);
-    const tagCount = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag)').count();
+    const tagCount = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag):not(.dim-chip)').count();
     if (tagCount === 2) {
       console.log('✓ Multiple tags supported');
     } else {
@@ -104,7 +104,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     // Test 6: Remove "test-tag" via the × button
     await page.locator('.sticky-note:not(.uncreated-note) .tag-chip[data-tag-name="test-tag"] .tag-chip-remove').first().click();
     await page.waitForTimeout(800);
-    const remainingTags = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag)').count();
+    const remainingTags = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag):not(.dim-chip)').count();
     if (remainingTags === 1) {
       console.log('✓ Tag removed successfully');
     } else {

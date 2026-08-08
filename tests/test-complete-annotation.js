@@ -46,29 +46,19 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
 
     const rainbowBarsBefore = await page.locator('.rainbow-bar').count();
 
-    // Only TASKS (notes with a priority) can be completed: no priority, no
-    // checkmark.
+    // Only TASKS (task_type ≠ reminder) can be completed: reminders show
+    // no checkmark.
     const check = page.locator('.sticky-note:not(.uncreated-note) .complete-check');
     const hiddenBefore = await check.evaluate(el => getComputedStyle(el).display === 'none');
-    assert(hiddenBefore, 'Complete button hidden while the note has no priority');
-    const chipVis = () => page.evaluate(() => {
-      const vis = {};
-      document.querySelectorAll('.sticky-note:not(.uncreated-note) .priority-chip')
-        .forEach(c => { vis[c.dataset.priority] = getComputedStyle(c).display !== 'none'; });
-      return vis;
-    });
-    const before = await chipVis();
-    assert(before.P0 && before.P1 && before.P2 && before.P3 && before.blocked,
-      'All five priority chips (incl. P3 + blocked) show while unprioritized');
-    await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').click();
+    assert(hiddenBefore, 'Complete button hidden while the note is a reminder');
+    await page.locator('.sticky-note:not(.uncreated-note) .dim-chip.dim-type').click();
+    await page.waitForSelector('.dim-pop button[data-v="write"]');
+    await page.locator('.dim-pop button[data-v="write"]').click();
     await page.waitForFunction(() => {
       const el = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check');
       return el && getComputedStyle(el).display !== 'none';
     });
-    assert(true, 'Assigning a priority reveals the complete button');
-    const afterSel = await chipVis();
-    assert(afterSel.P0 && !afterSel.P1 && !afterSel.P2 && !afterSel.P3,
-      'Selecting a priority collapses the row to just that level');
+    assert(true, 'Picking a non-reminder task type reveals the complete button');
     const noteId = await page.locator('.sticky-note:not(.uncreated-note)').first()
       .evaluate(el => el.dataset.noteId || el.dataset.annotationId);
 
@@ -78,18 +68,16 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const starVisible = await star.evaluate(el => getComputedStyle(el).display !== 'none');
     assert(starVisible, 'Star appears for tasks alongside the checkmark');
     const layout = await page.evaluate(() => {
-      const rowEl = document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips');
-      const row = rowEl.getBoundingClientRect();
-      const fl = document.querySelector('.sticky-note:not(.uncreated-note) .flag-chip').getBoundingClientRect();
+      const row = document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips').getBoundingClientRect();
       const st = document.querySelector('.sticky-note:not(.uncreated-note) .points-star').getBoundingClientRect();
       const ck = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
-      // The 7-across pitch: buttons stay on this grid however few show.
-      const pitch = 26 + (row.width - 182) / 6;
-      return { starAfterFlag: st.left - fl.left, pitch, checkRightGap: Math.round(row.right - ck.right) };
+      const tr = document.querySelector('.sticky-note:not(.uncreated-note) .note-trash').getBoundingClientRect();
+      const pitch = 26 + (row.width - 208) / 7;
+      return { checkAfterStar: ck.left - st.left, pitch, trashRightGap: Math.round(row.right - tr.right) };
     });
-    assert(Math.abs(layout.starAfterFlag - layout.pitch) <= 1,
-      `Star sits one 7-grid slot after the flag (${layout.starAfterFlag.toFixed(1)} vs pitch ${layout.pitch.toFixed(1)})`);
-    assert(Math.abs(layout.checkRightGap) <= 1, `Check pinned to the far right (gap ${layout.checkRightGap})`);
+    assert(Math.abs(layout.checkAfterStar - layout.pitch) <= 1,
+      `Check sits one 8-grid slot after the star (${layout.checkAfterStar.toFixed(1)} vs pitch ${layout.pitch.toFixed(1)})`);
+    assert(Math.abs(layout.trashRightGap) <= 1, `Trash pinned to the far right (gap ${layout.trashRightGap})`);
 
     await star.click();
     const scoring = await star.evaluate(el => el.classList.contains('scoring'));
@@ -122,27 +110,17 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const evs = psq(`SELECT string_agg(points::text, ',' ORDER BY point_event_id) FROM point_event WHERE note_id=${parseInt(noteId, 10)}`);
     assert(evs === '15,7', `Second scoring appended (got "${evs}")`);
 
-    // BLOCKED is a fifth priority-like state: mutually exclusive, collapses
-    // the row, and makes the note a task (star + check show).
-    await p0Toggle(page);
-    async function p0Toggle(pg) {
-      await pg.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="P0"]').click();
-      await pg.waitForTimeout(300);
-    }
-    await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="blocked"]').click();
+    // BLOCKED is an independent flag now — toggling it does not affect
+    // task-ness or the other affordances.
+    await page.locator('.sticky-note:not(.uncreated-note) .blocked-chip').click();
     await page.waitForTimeout(300);
-    const blockedVis = await chipVis();
-    assert(blockedVis.blocked && !blockedVis.P0 && !blockedVis.P1,
-      'Selecting blocked collapses the row to just blocked');
-    const taskWhileBlocked = await page.evaluate(() => {
+    const stillTask = await page.evaluate(() => {
       const q = (sel) => getComputedStyle(document.querySelector(`.sticky-note:not(.uncreated-note) ${sel}`)).display !== 'none';
       return q('.complete-check') && q('.points-star');
     });
-    assert(taskWhileBlocked, 'Blocked notes are tasks (check + star show)');
-    // Back to P0 for the completion below.
-    await page.locator('.sticky-note:not(.uncreated-note) .priority-chip[data-priority="blocked"]').click();
+    assert(stillTask, 'Blocked is independent — star + check stay');
+    await page.locator('.sticky-note:not(.uncreated-note) .blocked-chip').click();
     await page.waitForTimeout(300);
-    await p0Toggle(page);
 
     // Completion is its own act: plain two-click green checkmark.
     await check.click();

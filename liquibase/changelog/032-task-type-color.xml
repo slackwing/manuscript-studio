@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- A task type can carry a note color: 'gray' (default) = no special
+         behavior; any real note color means "picking this type recolors the
+         note to it" (one-time, on selection — last pick wins, no
+         hierarchy). Managed on the settings page. -->
+    <changeSet id="032-task-type-color" author="claude">
+        <sql>
+            ALTER TABLE task_type ADD COLUMN color VARCHAR(20) NOT NULL DEFAULT 'gray'
+                CHECK (color IN ('gray','yellow','green','blue','purple','red','orange'));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

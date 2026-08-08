@@ -35,6 +35,7 @@ type Server struct {
 	suggestionHandlers *handlers.SuggestionHandlers
 	scratchpadHandlers *handlers.ScratchpadHandlers
 	variationHandlers    *handlers.VariationHandlers
+	taskTypeHandlers     *handlers.TaskTypeHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
@@ -77,6 +78,10 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
+		},
+		taskTypeHandlers: &handlers.TaskTypeHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
 		},
 		homeHandlers: &handlers.HomeHandlers{
 			DB:           dbWrapper,
@@ -274,6 +279,11 @@ func (s *Server) setupRouter() {
 			r.Delete("/notes/{note_id}", s.noteHandlers.HandleDeleteNote)
 			r.Post("/notes/{note_id}/complete", s.noteHandlers.HandleCompleteNote)
 			r.Post("/notes/{note_id}/points", s.noteHandlers.HandleScoreNotePoints)
+
+			// Task types (031/032): the settings page's dimension list.
+			r.Get("/task-types", s.taskTypeHandlers.HandleList)
+			r.Post("/task-types", s.taskTypeHandlers.HandleCreate)
+			r.Put("/task-types/{name}/color", s.taskTypeHandlers.HandleSetColor)
 
 			r.Get("/notes/{note_id}/tags", s.noteHandlers.HandleGetTagsForNote)
 			r.Post("/notes/{note_id}/tags", s.noteHandlers.HandleAddTagToNote)

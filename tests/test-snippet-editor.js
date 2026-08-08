@@ -148,9 +148,12 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   }
   check('typed note body persists to the DB', /Sketch note body from the square/.test(savedBody), savedBody);
 
-  // Make it a task, complete it → the square turns into the green check.
-  await page.locator('.sn-note-float .priority-chip[data-priority="P1"]').click();
-  await page.waitForTimeout(300);
+  // Make it a task (type dropdown), complete it → the square turns into
+  // the green check.
+  await page.locator('.sn-note-float .dim-chip.dim-type').click();
+  await page.waitForSelector('.dim-pop button[data-v="edit"]');
+  await page.locator('.dim-pop button[data-v="edit"]').click();
+  await page.waitForTimeout(400);
   const fcheck = page.locator('.sn-note-float .complete-check');
   await fcheck.click();
   await page.waitForTimeout(150);

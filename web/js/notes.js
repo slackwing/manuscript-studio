@@ -337,8 +337,7 @@ const WriteSysNotes = {
       onCommit: () => this.commitPendingNote(note.note_id),
       onSaveText: (text) => this.saveNoteText(note.note_id, text),
       onColor: (color) => this.handleColorSelectionForNote(note.note_id, color),
-      onPriority: (p) => this.handlePriorityClick(note, p, noteEl),
-      onFlag: () => this.handleFlagClick(note, noteEl),
+      onDims: (patch) => this.updateNoteDims(note, patch, noteEl),
       onDelete: () => this.deleteNote(note.note_id),
       onComplete: () => this.completeNote(note.note_id),
       onScorePoints: (points) => this.scorePoints(note.note_id, points),
@@ -833,63 +832,23 @@ const WriteSysNotes = {
   },
 
   // Clicking the active priority toggles it off.
-  async handlePriorityClick(note, priority, noteEl) {
-    const newPriority = (note.priority === priority) ? 'none' : priority;
-
+  // One PUT for any dimension change (task_type / priority / impact /
+  // blocked) — the widget hands us a patch; we persist + refresh the UI.
+  async updateNoteDims(note, patch, noteEl) {
+    Object.assign(note, patch);
     try {
       const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${note.note_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sentence_id: this.currentSentenceId,
-          color: note.color,
-          body: note.body || null,
-          priority: newPriority,
-          flagged: note.flagged || false
-        })
+        body: JSON.stringify(patch),
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      note.priority = newPriority;
-      this.updatePriorityFlagUIForNote(noteEl, note);
-
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (error) {
-      console.error('Failed to update priority:', error);
-      alert('Failed to update priority');
+      console.error('Failed to update note dimensions:', error);
     }
+    this.updatePriorityFlagUIForNote(noteEl, note);
   },
 
-  async handleFlagClick(note, noteEl) {
-    const newFlagged = !note.flagged;
-
-    try {
-      const response = await authenticatedFetch(`${this.apiBaseUrl}/notes/${note.note_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sentence_id: this.currentSentenceId,
-          color: note.color,
-          body: note.body || null,
-          priority: note.priority || 'none',
-          flagged: newFlagged
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      note.flagged = newFlagged;
-      this.updatePriorityFlagUIForNote(noteEl, note);
-
-    } catch (error) {
-      console.error('Failed to update flag:', error);
-      alert('Failed to update flag');
-    }
-  },
 
   // Delegates to the shared widget's updater — one place decides chip
   // active states AND whether the complete checkmark shows (tasks only,

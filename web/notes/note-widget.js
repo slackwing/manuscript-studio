@@ -13,7 +13,8 @@
  *
  *   note      — { note_id, color, body, priority, flagged, tags:[{tag_id,tag_name}],
  *                 manuscript_id, manuscript_name }
- *   handlers  — { onSaveText(text), onColor(color), onPriority(p), onFlag(),
+ *   handlers  — { onSaveText(text), onColor(color), onDims(patch) — patch is any of
+ *                 {task_type}/{priority}/{impact}/{blocked},
  *                 onDelete(), onComplete(), onScorePoints(points), onAddTag(name), onRemoveTag(tagId),
  *                 onLinkManuscript(id), onUnlinkManuscript(),
  *                 onFocus(), onBlur() }  (all optional)
@@ -37,6 +38,63 @@
   // (js/manuscript-chip.js) — these names stay exported for back-compat.
   const listManuscripts = () => window.WriteSysManuscriptChip.listManuscripts();
   const openManuscriptPicker = (anchorEl, onPick) => window.WriteSysManuscriptChip.openPicker(anchorEl, onPick);
+
+  // Task types from the settings page (built-ins + customs, each with a
+  // color: gray = inert, a real color recolors the note when picked).
+  let taskTypesPromise = null;
+  function listTaskTypes() {
+    if (!taskTypesPromise) {
+      taskTypesPromise = fetch('api/task-types', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('task-types ' + r.status))))
+        .then((d) => d.task_types || []);
+      taskTypesPromise.catch(() => { taskTypesPromise = null; });
+    }
+    return taskTypesPromise;
+  }
+
+  const PRIORITIES = ['can', 'would', 'should', 'must'];
+  const IMPACTS = ['n/a', 'sentence', 'chapter', 'novel', 'recurring'];
+
+  // A dropdown chip: looks like a tag chip, opens a small option menu.
+  function buildDimChip({ cls, value, title, loadOptions, onPick }) {
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip dim-chip ' + cls;
+    chip.title = title;
+    const label = document.createElement('span');
+    label.textContent = value;
+    chip.appendChild(label);
+    chip.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.note-linkpop').forEach((el) => el.remove());
+      const pop = document.createElement('div');
+      pop.className = 'note-linkpop dim-pop';
+      pop.innerHTML = '<div class="note-linkpop-list"><span class="note-linkpop-empty">Loading…</span></div>';
+      document.body.appendChild(pop);
+      const r = chip.getBoundingClientRect();
+      pop.style.position = 'absolute';
+      pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+      pop.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 200)) + 'px';
+      const close = () => { document.removeEventListener('mousedown', outside, true); pop.remove(); };
+      const outside = (ev) => { if (!pop.contains(ev.target)) close(); };
+      setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
+      let options;
+      try { options = await loadOptions(); } catch (err) { options = []; }
+      if (!pop.isConnected) return;
+      const list = pop.querySelector('.note-linkpop-list');
+      list.innerHTML = options.length ? options.map((o) =>
+        `<button type="button" data-v="${esc(o.value)}"${o.value === value ? ' class="dim-current"' : ''}></button>`).join('')
+        : '<span class="note-linkpop-empty">No options</span>';
+      const btns = list.querySelectorAll('button[data-v]');
+      options.forEach((o, i) => { btns[i].textContent = o.label; });
+      list.addEventListener('click', (ev) => {
+        const b = ev.target.closest('button[data-v]');
+        if (!b) return;
+        close();
+        onPick(b.dataset.v);
+      });
+    });
+    return chip;
+  }
 
   function buildPalette(note, handlers) {
     const palette = document.createElement('div');
@@ -91,6 +149,80 @@
     // Derived "sketch" chip (026): present iff the note belongs to a
     // sketch — unremovable BY CONSTRUCTION (no tag row, no ×), first in
     // the row. Wears the plain tag skin.
+    // --- Dimension chips: task TYPE first; priority + impact appear right
+    //     after it once the type is non-reminder. Dropdowns when editable,
+    //     static chips on read-only cards (defaults hidden there). ---
+    const task = isTask(note);
+    if (readOnly) {
+      if (task) {
+        const t = document.createElement('div');
+        t.className = 'tag-chip dim-chip dim-type';
+        t.textContent = note.task_type;
+        list.appendChild(t);
+        if (note.priority && note.priority !== 'none') {
+          const pr = document.createElement('div');
+          pr.className = 'tag-chip dim-chip dim-priority';
+          pr.textContent = note.priority;
+          list.appendChild(pr);
+        }
+        if (note.impact && note.impact !== 'n/a') {
+          const im = document.createElement('div');
+          im.className = 'tag-chip dim-chip dim-impact';
+          im.textContent = note.impact;
+          list.appendChild(im);
+        }
+        if (note.blocked) {
+          const bl = document.createElement('div');
+          bl.className = 'tag-chip dim-chip dim-blocked-ro';
+          bl.textContent = '⊘ blocked';
+          list.appendChild(bl);
+        }
+      }
+    } else if (handlers.onDims) {
+      list.appendChild(buildDimChip({
+        cls: 'dim-type',
+        value: note.task_type || 'reminder',
+        title: 'Task type — reminder means "no action, just reread one day"; anything else makes this a TASK',
+        loadOptions: async () => (await listTaskTypes()).map((t) => ({ value: t.name, label: t.name + (t.color && t.color !== 'gray' ? ' ●' : '') })),
+        onPick: async (v) => {
+          note.task_type = v;
+          if (v !== 'reminder' && (!note.priority || note.priority === 'none')) note.priority = 'can';
+          if (!note.impact) note.impact = 'n/a';
+          await handlers.onDims({ task_type: v, priority: note.priority, impact: note.impact });
+          // Type color: gray = inert; a real color recolors the note.
+          try {
+            const t = (await listTaskTypes()).find((x) => x.name === v);
+            if (t && t.color && t.color !== 'gray' && handlers.onColor) handlers.onColor(t.color);
+          } catch (e) { /* color nicety only */ }
+          renderTags(noteEl, note, handlers, opts);
+          updateDims(noteEl, note);
+        },
+      }));
+      if (task) {
+        list.appendChild(buildDimChip({
+          cls: 'dim-priority',
+          value: note.priority && note.priority !== 'none' ? note.priority : 'can',
+          title: 'Priority: can < would < should < must',
+          loadOptions: async () => PRIORITIES.map((v) => ({ value: v, label: v })),
+          onPick: async (v) => {
+            note.priority = v;
+            await handlers.onDims({ priority: v });
+            renderTags(noteEl, note, handlers, opts);
+          },
+        }));
+        list.appendChild(buildDimChip({
+          cls: 'dim-impact',
+          value: note.impact || 'n/a',
+          title: 'Impact: what finishing this task would move',
+          loadOptions: async () => IMPACTS.map((v) => ({ value: v, label: v })),
+          onPick: async (v) => {
+            note.impact = v;
+            await handlers.onDims({ impact: v });
+            renderTags(noteEl, note, handlers, opts);
+          },
+        }));
+      }
+    }
     if (note.sketch_id) {
       const sc = document.createElement('div');
       sc.className = 'tag-chip sketch-chip';
@@ -122,8 +254,9 @@
       add.textContent = '+ tag';
       list.appendChild(add);
     }
-    // No manuscript chip on read-only cards — the context line carries it.
-    if (!readOnly) appendManuscriptChip(noteEl, list, note, handlers);
+    // The manuscript chip lives in the BOTTOM row's 4-slot span now (not
+    // among the tags); read-only cards carry context in their footer line.
+    if (!readOnly) appendManuscriptChip(noteEl, note, handlers);
   }
 
   // The manuscript-link chip — always the LAST chip, marked with the link glyph.
@@ -142,7 +275,10 @@
   //     float wires unlink and shows the ×.
   //   - The unlinked-but-linkable state (bare glyph → picker) shows only where
   //     onLinkManuscript is wired.
-  function appendManuscriptChip(noteEl, list, note, handlers) {
+  function appendManuscriptChip(noteEl, note, handlers) {
+    const slot = noteEl.querySelector('.note-ms-slot');
+    if (!slot) return;
+    slot.innerHTML = '';
     // Location flag: the manuscript margin sets showManuscriptChip:false — a
     // sentence note is trivially in its manuscript, so the chip is noise there.
     if (handlers.showManuscriptChip === false) return;
@@ -161,32 +297,31 @@
       // Context hooks only (tests + card-compact CSS) — skin comes from .ms-chip.
       extraClass: 'tag-chip manuscript-chip',
     });
-    if (chip) list.appendChild(chip);
+    if (chip) slot.appendChild(chip);
   }
 
-  function updatePriorityFlagUI(noteEl, note) {
-    const hasPriority = !!(note.priority && note.priority !== 'none');
-    // Selecting a priority COLLAPSES the P row to just the chosen level (the
-    // row reads Pn · flag · trash · ✓); clicking it again toggles back to
-    // 'none' and the full P0–P3 palette returns. Buttons keep fixed slot
-    // positions from the left (flex-start + fixed gap), so showing or
-    // hiding any of them never shifts the others.
-    noteEl.querySelectorAll('.priority-chip').forEach((chip) => {
-      const active = chip.dataset.priority === note.priority;
-      chip.classList.toggle('active', active);
-      chip.style.display = (!hasPriority || active) ? '' : 'none';
-    });
-    const flag = noteEl.querySelector('.flag-chip');
-    if (flag) flag.classList.toggle('active', !!note.flagged);
-    // TERMINOLOGY: a note with a priority (P0–P3) is a TASK. Only tasks can
-    // be completed (checkmark, green) or scored (star, yellow) — both
-    // affordances exist only for them, and they're INDEPENDENT: a task
-    // accumulates point events while open; completing it is its own act.
-    const check = noteEl.querySelector('.complete-check');
-    if (check) check.style.display = hasPriority ? '' : 'none';
-    const star = noteEl.querySelector('.points-star');
-    if (star) star.style.display = hasPriority ? '' : 'none';
+  // A note is a TASK iff its task TYPE is anything but 'reminder' (the
+  // default: "no action — just a note to reread one day"). Task-ness
+  // unlocks priority/impact (dropdown chips in the tag row), the blocked
+  // flag, points, and completion.
+  function isTask(note) {
+    return !!(note.task_type && note.task_type !== 'reminder');
   }
+
+  function updateDims(noteEl, note) {
+    const task = isTask(note);
+    const blocked = noteEl.querySelector('.blocked-chip');
+    if (blocked) {
+      blocked.style.display = task ? '' : 'none';
+      blocked.classList.toggle('active', !!note.blocked);
+    }
+    const check = noteEl.querySelector('.complete-check');
+    if (check) check.style.display = task ? '' : 'none';
+    const star = noteEl.querySelector('.points-star');
+    if (star) star.style.display = task ? '' : 'none';
+  }
+  // Back-compat alias (older call sites).
+  const updatePriorityFlagUI = updateDims;
 
   function autoResize(ta) {
     ta.style.height = 'auto';
@@ -300,22 +435,24 @@
       : `<textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>`;
     // The action icons (trash/complete) and color circle are edit-only.
     const showDelete = opts.showDelete !== false;
-    // Row order: priorities/blocked · flag · STAR · trash · CHECK — the
-    // check is pinned to the far right (CSS margin-left:auto).
+    // Bottom row = EIGHT fixed slots: the linked-manuscript chip spans
+    // slots 1-4 (or empty space), then ⊘blocked(5) ★(6) ✓(7), and the
+    // trash ALWAYS holds slot 8 (right-pinned). Blocked/star/check only
+    // exist for TASKS (task_type ≠ reminder) — updateDims toggles them.
     const actionsHtml = readOnly ? '' : `
           ${showComplete ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
             </svg>
           </div>` : ''}
-          ${showDelete ? `<div class="note-trash" title="Delete note">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>` : ''}
           ${showComplete ? `<div class="complete-check" title="Mark complete">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>` : ''}
+          ${showDelete ? `<div class="note-trash" title="Delete note">
+            <svg width="14" height="14" viewBox="0 0 20 20">
+              <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </div>` : ''}`;
 
@@ -328,18 +465,9 @@
       </div>
       <div class="priority-flag-container" style="display: ${note.color ? 'flex' : 'none'}">
         <div class="priority-flag-chips">
-          <div class="priority-chip" data-priority="P0">P0</div>
-          <div class="priority-chip" data-priority="P1">P1</div>
-          <div class="priority-chip" data-priority="P2">P2</div>
-          <div class="priority-chip" data-priority="P3">P3</div>
-          <div class="priority-chip priority-blocked" data-priority="blocked" title="Blocked — a task with no further action right now">
+          <span class="note-ms-slot"></span>
+          <div class="blocked-chip" title="Blocked — no further action possible right now (independent of priority/impact)">
             <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5.5 5.5l9 9"/></svg>
-          </div>
-          <div class="flag-chip" data-flag="true" title="Flag">
-            <svg width="14" height="14" viewBox="0 0 20 20" class="flag-icon">
-              <path class="flag-staff" d="M4 1v18"/>
-              <path class="flag-shape" d="M4 3h10l-2.5 5 2.5 5H4"/>
-            </svg>
           </div>${actionsHtml}
         </div>
       </div>`;
@@ -353,18 +481,10 @@
       // events. Read-only notes carry only priority/flag/tags/context — nothing
       // interactive — so we return right after populating the preview.
       noteEl.querySelector('.note-readonly-body').textContent = note.body || '(empty note)';
-      // In read-only the priority/flag are indicators, not toggles: drop the
-      // inactive priority chips so only the set ones show (updatePriorityFlagUI
-      // added .active). A cleaner card: hide unset priority chips + unset flag.
-      noteEl.querySelectorAll('.priority-chip').forEach((c) => { if (!c.classList.contains('active')) c.remove(); });
-      const fl = noteEl.querySelector('.flag-chip');
-      if (fl && !fl.classList.contains('active')) fl.remove();
-      // If nothing remains in the priority/flag row, hide it.
-      const pfc = noteEl.querySelector('.priority-flag-chips');
-      if (pfc && !pfc.querySelector('.priority-chip, .flag-chip.active')) {
-        const cont = noteEl.querySelector('.priority-flag-container');
-        if (cont) cont.style.display = 'none';
-      }
+      // Cards carry the dimensions as static chips in the tag row (rendered
+      // above); the interactive bottom row is edit-only.
+      const cont = noteEl.querySelector('.priority-flag-container');
+      if (cont) cont.style.display = 'none';
       return noteEl;
     }
 
@@ -397,11 +517,13 @@
       if (normalized !== (note.body || null)) handlers.onSaveText && handlers.onSaveText(ta.value);
     });
 
-    noteEl.querySelectorAll('.priority-chip').forEach((chip) => {
-      chip.addEventListener('click', () => { commit(); handlers.onPriority && handlers.onPriority(chip.dataset.priority); });
+    const blockedChip = noteEl.querySelector('.blocked-chip');
+    if (blockedChip) blockedChip.addEventListener('click', async () => {
+      commit();
+      note.blocked = !note.blocked;
+      blockedChip.classList.toggle('active', note.blocked);
+      if (handlers.onDims) handlers.onDims({ blocked: note.blocked });
     });
-    const flag = noteEl.querySelector('.flag-chip');
-    if (flag) flag.addEventListener('click', () => { commit(); handlers.onFlag && handlers.onFlag(); });
 
     const tagsList = noteEl.querySelector('.tags-list');
     if (tagsList) {
@@ -430,7 +552,7 @@
     // Collapsed cards expand on click (anywhere not on an interactive control).
     if (opts.collapsed && opts.expandable !== false) {
       noteEl.addEventListener('click', (e) => {
-        if (e.target.closest('.note-trash, .complete-check, .priority-chip, .flag-chip, .color-circle, .tag-chip, .note-input')) return;
+        if (e.target.closest('.note-trash, .complete-check, .points-star, .blocked-chip, .dim-chip, .color-circle, .tag-chip, .note-input')) return;
         noteEl.classList.remove('sticky-note-collapsed');
         if (handlers.onExpand) handlers.onExpand();
       });
@@ -498,6 +620,43 @@
     return el;
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, renderTags, updatePriorityFlagUI, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  // Generic color dot + hover palette — the sticky-note color picker as a
+  // reusable component (settings page uses it for task-type colors).
+  function buildColorDot({ colors, current, onPick, title }) {
+    const wrap = document.createElement('span');
+    wrap.className = 'sticky-note-color-circle color-dot-solo';
+    if (title) wrap.title = title;
+    const dot = document.createElement('span');
+    dot.className = 'color-dot-current';
+    const paint = (c) => {
+      dot.style.background = c === 'gray' ? '#c9c4b8' : `var(--highlight-${c})`;
+    };
+    paint(current);
+    wrap.appendChild(dot);
+    const palette = document.createElement('div');
+    palette.className = 'sticky-note-palette';
+    (colors || COLORS).forEach((color) => {
+      const d = document.createElement('div');
+      d.className = 'color-circle';
+      d.style.backgroundColor = color === 'gray' ? '#c9c4b8' : `var(--highlight-${color})`;
+      d.title = color;
+      d.addEventListener('click', (e) => {
+        e.stopPropagation();
+        paint(color);
+        palette.classList.remove('visible');
+        onPick && onPick(color);
+      });
+      palette.appendChild(d);
+    });
+    wrap.appendChild(palette);
+    let hideTimer;
+    const show = () => { clearTimeout(hideTimer); palette.classList.add('visible'); };
+    const hideSoon = () => { hideTimer = setTimeout(() => palette.classList.remove('visible'), 200); };
+    wrap.addEventListener('mouseenter', show);
+    wrap.addEventListener('mouseleave', hideSoon);
+    return wrap;
+  }
+
+  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

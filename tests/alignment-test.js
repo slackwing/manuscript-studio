@@ -30,7 +30,6 @@ const { loginAsTestUser } = require('./test-utils');
           color: 'yellow',
           note: 'First note',
           priority: 'none',
-          flagged: false,
           tags: []
         },
         {
@@ -39,7 +38,6 @@ const { loginAsTestUser } = require('./test-utils');
           color: 'blue',
           note: 'Second note',
           priority: 'none',
-          flagged: false,
           tags: []
         }
       ];

@@ -219,7 +219,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     await page.waitForTimeout(500);
     await refreshSentence(sentenceId5);
 
-    const multiTagCount = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag)').count();
+    const multiTagCount = await page.locator('.sticky-note:not(.uncreated-note) .tag-chip:not(.new-tag):not(.dim-chip)').count();
     if (multiTagCount === 3) {
       console.log('✓ Multiple tags work\n');
     } else {

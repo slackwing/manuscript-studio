@@ -135,7 +135,8 @@ func insertNote(t *testing.T, ctx context.Context, db *database.DB, sentenceID, 
 		Color:      "yellow",
 		Body:       &note,
 		Priority:   "none",
-		Flagged:    false,
+		TaskType:   "reminder",
+		Impact:     "n/a",
 	}
 	v := &models.NoteVersion{
 		SentenceID: sentenceID,
@@ -350,8 +351,8 @@ func TestMigration_SentencelessNote_Untouched(t *testing.T) {
 	body := "a scratchpad note with no sentence"
 	var slessID int
 	if err := f.pool.QueryRow(f.ctx, `
-		INSERT INTO note (sentence_id, user_id, color, body, priority, flagged, position)
-		VALUES (NULL, $1, 'green', $2, 'none', false, 'a0')
+		INSERT INTO note (sentence_id, user_id, color, body, priority, position)
+		VALUES (NULL, $1, 'green', $2, 'none', 'a0')
 		RETURNING note_id
 	`, f.username, body).Scan(&slessID); err != nil {
 		t.Fatalf("insert sentence-less note: %v", err)

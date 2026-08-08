@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- TASK DIMENSIONS. A note's task-ness now comes from its TASK TYPE:
+         'reminder' (default) = not a task, just a note to reread one day;
+         any other type (built-ins seeded below + user-added customs from
+         the settings page) makes it a TASK, unlocking PRIORITY
+         (can<would<should<must, default can), IMPACT (n/a/sentence/chapter/
+         novel/recurring, default n/a), BLOCKED (now an independent flag,
+         NOT a priority value), points, and completion.
+         The red flag column is dropped entirely (deprecated).
+         Migration of pre-dimension rows: P0→must P1→should P2→would P3→can;
+         every existing task gets type 'organize' (author's call); 'blocked'
+         priority rows become blocked=true + priority can. -->
+    <changeSet id="031-task-dimensions" author="claude">
+        <sql>
+            CREATE TABLE task_type (
+                name VARCHAR(40) PRIMARY KEY,
+                built_in BOOLEAN NOT NULL DEFAULT false,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            INSERT INTO task_type (name, built_in) VALUES
+                ('reminder', true), ('write', true), ('sketch', true),
+                ('edit', true), ('hone', true), ('puzzle', true),
+                ('imagine', true), ('research', true), ('consolidate', true),
+                ('organize', true), ('transcribe', true);
+
+            ALTER TABLE note ADD COLUMN task_type VARCHAR(40) NOT NULL DEFAULT 'reminder'
+                REFERENCES task_type(name);
+            ALTER TABLE note ADD COLUMN impact VARCHAR(20) NOT NULL DEFAULT 'n/a'
+                CHECK (impact IN ('n/a','sentence','chapter','novel','recurring'));
+            ALTER TABLE note ADD COLUMN blocked BOOLEAN NOT NULL DEFAULT false;
+
+            -- Pre-dimension tasks (any old priority) become 'organize' tasks.
+            UPDATE note SET task_type = 'organize' WHERE priority != 'none';
+            UPDATE note SET blocked = true, priority = 'can' WHERE priority = 'blocked';
+            UPDATE note SET priority = 'must'   WHERE priority = 'P0';
+            UPDATE note SET priority = 'should' WHERE priority = 'P1';
+            UPDATE note SET priority = 'would'  WHERE priority = 'P2';
+            UPDATE note SET priority = 'can'    WHERE priority = 'P3';
+            -- Tasks keep a real priority; reminders stay 'none' internally.
+            UPDATE note SET priority = 'can' WHERE task_type != 'reminder' AND priority = 'none';
+
+            ALTER TABLE note DROP CONSTRAINT chk_note_priority;
+            ALTER TABLE note ADD CONSTRAINT chk_note_priority
+                CHECK (priority IN ('none','can','would','should','must'));
+
+            ALTER TABLE note DROP COLUMN flagged;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

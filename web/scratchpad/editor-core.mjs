@@ -987,7 +987,7 @@ function lockScratchpadScroll(fn) {
 // The doc stores only note_id + text; the COLOR (and body/tags/priority/flag)
 // live on the note row. This cache holds the note data so the NoteRefView can
 // render the right color WITHOUT a color in the doc, and so recolor is a pure
-// note-row update. Keyed by note_id → { color, body, priority, flagged, tags }.
+// note-row update. Keyed by note_id → { color, body, priority, task_type, impact, blocked, tags }.
 const noteCache = new Map();
 // note_id → Set of NoteRefView instances, so a recolor re-renders every view of
 // that note instantly.
@@ -1010,7 +1010,7 @@ async function ensureNoteCached(noteId) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, flagged: n.flagged, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null };
+      const cached = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || 'reminder', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null };
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -1040,7 +1040,7 @@ async function createNoteFromSelection(color) {
   // returns it), so the float that opens right now shows the manuscript chip
   // without waiting for a re-fetch.
   noteCache.set(noteId, {
-    color, body, priority: 'none', flagged: false, tags: [],
+    color, body, priority: 'none', task_type: 'reminder', impact: 'n/a', blocked: false, tags: [],
     manuscript_id: created.manuscript_id || null,
     manuscript_name: created.manuscript_name || '',
   });
@@ -1246,11 +1246,13 @@ async function openNoteFloatFor(noteId, anchorEl) {
   if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
   const api = window.WriteSysNoteAPI;
   const fetched = await ensureNoteCached(noteId);
-  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', flagged: false, tags: [] };
+  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: 'reminder', impact: 'n/a', blocked: false, tags: [] };
   const note = {
     noteId, note_id: noteId,
     color: cached.color, body: cached.body,
-    priority: cached.priority || 'none', flagged: !!cached.flagged, tags: cached.tags || [],
+    priority: cached.priority || 'none',
+    task_type: cached.task_type || 'reminder', impact: cached.impact || 'n/a', blocked: !!cached.blocked,
+    tags: cached.tags || [],
     manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
     sketch_id: cached.sketch_id || null,
   };
@@ -1265,8 +1267,11 @@ async function openNoteFloatFor(noteId, anchorEl) {
       recolorNote(noteId, color); // updates row + cache + all ref views (no doc edit)
       openNoteFloatFor(noteId, anchorEl); // re-render palette (shows other 5)
     },
-    onPriority: (p) => { note.priority = note.priority === p ? 'none' : p; cached.priority = note.priority; api.update(noteId, { priority: note.priority }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
-    onFlag: () => { note.flagged = !note.flagged; cached.flagged = note.flagged; api.update(noteId, { flagged: note.flagged }); window.WriteSysNoteWidget.updatePriorityFlagUI(float.firstChild, note); },
+    onDims: (patch) => {
+      Object.assign(note, patch); Object.assign(cached, patch);
+      api.update(noteId, patch).catch(() => {});
+      window.WriteSysNoteWidget.updateDims(float.firstChild, note);
+    },
     // A sketch's note can't be deleted (it lives with the sketch); its
     // completion greys the widget square to a green check instead of
     // dissolving a doc ref. Scoring is the same everywhere.

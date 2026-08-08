@@ -30,7 +30,6 @@ const { loginAsTestUser } = require('./test-utils');
           color: 'yellow',
           note: 'First note with yellow color',
           priority: 'none',
-          flagged: false,
           tags: []
         }
       ];

@@ -36,7 +36,6 @@ const { loginAsTestUser } = require('./test-utils');
         color: 'yellow',
         note: 'Test note to show trash icon',
         priority: 'none',
-        flagged: false,
         tags: []
       };
 

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Manuscript Studio</title>
+  <link rel="stylesheet" href="css/book.css?v=155">
+  <link rel="stylesheet" href="css/home.css?v=14">
+</head>
+<body>
+  <div id="controls" class="pagedjs_ignore">
+    <div class="control-group control-group-left">
+      <a id="home-link" href="home.html" title="Home" aria-label="Home">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
+          <path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/>
+        </svg>
+      </a>
+      <a id="brand" href="home.html">manuscript studio</a>
+    </div>
+    <div class="control-group control-group-right">
+      <button id="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div id="settings-root">
+    <h2>Settings</h2>
+
+    <section class="settings-section">
+      <h3>Task types</h3>
+      <p class="settings-hint">
+        The first dimension of a note. <b>reminder</b> means "no action — just a
+        note to reread one day"; any other type makes the note a <b>task</b>.
+        Type new lowercase slugs separated by spaces (e.g. <code>muse research-deep</code>)
+        and press Enter or click away to add them. Each type carries a color:
+        <b>gray</b> does nothing; a real color recolors a note when that type is picked.
+      </p>
+      <div id="tt-chips" class="tt-chips"></div>
+      <input id="tt-input" type="text" placeholder="new-type another-type …" autocomplete="off">
+      <div id="tt-status" class="settings-hint"></div>
+    </section>
+  </div>
+
+  <script src="js/auth.js?v=3"></script>
+  <script src="js/session-guard.js?v=3"></script>
+  <script src="js/icons.js?v=2"></script>
+  <script src="notes/note-widget.js?v=15"></script>
+  <script>
+    (async function () {
+      const session = await checkAuth();
+      if (!session) return;
+      if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
+    })();
+  </script>
+  <script src="js/settings.js?v=1"></script>
+</body>
+</html>

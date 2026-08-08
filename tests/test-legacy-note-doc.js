@@ -37,7 +37,7 @@ const LEGACY_DOC = JSON.stringify({
   await loginAsTestUser(page);
 
   // Seed a note + a legacy-format doc referencing it.
-  const noteId = psql(`INSERT INTO note (user_id, color, body, priority, flagged, position) VALUES ('test','green','the noted phrase','none',false,'a0') RETURNING note_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
+  const noteId = psql(`INSERT INTO note (user_id, color, body, priority, position) VALUES ('test','green','the noted phrase','none','a0') RETURNING note_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
   const docWithId = LEGACY_DOC.replace(/"noteId": ?0/g, `"noteId": ${noteId}`);
   const padId = psql(`INSERT INTO scratchpad (user_id, title, doc, schema_version) VALUES ('test','Legacy', '${docWithId.replace(/'/g, "''")}'::jsonb, 1) RETURNING scratchpad_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
   psql(`UPDATE note SET scratchpad_id=${padId} WHERE note_id=${noteId}`);

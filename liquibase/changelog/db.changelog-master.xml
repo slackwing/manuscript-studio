@@ -37,5 +37,7 @@
     <include file="changelog/028-priority-blocked.xml"/>
     <include file="changelog/029-sketch-to-variation.xml"/>
     <include file="changelog/030-snippet-to-sketch.xml"/>
+    <include file="changelog/031-task-dimensions.xml"/>
+    <include file="changelog/032-task-type-color.xml"/>
 
 </databaseChangeLog>

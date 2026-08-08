@@ -26,14 +26,17 @@ type CreateNoteRequest struct {
 	Color        string  `json:"color"`
 	Body         *string `json:"body"`
 	Priority     string  `json:"priority"`
-	Flagged      bool    `json:"flagged"`
+	TaskType string `json:"task_type"`
+	Impact   string `json:"impact"`
 }
 
 type UpdateNoteRequest struct {
 	Color    *string `json:"color,omitempty"`
 	Body     *string `json:"body,omitempty"`
 	Priority *string `json:"priority,omitempty"`
-	Flagged  *bool   `json:"flagged,omitempty"`
+	TaskType *string `json:"task_type,omitempty"`
+	Impact   *string `json:"impact,omitempty"`
+	Blocked  *bool   `json:"blocked,omitempty"`
 }
 
 type ReorderNoteRequest struct {
@@ -46,6 +49,22 @@ type ReorderNoteRequest struct {
 // session user, and live in a manuscript the user still has access to.
 // Writes the HTTP error and returns nil on any failure; callers should
 // `return` immediately on nil.
+func validPriority(p string) bool {
+	switch p {
+	case "none", "can", "would", "should", "must":
+		return true
+	}
+	return false
+}
+
+func validImpact(i string) bool {
+	switch i {
+	case "n/a", "sentence", "chapter", "novel", "recurring":
+		return true
+	}
+	return false
+}
+
 func (h *NoteHandlers) requireOwnedNote(w http.ResponseWriter, r *http.Request,
 	noteID int, username string,
 ) *models.Note {
@@ -270,6 +289,14 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 	if priority == "" {
 		priority = "none"
 	}
+	taskType := req.TaskType
+	if taskType == "" {
+		taskType = "reminder"
+	}
+	impact := req.Impact
+	if impact == "" {
+		impact = "n/a"
+	}
 
 	// --- Scratchpad note: no sentence, no version row. Ownership is on the
 	//     scratchpad. (NOTES_PLAN.md Phase 2.) ---
@@ -288,7 +315,8 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 			Color:    req.Color,
 			Body:     req.Body,
 			Priority: priority,
-			Flagged:  req.Flagged,
+			TaskType: taskType,
+			Impact:   impact,
 			// Live default: a note created in a manuscript-linked pad inherits the
 			// manuscript (Phase C), so it's browsable without hand-linking. Not
 			// retroactive — only affects notes created while the pad is linked.
@@ -327,7 +355,8 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 		Color:      req.Color,
 		Body:       req.Body,
 		Priority:   priority,
-		Flagged:    req.Flagged,
+		TaskType:   taskType,
+		Impact:     impact,
 	}
 
 	version := &models.NoteVersion{
@@ -390,8 +419,18 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 	if req.Priority != nil {
 		existing.Priority = *req.Priority
 	}
-	if req.Flagged != nil {
-		existing.Flagged = *req.Flagged
+	if req.TaskType != nil {
+		existing.TaskType = *req.TaskType
+	}
+	if req.Impact != nil {
+		existing.Impact = *req.Impact
+	}
+	if req.Blocked != nil {
+		existing.Blocked = *req.Blocked
+	}
+	if !validPriority(existing.Priority) || !validImpact(existing.Impact) {
+		http.Error(w, "invalid priority or impact", http.StatusBadRequest)
+		return
 	}
 
 	// Scratchpad and SKETCH notes have no version history (no sentence
@@ -399,7 +438,7 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 	// explodes on their empty note_version history. Sentence notes append a
 	// version row (audit + migration lineage).
 	if existing.ScratchpadID != nil || existing.SketchID != nil {
-		if err := h.DB.UpdateScratchpadNote(ctx, noteID, req.Color, req.Body, req.Priority, req.Flagged); err != nil {
+		if err := h.DB.UpdateScratchpadNote(ctx, noteID, req.Color, req.Body, req.Priority, req.TaskType, req.Impact, req.Blocked); err != nil {
 			log.Printf("notes: update versionless note %d: %v", noteID, err)
 			http.Error(w, "Failed to update note", http.StatusInternalServerError)
 			return
@@ -562,8 +601,8 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 	if note == nil {
 		return
 	}
-	if note.Priority == "" || note.Priority == "none" {
-		http.Error(w, "only tasks (priority set) can score points", http.StatusBadRequest)
+	if note.TaskType == "" || note.TaskType == "reminder" {
+		http.Error(w, "only tasks (non-reminder type) can score points", http.StatusBadRequest)
 		return
 	}
 	var body struct {

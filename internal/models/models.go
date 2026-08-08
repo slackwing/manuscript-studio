@@ -87,8 +87,15 @@ type Note struct {
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Body         *string    `json:"body"`
-	Priority     string     `json:"priority"` // 'none', 'P0', 'P1', 'P2', 'P3'
-	Flagged      bool       `json:"flagged"`
+	Priority string `json:"priority"` // 'none' (reminders) | 'can' < 'would' < 'should' < 'must'
+	// TaskType is the FIRST dimension: 'reminder' (default) = not a task;
+	// any other value (built-in or custom, task_type table) makes this a
+	// TASK, unlocking priority/impact/blocked/points/completion.
+	TaskType string `json:"task_type"`
+	Impact   string `json:"impact"` // 'n/a' | 'sentence' | 'chapter' | 'novel' | 'recurring'
+	// Blocked is an independent flag (NOT a priority): any priority/impact
+	// can also be blocked on something else.
+	Blocked bool `json:"blocked"`
 	Position     string     `json:"position"` // fractional index
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
