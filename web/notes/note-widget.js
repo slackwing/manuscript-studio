@@ -203,8 +203,15 @@
         // note KEEPING one still shows it on the chip, but once changed
         // there's no way back.
         value: note.task_type || '',
-        loadOptions: async () => [{ value: '', label: 'n/a' }]
-          .concat((await listTaskTypes()).filter((t) => !t.deleted).map((t) => ({ value: t.name, label: t.name }))),
+        // n/a first, then NON-task types, then task types — each band in
+        // the user's manual (settings) order.
+        loadOptions: async () => {
+          const live = (await listTaskTypes()).filter((t) => !t.deleted);
+          const opt = (t) => ({ value: t.name, label: t.name });
+          return [{ value: '', label: 'n/a' }]
+            .concat(live.filter((t) => !t.is_task).map(opt))
+            .concat(live.filter((t) => t.is_task).map(opt));
+        },
         onPick: async (v) => {
           note.task_type = v;
           const picked = v ? (taskTypesByName && taskTypesByName[v]) : null;

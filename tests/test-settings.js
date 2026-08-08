@@ -167,6 +167,9 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   check('dropdown labels are plain words (no ●)', labels.every(l => !l.includes('●')), labels.join(','));
   check('dropdown leads with n/a', labels[0] && labels[0].trim() === 'n/a');
   check('dropdown offers non-task types too', labels.some(l => l.trim() === 'reminder'));
+  const trimmed = labels.map(l => l.trim());
+  check('non-tasks come before tasks in the dropdown',
+    trimmed.indexOf('reminder') < trimmed.indexOf('write'), trimmed.join(','));
   await popup.locator(`button[data-v="${TT}"]`).click();
   await page.waitForTimeout(800);
   const noteColor = psql(`SELECT color FROM note WHERE note_id = ${noteId}`).trim();
