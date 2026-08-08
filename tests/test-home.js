@@ -44,7 +44,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
         ? document.getElementById('home-link').getAttribute('href') : null,
       brandLink: document.getElementById('brand').getAttribute('href'),
     }), DISPLAY_NAME);
-    check('three card sections render (Manuscripts / Scratchpads / Notes)', cards.sections === 3, String(cards.sections));
+    check('four sections render (Points / Manuscripts / Scratchpads / Notes)', cards.sections === 4, String(cards.sections));
     check('test manuscript card present', cards.manuscriptCard);
     check('home icon and wordmark both link home',
       cards.homeLink === 'home.html' && cards.brandLink === 'home.html');
