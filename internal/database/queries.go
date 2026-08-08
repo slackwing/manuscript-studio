@@ -1761,6 +1761,9 @@ type HomeNote struct {
 	// pad title — a sketch's variations can live across multiple pads.
 	SketchID *string
 	Tags      []models.Tag
+	// DoneToday: the daily-tasks page's "already worked" marker — points
+	// were awarded to this note today. Only ListDailyTaskNotes sets it.
+	DoneToday bool
 }
 
 // ListNotesForHome returns a user's most-recently-touched active notes with a
@@ -1818,6 +1821,69 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		}
 		if len(tagsJSON) > 0 {
 			_ = json.Unmarshal(tagsJSON, &h.Tags) // best-effort; tags are decorative
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ListDailyTaskNotes: the daily-tasks page's deterministic "random" pick of
+// a manuscript's live TASK notes. Determinism: rows created before dayStart
+// (today's midnight in the configured timezone) ordered by md5(note_id ||
+// seed) — same date + same data → same set. DoneToday marks notes that got
+// points awarded since dayStart (already worked today).
+func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscriptID int, seed string, dayStart time.Time, limit int) ([]HomeNote, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT n.note_id, n.color, n.body, n.priority, COALESCE(n.task_type, '') AS task_type, n.impact, n.blocked, n.updated_at,
+		       n.manuscript_id,
+		       COALESCE(n.scratchpad_id,
+		           (SELECT sk.scratchpad_id FROM variation sk
+		            WHERE sk.sketch_id = n.sketch_id AND sk.scratchpad_id IS NOT NULL
+		            ORDER BY sk.variation_id LIMIT 1)),
+		       COALESCE(n.sentence_id, ''),
+		       COALESCE(
+		           NULLIF(m.display_name, ''),
+		           NULLIF(regexp_replace(regexp_replace(m.repo_path, '\.git/?$', ''), '^.*/', ''), ''),
+		           ''
+		       ) AS context,
+		       COALESCE(sp.title, '') AS scratchpad_title,
+		       n.sketch_id,
+		       COALESCE(
+		           (SELECT json_agg(json_build_object('tag_id', t.tag_id, 'tag_name', t.tag_name) ORDER BY t.tag_name)
+		            FROM note_tag nt JOIN tag t ON t.tag_id = nt.tag_id
+		            WHERE nt.note_id = n.note_id),
+		           '[]'::json
+		       ) AS tags,
+		       EXISTS(
+		           SELECT 1 FROM point_event pe
+		           WHERE pe.note_id = n.note_id AND pe.deleted_at IS NULL AND pe.scored_at >= $4
+		       ) AS done_today
+		FROM note n
+		LEFT JOIN scratchpad sp ON sp.scratchpad_id = n.scratchpad_id
+		LEFT JOIN manuscript  m ON m.manuscript_id  = n.manuscript_id
+		WHERE n.user_id = $1
+		  AND n.deleted_at IS NULL
+		  AND n.completed_at IS NULL
+		  AND n.manuscript_id = $2
+		  AND n.created_at < $4
+		  AND EXISTS (SELECT 1 FROM task_type tt WHERE tt.name = n.task_type AND tt.is_task)
+		ORDER BY md5(n.note_id::text || $3)
+		LIMIT $5
+	`, username, manuscriptID, seed, dayStart, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list daily task notes: %w", err)
+	}
+	defer rows.Close()
+	var out []HomeNote
+	for rows.Next() {
+		var h HomeNote
+		var tagsJSON []byte
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.DoneToday); err != nil {
+			return nil, fmt.Errorf("scan daily task note: %w", err)
+		}
+		if len(tagsJSON) > 0 {
+			_ = json.Unmarshal(tagsJSON, &h.Tags)
 		}
 		out = append(out, h)
 	}

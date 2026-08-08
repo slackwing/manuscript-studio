@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -60,6 +61,8 @@ type homeNote struct {
 	ScratchpadID *int      `json:"scratchpad_id,omitempty"`
 	SentenceID   string    `json:"sentence_id,omitempty"`
 	Tags         []models.Tag `json:"tags,omitempty"`
+	// Daily-tasks page only: points were awarded to this note today.
+	DoneToday bool `json:"done_today,omitempty"`
 }
 
 // joinContext renders a note's context label from its manuscript and scratchpad,
@@ -230,4 +233,62 @@ func (h *HomeHandlers) HandleManuscriptOpened(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleDailyTasks: GET /api/daily-tasks?manuscript_id=N — the daily-tasks
+// page's date-seeded pick of up to 16 of this manuscript's live TASK notes,
+// drawn only from notes created before today (configured timezone) so the
+// set is deterministic all day. done_today marks notes already awarded
+// points today.
+func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	manuscriptID, err := strconv.Atoi(r.URL.Query().Get("manuscript_id"))
+	if err != nil {
+		http.Error(w, "manuscript_id required", http.StatusBadRequest)
+		return
+	}
+	loc := h.Config.WordcountHistory.Location()
+	now := time.Now().In(loc)
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	seed := dayStart.Format("2006-01-02")
+	rows, err := h.DB.ListDailyTaskNotes(ctx, session.Username, manuscriptID, seed, dayStart, 16)
+	if err != nil {
+		log.Printf("daily-tasks: list (manuscript %d): %v", manuscriptID, err)
+		http.Error(w, "Failed to list daily tasks", http.StatusInternalServerError)
+		return
+	}
+	name := manuscriptDisplayName(ctx, h.DB, h.Config, manuscriptID)
+	notes := make([]homeNote, 0, len(rows))
+	for _, n := range rows {
+		hn := homeNote{
+			NoteID: n.NoteID, Color: n.Color, Priority: n.Priority,
+			TaskType: n.TaskType, Impact: n.Impact, Blocked: n.Blocked,
+			UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
+			SentenceID: n.SentenceID, Tags: n.Tags, DoneToday: n.DoneToday,
+		}
+		if n.Body != nil {
+			hn.Body = *n.Body
+		}
+		manuscript := name
+		if manuscript == "" {
+			manuscript = n.Context
+		}
+		if n.SketchID != nil {
+			hn.Context = joinContext(manuscript, "Sketch")
+		} else {
+			hn.Context = joinContext(manuscript, n.ScratchpadTitle)
+		}
+		notes = append(notes, hn)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"date":            seed,
+		"manuscript_name": name,
+		"notes":           notes,
+	})
 }

@@ -243,6 +243,7 @@ func (s *Server) setupRouter() {
 
 			// Landing page data + per-user manuscript recency (HOME_PLAN.md).
 			r.Get("/home", s.homeHandlers.HandleHome)
+			r.Get("/daily-tasks", s.homeHandlers.HandleDailyTasks)
 			r.Post("/manuscripts/{manuscript_id}/opened", s.homeHandlers.HandleManuscriptOpened)
 
 			// Scratchpads (SCRATCHPAD_PLAN.md): user-owned, not

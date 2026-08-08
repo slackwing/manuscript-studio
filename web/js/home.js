@@ -24,6 +24,11 @@ const WriteSysHome = {
   async reload() {
     try {
       this.data = await fetchJSON('api/home', {}, false);
+      // The daily-tasks view has its own payload (date-seeded task pick).
+      if (this.view() === 'daily') {
+        const mid = new URLSearchParams(window.location.search).get('manuscript_id') || '';
+        this.daily = await fetchJSON('api/daily-tasks?manuscript_id=' + encodeURIComponent(mid), {}, false);
+      }
     } catch (e) {
       document.getElementById('home-root').innerHTML =
         `<div class="home-empty">Failed to load: ${this.esc(e.message)}</div>`;
@@ -59,6 +64,7 @@ const WriteSysHome = {
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.display_name || m.name)}</p>
       <p class="card-sketch">${words}</p>
+      <p class="ms-daily-row"><span class="ms-daily-link" data-daily="${m.manuscript_id}">daily tasks</span></p>
       <p class="card-meta"><span>${this.esc(updated)}</span>${created ? `<span>${this.esc(created)}</span>` : ''}</p>
     </a>`;
   },
@@ -151,6 +157,12 @@ const WriteSysHome = {
       noteList = nt;
       html = `<a class="home-back" href="home.html">← Home</a>` +
         this.section('All notes', nt.length, '', { notes: true });
+    } else if (view === 'daily') {
+      const daily = this.daily || { notes: [] };
+      noteList = daily.notes || [];
+      const who = daily.manuscript_name ? ` — ${daily.manuscript_name}` : '';
+      html = `<a class="home-back" href="home.html">← Home</a>` +
+        this.section(`Daily tasks${this.esc(who)}`, noteList.length, '', { notes: true });
     } else {
       noteList = nt.slice(0, this.RECENT);
       html = this.section('Manuscripts', ms.length,
@@ -168,10 +180,35 @@ const WriteSysHome = {
     if (noteList) {
       const grid = root.querySelector('[data-note-grid]');
       if (grid) {
-        if (noteList.length) noteList.forEach(n => grid.appendChild(this.noteCardEl(n)));
+        if (noteList.length) noteList.forEach(n => {
+          const card = this.noteCardEl(n);
+          // Daily-tasks page: a note already awarded points today dims
+          // under a big gold check (still clickable).
+          if (view === 'daily' && n.done_today) {
+            card.classList.add('daily-done');
+            const ov = document.createElement('div');
+            ov.className = 'daily-check';
+            ov.innerHTML = '<svg width="64" height="64" viewBox="0 0 24 24">'
+              + '<path d="M4.5 13l5 5L20 6.5" fill="none" stroke="#fff" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>'
+              + '<path d="M4.5 13l5 5L20 6.5" fill="none" stroke="#f0c419" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>'
+              + '</svg>';
+            card.appendChild(ov);
+          }
+          grid.appendChild(card);
+        });
         else grid.outerHTML = '<div class="home-empty">Nothing here yet.</div>';
       }
     }
+
+    // Manuscript card's "daily tasks" link (a span — the card itself is an
+    // anchor, so stop the card navigation and go to the daily view).
+    root.querySelectorAll('.ms-daily-link').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.location.href = 'home.html?view=daily&manuscript_id=' + el.dataset.daily;
+      });
+    });
 
     // Note card → open in context. Scratchpad note: open the pad (later: scroll
     // to the anchor). Manuscript note: go to the book.
