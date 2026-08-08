@@ -58,19 +58,21 @@ function psql(sql) {
   await pop.locator('button[data-mid]').first().click();
   await page.waitForTimeout(600);
 
-  // Chip is now linked, shows the name, has an × to unlink.
+  // The circle chip is now linked (leather+gilt); the NAME lives in its
+  // tooltip, and unlinking happens through the picker's — unlink — row.
   const linkedChip = float.locator('.manuscript-chip.linked');
   await linkedChip.waitFor({ timeout: 4000 });
-  const chipName = await linkedChip.locator('.ms-chip-name').textContent();
-  check('chip now shows the linked manuscript name', (chipName || '').trim() === (pickedName || '').trim(), `chip="${chipName}" picked="${pickedName}"`);
-  check('linked chip has an unlink ×', await linkedChip.locator('.ms-chip-x').count() === 1);
+  const chipTitle = await linkedChip.getAttribute('title');
+  check('linked circle carries the manuscript name (tooltip)', (chipTitle || '').trim() === (pickedName || '').trim(), `title="${chipTitle}" picked="${pickedName}"`);
 
   // DB persisted the manuscript_id.
   const mid = psql(`SELECT manuscript_id FROM note WHERE note_id=${noteId}`).trim();
   check('note.manuscript_id persisted', /^[0-9]+$/.test(mid), `manuscript_id=${mid}`);
 
-  // Unlink via the × → back to a bare chip, DB cleared.
-  await linkedChip.locator('.ms-chip-x').click();
+  // Unlink via the picker's — unlink — row → back to a bare circle, DB cleared.
+  await linkedChip.click();
+  await page.waitForSelector('.note-linkpop-unlink', { timeout: 4000 });
+  await page.locator('.note-linkpop-unlink').click();
   await page.waitForTimeout(600);
   check('unlinking returns the bare chip', await float.locator('.manuscript-chip.unlinked').count() === 1);
   const midAfter = psql(`SELECT COALESCE(manuscript_id::text,'null') FROM note WHERE note_id=${noteId}`).trim();
