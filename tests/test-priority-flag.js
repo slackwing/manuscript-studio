@@ -70,26 +70,28 @@ const psql = (sql) => execSync(
   }, NOTE);
   check('blocked/star/check revealed for tasks', shown);
 
-  // 3. Bottom-row slots: link circle(1) blocked(2) star(3) check(4) … trash(8).
+  // 3. Bottom-row slots IN THE MANUSCRIPT MARGIN: a sentence note is
+  //    trivially in its manuscript, so the link slot is REMOVED (not left
+  //    empty) — blocked(1) star(2) check(3) … trash(8).
   const slots = await page.evaluate((sel) => {
     const row = document.querySelector(`${sel} .priority-flag-chips`).getBoundingClientRect();
-    const ms = document.querySelector(`${sel} .note-ms-slot`).getBoundingClientRect();
     const bl = document.querySelector(`${sel} .blocked-chip`).getBoundingClientRect();
     const st = document.querySelector(`${sel} .points-star`).getBoundingClientRect();
     const ck = document.querySelector(`${sel} .complete-check`).getBoundingClientRect();
     const tr = document.querySelector(`${sel} .note-trash`).getBoundingClientRect();
     const pitch = 26 + (row.width - 208) / 7;
     return {
-      msSpan: ms.width,
-      blockedStep: bl.left - ms.left,
+      msSlotGone: !document.querySelector(`${sel} .note-ms-slot`),
+      blockedAtLeft: bl.left - row.left,
       starStep: st.left - bl.left, checkStep: ck.left - st.left, pitch,
       trashRight: Math.round(row.right - tr.right),
     };
   }, NOTE);
-  check('ms slot is one circle slot (26px)', Math.abs(slots.msSpan - 26) <= 1, `${slots.msSpan.toFixed(1)}`);
-  check('link(1)→blocked(2)→star(3)→check(4) march at slot pitch',
-    Math.abs(slots.blockedStep - slots.pitch) <= 1 && Math.abs(slots.starStep - slots.pitch) <= 1 && Math.abs(slots.checkStep - slots.pitch) <= 1,
-    JSON.stringify({ blocked: slots.blockedStep.toFixed(1), star: slots.starStep.toFixed(1), check: slots.checkStep.toFixed(1), pitch: slots.pitch.toFixed(1) }));
+  check('link slot removed in the margin', slots.msSlotGone);
+  check('blocked opens the row (slot 1)', Math.abs(slots.blockedAtLeft) <= 1, `${slots.blockedAtLeft.toFixed(1)}`);
+  check('star(2)→check(3) march at slot pitch',
+    Math.abs(slots.starStep - slots.pitch) <= 1 && Math.abs(slots.checkStep - slots.pitch) <= 1,
+    JSON.stringify({ star: slots.starStep.toFixed(1), check: slots.checkStep.toFixed(1), pitch: slots.pitch.toFixed(1) }));
   check('trash still right edge (slot 8)', Math.abs(slots.trashRight) <= 1);
 
   // 4. Priority + impact dropdowns persist.

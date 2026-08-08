@@ -1672,6 +1672,11 @@ p.section-break {
   stroke: currentColor;
 }
 
+/* Compare-pane header: just the right-aligned source link. */
+.sn-src-note { text-align: right; }
+.sn-src-note a { color: #2a6fb0; text-decoration: none; }
+.sn-src-note a:hover { text-decoration: underline; }
+
 /* ===== MULTI-NOTE UI STYLES ===== */
 
 /* Container for all sticky notes (vertical stack) */

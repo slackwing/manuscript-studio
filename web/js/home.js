@@ -259,13 +259,18 @@ const WriteSysHome = {
     } else if (view === 'daily') {
       const daily = this.daily || { notes: [] };
       noteList = daily.notes || [];
-      const who = daily.manuscript_name ? ` — ${daily.manuscript_name}` : '';
+      // "Daily tasks for August 8, 2026 — The Wildfire"
+      const dateStr = daily.date
+        ? new Date(daily.date + 'T00:00:00Z').toLocaleDateString('en-US',
+            { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+        : '';
+      const title = 'Daily tasks' + (dateStr ? ` for ${dateStr}` : '')
+        + (daily.manuscript_name ? ` — ${daily.manuscript_name}` : '');
       html = `<a class="home-back" href="home.html">← Home</a>` +
-        this.section(`Daily tasks${this.esc(who)}`, noteList.length, '', { notes: true });
+        this.section(this.esc(title), noteList.length, '', { notes: true });
     } else {
       noteList = nt.slice(0, this.RECENT);
       html = (this.points ? `<section class="home-section" id="points-section">
-          <div class="home-section-head"><h2>Points</h2></div>
           <div id="points-grid" class="points-grid"></div>
         </section>` : '')
         + this.section('Manuscripts', ms.length,

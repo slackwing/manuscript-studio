@@ -305,8 +305,10 @@
     if (!slot) return;
     slot.innerHTML = '';
     // Location flag: the manuscript margin sets showManuscriptChip:false — a
-    // sentence note is trivially in its manuscript, so the chip is noise there.
-    if (handlers.showManuscriptChip === false) return;
+    // sentence note is trivially in its manuscript, so the chip is noise
+    // there. REMOVE the slot (not just leave it empty): an empty slot would
+    // hold position 1 and push blocked/star/check to 2/3/4.
+    if (handlers.showManuscriptChip === false) { slot.remove(); return; }
     const chip = window.WriteSysManuscriptChip.build({
       linkedId: note.manuscript_id,
       linkedName: note.manuscript_name,

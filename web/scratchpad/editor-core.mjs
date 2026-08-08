@@ -793,7 +793,7 @@ class SketchView {
     const letter = esc(letterOf(ctx.variation.ordinal));
     const st = ctx.variation.state || 'draft';
     pane.innerHTML = `
-      <div class="sn-note"><strong>${letter}</strong> · read-only${st !== 'draft' ? ` · ${esc(st)}` : ''} · <a href="#" class="sn-goto-source">open source ↗</a></div>
+      <div class="sn-note sn-src-note"><a href="#" class="sn-goto-source">Go to source</a></div>
       <div class="sn-render sn-peer"></div>`;
     const sketchId = ctx.variation.sketch_id;
     const ordinal = ctx.variation.ordinal;
@@ -802,10 +802,11 @@ class SketchView {
       this.gotoVariationSource(variationId, sketchId, ordinal);
     });
     const host = pane.querySelector('.sn-render');
-    // Swallow mousedown so a click doesn't place a caret / fall through to the
-    // ProseMirror editor behind the widget (which would move the PM selection
-    // and scroll the pad). Text stays selectable via drag (that's mousemove).
-    host.addEventListener('mousedown', (e) => { e.preventDefault(); });
+    // Stop mousedown from REACHING ProseMirror (which would move the PM
+    // selection and scroll the pad) but let the browser's default run — that
+    // default is what starts a native text selection, so the read-only pane
+    // stays selectable/copyable.
+    host.addEventListener('mousedown', (e) => { e.stopPropagation(); });
     if (ctx.variation.text.trim()) renderBookText(host, ctx.variation.text);
     else host.innerHTML = '<div class="sn-empty">Empty variation.</div>';
   }

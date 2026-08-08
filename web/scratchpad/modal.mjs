@@ -4,7 +4,7 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=50';
+import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=51';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
@@ -213,10 +213,16 @@ export const ScratchpadModal = {
       const el = this.overlay && this.overlay.querySelector(
         `.sn-widget[data-sketch-id="${CSS.escape(sketchId)}"][data-ordinal="${ordinal}"]`);
       if (el) {
-        suspendScrollHolds(2000); // deliberate scroll — holds follow, not fight
+        suspendScrollHolds(3200); // deliberate scroll — holds follow, not fight
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('sn-flash');
-        setTimeout(() => el.classList.remove('sn-flash'), 1600);
+        setTimeout(() => el.classList.remove('sn-flash'), 2400);
+        // Widgets ABOVE the target may still be mounting — each mount shifts
+        // the layout and drags the target away from where the first scroll
+        // left it. Re-pin (instant, no visible fighting) while things settle.
+        [700, 1400, 2200].forEach((ms) => setTimeout(() => {
+          if (el.isConnected) el.scrollIntoView({ behavior: 'auto', block: 'center' });
+        }, ms));
         return;
       }
       if (++tries < 30) setTimeout(tick, 200);

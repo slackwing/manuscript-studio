@@ -327,8 +327,8 @@ body.home-page {
 }
 .na-undo:hover { text-decoration: underline; }
 /* Manuscript card: "daily tasks" link — bottom right, above the meta row. */
-.ms-daily-row { display: flex; justify-content: flex-end; margin: 0 0 4px; }
-.ms-daily-link { font: 12px "Helvetica", sans-serif; color: #2a6fb0; cursor: pointer; }
+.ms-daily-row { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+.ms-daily-link { font: 700 12px "Helvetica", sans-serif; color: #2a6fb0; cursor: pointer; }
 .ms-daily-link:hover { text-decoration: underline; }
 /* Daily-tasks page: a note already awarded points today dims under a big
    shiny gold check. pointer-events: none keeps the card clickable. */
