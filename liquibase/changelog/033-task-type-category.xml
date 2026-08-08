@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Task-type categories, soft delete, manual order, and NO default type.
+         is_task=false marks a NON-TASK category: such a note carries no
+         priority/impact and cannot score points. No type name is special in
+         code — the names below are one-time data seeding of THIS instance's
+         existing rows.
+         note.task_type becomes NULLable with no default: NULL renders as
+         'n/a' and is the state of every new note until the user picks a
+         type. Rows holding the old auto-default 'reminder' were never a
+         user's choice, so they become NULL.
+         deleted=true hides a type from every dropdown and from the settings
+         page, but the row STAYS so notes keeping the value remain valid
+         (note.task_type is a FK) — once such a note is changed to another
+         type the deleted one is gone for good, unless re-added by name
+         (which revives the same row).
+         position = the settings page's manual chip order (also the dropdown
+         order); initialized non-tasks first, then built-ins, alphabetical
+         within each band. -->
+    <changeSet id="033-task-type-category" author="claude">
+        <sql>
+            ALTER TABLE task_type ADD COLUMN is_task BOOLEAN NOT NULL DEFAULT true;
+            ALTER TABLE task_type ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT false;
+            ALTER TABLE task_type ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+
+            UPDATE task_type SET is_task = false WHERE name IN ('reminder', 'material');
+            UPDATE task_type SET color = 'yellow'
+                WHERE name IN ('reminder', 'material') AND color = 'gray';
+
+            UPDATE task_type t SET position = s.rn FROM (
+                SELECT name, row_number() OVER (ORDER BY is_task ASC, built_in DESC, name) AS rn
+                FROM task_type
+            ) s WHERE t.name = s.name;
+
+            ALTER TABLE note ALTER COLUMN task_type DROP DEFAULT;
+            ALTER TABLE note ALTER COLUMN task_type DROP NOT NULL;
+            UPDATE note SET task_type = NULL WHERE task_type = 'reminder';
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

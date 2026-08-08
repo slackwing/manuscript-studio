@@ -43,6 +43,9 @@
   // color: gray = inert, a real color recolors the note when picked).
   let taskTypesPromise = null;
   let taskTypesAt = 0;
+  // Sync mirror of the last fetch — isTask() runs during synchronous
+  // renders and can't await. Refreshed on every listTaskTypes resolve.
+  let taskTypesByName = null;
   function listTaskTypes() {
     // 30s TTL: colors edited on the settings page must reach already-open
     // pages — a page-lifetime cache recolored notes with stale colors.
@@ -51,10 +54,17 @@
       taskTypesPromise = fetch('api/task-types', { credentials: 'same-origin' })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error('task-types ' + r.status))))
         .then((d) => d.task_types || []);
-      taskTypesPromise.catch(() => { taskTypesPromise = null; });
+      taskTypesPromise
+        .then((types) => {
+          taskTypesByName = {};
+          types.forEach((t) => { taskTypesByName[t.name] = t; });
+        })
+        .catch(() => { taskTypesPromise = null; });
     }
     return taskTypesPromise;
   }
+  // Prefetch so the sync mirror is warm before the first note renders.
+  if (typeof window !== 'undefined') setTimeout(() => { listTaskTypes().catch(() => {}); }, 0);
 
   const PRIORITIES = ['can', 'would', 'should', 'must'];
   const IMPACTS = ['n/a', 'sentence', 'chapter', 'novel', 'recurring'];
@@ -65,7 +75,7 @@
     chip.className = 'tag-chip dim-chip ' + cls;
     const label = document.createElement('span');
     label.className = 'dim-label';
-    label.textContent = value;
+    label.textContent = value || 'n/a'; // '' = the untyped state
     chip.appendChild(label);
     const caret = document.createElement('span');
     caret.className = 'dim-caret';
@@ -189,18 +199,21 @@
     } else if (handlers.onDims) {
       list.appendChild(buildDimChip({
         cls: 'dim-type',
-        value: note.task_type || 'reminder',
-        loadOptions: async () => (await listTaskTypes()).map((t) => ({ value: t.name, label: t.name + (t.color && t.color !== 'gray' ? ' ●' : '') })),
+        // '' = untyped, shown as 'n/a'. Deleted types never offered — a
+        // note KEEPING one still shows it on the chip, but once changed
+        // there's no way back.
+        value: note.task_type || '',
+        loadOptions: async () => [{ value: '', label: 'n/a' }]
+          .concat((await listTaskTypes()).filter((t) => !t.deleted).map((t) => ({ value: t.name, label: t.name }))),
         onPick: async (v) => {
           note.task_type = v;
-          if (v !== 'reminder' && (!note.priority || note.priority === 'none')) note.priority = 'can';
+          const picked = v ? (taskTypesByName && taskTypesByName[v]) : null;
+          const taskNow = !!(picked && picked.is_task);
+          if (taskNow && (!note.priority || note.priority === 'none')) note.priority = 'can';
           if (!note.impact) note.impact = 'n/a';
           await handlers.onDims({ task_type: v, priority: note.priority, impact: note.impact });
           // Type color: gray = inert; a real color recolors the note.
-          try {
-            const t = (await listTaskTypes()).find((x) => x.name === v);
-            if (t && t.color && t.color !== 'gray' && handlers.onColor) handlers.onColor(t.color);
-          } catch (e) { /* color nicety only */ }
+          if (picked && picked.color && picked.color !== 'gray' && handlers.onColor) handlers.onColor(picked.color);
           renderTags(noteEl, note, handlers, opts);
           updateDims(noteEl, note);
         },
@@ -306,12 +319,17 @@
     if (chip) slot.appendChild(chip);
   }
 
-  // A note is a TASK iff its task TYPE is anything but 'reminder' (the
-  // default: "no action — just a note to reread one day"). Task-ness
+  // A note is a TASK iff its task TYPE is in the task category (033:
+  // task_type.is_task). Untyped ('' / NULL, shown as n/a) and non-task
+  // types are plain notes. No type NAME is special anywhere. Task-ness
   // unlocks priority/impact (dropdown chips in the tag row), the blocked
-  // flag, points, and completion.
+  // flag, points, and completion. Soft-deleted types keep their category —
+  // a note holding one is unchanged. Before the type list arrives, a typed
+  // note renders as a task (the common case; corrected on the next render).
   function isTask(note) {
-    return !!(note.task_type && note.task_type !== 'reminder');
+    if (!note.task_type) return false;
+    const t = taskTypesByName && taskTypesByName[note.task_type];
+    return t ? !!t.is_task : true;
   }
 
   function updateDims(noteEl, note) {

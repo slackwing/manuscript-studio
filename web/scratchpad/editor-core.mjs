@@ -1010,7 +1010,7 @@ async function ensureNoteCached(noteId) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || 'reminder', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null };
+      const cached = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null };
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -1040,7 +1040,7 @@ async function createNoteFromSelection(color) {
   // returns it), so the float that opens right now shows the manuscript chip
   // without waiting for a re-fetch.
   noteCache.set(noteId, {
-    color, body, priority: 'none', task_type: 'reminder', impact: 'n/a', blocked: false, tags: [],
+    color, body, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [],
     manuscript_id: created.manuscript_id || null,
     manuscript_name: created.manuscript_name || '',
   });
@@ -1246,12 +1246,12 @@ async function openNoteFloatFor(noteId, anchorEl) {
   if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
   const api = window.WriteSysNoteAPI;
   const fetched = await ensureNoteCached(noteId);
-  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: 'reminder', impact: 'n/a', blocked: false, tags: [] };
+  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [] };
   const note = {
     noteId, note_id: noteId,
     color: cached.color, body: cached.body,
     priority: cached.priority || 'none',
-    task_type: cached.task_type || 'reminder', impact: cached.impact || 'n/a', blocked: !!cached.blocked,
+    task_type: cached.task_type || '', impact: cached.impact || 'n/a', blocked: !!cached.blocked,
     tags: cached.tags || [],
     manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
     sketch_id: cached.sketch_id || null,

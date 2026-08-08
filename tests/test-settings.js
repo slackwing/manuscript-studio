@@ -4,9 +4,15 @@
 // copy, and the end-to-end recolor guarantee: picking a type recolors the note
 // with the type's STORED color (regression: picker once stored a different
 // color than the one clicked, so notes turned "random" colors).
+// Categories (033): TASK vs NON-TASK sections; NO type name is special —
+// notes start untyped ('n/a', NULL) and every type (reminder included) is
+// deletable. Delete = chip-click arms an ×; soft-delete semantics (row
+// survives, notes keep the value, dropdown stops offering it, re-adding the
+// name revives it). Manual order via drag, persisted as position (also the
+// dropdown order). Dropdown labels are plain words (no ●).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
 const SETTINGS_URL = new URL('settings.html', TEST_URL).href;
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
@@ -14,7 +20,11 @@ function psql(sql) {
     `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
     { encoding: 'utf8' });
 }
-const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
+// This test's own custom types; hard-wiped both ends (they're test-only).
+const TT = 'zz-test-color';
+const TDEL = 'zz-test-del';
+const TKEEP = 'zz-test-keep';
+const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TDEL}','${TKEEP}')`);
 
 (async () => {
   const browser = await chromium.launch();
@@ -24,7 +34,8 @@ const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
   const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
 
   await cleanupTestNotes();
-  psql(`DELETE FROM task_type WHERE name = '${TT}'`);
+  wipeTypes();
+  const originalOrder = psql(`SELECT name FROM task_type WHERE NOT deleted ORDER BY position, name`).trim().split('\n');
   await loginAsTestUser(page);
   await page.goto(SETTINGS_URL);
   await page.waitForSelector('.tt-chip');
@@ -36,17 +47,30 @@ const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
   check('chrome.css loaded', await page.evaluate(() =>
     [...document.querySelectorAll('link[rel=stylesheet]')].some(l => l.href.includes('chrome.css'))));
 
-  // --- Copy: just "Task types", no description paragraph ---
-  const h2 = await page.locator('.home-section-head h2').first().innerText();
-  check('heading is exactly "Task types"', h2.trim() === 'Task types', `h2=${JSON.stringify(h2)}`);
-  const hintText = (await page.locator('#tt-status').innerText()).trim();
-  check('no description copy (status line empty)', hintText === '', `status=${JSON.stringify(hintText)}`);
-  check('no other hint paragraphs', await page.locator('.settings-hint').count() === 1);
+  // --- Copy: two bare section heads, no description paragraphs ---
+  const heads = await page.locator('.home-section-head h2').allInnerTexts();
+  check('sections are "Task types" + "Non-task types"',
+    heads.map(h => h.trim()).join('|') === 'Task types|Non-task types', heads.join('|'));
 
-  // --- Chip anatomy: name first, color dot LAST (right side) ---
-  const firstChip = page.locator('.tt-chip').first();
-  const order = await firstChip.evaluate((el) => [...el.children].map(c => c.className || c.tagName).join('|'));
-  check('dot is the chip’s last element', /color-dot-solo$/.test(order), order);
+  // --- Categories: reminder is non-task; tasks hold the built-ins ---
+  const ttNames = await page.locator('#tt-chips .tt-chip > span:first-child').allInnerTexts();
+  const ntNames = await page.locator('#nt-chips .tt-chip > span:first-child').allInnerTexts();
+  check('non-task section holds reminder', ntNames.includes('reminder'), ntNames.join(','));
+  check('task section does not', !ttNames.includes('reminder'), ttNames.join(','));
+  check('task section has built-ins', ttNames.includes('write') && ttNames.includes('organize'));
+  check('reminder is yellow', psql(`SELECT color FROM task_type WHERE name='reminder'`).trim() === 'yellow');
+
+  // --- Chip anatomy: name first, then dot (right); EVERY chip deletable ---
+  const firstChip = page.locator('#tt-chips .tt-chip').first();
+  check('name precedes the dot', await firstChip.evaluate((el) =>
+    [...el.children].findIndex(c => c.tagName === 'SPAN' && !c.className) <
+    [...el.children].findIndex(c => c.classList.contains('color-dot-solo'))));
+  const remChip = page.locator('#nt-chips .tt-chip', { hasText: 'reminder' });
+  await remChip.click();
+  check('even reminder arms for delete (no special names)',
+    await remChip.evaluate((el) => el.classList.contains('tt-armed')) &&
+    await remChip.locator('.tt-del').isVisible());
+  await page.mouse.click(10, 400); // disarm without deleting
 
   // --- Palette: horizontal pill, 7 distinct options, on-screen ---
   await firstChip.locator('.color-dot-solo').hover();
@@ -59,11 +83,52 @@ const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
   const vp = page.viewportSize();
   check('palette fully on screen', box && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height);
   check('no sticky-note palette on this page', await page.locator('.sticky-note-palette').count() === 0);
+  await page.mouse.move(10, 400); // close the palette before working the chips
 
-  // --- Add a custom type, pick blue, and the STORE must be blue ---
+  // --- Delete: click chip → dot becomes ×; × soft-deletes ---
+  await page.fill('#tt-input', TDEL);
+  await page.keyboard.press('Enter');
+  const delChip = page.locator('#tt-chips .tt-chip', { hasText: TDEL });
+  await delChip.waitFor({ timeout: 4000 });
+  await delChip.click();
+  check('armed chip hides the dot', !(await delChip.locator('.color-dot-solo').isVisible()));
+  check('armed chip shows the ×', await delChip.locator('.tt-del').isVisible());
+  await delChip.locator('.tt-del').click();
+  await page.waitForTimeout(600);
+  check('deleted chip is gone from settings', await page.locator('.tt-chip', { hasText: TDEL }).count() === 0);
+  const delRow = psql(`SELECT deleted || '|' || is_task FROM task_type WHERE name = '${TDEL}'`).trim();
+  check('soft delete: row survives, deleted=true', delRow === 'true|true', delRow);
+
+  // --- Revive: re-adding the name (in the OTHER category) restores it ---
+  await page.fill('#nt-input', TDEL);
+  await page.keyboard.press('Enter');
+  await page.locator('#nt-chips .tt-chip', { hasText: TDEL }).waitFor({ timeout: 4000 });
+  const revRow = psql(`SELECT deleted || '|' || is_task FROM task_type WHERE name = '${TDEL}'`).trim();
+  check('re-adding revives into non-task', revRow === 'false|false', revRow);
+  psql(`DELETE FROM task_type WHERE name = '${TDEL}'`);
+
+  // --- Manual order: PUT /api/task-types/order rules the chips ---
+  const csrf = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
+  const reordered = originalOrder.filter(n => n !== 'write');
+  reordered.splice(originalOrder.indexOf('reminder') + 1, 0, 'write'); // write → first task
+  const orderStatus = await page.evaluate(async ({ names, csrf }) => {
+    const r = await fetch('api/task-types/order', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ names }),
+    });
+    return r.status;
+  }, { names: reordered, csrf });
+  check('reorder endpoint accepts', orderStatus === 200, `status=${orderStatus}`);
+  await page.reload();
+  await page.waitForSelector('.tt-chip');
+  const ttAfter = await page.locator('#tt-chips .tt-chip > span:first-child').allInnerTexts();
+  check('manual order rules the chips (write now first task)', ttAfter[0] === 'write', ttAfter.join(','));
+
+  // --- Recolor e2e: add a TASK type, pick blue, store must be blue ---
   await page.fill('#tt-input', TT);
   await page.keyboard.press('Enter');
-  const chip = page.locator('.tt-chip', { hasText: TT });
+  const chip = page.locator('#tt-chips .tt-chip', { hasText: TT });
   await chip.waitFor({ timeout: 4000 });
   await chip.locator('.color-dot-solo').hover();
   await chip.locator('.dot-palette.visible').waitFor({ timeout: 3000 });
@@ -74,7 +139,10 @@ const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
   const painted = await chip.locator('.color-dot-current').evaluate((el) => el.style.background);
   check('dot painted with the picked color', painted.includes('--highlight-blue'), painted);
 
-  // --- End to end: picking that type recolors the note BLUE, not anything else ---
+  // A soft-deleted TASK type a note will hold on to (semantics check below).
+  psql(`INSERT INTO task_type (name, built_in, is_task) VALUES ('${TKEEP}', false, true)`);
+
+  // --- Pad: new note is UNTYPED ('n/a'): no priority/star; dropdown plain ---
   await page.goto(HOME_URL);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
@@ -88,9 +156,17 @@ const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
   await page.waitForTimeout(600);
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');
   const float = page.locator('.sn-note-float .sticky-note');
+  check('new note is n/a', (await float.locator('.dim-type .dim-label').innerText()).trim() === 'n/a');
+  check('untyped note stores NULL', psql(`SELECT COALESCE(task_type,'<null>') FROM note WHERE note_id = ${noteId}`).trim() === '<null>');
+  check('untyped: no priority chip', await float.locator('.dim-priority').count() === 0);
+  check('untyped: no star', !(await float.locator('.points-star').isVisible()));
   await float.locator('.dim-type').click();
   const popup = page.locator('.note-linkpop');
   await popup.waitFor({ timeout: 4000 });
+  const labels = await popup.locator('button[data-v]').allInnerTexts();
+  check('dropdown labels are plain words (no ●)', labels.every(l => !l.includes('●')), labels.join(','));
+  check('dropdown leads with n/a', labels[0] && labels[0].trim() === 'n/a');
+  check('dropdown offers non-task types too', labels.some(l => l.trim() === 'reminder'));
   await popup.locator(`button[data-v="${TT}"]`).click();
   await page.waitForTimeout(800);
   const noteColor = psql(`SELECT color FROM note WHERE note_id = ${noteId}`).trim();
@@ -98,8 +174,70 @@ const TT = 'zz-test-color'; // this test's own custom type; cleaned up both ends
   const hasBlueClass = await float.evaluate((el) => el.classList.contains('color-blue'));
   check('float shows blue', hasBlueClass);
 
-  psql(`UPDATE note SET task_type = 'reminder' WHERE task_type = '${TT}'`);
-  psql(`DELETE FROM task_type WHERE name = '${TT}'`);
+  // --- Picking n/a again untypes the note (back to NULL, chips retract) ---
+  await float.locator('.dim-type').click();
+  await popup.waitFor({ timeout: 4000 });
+  await popup.locator('button[data-v=""]').click();
+  await page.waitForTimeout(800);
+  check('picking n/a clears the type (NULL)', psql(`SELECT COALESCE(task_type,'<null>') FROM note WHERE note_id = ${noteId}`).trim() === '<null>');
+  check('n/a retracts priority chip', await float.locator('.dim-priority').count() === 0);
+
+  // --- Soft-delete semantics on a note: value kept, never offered again ---
+  await float.locator('.dim-type').click();
+  await popup.waitFor({ timeout: 4000 });
+  await popup.locator(`button[data-v="${TKEEP}"]`).click();
+  await page.waitForTimeout(800);
+  psql(`UPDATE task_type SET deleted = true WHERE name = '${TKEEP}'`);
+  await page.reload();
+  // The modal deep-links — reload usually reopens the same pad by itself;
+  // fall back to the landing grid card when it doesn't.
+  try {
+    await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 4000 });
+  } catch (e) {
+    await page.waitForSelector('#home-new-pad');
+    await page.locator('.card-scratchpad').first().click();
+    await page.waitForSelector('.spm-overlay .ProseMirror');
+  }
+  await page.locator('.sn-note-ref').first().click();
+  const float2 = page.locator('.sn-note-float .sticky-note');
+  await float2.waitFor({ timeout: 5000 });
+  const typeLabel = (await float2.locator('.dim-type .dim-label').innerText()).trim();
+  check('note KEEPS its soft-deleted type', typeLabel === TKEEP, typeLabel);
+  check('deleted type still counts as a task (star visible)', await float2.locator('.points-star').isVisible());
+  await float2.locator('.dim-type').click();
+  const popup2 = page.locator('.note-linkpop');
+  await popup2.waitFor({ timeout: 4000 });
+  check('dropdown no longer offers the deleted type', await popup2.locator(`button[data-v="${TKEEP}"]`).count() === 0);
+  await popup2.locator('button[data-v="write"]').click();
+  await page.waitForTimeout(800);
+  const changed = psql(`SELECT task_type FROM note WHERE note_id = ${noteId}`).trim();
+  check('changing away from a deleted type sticks', changed === 'write', changed);
+
+  // --- Sketch notes: untyped too (no default anywhere) ---
+  await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
+  await page.waitForSelector('.sn-widget .sn-note-solo', { timeout: 10000 });
+  await page.waitForTimeout(600);
+  const sketchType = psql(`SELECT COALESCE(task_type,'<null>') FROM note WHERE user_id = '${TEST_USERNAME}' AND sketch_id IS NOT NULL ORDER BY note_id DESC LIMIT 1`).trim();
+  check('sketch note starts untyped (NULL)', sketchType === '<null>', sketchType);
+  await page.locator('.sn-widget .sn-note-solo').first().dispatchEvent('mousedown');
+  const sfloat = page.locator('.sn-note-float .sticky-note');
+  await sfloat.waitFor({ timeout: 10000 });
+  check('sketch float shows n/a', (await sfloat.locator('.dim-type .dim-label').innerText()).trim() === 'n/a');
+  check('sketch note is NOT a task (no star)', !(await sfloat.locator('.points-star').isVisible()));
+  check('sketch note has no priority chip', await sfloat.locator('.dim-priority').count() === 0);
+
+  // Restore the pre-test manual order.
+  await page.goto(SETTINGS_URL);
+  await page.waitForSelector('.tt-chip');
+  await page.evaluate(async ({ names, csrf }) => {
+    await fetch('api/task-types/order', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ names }),
+    });
+  }, { names: originalOrder, csrf: await page.evaluate(() => sessionStorage.getItem('csrf_token')) });
+
+  wipeTypes();
   await cleanupTestNotes();
   await browser.close();
   process.exit(failed ? 1 : 0);

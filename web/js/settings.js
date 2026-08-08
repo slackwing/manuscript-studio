@@ -1,22 +1,37 @@
 /**
- * Settings page: task-type management (031/032). Types render as chips —
- * one color dot each (the shared sticky-note picker component) — and the
- * input adds new custom types as space-separated lowercase slugs on
- * Enter/blur. Colors: gray = inert; a real color means "picking this type
- * recolors the note".
+ * Settings page: task-type management (031/032/033). Two categories —
+ * TASK types and NON-TASK types — each a chip group + slug input. No type
+ * name is special; notes without a type are 'n/a'. Chips: name + color dot
+ * (right). Clicking a chip ARMS it: the dot turns into an × that
+ * soft-deletes the type (row survives; notes keeping the value keep it —
+ * the type just stops being offered). Dragging a chip within its group
+ * rewrites the manual order, which is also the note dropdown's order.
  */
 const WriteSysSettings = {
   types: [],
 
   async init() {
-    const input = document.getElementById('tt-input');
-    input.addEventListener('blur', () => this.addFromInput());
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.addFromInput(); });
+    this.wireInput('tt-input', true);
+    this.wireInput('nt-input', false);
+    // Clicking anywhere off a chip disarms any pending delete.
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.tt-chip')) this.disarmAll();
+    });
     await this.reload();
   },
 
   csrf() {
     return sessionStorage.getItem('csrf_token') || localStorage.getItem('csrf_token') || '';
+  },
+
+  wireInput(id, isTask) {
+    const input = document.getElementById(id);
+    input.addEventListener('blur', () => this.addFromInput(id, isTask));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.addFromInput(id, isTask); });
+  },
+
+  disarmAll() {
+    document.querySelectorAll('.tt-chip.tt-armed').forEach((c) => c.classList.remove('tt-armed'));
   },
 
   async reload() {
@@ -31,10 +46,16 @@ const WriteSysSettings = {
   },
 
   render() {
-    const root = document.getElementById('tt-chips');
+    const live = this.types.filter((t) => !t.deleted);
+    this.renderGroup('tt-chips', live.filter((t) => t.is_task));
+    this.renderGroup('nt-chips', live.filter((t) => !t.is_task));
+  },
+
+  renderGroup(rootId, types) {
+    const root = document.getElementById(rootId);
     root.innerHTML = '';
     const W = window.WriteSysNoteWidget;
-    this.types.forEach((t) => {
+    types.forEach((t) => {
       const chip = document.createElement('div');
       chip.className = 'tag-chip tt-chip' + (t.built_in ? ' tt-builtin' : '');
       const name = document.createElement('span');
@@ -57,13 +78,79 @@ const WriteSysSettings = {
         },
       });
       chip.appendChild(dot);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'tt-del';
+      del.textContent = '×';
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          const r = await fetch(`api/task-types/${encodeURIComponent(t.name)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': this.csrf() },
+          });
+          if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+        } catch (err) { /* chip stays on reload if the delete failed */ }
+        await this.reload();
+      });
+      chip.appendChild(del);
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.color-dot-solo, .tt-del')) return;
+        const arming = !chip.classList.contains('tt-armed');
+        this.disarmAll();
+        chip.classList.toggle('tt-armed', arming);
+      });
+      this.makeDraggable(chip, t.name, rootId);
       root.appendChild(chip);
     });
   },
 
-  async addFromInput() {
-    const input = document.getElementById('tt-input');
-    const status = document.getElementById('tt-status');
+  // Drag a chip onto a sibling to drop it AT that sibling's position
+  // (within its own group only). The new order is written as position =
+  // index over [non-tasks…, tasks…] — also the dropdown's order.
+  makeDraggable(chip, name, rootId) {
+    chip.draggable = true;
+    chip.addEventListener('dragstart', (e) => {
+      this.dragName = name;
+      this.dragRoot = rootId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', name);
+    });
+    chip.addEventListener('dragover', (e) => {
+      if (this.dragRoot === rootId && this.dragName !== name) e.preventDefault();
+    });
+    chip.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (this.dragRoot !== rootId || this.dragName === name) return;
+      const isTaskGroup = rootId === 'tt-chips';
+      const live = this.types.filter((t) => !t.deleted);
+      const group = live.filter((t) => t.is_task === isTaskGroup).map((t) => t.name);
+      const other = live.filter((t) => t.is_task !== isTaskGroup).map((t) => t.name);
+      const from = group.indexOf(this.dragName);
+      const to = group.indexOf(name);
+      if (from < 0 || to < 0) return;
+      group.splice(to, 0, group.splice(from, 1)[0]);
+      const names = isTaskGroup ? other.concat(group) : group.concat(other);
+      try {
+        const r = await fetch('api/task-types/order', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+          body: JSON.stringify({ names }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        this.types = (await r.json()).task_types || this.types;
+        this.render();
+      } catch (err) {
+        await this.reload(); // server order wins on failure
+      }
+    });
+  },
+
+  async addFromInput(id, isTask) {
+    const input = document.getElementById(id);
+    const status = document.getElementById(isTask ? 'tt-status' : 'nt-status');
     const names = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (!names.length) return;
     const bad = names.filter((n) => !/^[a-z0-9][a-z0-9-]{0,39}$/.test(n));
@@ -76,7 +163,7 @@ const WriteSysSettings = {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
-        body: JSON.stringify({ names }),
+        body: JSON.stringify({ names, is_task: isTask }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       this.types = (await r.json()).task_types || this.types;

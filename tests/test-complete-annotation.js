@@ -46,11 +46,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
 
     const rainbowBarsBefore = await page.locator('.rainbow-bar').count();
 
-    // Only TASKS (task_type ≠ reminder) can be completed: reminders show
+    // Only TASKS (task-category type) can be completed: untyped/non-task notes show
     // no checkmark.
     const check = page.locator('.sticky-note:not(.uncreated-note) .complete-check');
     const hiddenBefore = await check.evaluate(el => getComputedStyle(el).display === 'none');
-    assert(hiddenBefore, 'Complete button hidden while the note is a reminder');
+    assert(hiddenBefore, 'Complete button hidden while the note is untyped');
     await page.locator('.sticky-note:not(.uncreated-note) .dim-chip.dim-type').click();
     await page.waitForSelector('.dim-pop button[data-v="write"]');
     await page.locator('.dim-pop button[data-v="write"]').click();
@@ -58,7 +58,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
       const el = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check');
       return el && getComputedStyle(el).display !== 'none';
     });
-    assert(true, 'Picking a non-reminder task type reveals the complete button');
+    assert(true, 'Picking a task-category type reveals the complete button');
     const noteId = await page.locator('.sticky-note:not(.uncreated-note)').first()
       .evaluate(el => el.dataset.noteId || el.dataset.annotationId);
 

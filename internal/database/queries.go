@@ -793,7 +793,7 @@ func (db *DB) GetSentencesByMigration(ctx context.Context, migrationID int) ([]m
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
@@ -928,7 +928,7 @@ func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersi
 func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-		       a.priority, a.task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.user_id = $2
@@ -1020,7 +1020,7 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 
 	query1 := `
 		INSERT INTO note (sentence_id, user_id, color, body, priority, task_type, impact, blocked, position)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8, $9)
 		RETURNING note_id, created_at, updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
@@ -1115,7 +1115,7 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 
 	err = db.Pool.QueryRow(ctx, `
 		INSERT INTO note (user_id, color, body, priority, task_type, impact, blocked, position, scratchpad_id, manuscript_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10)
 		RETURNING note_id, created_at, updated_at
 	`,
 		note.UserID, note.Color, note.Body, note.Priority, note.TaskType, note.Impact, note.Blocked, nextPosition, scratchpadID, note.ManuscriptID,
@@ -1140,7 +1140,7 @@ func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *strin
 			color     = COALESCE($2, color),
 			body      = CASE WHEN $3::boolean THEN $4 ELSE body END,
 			priority  = COALESCE($5, priority),
-			task_type = COALESCE($6, task_type),
+			task_type = CASE WHEN $6::text IS NULL THEN task_type ELSE NULLIF($6, '') END,
 			impact    = COALESCE($7, impact),
 			blocked   = COALESCE($8, blocked),
 			updated_at = NOW()
@@ -1159,7 +1159,7 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 
 	query1 := `
 		UPDATE note
-		SET sentence_id = $1, color = $2, body = $3, priority = $4, task_type = $5, impact = $6, blocked = $7, updated_at = NOW()
+		SET sentence_id = $1, color = $2, body = $3, priority = $4, task_type = NULLIF($5, ''), impact = $6, blocked = $7, updated_at = NOW()
 		WHERE note_id = $8
 		RETURNING updated_at
 	`
@@ -1411,7 +1411,7 @@ func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.Not
 func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
-		       a.priority, a.task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
 		FROM note a
 		WHERE a.sentence_id = $1
 		  AND a.deleted_at IS NULL
@@ -1768,7 +1768,7 @@ type HomeNote struct {
 // sentence notes show the manuscript's display name (falls back to name).
 func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) ([]HomeNote, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT n.note_id, n.color, n.body, n.priority, n.task_type, n.impact, n.blocked, n.updated_at,
+		SELECT n.note_id, n.color, n.body, n.priority, COALESCE(n.task_type, '') AS task_type, n.impact, n.blocked, n.updated_at,
 		       n.manuscript_id,
 		       -- A sketch note has no pad of its own — its card deep-links
 		       -- to the sketch's HOME pad (earliest variation's scratchpad).
@@ -1827,7 +1827,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 func (db *DB) GetNoteByID(ctx context.Context, noteID int) (*models.Note, error) {
 	query := `
 		SELECT note_id, COALESCE(sentence_id, ''), manuscript_id, scratchpad_id, user_id, color, body,
-		       priority, task_type, impact, blocked, position, created_at, updated_at, deleted_at, completed_at, sketch_id
+		       priority, COALESCE(task_type, '') AS task_type, impact, blocked, position, created_at, updated_at, deleted_at, completed_at, sketch_id
 		FROM note
 		WHERE note_id = $1
 		  AND deleted_at IS NULL
@@ -1883,17 +1883,22 @@ func (db *DB) SetNoteManuscript(ctx context.Context, noteID int, manuscriptID *i
 // TaskType is one first-dimension option. 'gray' color = no behavior; a
 // real note color means "picking this type recolors the note".
 type TaskType struct {
-	Name    string `json:"name"`
-	BuiltIn bool   `json:"built_in"`
-	Color   string `json:"color"`
+	Name     string `json:"name"`
+	BuiltIn  bool   `json:"built_in"`
+	Color    string `json:"color"`
+	IsTask   bool   `json:"is_task"`
+	Deleted  bool   `json:"deleted"`
+	Position int    `json:"position"`
 }
 
-// ListTaskTypes: 'reminder' first (the default), then built-ins, then
-// customs, alphabetical within each band.
+// ListTaskTypes in the user's manual order (settings-page drag; also the
+// dropdown order). No name is special. Soft-deleted types ARE returned
+// (deleted=true) — a note may still carry one, and the client needs its
+// is_task/color; every dropdown and the settings page filter them out.
 func (db *DB) ListTaskTypes(ctx context.Context) ([]TaskType, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT name, built_in, color FROM task_type
-		ORDER BY (name = 'reminder') DESC, built_in DESC, name
+		SELECT name, built_in, color, is_task, deleted, position FROM task_type
+		ORDER BY position, name
 	`)
 	if err != nil {
 		return nil, err
@@ -1902,7 +1907,7 @@ func (db *DB) ListTaskTypes(ctx context.Context) ([]TaskType, error) {
 	out := []TaskType{}
 	for rows.Next() {
 		var t TaskType
-		if err := rows.Scan(&t.Name, &t.BuiltIn, &t.Color); err != nil {
+		if err := rows.Scan(&t.Name, &t.BuiltIn, &t.Color, &t.IsTask, &t.Deleted, &t.Position); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -1910,18 +1915,72 @@ func (db *DB) ListTaskTypes(ctx context.Context) ([]TaskType, error) {
 	return out, rows.Err()
 }
 
-// AddTaskTypes inserts custom types; names that already exist are skipped
-// (idempotent — the settings field re-submits the whole list).
-func (db *DB) AddTaskTypes(ctx context.Context, names []string) error {
+// AddTaskTypes inserts custom types in the given category, appended to the
+// end of the manual order; live names that already exist are skipped
+// (idempotent — the settings field re-submits the whole list), but re-adding
+// a soft-deleted name REVIVES its row (same name = same row, so notes that
+// kept the value reconnect) in the new category.
+func (db *DB) AddTaskTypes(ctx context.Context, names []string, isTask bool) error {
 	for _, n := range names {
 		if _, err := db.Pool.Exec(ctx, `
-			INSERT INTO task_type (name, built_in) VALUES ($1, false)
-			ON CONFLICT (name) DO NOTHING
-		`, n); err != nil {
+			INSERT INTO task_type (name, built_in, is_task, position)
+			VALUES ($1, false, $2, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_type))
+			ON CONFLICT (name) DO UPDATE SET deleted = false, is_task = EXCLUDED.is_task
+			WHERE task_type.deleted
+		`, n, isTask); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// DeleteTaskType soft-deletes: the row stays (notes keeping the value stay
+// valid and still display it) but every dropdown stops offering it. Any
+// type may go — an untyped note is simply 'n/a' (NULL), so no fallback
+// type needs protecting. false = no such live type.
+func (db *DB) DeleteTaskType(ctx context.Context, name string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE task_type SET deleted = true WHERE name = $1 AND NOT deleted
+	`, name)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// SetTaskTypeOrder rewrites the manual order: position = index in names.
+// The settings page sends every live name (both categories concatenated);
+// omitted names keep their old positions.
+func (db *DB) SetTaskTypeOrder(ctx context.Context, names []string) error {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	for i, n := range names {
+		if _, err := tx.Exec(ctx, `UPDATE task_type SET position = $2 WHERE name = $1`, n, i+1); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// TaskTypeIsTask: whether a type name (live OR soft-deleted — a note may
+// still carry a deleted one) is in the task category. '' (the untyped
+// 'n/a' state) is never a task.
+func (db *DB) TaskTypeIsTask(ctx context.Context, name string) (bool, error) {
+	if name == "" {
+		return false, nil
+	}
+	var isTask bool
+	err := db.Pool.QueryRow(ctx, `SELECT is_task FROM task_type WHERE name = $1`, name).Scan(&isTask)
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return isTask, nil
 }
 
 // SetTaskTypeColor updates one type's color; false = no such type.

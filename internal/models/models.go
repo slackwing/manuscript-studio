@@ -87,10 +87,12 @@ type Note struct {
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Body         *string    `json:"body"`
-	Priority string `json:"priority"` // 'none' (reminders) | 'can' < 'would' < 'should' < 'must'
-	// TaskType is the FIRST dimension: 'reminder' (default) = not a task;
-	// any other value (built-in or custom, task_type table) makes this a
-	// TASK, unlocking priority/impact/blocked/points/completion.
+	Priority string `json:"priority"` // 'none' (non-tasks) | 'can' < 'would' < 'should' < 'must'
+	// TaskType is the FIRST dimension: '' = untyped ('n/a', NULL in the DB,
+	// the state of every new note). A type in the TASK category
+	// (task_type.is_task) makes this a TASK, unlocking priority/impact/
+	// blocked/points/completion; non-task types are plain categorization.
+	// No type name is special in code.
 	TaskType string `json:"task_type"`
 	Impact   string `json:"impact"` // 'n/a' | 'sentence' | 'chapter' | 'novel' | 'recurring'
 	// Blocked is an independent flag (NOT a priority): any priority/impact

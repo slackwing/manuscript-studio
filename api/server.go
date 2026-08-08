@@ -283,7 +283,9 @@ func (s *Server) setupRouter() {
 			// Task types (031/032): the settings page's dimension list.
 			r.Get("/task-types", s.taskTypeHandlers.HandleList)
 			r.Post("/task-types", s.taskTypeHandlers.HandleCreate)
+			r.Put("/task-types/order", s.taskTypeHandlers.HandleReorder)
 			r.Put("/task-types/{name}/color", s.taskTypeHandlers.HandleSetColor)
+			r.Delete("/task-types/{name}", s.taskTypeHandlers.HandleDelete)
 
 			r.Get("/notes/{note_id}/tags", s.noteHandlers.HandleGetTagsForNote)
 			r.Post("/notes/{note_id}/tags", s.noteHandlers.HandleAddTagToNote)

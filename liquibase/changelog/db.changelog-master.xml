@@ -39,5 +39,6 @@
     <include file="changelog/030-snippet-to-sketch.xml"/>
     <include file="changelog/031-task-dimensions.xml"/>
     <include file="changelog/032-task-type-color.xml"/>
+    <include file="changelog/033-task-type-category.xml"/>
 
 </databaseChangeLog>

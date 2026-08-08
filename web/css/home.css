@@ -268,7 +268,26 @@ body.home-page {
 .tt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .tt-chip { display: inline-flex; align-items: center; gap: 7px; }
 .tt-chip.tt-builtin { background: #eceae4; }
-#tt-input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; }
-#tt-input:focus { outline: none; border-color: #999; }
+#tt-input, #nt-input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; }
+#tt-input:focus, #nt-input:focus { outline: none; border-color: #999; }
+/* Armed delete: clicking a chip swaps its color dot for an × (soft delete). */
+.tt-chip { cursor: pointer; }
+.tt-chip .tt-del { display: none; }
+.tt-chip.tt-armed .color-dot-solo { display: none; }
+.tt-chip.tt-armed .tt-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #c0392b;
+  border-radius: 50%;
+  background: #fff;
+  color: #c0392b;
+  font: 600 12px/1 "Helvetica", sans-serif;
+  cursor: pointer;
+}
+.tt-chip.tt-armed .tt-del:hover { background: #c0392b; color: #fff; }
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }

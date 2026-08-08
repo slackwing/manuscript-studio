@@ -289,10 +289,8 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 	if priority == "" {
 		priority = "none"
 	}
+	// "" = untyped ('n/a') — stored as NULL; no type name is a default.
 	taskType := req.TaskType
-	if taskType == "" {
-		taskType = "reminder"
-	}
 	impact := req.Impact
 	if impact == "" {
 		impact = "n/a"
@@ -601,8 +599,14 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 	if note == nil {
 		return
 	}
-	if note.TaskType == "" || note.TaskType == "reminder" {
-		http.Error(w, "only tasks (non-reminder type) can score points", http.StatusBadRequest)
+	isTask, err := h.DB.TaskTypeIsTask(ctx, note.TaskType)
+	if err != nil {
+		log.Printf("notes: score %d: is_task lookup %q: %v", noteID, note.TaskType, err)
+		http.Error(w, "Failed to check task type", http.StatusInternalServerError)
+		return
+	}
+	if !isTask {
+		http.Error(w, "only tasks (task-category type) can score points", http.StatusBadRequest)
 		return
 	}
 	var body struct {

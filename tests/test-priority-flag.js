@@ -33,17 +33,17 @@ const psql = (sql) => execSync(
   const NOTE = '.sticky-note:not(.uncreated-note)';
   const noteId = await page.locator(NOTE).first().evaluate(el => el.dataset.noteId || el.dataset.annotationId);
 
-  // 1. Fresh note: type chip reads 'reminder'; no priority/impact chips;
+  // 1. Fresh note: type chip reads 'n/a' (untyped); no priority/impact chips;
   //    blocked/star/check hidden; trash right-pinned.
   const typeChip = page.locator(`${NOTE} .dim-chip.dim-type`);
-  check('type chip present, reads reminder', (await typeChip.locator('.dim-label').innerText()) === 'reminder');
-  check('no priority chip while reminder', (await page.locator(`${NOTE} .dim-priority`).count()) === 0);
-  check('no impact chip while reminder', (await page.locator(`${NOTE} .dim-impact`).count()) === 0);
+  check('type chip present, reads n/a', (await typeChip.locator('.dim-label').innerText()) === 'n/a');
+  check('no priority chip while untyped', (await page.locator(`${NOTE} .dim-priority`).count()) === 0);
+  check('no impact chip while untyped', (await page.locator(`${NOTE} .dim-impact`).count()) === 0);
   const hiddenBits = await page.evaluate((sel) => {
     const q = (c) => { const el = document.querySelector(`${sel} ${c}`); return el ? getComputedStyle(el).display === 'none' : null; };
     return { blocked: q('.blocked-chip'), star: q('.points-star'), check: q('.complete-check') };
   }, NOTE);
-  check('blocked/star/check hidden for reminders', hiddenBits.blocked && hiddenBits.star && hiddenBits.check, JSON.stringify(hiddenBits));
+  check('blocked/star/check hidden while untyped', hiddenBits.blocked && hiddenBits.star && hiddenBits.check, JSON.stringify(hiddenBits));
   const trashPin = await page.evaluate((sel) => {
     const row = document.querySelector(`${sel} .priority-flag-chips`).getBoundingClientRect();
     const tr = document.querySelector(`${sel} .note-trash`).getBoundingClientRect();
