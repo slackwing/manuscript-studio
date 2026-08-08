@@ -261,12 +261,11 @@ body.home-page {
 .sticky-note-card .priority-flag-chips { gap: 4px; }
 
 /* ---- Settings page (task types) ---- */
-#settings-root { max-width: 720px; margin: 80px auto 40px; padding: 0 20px; font-family: "Helvetica", sans-serif; }
-#settings-root h2 { font-family: Georgia, serif; font-weight: 400; }
-.settings-section { background: #fff; border: 1px solid #e3e0d8; border-radius: 10px; padding: 18px 22px; margin-top: 18px; }
-.settings-section h3 { margin: 0 0 6px; font-size: 15px; }
+/* Settings page: layout and chrome come from home-main/home-section — the
+   page must look like the landing page, only this card is its own. */
+.settings-section { background: #fff; border: 1px solid #e3e0d8; border-radius: 10px; padding: 18px 22px; max-width: 720px; }
 .settings-hint { font-size: 12px; color: #8a8378; line-height: 1.5; }
-.tt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.tt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .tt-chip { display: inline-flex; align-items: center; gap: 7px; }
 .tt-chip.tt-builtin { background: #eceae4; }
 #tt-input { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; }

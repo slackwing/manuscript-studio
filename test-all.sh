@@ -19,6 +19,7 @@ set -u
 # slow = >15s, typically because of multi-stage browser flows or layouts that
 #        require waiting on hover-out timeouts and animation settles.
 FAST_TESTS=(
+  test-settings
   test-wordcount
   test-rainbow-slice
   test-never-mind-focus

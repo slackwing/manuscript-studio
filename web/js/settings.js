@@ -37,27 +37,26 @@ const WriteSysSettings = {
     this.types.forEach((t) => {
       const chip = document.createElement('div');
       chip.className = 'tag-chip tt-chip' + (t.built_in ? ' tt-builtin' : '');
-      chip.title = t.built_in ? 'Built-in type' : 'Custom type';
-      const dot = W.buildColorDot({
-        colors: ['gray', 'yellow', 'green', 'blue', 'purple', 'red', 'orange'],
-        current: t.color || 'gray',
-        title: 'Type color — gray does nothing; a real color recolors notes given this type',
-        onPick: async (color) => {
-          try {
-            await fetch(`api/task-types/${encodeURIComponent(t.name)}/color`, {
-              method: 'PUT',
-              credentials: 'same-origin',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
-              body: JSON.stringify({ color }),
-            });
-            t.color = color;
-          } catch (e) { /* dot already painted; reload will correct */ }
-        },
-      });
-      chip.appendChild(dot);
       const name = document.createElement('span');
       name.textContent = t.name;
       chip.appendChild(name);
+      const dot = W.buildColorDot({
+        colors: ['gray', 'yellow', 'green', 'blue', 'purple', 'red', 'orange'],
+        current: t.color || 'gray',
+        // Throwing on failure makes buildColorDot revert the dot — the dot
+        // must never show a color the server didn't accept.
+        onPick: async (color) => {
+          const r = await fetch(`api/task-types/${encodeURIComponent(t.name)}/color`, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+            body: JSON.stringify({ color }),
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          t.color = color;
+        },
+      });
+      chip.appendChild(dot);
       root.appendChild(chip);
     });
   },

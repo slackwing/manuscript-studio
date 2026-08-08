@@ -1629,6 +1629,34 @@ p.section-break {
   border: 1px solid rgba(0,0,0,0.25);
   box-sizing: border-box;
 }
+/* Its palette: a small horizontal pill popover below the dot (the vertical
+   sticky-note palette is position-locked to note corners and can't be
+   reused off a note). */
+.color-dot-solo .dot-palette {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -8px;
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #d8d4c8;
+  border-radius: 999px;
+  box-shadow: 0 12px 28px -12px rgba(20, 16, 8, 0.4);
+  z-index: 40;
+}
+.color-dot-solo .dot-palette.visible { display: flex; }
+.color-dot-solo .dot-palette .dot-option {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.color-dot-solo .dot-palette .dot-option:hover { transform: scale(1.25); }
 
 /* Typed point value shown IN PLACE of the star while armed — small enough
    that two digits fit the 28px circle. */

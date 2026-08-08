@@ -42,8 +42,12 @@
   // Task types from the settings page (built-ins + customs, each with a
   // color: gray = inert, a real color recolors the note when picked).
   let taskTypesPromise = null;
+  let taskTypesAt = 0;
   function listTaskTypes() {
-    if (!taskTypesPromise) {
+    // 30s TTL: colors edited on the settings page must reach already-open
+    // pages — a page-lifetime cache recolored notes with stale colors.
+    if (!taskTypesPromise || Date.now() - taskTypesAt > 30000) {
+      taskTypesAt = Date.now();
       taskTypesPromise = fetch('api/task-types', { credentials: 'same-origin' })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error('task-types ' + r.status))))
         .then((d) => d.task_types || []);
@@ -622,31 +626,39 @@
     return el;
   }
 
-  // Generic color dot + hover palette — the sticky-note color picker as a
-  // reusable component (settings page uses it for task-type colors).
-  function buildColorDot({ colors, current, onPick, title }) {
+  // Generic color dot + hover palette (settings page task-type colors).
+  // The palette is its own small horizontal popover — NOT the sticky-note
+  // palette, whose absolute layout only works hanging off a note corner.
+  // A failed onPick (rejected promise) reverts the dot to its prior color.
+  function buildColorDot({ colors, current, onPick }) {
     const wrap = document.createElement('span');
     wrap.className = 'color-dot-solo';
-    if (title) wrap.title = title;
     const dot = document.createElement('span');
     dot.className = 'color-dot-current';
-    const paint = (c) => {
-      dot.style.background = c === 'gray' ? '#c9c4b8' : `var(--highlight-${c})`;
-    };
-    paint(current);
+    const fill = (c) => (c === 'gray' ? '#c9c4b8' : `var(--highlight-${c})`);
+    let cur = current;
+    const paint = (c) => { dot.style.background = fill(c); };
+    paint(cur);
     wrap.appendChild(dot);
     const palette = document.createElement('div');
-    palette.className = 'sticky-note-palette';
+    palette.className = 'dot-palette';
     (colors || COLORS).forEach((color) => {
-      const d = document.createElement('div');
-      d.className = 'color-circle';
-      d.style.backgroundColor = color === 'gray' ? '#c9c4b8' : `var(--highlight-${color})`;
-      d.title = color;
-      d.addEventListener('click', (e) => {
+      const d = document.createElement('span');
+      d.className = 'dot-option';
+      d.dataset.color = color;
+      d.style.background = fill(color);
+      d.addEventListener('click', async (e) => {
         e.stopPropagation();
+        const prev = cur;
+        cur = color;
         paint(color);
         palette.classList.remove('visible');
-        onPick && onPick(color);
+        try {
+          if (onPick) await onPick(color);
+        } catch (err) {
+          cur = prev;
+          paint(prev);
+        }
       });
       palette.appendChild(d);
     });
@@ -656,6 +668,7 @@
     const hideSoon = () => { hideTimer = setTimeout(() => palette.classList.remove('visible'), 200); };
     wrap.addEventListener('mouseenter', show);
     wrap.addEventListener('mouseleave', hideSoon);
+    wrap.addEventListener('click', show);
     return wrap;
   }
 
