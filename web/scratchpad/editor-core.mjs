@@ -795,6 +795,8 @@ class SketchView {
     pane.innerHTML = `
       <div class="sn-note sn-src-note"><a href="#" class="sn-goto-source">Go to source</a></div>
       <div class="sn-render sn-peer"></div>`;
+    // The header no longer names the peer — keep its identity inspectable.
+    pane.dataset.ordinal = String(ctx.variation.ordinal);
     const sketchId = ctx.variation.sketch_id;
     const ordinal = ctx.variation.ordinal;
     pane.querySelector('.sn-goto-source').addEventListener('click', (e) => {

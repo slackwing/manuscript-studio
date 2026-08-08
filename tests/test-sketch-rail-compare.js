@@ -59,12 +59,13 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   await w.locator('.sn-rail-peer', { hasText: 'B' }).click();
   await page.waitForTimeout(700);
   check('split opens (left+right panes)', await w.locator('.sn-split-left').count() === 1 && await w.locator('.sn-split-right').count() === 1);
-  const rightB = await w.locator('.sn-split-right .sn-note').textContent();
-  check('right pane is B, read-only', /B\s*· read-only/.test(rightB), JSON.stringify(rightB));
+  const paneB = await w.locator('.sn-split-right').evaluate(el => ({
+    ordinal: el.dataset.ordinal, link: (el.querySelector('.sn-goto-source') || {}).textContent }));
+  check('right pane is B, with the source link', paneB.ordinal === '2' && paneB.link === 'Go to source', JSON.stringify(paneB));
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(700);
-  const rightC = await w.locator('.sn-split-right .sn-note').textContent();
-  check('clicking C swaps the right pane', /C\s*· read-only/.test(rightC), JSON.stringify(rightC));
+  const paneC = await w.locator('.sn-split-right').evaluate(el => ({ ordinal: el.dataset.ordinal }));
+  check('clicking C swaps the right pane', paneC.ordinal === '3', JSON.stringify(paneC));
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(500);
   check('clicking C again closes the split', await w.locator('.sn-split-left').count() === 0);
