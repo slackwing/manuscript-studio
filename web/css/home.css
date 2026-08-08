@@ -351,5 +351,18 @@ body.home-page {
   z-index: 2;
 }
 .daily-check svg { filter: drop-shadow(0 3px 10px rgba(170, 125, 0, 0.55)); }
+/* Points grid: columns = days (bottom-up stacks), same gold as the daily
+   check; darker gold = bulldozed-in overflow; green = future spill. */
+.points-grid { display: flex; gap: 2px; overflow: hidden; }
+.points-col { display: flex; flex-direction: column-reverse; gap: 2px; flex: 0 0 auto; }
+.points-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(87, 80, 63, 0.14);
+}
+.points-cell.lit { background: #f0c419; }
+.points-cell.lit.bulldozed { background: #c2990e; }
+.points-cell.lit.future { background: #74b355; }
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }

@@ -2143,3 +2143,37 @@ func (db *DB) UncompleteNote(ctx context.Context, noteID int, username string) (
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// DailyPoints: one row per day (in the caller's timezone) with the user's
+// summed live point events — the landing page's points grid.
+type DailyPoints struct {
+	Date   string `json:"date"` // YYYY-MM-DD in the configured timezone
+	Points int    `json:"points"`
+}
+
+// ListDailyPoints returns the user's ENTIRE per-day points history, oldest
+// first. The full history (not a window) is intentional: the grid's
+// bulldozer overflow cascades left-to-right from the very first day, so a
+// huge day far in the past can still spill into the visible window.
+func (db *DB) ListDailyPoints(ctx context.Context, username string, tz string) ([]DailyPoints, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT to_char(pe.scored_at AT TIME ZONE $2, 'YYYY-MM-DD') AS day, SUM(pe.points)::int
+		FROM point_event pe
+		JOIN note n ON n.note_id = pe.note_id
+		WHERE n.user_id = $1 AND pe.deleted_at IS NULL
+		GROUP BY 1 ORDER BY 1
+	`, username, tz)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DailyPoints{}
+	for rows.Next() {
+		var d DailyPoints
+		if err := rows.Scan(&d.Date, &d.Points); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}

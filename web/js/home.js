@@ -13,6 +13,11 @@ const WriteSysHome = {
     this._inited = true;
     // Re-render cards whenever the modal closes (titles/sketches change).
     window.addEventListener('scratchpad-modal-closed', () => this.reload());
+    // The points grid sizes itself to the content width — refit on resize.
+    window.addEventListener('resize', () => {
+      clearTimeout(this._pgResize);
+      this._pgResize = setTimeout(() => this.renderPointsGrid(), 150);
+    });
     window.addEventListener('popstate', () => this.render());
     // After an in-place re-login (session-guard), the page's data fetches
     // had 401'd — reload them, else the landing page stays broken until a
@@ -29,6 +34,12 @@ const WriteSysHome = {
         const mid = new URLSearchParams(window.location.search).get('manuscript_id') || '';
         this.daily = await fetchJSON('api/daily-tasks?manuscript_id=' + encodeURIComponent(mid), {}, false);
       }
+      // Points grid (default view only): the FULL per-day history — the
+      // bulldozer cascade needs every day since the first point.
+      if (this.view() === 'home') {
+        try { this.points = await fetchJSON('api/points-daily', {}, false); }
+        catch (e) { this.points = null; } // grid is an enhancement, not a gate
+      }
     } catch (e) {
       document.getElementById('home-root').innerHTML =
         `<div class="home-empty">Failed to load: ${this.esc(e.message)}</div>`;
@@ -39,6 +50,94 @@ const WriteSysHome = {
 
   view() {
     return new URLSearchParams(window.location.search).get('view') || 'home';
+  },
+
+  // ---- Points grid (GitHub-contribution style, with a bulldozer) ----
+  //
+  // One COLUMN per day, 14 ROWS, one row = 1 point; a day's points light
+  // squares bottom-up in gold. Today sits ~80% of the way across; the ~20%
+  // to its right is the future. As many columns as fit the content width
+  // (same left/right edges as the card grids). Empty cells stay gray.
+  //
+  // QUIRK (deliberate — keep it): a day displays at most 14 points, but
+  // points 15+ do NOT vanish. Picture a bulldozer shoving the excess blocks
+  // off the top of the stack RIGHTWARD into the next day's column,
+  // cascading as far as needed — even into days that haven't happened yet.
+  //   17, 6, 13  →  14, 9, 13
+  //   17, 12, 14 →  14, 14, 14, 1   (the trailing 1 lands in the future)
+  // Per spec the implementation is the LITERAL simulation — build the
+  // matrix, then bulldoze; simple beats efficient:
+  //   1. Stack every day's actual points as 'natural' blocks (stacks may
+  //      be taller than 14 at this stage).
+  //   2. Scan columns left→right; while a column is taller than 14, pop
+  //      its TOP block and drop it on TOP of the next column, marked
+  //      'bulldozed'. Carried-in blocks therefore sit ABOVE the day's own
+  //      points, and an overfull day sheds those carried blocks first —
+  //      they keep rolling rightward.
+  // Colors: natural = gold; bulldozed = darker gold; anything in a FUTURE
+  // column = green ("for being so ahead") — future-ness outranks the
+  // bulldozed shade, since every future block is bulldozed by definition.
+  // The cascade runs over the FULL history (the API returns every day
+  // since the first point), so a monster day left of the visible window
+  // still spills into view correctly.
+  renderPointsGrid() {
+    const grid = document.getElementById('points-grid');
+    if (!grid || !this.points) return;
+    const CELL = 10, GAP = 2, ROWS = 14;
+    const cols = Math.max(10, Math.floor((grid.clientWidth + GAP) / (CELL + GAP)));
+    const future = Math.max(1, Math.round(cols * 0.2)); // today ≈ 80% across
+    // All date math in UTC on the tz-resolved YYYY-MM-DD labels the server
+    // sent — stepping by whole days can never straddle a DST boundary.
+    const DAY = 86400000;
+    const parse = (s) => new Date(s + 'T00:00:00Z');
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    const today = parse(this.points.today);
+    const byDate = {};
+    (this.points.days || []).forEach(d => { byDate[d.date] = d.points; });
+    // The matrix starts at the EARLIER of (first data day, window start):
+    // history left of the window still bulldozes into view.
+    const windowStart = new Date(today.getTime() - (cols - future - 1) * DAY);
+    const firstData = (this.points.days || []).length ? parse(this.points.days[0].date) : windowStart;
+    const start = firstData < windowStart ? firstData : windowStart;
+    const end = new Date(today.getTime() + future * DAY);
+    const days = [];
+    for (let t = start.getTime(); t <= end.getTime(); t += DAY) days.push(fmt(new Date(t)));
+    // 1. Stack natural blocks.
+    const matrix = days.map(d => Array(byDate[d] || 0).fill('natural'));
+    // 2. Bulldoze.
+    for (let i = 0; i < matrix.length; i++) {
+      while (matrix[i].length > ROWS) {
+        matrix[i].pop();
+        if (!matrix[i + 1]) {
+          matrix.push([]);
+          days.push(fmt(new Date(parse(days[days.length - 1]).getTime() + DAY)));
+        }
+        matrix[i + 1].push('bulldozed');
+      }
+    }
+    // Render only the visible window (the cascade may extend past it).
+    grid.innerHTML = '';
+    const startIdx = days.indexOf(fmt(windowStart));
+    for (let c = 0; c < cols; c++) {
+      const idx = startIdx + c;
+      const date = days[idx] || fmt(new Date(windowStart.getTime() + c * DAY));
+      const stack = matrix[idx] || [];
+      const col = document.createElement('div');
+      col.className = 'points-col' + (date === this.points.today ? ' today' : '');
+      col.dataset.date = date;
+      const isFuture = date > this.points.today; // ISO strings compare lexically
+      for (let row = 0; row < ROWS; row++) {
+        const cell = document.createElement('div');
+        cell.className = 'points-cell';
+        if (row < stack.length) {
+          cell.classList.add('lit');
+          if (isFuture) cell.classList.add('future');
+          else if (stack[row] === 'bulldozed') cell.classList.add('bulldozed');
+        }
+        col.appendChild(cell);
+      }
+      grid.appendChild(col);
+    }
   },
 
   esc(t) {
@@ -165,7 +264,11 @@ const WriteSysHome = {
         this.section(`Daily tasks${this.esc(who)}`, noteList.length, '', { notes: true });
     } else {
       noteList = nt.slice(0, this.RECENT);
-      html = this.section('Manuscripts', ms.length,
+      html = (this.points ? `<section class="home-section" id="points-section">
+          <div class="home-section-head"><h2>Points</h2></div>
+          <div id="points-grid" class="points-grid"></div>
+        </section>` : '')
+        + this.section('Manuscripts', ms.length,
         ms.slice(0, this.RECENT).map(m => this.manuscriptCard(m)).join(''),
         ms.length > this.RECENT ? { seeAll: 'manuscripts' } : {})
         + this.section('Scratchpads', sp.length,
@@ -199,6 +302,8 @@ const WriteSysHome = {
         else grid.outerHTML = '<div class="home-empty">Nothing here yet.</div>';
       }
     }
+
+    this.renderPointsGrid();
 
     // Manuscript card's "daily tasks" link (a span — the card itself is an
     // anchor, so stop the card navigation and go to the daily view).

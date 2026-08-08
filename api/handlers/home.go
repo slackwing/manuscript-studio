@@ -292,3 +292,28 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 		"notes":           notes,
 	})
 }
+
+// HandleDailyPoints: GET /api/points-daily — the user's full per-day points
+// history plus today's date, both in the configured timezone. Feeds the
+// landing page's points grid (which needs ALL history for its left-to-right
+// overflow cascade).
+func (h *HomeHandlers) HandleDailyPoints(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	loc := h.Config.WordcountHistory.Location()
+	tz := loc.String()
+	days, err := h.DB.ListDailyPoints(r.Context(), session.Username, tz)
+	if err != nil {
+		log.Printf("points-daily: list: %v", err)
+		http.Error(w, "Failed to list daily points", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"today": time.Now().In(loc).Format("2006-01-02"),
+		"days":  days,
+	})
+}
