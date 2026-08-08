@@ -243,6 +243,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
     kinds.length >= 3 && kinds[0].includes('na-deleted') && kinds[1].includes('na-completed') && kinds[2].includes('na-points'),
     kinds.join(';'));
   check('rows carry the note-UI icons', await page.locator('.na-row .na-icon svg').count() >= 3);
+  check('rows wear the note color', kinds[0].includes('na-color-yellow') && kinds[2].includes('na-color-blue'), kinds.join(';'));
   check('preview shows the note body', (await page.locator('.na-row.na-points .na-prev').innerText()).includes('Recolor me'));
   check('deleted row previews its own note', (await page.locator('.na-row.na-deleted .na-prev').innerText()).includes('Delete me'));
   check('when column shows date + time', /[A-Za-z]+ \d+.*\d+:\d\d/.test(await page.locator('.na-row .na-when').first().innerText()),

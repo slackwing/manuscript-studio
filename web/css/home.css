@@ -292,9 +292,18 @@ body.home-page {
 /* Note actions audit table: when · preview · icon · undo. */
 .na-section { max-width: 720px; }
 .na-table { width: 100%; border-collapse: collapse; font-family: "Helvetica", sans-serif; }
-.na-row td { padding: 7px 10px 7px 0; border-top: 1px solid #efece5; vertical-align: middle; }
+.na-row td { padding: 7px 10px; border-top: 2px solid #fff; vertical-align: middle; }
 .na-row:first-child td { border-top: none; }
-.na-when { white-space: nowrap; color: #8a8378; font-size: 12px; }
+/* Each row wears its note's color (same highlight vars as the notes). */
+.na-row.na-color-yellow td { background: var(--highlight-yellow); }
+.na-row.na-color-green  td { background: var(--highlight-green); }
+.na-row.na-color-blue   td { background: var(--highlight-blue); }
+.na-row.na-color-purple td { background: var(--highlight-purple); }
+.na-row.na-color-red    td { background: var(--highlight-red); }
+.na-row.na-color-orange td { background: var(--highlight-orange); }
+.na-row td:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.na-row td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+.na-when { white-space: nowrap; color: #6f6a60; font-size: 12px; }
 .na-prev {
   max-width: 0; /* let the table column, not the text, set the width */
   width: 100%;
@@ -317,5 +326,30 @@ body.home-page {
   white-space: nowrap;
 }
 .na-undo:hover { text-decoration: underline; }
+/* Manuscript card: "daily tasks" link — bottom right, above the meta row. */
+.ms-daily-row { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+.ms-daily-link { font: 12px "Helvetica", sans-serif; color: #2a6fb0; cursor: pointer; }
+.ms-daily-link:hover { text-decoration: underline; }
+/* Daily-tasks page: a note already awarded points today dims under a big
+   shiny gold check. pointer-events: none keeps the card clickable. */
+.card-note.daily-done { position: relative; }
+.card-note.daily-done::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.daily-check {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.daily-check svg { filter: drop-shadow(0 3px 10px rgba(170, 125, 0, 0.55)); }
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }
