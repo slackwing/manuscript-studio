@@ -35,6 +35,11 @@
                 CHECK (impact IN ('n/a','sentence','chapter','novel','recurring'));
             ALTER TABLE note ADD COLUMN blocked BOOLEAN NOT NULL DEFAULT false;
 
+            -- Old constraint must go FIRST — the value migration below
+            -- writes priorities it would reject (this bit prod: dev had no
+            -- prioritized rows when it ran, prod did).
+            ALTER TABLE note DROP CONSTRAINT chk_note_priority;
+
             -- Pre-dimension tasks (any old priority) become 'organize' tasks.
             UPDATE note SET task_type = 'organize' WHERE priority != 'none';
             UPDATE note SET blocked = true, priority = 'can' WHERE priority = 'blocked';
@@ -45,7 +50,6 @@
             -- Tasks keep a real priority; reminders stay 'none' internally.
             UPDATE note SET priority = 'can' WHERE task_type != 'reminder' AND priority = 'none';
 
-            ALTER TABLE note DROP CONSTRAINT chk_note_priority;
             ALTER TABLE note ADD CONSTRAINT chk_note_priority
                 CHECK (priority IN ('none','can','would','should','must'));
 
