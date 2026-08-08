@@ -1375,10 +1375,10 @@ p.section-break {
 .priority-flag-chips {
   display: flex;
   /* EIGHT fixed, equidistant slots: the percentage gap IS the 8-across
-     pitch (8 × 26px circles spread edge to edge). The linked-manuscript
-     chip spans slots 1-4 (.note-ms-slot, empty when unlinked), then
-     ⊘blocked(5) ★(6) ✓(7) — tasks only — and the trash ALWAYS holds
-     slot 8 (right-pinned). flex:none stops silent flex-shrink. */
+     pitch (8 × 26px circles spread edge to edge). The link circle holds
+     slot 1 (.note-ms-slot stays open even when empty), ⊘blocked(2) ★(3)
+     ✓(4) — tasks only — and the trash ALWAYS holds slot 8 (right-
+     pinned). flex:none stops silent flex-shrink. */
   justify-content: flex-start;
   column-gap: calc((100% - 208px) / 7);
   align-items: center;
@@ -1409,24 +1409,27 @@ p.section-break {
   color: #fff;
 }
 
-/* The bottom row's manuscript span: exactly FOUR slots wide (4 circles +
-   3 gaps) whether or not a chip lives in it, so blocked/star/check/trash
-   keep their slots. */
+/* The bottom row's manuscript slot: ONE circle slot (the link chip is a
+   26px circle like its neighbors), held open even when empty so blocked/
+   star/check always sit at slots 2/3/4. */
 .note-ms-slot {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  width: calc(104px + 3 * ((100% - 208px) / 7));
-  min-width: 0;
+  width: 26px;
+  height: 26px;
   flex: none;
 }
-.note-ms-slot .ms-chip { max-width: 100%; }
 
 /* Dimension dropdown chips (task type / priority / impact) — tag-chip
-   geometry, interactive. */
+   geometry, interactive; italic + a caret mark them as special. */
 .dim-chip { cursor: pointer; }
+.dim-chip .dim-label { font-style: italic; }
+.dim-chip .dim-caret { font-size: 8px; color: #888; margin-left: 4px; }
 .dim-chip:hover { background: #d4d4d4; }
+.dim-pop .note-linkpop-list button { font-style: italic; }
 .dim-pop .note-linkpop-list button.dim-current { font-weight: 700; }
+.note-linkpop-unlink { color: #b04038; font-style: italic; }
 
 .priority-chip {
   display: inline-flex;
@@ -1571,8 +1574,6 @@ p.section-break {
   border: 1px dashed #ccc;
   border-radius: 50%;
   color: #999;
-  /* ALWAYS the rightmost slot — completion is the row's terminal act. */
-  margin-left: auto;
 }
 
 .complete-check:hover {

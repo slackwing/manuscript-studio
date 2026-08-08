@@ -36,7 +36,7 @@ const psql = (sql) => execSync(
   // 1. Fresh note: type chip reads 'reminder'; no priority/impact chips;
   //    blocked/star/check hidden; trash right-pinned.
   const typeChip = page.locator(`${NOTE} .dim-chip.dim-type`);
-  check('type chip present, reads reminder', (await typeChip.innerText()) === 'reminder');
+  check('type chip present, reads reminder', (await typeChip.locator('.dim-label').innerText()) === 'reminder');
   check('no priority chip while reminder', (await page.locator(`${NOTE} .dim-priority`).count()) === 0);
   check('no impact chip while reminder', (await page.locator(`${NOTE} .dim-impact`).count()) === 0);
   const hiddenBits = await page.evaluate((sel) => {
@@ -59,8 +59,8 @@ const psql = (sql) => execSync(
   check('type dropdown lists built-ins', optionCount >= 11, `options=${optionCount}`);
   await page.locator('.dim-pop button[data-v="write"]').click();
   await page.waitForSelector(`${NOTE} .dim-priority`);
-  check('priority chip appears, defaults can', (await page.locator(`${NOTE} .dim-priority`).innerText()) === 'can');
-  check('impact chip appears, defaults n/a', (await page.locator(`${NOTE} .dim-impact`).innerText()) === 'n/a');
+  check('priority chip appears, defaults can', (await page.locator(`${NOTE} .dim-priority .dim-label`).innerText()) === 'can');
+  check('impact chip appears, defaults n/a', (await page.locator(`${NOTE} .dim-impact .dim-label`).innerText()) === 'n/a');
   await page.waitForTimeout(400);
   check('DB: task_type + default priority saved',
     psql(`SELECT task_type || '|' || priority FROM note WHERE note_id=${noteId}`) === 'write|can');
@@ -70,7 +70,7 @@ const psql = (sql) => execSync(
   }, NOTE);
   check('blocked/star/check revealed for tasks', shown);
 
-  // 3. Bottom-row slots: ms-slot spans 4; blocked(5) star(6) check(7) trash(8).
+  // 3. Bottom-row slots: link circle(1) blocked(2) star(3) check(4) … trash(8).
   const slots = await page.evaluate((sel) => {
     const row = document.querySelector(`${sel} .priority-flag-chips`).getBoundingClientRect();
     const ms = document.querySelector(`${sel} .note-ms-slot`).getBoundingClientRect();
@@ -80,16 +80,16 @@ const psql = (sql) => execSync(
     const tr = document.querySelector(`${sel} .note-trash`).getBoundingClientRect();
     const pitch = 26 + (row.width - 208) / 7;
     return {
-      msSpan: ms.width, expectMs: 104 + 3 * (row.width - 208) / 7,
-      d1: bl.left - row.left - ms.width, pitchGap: (row.width - 208) / 7,
-      starStep: st.left - bl.left, checkStep: ck.left - st.left, trashStep: tr.left - ck.left, pitch,
+      msSpan: ms.width,
+      blockedStep: bl.left - ms.left,
+      starStep: st.left - bl.left, checkStep: ck.left - st.left, pitch,
       trashRight: Math.round(row.right - tr.right),
     };
   }, NOTE);
-  check('ms slot spans exactly 4 slots', Math.abs(slots.msSpan - slots.expectMs) <= 1, `${slots.msSpan.toFixed(1)} vs ${slots.expectMs.toFixed(1)}`);
-  check('blocked→star→check march at slot pitch',
-    Math.abs(slots.starStep - slots.pitch) <= 1 && Math.abs(slots.checkStep - slots.pitch) <= 1 && Math.abs(slots.trashStep - slots.pitch) <= 1,
-    JSON.stringify({ star: slots.starStep.toFixed(1), check: slots.checkStep.toFixed(1), trash: slots.trashStep.toFixed(1), pitch: slots.pitch.toFixed(1) }));
+  check('ms slot is one circle slot (26px)', Math.abs(slots.msSpan - 26) <= 1, `${slots.msSpan.toFixed(1)}`);
+  check('link(1)→blocked(2)→star(3)→check(4) march at slot pitch',
+    Math.abs(slots.blockedStep - slots.pitch) <= 1 && Math.abs(slots.starStep - slots.pitch) <= 1 && Math.abs(slots.checkStep - slots.pitch) <= 1,
+    JSON.stringify({ blocked: slots.blockedStep.toFixed(1), star: slots.starStep.toFixed(1), check: slots.checkStep.toFixed(1), pitch: slots.pitch.toFixed(1) }));
   check('trash still right edge (slot 8)', Math.abs(slots.trashRight) <= 1);
 
   // 4. Priority + impact dropdowns persist.
@@ -121,9 +121,9 @@ const psql = (sql) => execSync(
   await page.waitForSelector(NOTE, { timeout: 8000 });
   await page.waitForSelector(`${NOTE} .dim-priority`, { timeout: 8000 });
   check('dims persist after reload',
-    (await page.locator(`${NOTE} .dim-chip.dim-type`).innerText()) === 'write' &&
-    (await page.locator(`${NOTE} .dim-priority`).innerText()) === 'must' &&
-    (await page.locator(`${NOTE} .dim-impact`).innerText()) === 'chapter');
+    (await page.locator(`${NOTE} .dim-chip.dim-type .dim-label`).innerText()) === 'write' &&
+    (await page.locator(`${NOTE} .dim-priority .dim-label`).innerText()) === 'must' &&
+    (await page.locator(`${NOTE} .dim-impact .dim-label`).innerText()) === 'chapter');
 
   await browser.close();
   await cleanupTestAnnotations();

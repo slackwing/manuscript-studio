@@ -56,13 +56,17 @@
   const IMPACTS = ['n/a', 'sentence', 'chapter', 'novel', 'recurring'];
 
   // A dropdown chip: looks like a tag chip, opens a small option menu.
-  function buildDimChip({ cls, value, title, loadOptions, onPick }) {
+  function buildDimChip({ cls, value, loadOptions, onPick }) {
     const chip = document.createElement('div');
     chip.className = 'tag-chip dim-chip ' + cls;
-    chip.title = title;
     const label = document.createElement('span');
+    label.className = 'dim-label';
     label.textContent = value;
     chip.appendChild(label);
+    const caret = document.createElement('span');
+    caret.className = 'dim-caret';
+    caret.textContent = '▾';
+    chip.appendChild(caret);
     chip.addEventListener('click', async (e) => {
       e.stopPropagation();
       document.querySelectorAll('.note-linkpop').forEach((el) => el.remove());
@@ -182,7 +186,6 @@
       list.appendChild(buildDimChip({
         cls: 'dim-type',
         value: note.task_type || 'reminder',
-        title: 'Task type — reminder means "no action, just reread one day"; anything else makes this a TASK',
         loadOptions: async () => (await listTaskTypes()).map((t) => ({ value: t.name, label: t.name + (t.color && t.color !== 'gray' ? ' ●' : '') })),
         onPick: async (v) => {
           note.task_type = v;
@@ -202,7 +205,6 @@
         list.appendChild(buildDimChip({
           cls: 'dim-priority',
           value: note.priority && note.priority !== 'none' ? note.priority : 'can',
-          title: 'Priority: can < would < should < must',
           loadOptions: async () => PRIORITIES.map((v) => ({ value: v, label: v })),
           onPick: async (v) => {
             note.priority = v;
@@ -213,7 +215,6 @@
         list.appendChild(buildDimChip({
           cls: 'dim-impact',
           value: note.impact || 'n/a',
-          title: 'Impact: what finishing this task would move',
           loadOptions: async () => IMPACTS.map((v) => ({ value: v, label: v })),
           onPick: async (v) => {
             note.impact = v;
@@ -296,6 +297,7 @@
       }),
       // Context hooks only (tests + card-compact CSS) — skin comes from .ms-chip.
       extraClass: 'tag-chip manuscript-chip',
+      circle: true, // bottom-row slot 1: a 26px circle like its neighbors
     });
     if (chip) slot.appendChild(chip);
   }

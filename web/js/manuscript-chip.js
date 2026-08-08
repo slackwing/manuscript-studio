@@ -82,6 +82,29 @@
         border-color: #999;
         color: #666;
       }
+      /* Bottom-row circle variant: same 26px round language as blocked/
+         star/check/trash; linked keeps the leather + gilt. */
+      .ms-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        box-sizing: border-box;
+        border-radius: 50%;
+        border: 1px dashed #ccc;
+        background: transparent;
+        color: #999;
+        flex: none;
+        transition: all 0.2s;
+      }
+      .ms-circle:hover { background: #f5f5f5; border-color: #999; color: #666; }
+      .ms-circle.linked {
+        border: 2px solid #c9a227;
+        background: linear-gradient(#66492b, #573d21);
+        color: #f3e6c4;
+      }
+      .ms-circle.linked:hover { filter: brightness(1.15); }
     `;
     document.head.appendChild(st);
   }
@@ -101,7 +124,8 @@
   // THE manuscript picker: a search-and-pick popover anchored to `anchorEl`.
   // Calls onPick(manuscript_id). (Keeps the .note-linkpop classes — their
   // styles/z-index live in book.css and already layer above every modal.)
-  function openPicker(anchorEl, onPick) {
+  function openPicker(anchorEl, onPick, opts) {
+    opts = opts || {};
     document.querySelectorAll('.note-linkpop').forEach((el) => el.remove());
     const pop = document.createElement('div');
     pop.className = 'note-linkpop';
@@ -126,8 +150,9 @@
       const render = () => {
         const needle = q.value.trim().toLowerCase();
         const hits = all.filter((m) => m.name.toLowerCase().includes(needle));
-        list.innerHTML = hits.length
-          ? hits.map((m) => `<button type="button" data-mid="${m.id}"></button>`).join('')
+        const unlinkRow = opts.onUnlink ? '<button type="button" class="note-linkpop-unlink" data-mid="0">— unlink —</button>' : '';
+        list.innerHTML = hits.length || unlinkRow
+          ? unlinkRow + hits.map((m) => `<button type="button" data-mid="${m.id}"></button>`).join('')
           : '<span class="note-linkpop-empty">No matches</span>';
         // textContent (not innerHTML) for names — XSS-safe.
         const btns = list.querySelectorAll('button[data-mid]');
@@ -143,7 +168,9 @@
         const b = e.target.closest('button[data-mid]');
         if (!b) return;
         close();
-        onPick(parseInt(b.dataset.mid, 10));
+        const mid = parseInt(b.dataset.mid, 10);
+        if (mid === 0 && opts.onUnlink) opts.onUnlink();
+        else onPick(mid);
       });
     }).catch(() => { list.innerHTML = '<span class="note-linkpop-empty">Could not load manuscripts</span>'; });
   }
@@ -162,6 +189,27 @@
     injectStyles();
     const linked = !!opts.linkedId;
     if (!linked && !opts.onPick) return null;
+
+    // Circle mode (bottom-row slot 1): a 26px round icon button like its
+    // slot neighbors. Linked wears the leather+gilt; the name lives in the
+    // tooltip; clicking opens the picker (with an unlink row when allowed).
+    if (opts.circle) {
+      const c = document.createElement('span');
+      c.className = 'ms-circle' + (linked ? ' linked' : '');
+      c.innerHTML = LINK_SVG;
+      c.title = linked ? (opts.linkedName || 'Manuscript') : 'Link to manuscript';
+      const removable = opts.removable !== false && !!opts.onUnlink;
+      if (opts.onPick || (linked && removable)) {
+        c.style.cursor = 'pointer';
+        c.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPicker(c, (mid) => opts.onPick && opts.onPick(mid),
+            { onUnlink: linked && removable ? opts.onUnlink : null });
+        });
+      }
+      if (opts.extraClass) c.classList.add('manuscript-chip', linked ? 'linked' : 'unlinked');
+      return c;
+    }
 
     const chip = document.createElement('span');
     chip.className = 'ms-chip ' + (opts.extraClass || '');
