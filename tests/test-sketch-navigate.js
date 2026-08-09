@@ -28,9 +28,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2);
   const bWidget = page.locator(`.sn-widget[data-variation-id="${varB}"]`);
   await bWidget.locator('.sn-rail-peer', { hasText: 'A' }).first().click(); // opens split compare
-  await page.waitForSelector('.sn-widget .sn-goto-source');
-  check('navigate-to-source link present', await page.locator('.sn-goto-source').count() >= 1);
-  await page.locator('.sn-goto-source').first().click();
+  await page.waitForSelector('.sn-widget .sn-head-right .sn-goto-ext');
+  check('navigate-to-source ↗ present in the split header', await page.locator('.sn-head-right .sn-goto-ext').count() >= 1);
+  await page.locator('.sn-head-right .sn-goto-ext').first().click();
   await page.waitForTimeout(800);
   const hash = await page.evaluate(() => window.location.hash);
   check('hash carries scratchpad + sketch + ordinal (deep link)', /scratchpad=\d+&sketch=[a-z0-9]+&variation=\d+/.test(hash), hash);

@@ -238,13 +238,33 @@
 .sn-widget ::selection { background: transparent; }
 .sn-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 8px;
+  align-items: stretch;
   border-bottom: 1px solid #e4ded1;
   background: #f3efe6;
   font: 11px "Helvetica", sans-serif;
   color: #57503f;
+}
+/* The header's two halves mirror the body split: left = self, right = the
+   compared variation. Without a compare the left half takes the full row. */
+.sn-head-left {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+}
+.sn-head-right { display: none; }
+.sn-header.sn-head-split .sn-head-left { flex: 1 1 50%; }
+.sn-header.sn-head-split .sn-head-right {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 5px 8px;
+  border-left: 1px solid #d8d2c4;
 }
 .sn-status { text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
 /* the save slot absorbs the slack so the link chip sits by the status text */
@@ -364,6 +384,9 @@
 }
 
 /* copy reference (⧉→clipboard): flashes green once copied */
+.sn-actions .sn-goto-ext { color: #a49b8a; padding: 3px 5px; }
+.sn-actions .sn-goto-ext svg { display: block; }
+.sn-actions .sn-goto-ext:hover { color: #2a6fb0; }
 .sn-actions .sn-copyref { color: #a49b8a; padding: 3px 5px; }
 .sn-actions .sn-copyref svg { display: block; }
 .sn-actions .sn-copyref:hover { color: #57503f; }
@@ -721,3 +744,29 @@
   width: 11px; height: 11px; border-radius: 50%;
   background: #28a745; color: #fff; cursor: pointer;
 }
+
+/* Read-only MONOSPACE view (click a read-only render to copy the raw
+   source): the editor's mono look, readOnly — disabled backgrounds kept,
+   no blinking caret, selection made VISIBLE (the widget-wide transparent
+   ::selection would otherwise hide it). */
+textarea.sn-mono-ro {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  resize: none;
+  outline: none;
+  padding: 10px 12px;
+  font: 12px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: #333;
+  caret-color: transparent;
+  cursor: text;
+  user-select: text;
+}
+textarea.sn-mono-ro.sn-frozen { background: #eef4fb; }
+textarea.sn-mono-ro.sn-superseded { background: #faf0ee; }
+textarea.sn-mono-ro.sn-peer-ro { background: #e7e2d6; }
+textarea.sn-mono-ro::selection { background: #bcd6ee; }
+/* The rendered peer pane's selection should be visible too (it's the
+   copyable surface the mono view backs up). */
+.sn-render.sn-peer ::selection, .sn-render.sn-peer::selection { background: #bcd6ee; }

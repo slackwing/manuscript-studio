@@ -59,16 +59,47 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   await w.locator('.sn-rail-peer', { hasText: 'B' }).click();
   await page.waitForTimeout(700);
   check('split opens (left+right panes)', await w.locator('.sn-split-left').count() === 1 && await w.locator('.sn-split-right').count() === 1);
-  const paneB = await w.locator('.sn-split-right').evaluate(el => ({
-    ordinal: el.dataset.ordinal, link: (el.querySelector('.sn-goto-source') || {}).textContent }));
-  check('right pane is B, with the source link', paneB.ordinal === '2' && paneB.link === 'Go to source', JSON.stringify(paneB));
+  const paneB = await w.evaluate(el => ({
+    ordinal: el.querySelector('.sn-split-right').dataset.ordinal,
+    headSplit: el.querySelector('.sn-header').classList.contains('sn-head-split'),
+    peerBtns: [...el.querySelectorAll('.sn-head-right button')].map(b => b.dataset.act).join(','),
+  }));
+  check('right pane is B under a split header', paneB.ordinal === '2' && paneB.headSplit, JSON.stringify(paneB));
+  check('peer actions: ↗ goto, supersede, freeze, copy — no trash',
+    paneB.peerBtns === 'peer-goto,peer-supersede,peer-freeze,peer-copyref', paneB.peerBtns);
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(700);
   const paneC = await w.locator('.sn-split-right').evaluate(el => ({ ordinal: el.dataset.ordinal }));
   check('clicking C swaps the right pane', paneC.ordinal === '3', JSON.stringify(paneC));
+
+  // Peer FREEZE from the split header: state lands on the DB, the compare
+  // stays open, the button shows pressed.
+  await w.locator('.sn-head-right [data-act="peer-freeze"]').click();
+  await page.waitForFunction(() =>
+    document.querySelector('.sn-head-right [data-act="peer-freeze"].pressed'), null, { timeout: 8000 });
+  check('compare survives the peer state change', await w.locator('.sn-split-right').count() === 1);
+  await w.locator('.sn-head-right [data-act="peer-freeze"]').click(); // un-freeze back
+  await page.waitForFunction(() =>
+    document.querySelector('.sn-head-right [data-act="peer-freeze"]:not(.pressed)'), null, { timeout: 8000 });
+  check('peer un-freezes from the header too', true);
+
+  // Read-only pane → CLICK opens the raw source in a readOnly mono pane
+  // (selectable/copyable, disabled bg, no caret); blur returns the render.
+  await w.locator('.sn-split-right .sn-render').click();
+  await page.waitForSelector('.sn-split-right textarea.sn-mono-ro.sn-peer-ro', { timeout: 5000 });
+  const mono = await w.locator('.sn-split-right textarea.sn-mono-ro').evaluate(ta => ({
+    readOnly: ta.readOnly, text: ta.value, caret: getComputedStyle(ta).caretColor,
+  }));
+  check('mono view is readOnly with the raw source', mono.readOnly && /alpha alpha/.test(mono.text), JSON.stringify({ ro: mono.readOnly }));
+  check('no blinking caret (transparent)', /transparent|rgba\(0, 0, 0, 0\)/.test(mono.caret), mono.caret);
+  await w.locator('.sn-split-right textarea.sn-mono-ro').evaluate(ta => ta.blur());
+  await page.waitForSelector('.sn-split-right .sn-render', { timeout: 5000 });
+  check('blur returns the rendered view', true);
+
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(500);
   check('clicking C again closes the split', await w.locator('.sn-split-left').count() === 0);
+  check('header unsplits with the pane', !(await w.locator('.sn-header').evaluate(el => el.classList.contains('sn-head-split'))));
 
   // Left pane stays editable while split.
   await w.locator('.sn-rail-peer', { hasText: 'B' }).click();

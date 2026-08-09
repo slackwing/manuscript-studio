@@ -299,6 +299,7 @@ const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" st
 // Superseded: a plain down arrow (reddens on hover / while set).
 const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
 const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1c0-.55-.45-1-1-1H3.5c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h1"/></svg>';
+const GOTO_SVG = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14L14 6M8.5 5.5H14.5V11.5"/></svg>';
 
 // Clipboard sketch reference (the copy button on each widget writes this;
 // the ⧉ Sketch ▾ → "From clipboard" option reads it back anywhere).
@@ -515,18 +516,25 @@ class SketchView {
     // edge — a symmetric "titlebar" whose top button is THIS variation's letter
     // (the upper-right corner identity), with every sibling below it and the
     // canon fleuron at the bottom. The widget always grows to fit the rail.
+    // The header is TWO halves: the left half carries identity + the SELF
+    // variation's actions; the right half is empty until a compare pane
+    // opens, then it carries the COMPARED variation's actions — so each
+    // action bar sits above the pane it applies to (the split header).
     this.dom.innerHTML = `
       <div class="sn-cols">
         <div class="sn-main">
           <div class="sn-header">
-            <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
-            <span class="sn-actions">
-              ${openBook}
-              <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
-              <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
-              <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-              <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
-            </span>
+            <div class="sn-head-left">
+              <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
+              <span class="sn-actions">
+                ${openBook}
+                <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
+                <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
+                <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+                <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
+              </span>
+            </div>
+            <div class="sn-head-right"></div>
           </div>
           <div class="sn-body"></div>
         </div>
@@ -586,15 +594,16 @@ class SketchView {
       registerNoteRefView(noteInfo.note_id, this._sqAdapter);
     }
     const linkSlot = this.dom.querySelector('.sn-linkslot');
+    // Icon-only (the note bottom-row circle): the manuscript name reveals
+    // on hover; clicking opens the picker (with the unlink row). Canonized
+    // sketches have the link pinned — no picker at all.
     const chip = window.WriteSysManuscriptChip.build({
       linkedId: sn.linked_manuscript_id,
       linkedName: sn.linked_manuscript_name,
+      circle: true,
       removable: !this.canonized(),
-      hintLinked: `Linked to ${sn.linked_manuscript_name} — this sketch can only be canonized into that manuscript. Click × to unlink.`,
-      hintReadonly: `Linked to ${sn.linked_manuscript_name} — canon pinned the link permanently.`,
-      hintUnlinked: 'Link to manuscript',
-      onUnlink: () => this.setLink(0),
-      onPick: (mid) => this.setLink(mid),
+      onUnlink: this.canonized() ? null : () => this.setLink(0),
+      onPick: this.canonized() ? null : (mid) => this.setLink(mid),
       extraClass: 'sn-linkchip', // context hook (tests count these)
     });
     if (chip) linkSlot.appendChild(chip);
@@ -635,6 +644,12 @@ class SketchView {
     // replace DOM and may move focus; preserve the reader's scroll position so
     // none of them jump the pad to the top of the widget.
     return this.preserveScroll(() => {
+      const head = this.dom.querySelector('.sn-header');
+      const headRight = this.dom.querySelector('.sn-head-right');
+      if (headRight) {
+        headRight.innerHTML = '';
+        head.classList.toggle('sn-head-split', this.compare != null);
+      }
       if (this.compare == null) {
         this.selfHost = this.body;
         this.body.innerHTML = '';
@@ -680,7 +695,12 @@ class SketchView {
     // itself. (Same trick the compare peer pane uses.)
     host.addEventListener('mousedown', (e) => { e.preventDefault(); });
     host.addEventListener('click', () => {
-      if (!this.readonly()) { this.mode = 'edit'; this.renderBody(); }
+      if (!this.readonly()) { this.mode = 'edit'; this.renderBody(); return; }
+      // Read-only states open the raw source in a non-editable mono pane
+      // (copy-paste), keeping the state's disabled background.
+      this.mountReadonlyMono(host, this.ctx.variation.text,
+        this.frozen() ? 'sn-frozen' : 'sn-superseded',
+        () => this.renderSelfPreview());
     });
   }
 
@@ -800,27 +820,77 @@ class SketchView {
       }
     }
     if (this.compare !== variationId || !pane.isConnected) return; // switched away while loading
-    const letter = esc(letterOf(ctx.variation.ordinal));
     const st = ctx.variation.state || 'draft';
-    pane.innerHTML = `
-      <div class="sn-note sn-src-note"><a href="#" class="sn-goto-source">Go to source</a></div>
-      <div class="sn-render sn-peer"></div>`;
-    // The header no longer names the peer — keep its identity inspectable.
+    pane.innerHTML = '<div class="sn-render sn-peer"></div>';
+    // No visible header names the peer — keep its identity inspectable.
     pane.dataset.ordinal = String(ctx.variation.ordinal);
     const sketchId = ctx.variation.sketch_id;
     const ordinal = ctx.variation.ordinal;
-    pane.querySelector('.sn-goto-source').addEventListener('click', (e) => {
-      e.preventDefault();
-      this.gotoVariationSource(variationId, sketchId, ordinal);
-    });
+    // The split header's RIGHT half: this pane's own actions — go-to-source
+    // (the ↗), supersede, freeze, copy reference. No trash (deleting a
+    // variation belongs to its own widget).
+    const headRight = this.dom.querySelector('.sn-head-right');
+    if (headRight) {
+      headRight.innerHTML = `
+        <span class="sn-actions">
+          <button type="button" data-act="peer-goto" class="sn-goto-ext" title="Go to source">${GOTO_SVG}</button>
+          <button type="button" data-act="peer-supersede" class="sn-supersede${st === 'superseded' ? ' pressed' : ''}" title="${st === 'superseded' ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
+          <button type="button" data-act="peer-freeze" class="sn-freeze${st === 'frozen' ? ' pressed' : ''}" title="${st === 'frozen' ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+          <button type="button" data-act="peer-copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
+        </span>`;
+      headRight.querySelector('[data-act="peer-goto"]').addEventListener('click', () =>
+        this.gotoVariationSource(variationId, sketchId, ordinal));
+      const applyPeerState = async (state) => {
+        try {
+          await variationApi.setState(variationId, state);
+          await this.refresh(); // clears peerCache; keeps the compare open
+          await refreshSketchSiblings(sketchId, this.variationId);
+        } catch (e) { alert('Could not update variation state: ' + e.message); }
+      };
+      headRight.querySelector('[data-act="peer-supersede"]').addEventListener('click', () =>
+        applyPeerState(st === 'superseded' ? 'draft' : 'superseded'));
+      headRight.querySelector('[data-act="peer-freeze"]').addEventListener('click', () =>
+        applyPeerState(st === 'frozen' ? 'draft' : 'frozen'));
+      headRight.querySelector('[data-act="peer-copyref"]').addEventListener('click', async (e) => {
+        const b = e.currentTarget;
+        try { localStorage.setItem('ms_last_variation_ref', String(variationId)); } catch (_) { /* private mode */ }
+        try { await navigator.clipboard.writeText(VARIATION_REF_PREFIX + variationId); } catch (_) { /* in-app record suffices */ }
+        b.classList.add('sn-copied');
+        setTimeout(() => b.classList.remove('sn-copied'), 900);
+      });
+    }
     const host = pane.querySelector('.sn-render');
     // Stop mousedown from REACHING ProseMirror (which would move the PM
     // selection and scroll the pad) but let the browser's default run — that
     // default is what starts a native text selection, so the read-only pane
     // stays selectable/copyable.
     host.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+    // Click → raw source in a read-only mono pane (easy copy-paste).
+    host.addEventListener('click', () =>
+      this.mountReadonlyMono(host, ctx.variation.text, 'sn-peer-ro',
+        () => this.renderComparePeer(variationId, pane)));
     if (ctx.variation.text.trim()) renderBookText(host, ctx.variation.text);
     else host.innerHTML = '<div class="sn-empty">Empty variation.</div>';
+  }
+
+  // Read-only MONOSPACE view of a pane (clicking any read-only render):
+  // the raw .manuscript source in the editor's mono look, selectable and
+  // copyable, but NOT editable — readOnly textarea, the pane's disabled
+  // background kept, no blinking caret (caret-color: transparent). Blur
+  // returns to the rendered view.
+  mountReadonlyMono(host, text, extraClass, onBack) {
+    const ta = document.createElement('textarea');
+    ta.className = 'sn-text sn-mono-ro' + (extraClass ? ' ' + extraClass : '');
+    ta.readOnly = true;
+    ta.spellcheck = false;
+    ta.value = text;
+    ta.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+    ta.addEventListener('blur', () => onBack());
+    host.replaceWith(ta);
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(60, ta.scrollHeight) + 'px';
+    ta.focus({ preventScroll: true });
+    return ta;
   }
 
   // Navigate to a variation's home widget: ask the server which scratchpad hosts

@@ -207,7 +207,12 @@
             { onUnlink: linked && removable ? opts.onUnlink : null });
         });
       }
-      if (opts.extraClass) c.classList.add('manuscript-chip', linked ? 'linked' : 'unlinked');
+      if (opts.extraClass) {
+        // Hook classes only (test selectors / context) — 'tag-chip' is the
+        // bar-chip SKIN and must not restyle the circle.
+        c.classList.add(...opts.extraClass.split(/\s+/).filter((t) => t && t !== 'tag-chip'));
+        c.classList.add('manuscript-chip', linked ? 'linked' : 'unlinked');
+      }
       return c;
     }
 

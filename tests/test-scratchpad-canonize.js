@@ -113,13 +113,16 @@ function noisyPng(w, h) {
     check('variation text autosaved; preview renders book-style after blur', true);
 
     // --- link / unlink the GROUP via the SHARED chip (manuscript-chip.js) ---
-    await page.click('.sn-widget .sn-linkchip.unlinked');
+    await page.click('.sn-widget .sn-linkchip.unlinked'); // icon-only circle
     await page.waitForSelector('.note-linkpop button[data-mid]', { timeout: 5000 });
     await page.click('.note-linkpop button[data-mid]');
     await page.waitForSelector('.sn-widget .sn-linkchip.linked', { timeout: 5000 });
-    const chipName = await page.textContent('.sn-widget .sn-linkchip .ms-chip-name');
+    // Icon-only chip: the manuscript name reveals on hover (title attr).
+    const chipName = await page.getAttribute('.sn-widget .sn-linkchip.linked', 'title');
     check('link picker links the group (chip shows name)', !!chipName.trim(), chipName.trim());
-    await page.click('.sn-widget .sn-linkchip .ms-chip-x');
+    await page.click('.sn-widget .sn-linkchip.linked'); // picker holds the unlink row now
+    await page.waitForSelector('.note-linkpop .note-linkpop-unlink', { timeout: 5000 });
+    await page.click('.note-linkpop .note-linkpop-unlink');
     await page.waitForSelector('.sn-widget .sn-linkchip.unlinked', { timeout: 5000 });
     check('chip × unlinks (bare chip back)', true);
 
@@ -159,8 +162,8 @@ function noisyPng(w, h) {
       return host && host.shadowRoot && /keg arrived/i.test(host.shadowRoot.textContent);
     }, varB, { timeout: 10000 });
     check('sibling tab shows A read-only (peer preview)', true);
-    check('peer preview offers navigate-to-source',
-      await bWidget.locator('.sn-goto-source').count() === 1);
+    check('peer preview offers navigate-to-source (split-header ↗)',
+      await bWidget.locator('.sn-head-right .sn-goto-ext').count() === 1);
 
     // A was NOT frozen by the based-on (siblings don't freeze sources).
     await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
