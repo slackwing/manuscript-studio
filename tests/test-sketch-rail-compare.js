@@ -65,6 +65,15 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     peerBtns: [...el.querySelectorAll('.sn-head-right button')].map(b => b.dataset.act).join(','),
   }));
   check('right pane is B under a split header', paneB.ordinal === '2' && paneB.headSplit, JSON.stringify(paneB));
+  // Split: the self letter leaves the rail for the left pane's corner and
+  // the sibling buttons shift up into its slot.
+  const splitRail = await w.evaluate(el => ({
+    selfInRail: !!el.querySelector('.sn-rail .sn-rail-self'),
+    corner: (el.querySelector('.sn-pane-letter') || {}).textContent || '',
+    topLetter: (el.querySelector('.sn-rail .sn-rail-btn') || {}).textContent || '',
+  }));
+  check('self letter moved to the left pane corner', !splitRail.selfInRail && splitRail.corner === 'A', JSON.stringify(splitRail));
+  check('siblings shifted up (B tops the rail)', splitRail.topLetter === 'B', splitRail.topLetter);
   check('peer actions: ↗ goto, supersede, freeze, copy — no trash',
     paneB.peerBtns === 'peer-goto,peer-supersede,peer-freeze,peer-copyref', paneB.peerBtns);
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
@@ -100,6 +109,11 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   await page.waitForTimeout(500);
   check('clicking C again closes the split', await w.locator('.sn-split-left').count() === 0);
   check('header unsplits with the pane', !(await w.locator('.sn-header').evaluate(el => el.classList.contains('sn-head-split'))));
+  const closedRail = await w.evaluate(el => ({
+    selfTop: (el.querySelector('.sn-rail .sn-rail-btn') || {}).classList ? el.querySelector('.sn-rail .sn-rail-btn').classList.contains('sn-rail-self') : false,
+    corner: !!el.querySelector('.sn-pane-letter'),
+  }));
+  check('self letter returns to the rail top on close', closedRail.selfTop && !closedRail.corner, JSON.stringify(closedRail));
 
   // Left pane stays editable while split.
   await w.locator('.sn-rail-peer', { hasText: 'B' }).click();

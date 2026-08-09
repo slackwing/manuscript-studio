@@ -614,7 +614,12 @@ class SketchView {
   // (click = split-compare, colored by state), canon fleuron at the bottom.
   railHTML() {
     const btns = [];
-    btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</button>`);
+    // Split open → the self letter travels to the LEFT pane's upper-right
+    // corner (renderBody mounts it) and the sibling buttons shift up to
+    // take its place; unsplit → self letter tops the rail as usual.
+    if (this.compare == null) {
+      btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</button>`);
+    }
     const others = (this.ctx.siblings || []).filter(x => x.variation_id !== this.variationId);
     for (const x of others) {
       const st = x.state || 'draft';
@@ -632,11 +637,20 @@ class SketchView {
   // editable — so comparing never loses your place or your edit.
   setCompare(key) {
     this.compare = this.compare === key ? null : key;
-    this.dom.querySelectorAll('[data-compare]').forEach(b => {
-      const k = b.dataset.compare === 'canon' ? 'canon' : parseInt(b.dataset.compare, 10);
-      b.classList.toggle('active', k === this.compare);
-    });
+    this.renderRail();
     this.renderBody();
+  }
+
+  // (Re)build the rail and bind its compare buttons — needed whenever the
+  // rail's composition changes (split open/close moves the self letter).
+  renderRail() {
+    const rail = this.dom.querySelector('.sn-rail');
+    if (!rail) return;
+    rail.innerHTML = this.railHTML();
+    rail.querySelectorAll('[data-compare]').forEach(btn => {
+      btn.addEventListener('click', () => this.setCompare(
+        btn.dataset.compare === 'canon' ? 'canon' : parseInt(btn.dataset.compare, 10)));
+    });
   }
 
   renderBody() {
@@ -662,6 +676,15 @@ class SketchView {
           <div class="sn-split-left"></div>
           <div class="sn-split-right"></div>
         </div>`;
+      // The self letter rides the left pane's upper-right corner while the
+      // rail hosts only the siblings (railHTML dropped it for the split).
+      // It hangs off the SPLIT container (not the left pane, whose innerHTML
+      // the preview/edit renders replace wholesale).
+      const badge = document.createElement('span');
+      badge.className = `sn-pane-letter sn-rail-btn sn-rail-self st-${this.stateName()}`;
+      badge.textContent = this.letter();
+      badge.title = `This pane is variation ${this.letter()}.`;
+      this.body.querySelector('.sn-split').appendChild(badge);
       this.selfHost = this.body.querySelector('.sn-split-left');
       if (this.mode === 'edit') this.renderEdit(); else this.renderSelfPreview();
       const right = this.body.querySelector('.sn-split-right');

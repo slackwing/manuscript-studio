@@ -330,7 +330,16 @@
 }
 
 /* ---- split compare: left = self (editable), right = the target ---- */
-.sn-split { display: flex; align-items: stretch; }
+.sn-split { display: flex; align-items: stretch; position: relative; }
+/* The self letter's perch while split: upper-right corner of the LEFT pane
+   (the rail's top slot is vacated; siblings shift up). Inert identity. */
+.sn-pane-letter {
+  position: absolute;
+  top: 3px;
+  right: calc(50% + 4px);
+  z-index: 3;
+  pointer-events: none;
+}
 .sn-split-left { flex: 1 1 50%; min-width: 0; }
 .sn-split-right {
   flex: 1 1 50%;
