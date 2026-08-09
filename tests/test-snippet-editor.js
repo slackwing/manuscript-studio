@@ -161,6 +161,44 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('.sn-widget .sn-note-solo.sn-note-done', { timeout: 8000 });
   check('completing the sketch note turns the square into a green check', true);
 
+  // 6. Copy-ref on a SUPERSEDED variation with an UNREADABLE clipboard
+  //    (real-world Firefox refuses programmatic reads): the copy button's
+  //    in-app record makes "From clipboard" work anyway.
+  // (Dismiss the note float by clicking back into the editor — Escape
+  // would close the whole modal.)
+  await page.locator('.spm-editor .ProseMirror').click({ position: { x: 10, y: 10 }, force: true });
+  await page.waitForTimeout(300);
+  const supId = await page.evaluate(async () => {
+    const ed = window.WriteSysScratchpad;
+    const a = await ed.insertSketch();
+    await ed.variationApi.saveText(a.variation.variation_id, 'superseded clipboard source');
+    return a.variation.variation_id;
+  });
+  await page.waitForTimeout(700);
+  // Supersede through the widget's own button so the widget re-renders
+  // into its superseded (read-only) look — the state the user acts on.
+  const supWidget = page.locator(`.sn-widget[data-variation-id="${supId}"]`);
+  await supWidget.locator('.sn-supersede').click();
+  await page.waitForSelector(`.sn-widget[data-variation-id="${supId}"].sn-state-superseded`, { timeout: 6000 });
+  check('superseded widget still shows the copy button', await supWidget.locator('.sn-copyref').isVisible());
+  await supWidget.locator('.sn-copyref').click();
+  await page.waitForTimeout(300);
+  check('in-app record of the copied reference', await page.evaluate(() =>
+    localStorage.getItem('ms_last_variation_ref')) === String(supId));
+  await page.evaluate(() => {
+    navigator.clipboard.readText = () => Promise.reject(new Error('denied'));
+  });
+  await page.locator('#spm-toolbar button', { hasText: 'Sketch' }).first().click();
+  await page.waitForSelector('.sn-insertpop .sn-ins-clip');
+  await page.waitForTimeout(900);
+  check('From clipboard enabled via fallback (clipboard unreadable)',
+    !(await page.locator('.sn-ins-clip').isDisabled()));
+  const widgetsBeforeSup = await page.locator('.sn-widget').count();
+  await page.locator('.sn-ins-clip').click();
+  await page.waitForTimeout(1200);
+  check('creates a sibling from the superseded source',
+    (await page.locator('.sn-widget').count()) === widgetsBeforeSup + 1);
+
   const fs = require('fs');
   if (!fs.existsSync('tests/screenshots')) fs.mkdirSync('tests/screenshots', { recursive: true });
   await page.screenshot({ path: 'tests/screenshots/sketch-editor.png' });

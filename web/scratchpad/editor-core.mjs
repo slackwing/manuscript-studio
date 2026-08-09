@@ -546,11 +546,21 @@ class SketchView {
       this.setVariationState(this.superseded() ? 'draft' : 'superseded'));
     this.dom.querySelector('[data-act="copyref"]').addEventListener('click', async (e) => {
       const b = e.currentTarget;
+      // The app's own record of the copy comes FIRST: some browsers
+      // (Firefox in particular) later refuse the programmatic clipboard
+      // READ in the ⧉ menu even though this WRITE succeeds — the menu
+      // falls back to this record, so the flow works regardless.
+      try { localStorage.setItem('ms_last_variation_ref', String(this.variationId)); } catch (_) { /* private mode */ }
       try {
         await navigator.clipboard.writeText(VARIATION_REF_PREFIX + this.variationId);
         b.classList.add('sn-copied');
         setTimeout(() => b.classList.remove('sn-copied'), 900);
-      } catch (err) { alert('Could not copy: ' + err.message); }
+      } catch (err) {
+        // System clipboard refused — the in-app record above still makes
+        // "From clipboard" work, so show the copied tick anyway.
+        b.classList.add('sn-copied');
+        setTimeout(() => b.classList.remove('sn-copied'), 900);
+      }
     });
     // The sketch's NOTE square (026) — the exact component that fronts
     // highlighted text in the doc, minus the text — top-left, left of the
@@ -1487,7 +1497,20 @@ function buildSketchMenu(toolbarEl, getView) {
     (async () => {
       const clipBtn = pop.querySelector('.sn-ins-clip');
       try {
-        const id = parseVariationRef(await navigator.clipboard.readText());
+        let id = null;
+        let clipboardReadable = true;
+        try {
+          id = parseVariationRef(await navigator.clipboard.readText());
+        } catch (_) {
+          clipboardReadable = false; // e.g. Firefox refusing programmatic reads
+        }
+        // Fallback ONLY when the clipboard couldn't be read at all: use the
+        // app's record of the last copy-button press. A READABLE clipboard
+        // holding something else means the user copied other content since —
+        // respect that and stay disabled.
+        if (id == null && !clipboardReadable) {
+          id = parseInt(localStorage.getItem('ms_last_variation_ref') || '', 10) || null;
+        }
         if (id == null) return;
         const ctx = await variationApi.context(id);
         if (!clipBtn.isConnected) return; // menu re-rendered/closed meanwhile
