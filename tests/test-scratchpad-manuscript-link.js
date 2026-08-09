@@ -98,7 +98,8 @@ async function makeNote(page, text) {
   const sketchId = snipCtx && snipCtx.sketch && snipCtx.sketch.sketch_id;
   const snipLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM sketch WHERE sketch_id='${sketchId}'`).trim();
   check('sketch in a linked pad INHERITS the manuscript', /^[0-9]+$/.test(snipLink), `linked=${snipLink}`);
-  const snipChip = await page.locator('.sn-widget .sn-linkchip .ms-chip-name').first().textContent().catch(() => '');
+  // Icon-only chip: the manuscript name lives in the hover title now.
+  const snipChip = await page.locator('.sn-widget .sn-linkchip.linked').first().getAttribute('title').catch(() => '');
   check('sketch shows its manuscript link chip immediately', (snipChip || '').trim() === pickedName.trim(), `chip="${snipChip}"`);
 
   // The earlier note is still untouched (not retroactively linked).
