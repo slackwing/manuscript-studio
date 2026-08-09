@@ -185,12 +185,16 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForTimeout(300);
   check('in-app record of the copied reference', await page.evaluate(() =>
     localStorage.getItem('ms_last_variation_ref')) === String(supId));
+  // The harshest Firefox behavior: readText neither resolves nor rejects
+  // (prompt pending). The timeout race must hand over to the fallback.
   await page.evaluate(() => {
-    navigator.clipboard.readText = () => Promise.reject(new Error('denied'));
+    navigator.clipboard.readText = () => new Promise(() => {});
   });
   await page.locator('#spm-toolbar button', { hasText: 'Sketch' }).first().click();
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
-  await page.waitForTimeout(900);
+  check('spinner shows while the check runs', await page.locator('.sn-ins-clip .sn-clip-spin').count() === 1);
+  await page.waitForTimeout(1600);
+  check('spinner gone once settled', await page.locator('.sn-ins-clip .sn-clip-spin').count() === 0);
   check('From clipboard enabled via fallback (clipboard unreadable)',
     !(await page.locator('.sn-ins-clip').isDisabled()));
   const widgetsBeforeSup = await page.locator('.sn-widget').count();

@@ -1494,15 +1494,27 @@ function buildSketchMenu(toolbarEl, getView) {
     // "From clipboard" lights up only when the clipboard holds a VALID
     // sketch reference (copied via a widget's copy button) — parsed, then
     // confirmed against the API so a stale/foreign id stays disabled.
+    // The check is async (clipboard read + API confirm) — spin while it
+    // runs so the disabled state doesn't read as final.
     (async () => {
       const clipBtn = pop.querySelector('.sn-ins-clip');
+      const spin = document.createElement('span');
+      spin.className = 'sn-clip-spin';
+      clipBtn.appendChild(spin);
       try {
         let id = null;
         let clipboardReadable = true;
         try {
-          id = parseVariationRef(await navigator.clipboard.readText());
+          // Race the read against a short timeout: Firefox sometimes leaves
+          // readText() PENDING (its paste prompt waiting for attention)
+          // rather than rejecting — without the race the button would sit
+          // disabled forever on the first menu open.
+          id = parseVariationRef(await Promise.race([
+            navigator.clipboard.readText(),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('clipboard timeout')), 700)),
+          ]));
         } catch (_) {
-          clipboardReadable = false; // e.g. Firefox refusing programmatic reads
+          clipboardReadable = false; // refused OR still pending — same treatment
         }
         // Fallback ONLY when the clipboard couldn't be read at all: use the
         // app's record of the last copy-button press. A READABLE clipboard
@@ -1522,6 +1534,7 @@ function buildSketchMenu(toolbarEl, getView) {
           catch (err) { alert('Could not create variation: ' + err.message); }
         });
       } catch (_) { /* no clipboard access or invalid reference — stays disabled */ }
+      finally { spin.remove(); }
     })();
   };
 
