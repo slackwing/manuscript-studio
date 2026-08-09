@@ -193,10 +193,10 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('#spm-toolbar button', { hasText: 'Sketch' }).first().click();
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
   check('spinner shows while the check runs', await page.locator('.sn-ins-clip .sn-clip-spin').count() === 1);
-  await page.waitForTimeout(1600);
+  // The 700ms timeout race hands over to the in-app record → enabled.
+  await page.waitForSelector('.sn-ins-clip:not([disabled])', { timeout: 6000 });
   check('spinner gone once settled', await page.locator('.sn-ins-clip .sn-clip-spin').count() === 0);
-  check('From clipboard enabled via fallback (clipboard unreadable)',
-    !(await page.locator('.sn-ins-clip').isDisabled()));
+  check('From clipboard enabled via fallback (clipboard unreadable)', true);
   const widgetsBeforeSup = await page.locator('.sn-widget').count();
   await page.locator('.sn-ins-clip').click();
   await page.waitForTimeout(1200);
