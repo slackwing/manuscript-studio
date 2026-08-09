@@ -199,9 +199,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('From clipboard enabled via fallback (clipboard unreadable)', true);
   const widgetsBeforeSup = await page.locator('.sn-widget').count();
   await page.locator('.sn-ins-clip').click();
-  await page.waitForTimeout(1200);
-  check('creates a sibling from the superseded source',
-    (await page.locator('.sn-widget').count()) === widgetsBeforeSup + 1);
+  await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1,
+    widgetsBeforeSup, { timeout: 8000 });
+  check('creates a sibling from the superseded source', true);
 
   const fs = require('fs');
   if (!fs.existsSync('tests/screenshots')) fs.mkdirSync('tests/screenshots', { recursive: true });
