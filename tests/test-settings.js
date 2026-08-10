@@ -248,6 +248,19 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   check('deleted row previews its own note', (await page.locator('.na-row.na-deleted .na-prev').innerText()).includes('Delete me'));
   check('when column shows date + time', /[A-Za-z]+ \d+.*\d+:\d\d/.test(await page.locator('.na-row .na-when').first().innerText()),
     await page.locator('.na-row .na-when').first().innerText());
+
+  // --- Editable date: move the points award to YESTERDAY ---
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
+  await page.locator('.na-row.na-points .na-when').click();
+  const dateInp = page.locator('.na-row.na-points .na-when input[type="date"]');
+  await dateInp.waitFor({ timeout: 4000 });
+  await dateInp.fill(yesterday);
+  await dateInp.dispatchEvent('change');
+  await page.waitForTimeout(700);
+  const movedDate = psql(`SELECT to_char(scored_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') FROM point_event WHERE note_id=${noteId}`).trim();
+  check('points award moved to yesterday (date edit)', movedDate === yesterday, `moved=${movedDate} want=${yesterday}`);
+  const shownWhen = await page.locator('.na-row.na-points .na-when').innerText();
+  check('row re-renders with the new date', new RegExp(String(new Date(yesterday + 'T12:00:00').getDate())).test(shownWhen), shownWhen);
   await page.locator('.na-row.na-deleted .na-undo').first().click();
   await page.waitForTimeout(700);
   check('undo delete restores the note', psql(`SELECT deleted_at IS NULL FROM note WHERE note_id=${delNoteId}`).trim() === 't');

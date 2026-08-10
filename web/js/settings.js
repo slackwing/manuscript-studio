@@ -207,6 +207,43 @@ WriteSysSettings.reloadActions = async function () {
     when.className = 'na-when';
     when.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
       + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    // The DATE is editable (click → native date input): move the action to
+    // another day — e.g. assign points to yesterday. Time-of-day is kept.
+    when.classList.add('na-when-edit');
+    when.addEventListener('click', () => {
+      if (when.querySelector('input')) return;
+      const iso = d.toLocaleDateString('en-CA'); // YYYY-MM-DD, local tz
+      when.textContent = '';
+      const inp = document.createElement('input');
+      inp.type = 'date';
+      inp.className = 'na-date-input';
+      inp.value = iso;
+      when.appendChild(inp);
+      inp.focus();
+      let settled = false;
+      const done = async (commit) => {
+        if (settled) return;
+        settled = true;
+        if (commit && inp.value && inp.value !== iso) {
+          try {
+            await fetch('api/note-actions/date', {
+              method: 'PUT',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+              body: JSON.stringify({
+                kind: a.kind,
+                id: a.kind === 'points' ? a.event_id : a.note_id,
+                date: inp.value,
+              }),
+            });
+          } catch (err) { /* reload shows the truth either way */ }
+        }
+        this.reloadActions();
+      };
+      inp.addEventListener('change', () => done(true));
+      inp.addEventListener('blur', () => done(inp.value !== iso));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(false); });
+    });
     tr.appendChild(when);
     const prev = document.createElement('td');
     prev.className = 'na-prev';

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
+	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 )
 
@@ -17,6 +19,45 @@ import (
 type NoteActionHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
+	Config       *config.Config
+}
+
+var actionDate = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// HandleSetDate: PUT /api/note-actions/date {kind, id, date} — move an
+// action to another day (the settings table's editable date). Time-of-day
+// is preserved in the configured timezone.
+func (h *NoteActionHandlers) HandleSetDate(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	var body struct {
+		Kind string `json:"kind"`
+		ID   int    `json:"id"`
+		Date string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID <= 0 || !actionDate.MatchString(body.Date) {
+		http.Error(w, "kind, id and date (YYYY-MM-DD) required", http.StatusBadRequest)
+		return
+	}
+	tz := h.Config.WordcountHistory.Location().String()
+	ok, err := h.DB.SetNoteActionDate(r.Context(), session.Username, body.Kind, body.ID, body.Date, tz)
+	if err != nil {
+		log.Printf("note-actions: set date %s/%d → %s: %v", body.Kind, body.ID, body.Date, err)
+		http.Error(w, "Failed to set action date", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleList: GET /api/note-actions — the newest 20.

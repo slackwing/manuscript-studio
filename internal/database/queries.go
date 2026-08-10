@@ -2177,3 +2177,43 @@ func (db *DB) ListDailyPoints(ctx context.Context, username string, tz string) (
 	}
 	return out, rows.Err()
 }
+
+// SetNoteActionDate moves one audit-table action to another DAY (settings
+// page date edit — e.g. assigning points to yesterday). The action's
+// time-of-day in tz is preserved; only the date part changes. kind picks
+// the column: 'points' → point_event.scored_at (id = point_event_id),
+// 'deleted' → note.deleted_at, 'completed' → note.completed_at (id =
+// note_id). false = no such action owned by this user.
+func (db *DB) SetNoteActionDate(ctx context.Context, username, kind string, id int, date, tz string) (bool, error) {
+	var tag pgconn.CommandTag
+	var err error
+	// ((date || ' ' || old time-of-day in tz)::timestamp AT TIME ZONE tz):
+	// a naive local timestamp on the new date, converted back to an instant.
+	switch kind {
+	case "points":
+		tag, err = db.Pool.Exec(ctx, `
+			UPDATE point_event pe
+			SET scored_at = (($3 || ' ' || to_char(pe.scored_at AT TIME ZONE $4, 'HH24:MI:SS'))::timestamp AT TIME ZONE $4)
+			FROM note n
+			WHERE pe.point_event_id = $1 AND n.note_id = pe.note_id AND n.user_id = $2 AND pe.deleted_at IS NULL
+		`, id, username, date, tz)
+	case "deleted":
+		tag, err = db.Pool.Exec(ctx, `
+			UPDATE note
+			SET deleted_at = (($3 || ' ' || to_char(deleted_at AT TIME ZONE $4, 'HH24:MI:SS'))::timestamp AT TIME ZONE $4)
+			WHERE note_id = $1 AND user_id = $2 AND deleted_at IS NOT NULL
+		`, id, username, date, tz)
+	case "completed":
+		tag, err = db.Pool.Exec(ctx, `
+			UPDATE note
+			SET completed_at = (($3 || ' ' || to_char(completed_at AT TIME ZONE $4, 'HH24:MI:SS'))::timestamp AT TIME ZONE $4)
+			WHERE note_id = $1 AND user_id = $2 AND completed_at IS NOT NULL
+		`, id, username, date, tz)
+	default:
+		return false, fmt.Errorf("invalid action kind %q", kind)
+	}
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

@@ -87,6 +87,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 		noteActionHandlers: &handlers.NoteActionHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
+			Config:       cfg,
 		},
 		homeHandlers: &handlers.HomeHandlers{
 			DB:           dbWrapper,
@@ -295,6 +296,7 @@ func (s *Server) setupRouter() {
 			r.Delete("/task-types/{name}", s.taskTypeHandlers.HandleDelete)
 			// Note actions (settings audit table) + undos.
 			r.Get("/note-actions", s.noteActionHandlers.HandleList)
+			r.Put("/note-actions/date", s.noteActionHandlers.HandleSetDate)
 			r.Delete("/point-events/{event_id}", s.noteActionHandlers.HandleUnaward)
 			r.Post("/notes/{note_id}/restore", s.noteActionHandlers.HandleRestore)
 			r.Post("/notes/{note_id}/uncomplete", s.noteActionHandlers.HandleUncomplete)

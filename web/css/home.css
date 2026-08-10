@@ -304,6 +304,9 @@ body.home-page {
 .na-row td:first-child { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 .na-row td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 .na-when { white-space: nowrap; color: #6f6a60; font-size: 12px; }
+.na-when-edit { cursor: pointer; }
+.na-when-edit:hover { text-decoration: underline dotted; }
+.na-date-input { font: 12px "Helvetica", sans-serif; border: 1px solid #ccc; border-radius: 4px; padding: 1px 3px; background: #fff; }
 .na-prev {
   max-width: 0; /* let the table column, not the text, set the width */
   width: 100%;
