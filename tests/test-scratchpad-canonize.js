@@ -2,7 +2,8 @@
 // sketch (variation A), write via the preview-first click-to-edit widget,
 // link/unlink the GROUP, branch variation B (freezing A), then dub B canon
 // from the book view's + affordance — one suggested edit wrapping B's text
-// in &snippet#<id>{label} … &end#<id>. Verify the region renders in the
+// in &sketch#<id>{label} … &end#<id> (&snippet# stays a legacy alias).
+// Verify the region renders in the
 // book (anchor-like marker + outline label), and that the widgets show the
 // parent/child letter tabs, the snowflake freeze state, and the blue Canon
 // tab that live-resolves from the effective manuscript with the

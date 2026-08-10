@@ -21,11 +21,14 @@
  */
 
 const WriteSysCommand = {
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'snippet', 'end'],
+  // 'sketch' is the successor spelling of 'snippet' (the snippet→sketch
+  // rename) — parsed as the SAME command; parse() normalizes the kind to
+  // 'snippet' (the internal legacy name) so every consumer stays single-kind.
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'snippet', 'sketch', 'end'],
   // Block commands stand alone as their own sentence when on their own line.
   // &meta is block but renders as nothing (it carries a setting). anchor,
   // placeholder, and end are block only when sole line content (segman).
-  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, snippet: true, end: true },
+  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, snippet: true, sketch: true, end: true },
 
   // Placeholder t-shirt sizes. Sentences double-ish; paragraphs are
   // Fibonacci. The asymmetry is deliberate (PLACEHOLDER_PLAN.md).
@@ -49,6 +52,7 @@ const WriteSysCommand = {
       if (chars[end] === '#' || chars[end] === '{') { kind = kw; i = end; break; }
     }
     if (kind === null) return null;
+    if (kind === 'sketch') kind = 'snippet'; // successor spelling — one internal kind
 
     let slug = '';
     if (i < chars.length && chars[i] === '#') {

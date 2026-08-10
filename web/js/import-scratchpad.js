@@ -2,7 +2,8 @@
  * Book-side Canonize (VARIATIONS_PLAN.md): a + rule between paragraphs
  * (and a "Fill" affordance on placeholders) that dubs a snippet VARIATION
  * canon — ONE suggested edit wrapping its text in
- * &snippet#<snippet-id>{label} … &end#<snippet-id>.
+ * &sketch#<sketch-id>{label} … &end#<sketch-id> (formerly &snippet# — the
+ * legacy spelling parses forever; new placements write &sketch#).
  *
  * Step 1 is the ordinary suggestion PUT (stale-migration guard included);
  * step 2 is POST /api/variations/{id}/canonize which creates the hidden
@@ -133,8 +134,8 @@ const WriteSysImportScratchpad = {
       <div id="import-modal" role="dialog" aria-label="canonize a sketch variation">
         <h3>canonize a sketch variation</h3>
         <p class="im-hint">${target.mode === 'replace'
-          ? `Replaces placeholder <code>#${this.esc(target.slug)}</code> with the variation's text, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit. (The placeholder's own slug retires.)`
-          : 'Inserts the variation\'s text after this paragraph, wrapped in <code>&amp;snippet#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit.'}</p>
+          ? `Replaces placeholder <code>#${this.esc(target.slug)}</code> with the variation's text, wrapped in <code>&amp;sketch#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit. (The placeholder's own slug retires.)`
+          : 'Inserts the variation\'s text after this paragraph, wrapped in <code>&amp;sketch#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit.'}</p>
         <input type="text" id="im-q" placeholder="Search variations…" autocomplete="off">
         <div id="im-blocks" class="im-blocks"><span class="im-muted">Loading variations…</span></div>
         <div class="im-row">
@@ -237,7 +238,7 @@ const WriteSysImportScratchpad = {
     const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : null;
     const taken = window.WriteSysRegion.effectiveSlugs(r.currentSentences, sug, cmdLib, canon);
     if (taken.has(slug)) {
-      return this.showError(`Snippet #${slug} already appears in this manuscript.`);
+      return this.showError(`Sketch #${slug} already appears in this manuscript.`);
     }
 
     const committed = r.sentenceMap[target.sentenceId] || '';
@@ -248,7 +249,7 @@ const WriteSysImportScratchpad = {
     const pending = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
     const base = pending[target.sentenceId] !== undefined ? pending[target.sentenceId] : committed;
     const content = ctx.variation.text.replace(/\s+$/, '');
-    const openLine = `&snippet#${slug}{${label}}`;
+    const openLine = `&sketch#${slug}{${label}}`;
     const endLine = `&end#${slug}`;
     // Tight structure: single \n around the region markers so the canonized
     // text reads as a REGULAR paragraph continuing the flow — the \t makes it

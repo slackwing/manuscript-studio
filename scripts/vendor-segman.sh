@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-REF="v2.4.0"
+REF="v2.5.0"
 SOURCE="$HOME/src/segman"
 for arg in "$@"; do
     case "$arg" in

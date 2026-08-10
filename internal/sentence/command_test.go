@@ -333,3 +333,19 @@ func TestBuildOutline_BlankLabelPlaceholderExcluded(t *testing.T) {
 		t.Errorf("blank-label placeholders are pure spacing and must stay out of the outline, got %+v", o.TopAnchors)
 	}
 }
+
+// '&sketch' is the successor spelling of '&snippet' (snippet→sketch rename):
+// same command, normalized to CmdSnippet — both spellings parse forever.
+func TestSketchAliasParsesAsSnippet(t *testing.T) {
+	cmd, ok := ParseCommand("&sketch#abc123{Label}")
+	if !ok || cmd.Kind != CmdSnippet || cmd.Slug != "abc123" {
+		t.Fatalf("&sketch# alias: ok=%v kind=%q slug=%q", ok, cmd.Kind, cmd.Slug)
+	}
+	legacy, ok2 := ParseCommand("&snippet#abc123{Label}")
+	if !ok2 || legacy.Kind != CmdSnippet {
+		t.Fatalf("&snippet# legacy spelling must keep parsing: ok=%v kind=%q", ok2, legacy.Kind)
+	}
+	if _, bare := ParseCommand("&sketch#abc123"); bare {
+		t.Fatal("bare &sketch#slug (no brace group) must stay prose, like &snippet")
+	}
+}

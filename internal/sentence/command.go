@@ -328,6 +328,16 @@ func matchKeyword(runes []rune) (CommandKind, int) {
 			return name, end
 		}
 	}
+	// '&sketch' is the successor spelling of '&snippet' (the snippet→sketch
+	// rename); it parses as the SAME command. Normalized here so every
+	// consumer (outline, canonicalize, regions, …) keeps a single kind —
+	// CmdSnippet stays the internal name (legacy, like the &snippet
+	// spelling itself, which remains valid forever).
+	const sketchAlias = "sketch"
+	end := 1 + len(sketchAlias)
+	if end < len(runes) && string(runes[1:end]) == sketchAlias && (runes[end] == '#' || runes[end] == '{') {
+		return CmdSnippet, end
+	}
 	return "", 0
 }
 

@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.4.0"
+const Version = "2.5.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -642,7 +642,7 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 
 // commandKeywords are the recognized &-command names. A '&' begins a command
 // only when immediately followed by one of these and then '#' or '{'.
-var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta", "placeholder", "snippet", "end"}
+var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta", "placeholder", "snippet", "sketch", "end"}
 
 // isSlugChar reports whether r is in the #slug charset [a-z0-9-].
 func isSlugChar(r rune) bool {
@@ -662,7 +662,7 @@ func isBlockCommandAt(runes []rune, i int) bool {
 	switch kw {
 	case "reference":
 		return false
-	case "anchor", "placeholder", "snippet", "end":
+	case "anchor", "placeholder", "snippet", "sketch", "end":
 		return commandIsSoleLineContent(runes, i)
 	default: // title, part, chapter
 		return true

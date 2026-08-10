@@ -80,7 +80,7 @@ const psql = (sql) => execSync(
 
   const sug = psql(`SELECT text FROM suggested_change WHERE sentence_id='${boundary}' AND user_id='${TEST_USERNAME}'`);
   check('ONE suggestion holds the edit AND the region',
-    sug.includes('EDITED FIRST.') && sug.includes('&snippet#') && sug.includes('&end#'),
+    sug.includes('EDITED FIRST.') && sug.includes('&sketch#') && sug.includes('&end#'),
     JSON.stringify(sug.slice(0, 80)));
   const canonized = psql(`SELECT canon_variation_id IS NOT NULL FROM sketch WHERE sketch_id = (SELECT sketch_id FROM variation WHERE variation_id=${sk})`);
   check('variation group canonized', canonized === 't');
