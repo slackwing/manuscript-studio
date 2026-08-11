@@ -82,12 +82,12 @@ const psql = (sql) => execSync(
   check('trash vertically centered on the range (±8px)', mode.trashGeom && Math.abs(mode.trashGeom.centerOffset) <= 8, mode.trashGeom);
 
   // first click arms, second applies
-  await page.locator('.range-trash').click();
-  const arming = await page.evaluate(() => document.querySelector('.range-trash').classList.contains('confirming'));
+  await page.locator('.range-trash:not(.range-sketch)').click();
+  const arming = await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch)').classList.contains('confirming'));
   check('first click arms (confirming)', arming);
   const before = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   check('no suggestions before confirm', before === '0', before);
-  await page.locator('.range-trash').click();
+  await page.locator('.range-trash:not(.range-sketch)').click();
   await page.waitForTimeout(2500);
 
   const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text=''`);
