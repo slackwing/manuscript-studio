@@ -1693,12 +1693,12 @@ p.section-break {
 
 /* Sketch-from-selection gutter button (rides above the range trash) and
    the placed-region margin glyph (sketch icon; clickable → its widget). */
-.range-trash.range-sketch { color: #7a5a34; border-color: #c9a227; background: #faf6ec; }
+.range-trash.range-sketch { color: #66492b; border-color: #c9a227; background: #faf6ec; }
 .range-trash.range-sketch:hover { background: #f3ead6; }
 .range-trash.range-sketch svg { display: block; margin: 0 auto; }
 .cmd-sketch-glyph { cursor: pointer; }
 .cmd-sketch-glyph svg { display: inline-block; vertical-align: -1px; }
-.cmd-sketch-glyph:hover { color: #7a5a34; }
+.cmd-sketch-glyph:hover { color: #66492b; }
 /* Sketch-from-selection dialog — the import-modal look. */
 #sketch-sel-modal {
   position: fixed;

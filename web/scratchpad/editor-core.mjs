@@ -534,13 +534,13 @@ class SketchView {
     this.dom.innerHTML = `
       <div class="sn-header${this.compare != null ? ' sn-head-split' : ''}">
         <div class="sn-head-left">
-          <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span>${linkBit}<span class="sn-save"></span>
+          <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span><span class="sn-topgap"></span>${linkBit}${this.canonized() ? '<span class="sn-placedmark" title="Placed in the manuscript">\u2766</span>' : ''}<span class="sn-save"></span>
           <span class="sn-actions sn-actions-main">
             <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
             <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
             <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-            <button type="button" data-act="branch" class="sn-branch" title="New variation based on this one">${SPARK_SVG}</button>
             <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
+            <button type="button" data-act="branch" class="sn-branch" title="New variation based on this one">${SPARK_SVG}</button>
             ${this.canonized() && sn.linked_manuscript_id ? `<button type="button" data-act="place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">❦</button>` : ''}
           </span>
           <span class="sn-selfletter st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</span>
@@ -549,7 +549,7 @@ class SketchView {
       <div class="sn-cols">
         <div class="sn-main">
           <div class="sn-actionrow" style="display: none">
-            <div class="sn-act-self"></div>
+            <div class="sn-act-self"><span class="sn-act-label st-${this.stateName()}" title="This pane is variation ${this.letter()}.">${esc(this.letter())}</span></div>
             <div class="sn-head-right"></div>
           </div>
           <div class="sn-body"></div>
@@ -695,7 +695,8 @@ class SketchView {
           if (this.compare != null) {
             row.style.display = 'flex';
             const half = this.dom.querySelector('.sn-act-self');
-            if (mainActs.parentNode !== half) half.appendChild(mainActs);
+            // Actions BEFORE the pane's letter label (which caps the half).
+            if (mainActs.parentNode !== half) half.insertBefore(mainActs, half.querySelector('.sn-act-label'));
           } else {
             row.style.display = 'none';
             const letter = this.dom.querySelector('.sn-selfletter');
@@ -715,15 +716,6 @@ class SketchView {
           <div class="sn-split-left"></div>
           <div class="sn-split-right"></div>
         </div>`;
-      // The self letter rides the left pane's upper-right corner while the
-      // rail hosts only the siblings (railHTML dropped it for the split).
-      // It hangs off the SPLIT container (not the left pane, whose innerHTML
-      // the preview/edit renders replace wholesale).
-      const badge = document.createElement('span');
-      badge.className = `sn-pane-letter sn-rail-btn sn-rail-self st-${this.stateName()}`;
-      badge.textContent = this.letter();
-      badge.title = `This pane is variation ${this.letter()}.`;
-      this.body.querySelector('.sn-split').appendChild(badge);
       this.selfHost = this.body.querySelector('.sn-split-left');
       if (this.mode === 'edit') this.renderEdit(); else this.renderSelfPreview();
       const right = this.body.querySelector('.sn-split-right');
@@ -901,7 +893,7 @@ class SketchView {
           <button type="button" data-act="peer-supersede" class="sn-supersede${st === 'superseded' ? ' pressed' : ''}" title="${st === 'superseded' ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
           <button type="button" data-act="peer-freeze" class="sn-freeze${st === 'frozen' ? ' pressed' : ''}" title="${st === 'frozen' ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
           <button type="button" data-act="peer-copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
-        </span>`;
+        </span><span class="sn-act-label st-${st}" title="This pane is variation ${esc(letterOf(ctx.variation.ordinal))}.">${esc(letterOf(ctx.variation.ordinal))}</span>`;
       headRight.querySelector('[data-act="peer-goto"]').addEventListener('click', () =>
         this.gotoVariationSource(variationId, sketchId, ordinal));
       headRight.querySelector('[data-act="peer-branch"]').addEventListener('click', () => this.branchVariation(variationId));
@@ -1029,7 +1021,7 @@ class SketchView {
     // live placed text — edit what's in the book without touching it.
     const headRight = this.dom.querySelector('.sn-head-right');
     if (headRight && !headRight.childElementCount) {
-      headRight.innerHTML = `<span class="sn-actions">${openBookLink(sn)}<button type="button" data-act="from-placed" class="sn-branch sn-from-placed" title="New variation from the placed text — start editing what's in the book">${SPARK_SVG}</button></span>`;
+      headRight.innerHTML = `<span class="sn-actions">${openBookLink(sn)}<button type="button" data-act="from-placed" class="sn-branch sn-from-placed" title="New variation from the placed text — start editing what's in the book">${SPARK_SVG}</button></span><span class="sn-act-label sn-act-label-gilt" title="The placed text.">\u2766</span>`;
       headRight.querySelector('[data-act="from-placed"]').addEventListener('click', async () => {
         try {
           const data = await bookData.load(sn.linked_manuscript_id, true);

@@ -73,7 +73,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     const kids = Array.from(document.querySelectorAll('.sn-widget .sn-actions > *')).map(e => e.className);
     return { freeze: kids.findIndex(c => /sn-freeze/.test(c)), copy: kids.findIndex(c => /sn-copyref/.test(c)) };
   });
-    check('copy two right of freeze (branch between)', order.copy === order.freeze + 2, JSON.stringify(order));
+  check('copy right after freeze (sparkles after copy)', order.copy === order.freeze + 1, JSON.stringify(order));
   await copyBtn.click();
   await page.waitForSelector('.sn-copyref.sn-copied', { timeout: 4000 }); // write is async
   const clip = await page.evaluate(() => navigator.clipboard.readText());

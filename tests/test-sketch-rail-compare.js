@@ -70,13 +70,16 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   // the sibling buttons shift up into its slot.
   const splitRail = await w.evaluate(el => ({
     selfInRail: !!el.querySelector('.sn-rail .sn-rail-self'),
-    corner: (el.querySelector('.sn-pane-letter') || {}).textContent || '',
+    leftLabel: (el.querySelector('.sn-act-self .sn-act-label') || {}).textContent || '',
+    rightLabel: (el.querySelector('.sn-actionrow .sn-head-right .sn-act-label') || {}).textContent || '',
     topLetter: (el.querySelector('.sn-rail .sn-rail-btn') || {}).textContent || '',
     selfActionsInRow: !!el.querySelector('.sn-act-self .sn-actions-main'),
+    labelAfterActions: (() => { const h = el.querySelector('.sn-act-self'); return h && h.lastElementChild && h.lastElementChild.classList.contains('sn-act-label'); })(),
     topbarLetterHidden: el.querySelector('.sn-selfletter') && getComputedStyle(el.querySelector('.sn-selfletter')).display === 'none',
   }));
-  check('self letter on the left pane corner (topbar letter hidden)',
-    !splitRail.selfInRail && splitRail.corner === 'A' && splitRail.topbarLetterHidden, JSON.stringify(splitRail));
+  check('half-toolbars cap with plain pane labels (A left, B right)',
+    !splitRail.selfInRail && splitRail.leftLabel === 'A' && splitRail.rightLabel === 'B'
+    && splitRail.labelAfterActions && splitRail.topbarLetterHidden, JSON.stringify(splitRail));
   check('siblings shifted up (B tops the rail)', splitRail.topLetter === 'B', splitRail.topLetter);
   check('self actions moved down into the left half-toolbar', splitRail.selfActionsInRow);
   check('peer actions: ↗ goto, branch, supersede, freeze, copy — no trash',
@@ -118,7 +121,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     topbarLetter: (el.querySelector('.sn-selfletter') || {}).textContent || '',
     letterVisible: el.querySelector('.sn-selfletter') && getComputedStyle(el.querySelector('.sn-selfletter')).display !== 'none',
     railHasSelf: !!el.querySelector('.sn-rail .sn-rail-self'),
-    corner: !!el.querySelector('.sn-pane-letter'),
+    corner: !!el.querySelector('.sn-actionrow:not([style*="none"]) .sn-act-label'),
     actionRowHidden: (el.querySelector('.sn-actionrow') || {}).style ? el.querySelector('.sn-actionrow').style.display === 'none' : false,
     actionsInTopbar: !!el.querySelector('.sn-head-left .sn-actions-main'),
   }));
