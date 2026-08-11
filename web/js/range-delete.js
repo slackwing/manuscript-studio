@@ -132,6 +132,24 @@ const WriteSysRangeDelete = {
       btn.style.top = `${((top + bottom) / 2 - br.height / 2 - hr.top) / scale}px`;
     }
     this.btn = btn;
+    // The SKETCH button rides just above the trash: rework this selection
+    // through sketches (A = frozen original, B = editable copy, placed).
+    if (window.WriteSysSketchFromSelection) {
+      const sk = document.createElement('button');
+      sk.type = 'button';
+      sk.className = 'range-trash range-sketch';
+      sk.title = `Sketch from ${this.range.length} selected sentence${this.range.length > 1 ? 's' : ''}`;
+      sk.innerHTML = window.WriteSysSketchFromSelection.buttonHTML();
+      sk.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        window.WriteSysSketchFromSelection.open(this.range.slice());
+      });
+      host.appendChild(sk);
+      const br2 = btn.getBoundingClientRect();
+      sk.style.left = btn.style.left;
+      sk.style.top = `${parseFloat(btn.style.top || '0') - br2.height - 6}px`;
+      this.sketchBtn = sk;
+    }
   },
 
   async apply() {
@@ -164,6 +182,7 @@ const WriteSysRangeDelete = {
   removeTrash() {
     if (this.btn) { this.btn.remove(); this.btn = null; }
     document.querySelectorAll('.range-trash').forEach((el) => el.remove());
+    this.sketchBtn = null;
   },
   exit() {
     this.clearHighlights();

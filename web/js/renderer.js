@@ -704,6 +704,12 @@ const WriteSysRenderer = {
     const chCls = changed ? ' cmd-suggested' : '';
     const marginCls = margin ? ' cmd-anchor-margin' : '';
     const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+    // A placed sketch region's opener wears the SKETCH icon (click →
+    // navigate to the group's widget); plain anchors keep the ⚓.
+    if (cmd.kind === 'snippet') {
+      const icon = window.WriteSysIcons && window.WriteSysIcons.sketch ? window.WriteSysIcons.sketch(11) : '⧉';
+      return `<span class="sentence cmd-anchor-glyph cmd-sketch-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="sketch">${icon}</span>`;
+    }
     return `<span class="sentence cmd-anchor-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="anchor">⚓</span>`;
   },
 
@@ -765,11 +771,17 @@ const WriteSysRenderer = {
       const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
       const label = (c.args && c.args[0]) || c.slug || '';
       const titleAttr = label ? ` title="${this.escapeHtml(label)}"` : '';
-      // The zero-width target stays inline (scroll anchor); the VISIBLE ⚓
-      // rides in the left margin at this line's height (absolute, no top →
-      // static-position y), so the flow is never touched.
+      // The zero-width target stays inline (scroll anchor); the VISIBLE
+      // marker rides in the left margin at this line's height (absolute, no
+      // top → static-position y), so the flow is never touched. A placed
+      // sketch region wears the SKETCH icon (click → its widget); plain
+      // anchors keep the ⚓.
+      const isSketch = c.kind === 'snippet';
+      const icon = isSketch && window.WriteSysIcons && window.WriteSysIcons.sketch
+        ? window.WriteSysIcons.sketch(11) : '⚓';
+      const extraCls = isSketch ? ' cmd-sketch-glyph' : '';
       return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`
-        + `<span class="cmd-anchor-glyph cmd-anchor-margin cmd-anchor-margin-inline"${slug}${titleAttr} aria-label="anchor">⚓</span>`;
+        + `<span class="cmd-anchor-glyph cmd-anchor-margin cmd-anchor-margin-inline${extraCls}"${slug}${titleAttr} aria-label="${isSketch ? 'sketch' : 'anchor'}">${icon}</span>`;
     }
     // reference
     const slugMap = (window.WriteSysOutline && window.WriteSysOutline.slugMap) || {};
@@ -790,7 +802,8 @@ const WriteSysRenderer = {
     // Match an escaped command token: &amp;(keyword)(#slug)?{...}{...}...
     // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
     // Args are plain (no nested braces in the escaped stream we care about).
-    const re = /&amp;(reference|anchor|placeholder|snippet)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
+    // 'sketch' is the successor spelling of 'snippet' — same command kind.
+    const re = /&amp;(reference|anchor|placeholder|snippet|sketch)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -804,7 +817,7 @@ const WriteSysRenderer = {
       const args = [];
       groups.replace(/\{([^{}]*)\}/g, (_, g) => { args.push(unescape(g)); return ''; });
       const raw = '&' + kw + (hashSlug || '') + args.map(a => '{' + a + '}').join('');
-      return this.renderInlineCommand({ kind: kw, slug, notes: args[0] || '', args, raw });
+      return this.renderInlineCommand({ kind: kw === 'sketch' ? 'snippet' : kw, slug, notes: args[0] || '', args, raw });
     });
   },
 

@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -631,4 +632,121 @@ func (db *DB) VariationHomeScratchpad(ctx context.Context, userID string, variat
 		return 0, nil
 	}
 	return *spid, nil
+}
+
+// SketchHome resolves where a GROUP lives: the last-placed variation's home
+// scratchpad when known, else the lowest-lettered variation that has one.
+// The margin sketch-glyph's click navigates here. ordinal 0 = none found.
+func (db *DB) SketchHome(ctx context.Context, userID, sketchID string) (scratchpadID, ordinal int, err error) {
+	var owner string
+	if err = db.Pool.QueryRow(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1`, sketchID).Scan(&owner); err != nil || owner != userID {
+		return 0, 0, ErrNotOwner
+	}
+	err = db.Pool.QueryRow(ctx, `
+		SELECT v.scratchpad_id, v.ordinal FROM variation v
+		JOIN sketch s ON s.sketch_id = v.sketch_id
+		WHERE v.sketch_id = $1 AND v.ordinal IS NOT NULL AND v.deleted_at IS NULL AND v.scratchpad_id IS NOT NULL
+		ORDER BY (v.variation_id = s.placed_from_variation_id) DESC, v.ordinal
+		LIMIT 1
+	`, sketchID).Scan(&scratchpadID, &ordinal)
+	if err == pgx.ErrNoRows {
+		return 0, 0, nil
+	}
+	return scratchpadID, ordinal, err
+}
+
+// CreatePlacedSketchFromSelection mints the "rework existing manuscript
+// text" group in one stroke (the placement rethink, phase 3):
+//   A = the selected text, FROZEN — the as-placed baseline;
+//   B = an editable copy (draft);
+//   the group is linked to the manuscript and PLACED from birth (canon
+//   snapshot = A's text, last-placed = A) so wordcount counts it via the
+//   manuscript only. Widget nodes for A and B are appended to the given
+//   scratchpad's doc (the caller adds the &sketch anchors around the
+//   selection as suggested edits — the manuscript side of the placement).
+func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string, manuscriptID int, manuscriptName, text string, scratchpadID int) (*VariationContext, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var padOwner string
+	if err := tx.QueryRow(ctx, `SELECT user_id FROM scratchpad WHERE scratchpad_id = $1`, scratchpadID).Scan(&padOwner); err != nil || padOwner != userID {
+		return nil, ErrNotOwner
+	}
+	var sketchID string
+	for attempt := 0; ; attempt++ {
+		sketchID, err = newSketchID()
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`, sketchID, userID); err == nil {
+			break
+		}
+		if attempt >= 3 {
+			return nil, fmt.Errorf("create sketch: %w", err)
+		}
+	}
+	var aID, bID, snapID int
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO variation (sketch_id, ordinal, text, state, scratchpad_id)
+		VALUES ($1, 1, $2, 'frozen', $3) RETURNING variation_id
+	`, sketchID, text, scratchpadID).Scan(&aID); err != nil {
+		return nil, fmt.Errorf("create variation A: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO variation (sketch_id, ordinal, text, scratchpad_id)
+		VALUES ($1, 2, $2, $3) RETURNING variation_id
+	`, sketchID, text, scratchpadID).Scan(&bID); err != nil {
+		return nil, fmt.Errorf("create variation B: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO variation (sketch_id, ordinal, text, state)
+		VALUES ($1, NULL, $2, 'frozen') RETURNING variation_id
+	`, sketchID, text).Scan(&snapID); err != nil {
+		return nil, fmt.Errorf("create placed snapshot: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE sketch SET canon_variation_id = $2, placed_from_variation_id = $3,
+		       linked_manuscript_id = $4, linked_manuscript_name = $5
+		WHERE sketch_id = $1
+	`, sketchID, snapID, aID, manuscriptID, manuscriptName); err != nil {
+		return nil, err
+	}
+	// The sketch's note (026) — every sketch carries one.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
+		VALUES ($1, $2, 'yellow', 'none', 'a0', $3)
+	`, manuscriptID, userID, sketchID); err != nil {
+		return nil, fmt.Errorf("create sketch note: %w", err)
+	}
+	// Append the two widget nodes to the pad doc (PM node type 'snippet' —
+	// legacy storage name; every saved doc embeds it).
+	var docJSON []byte
+	if err := tx.QueryRow(ctx, `SELECT doc FROM scratchpad WHERE scratchpad_id = $1 FOR UPDATE`, scratchpadID).Scan(&docJSON); err != nil {
+		return nil, fmt.Errorf("load pad doc: %w", err)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(docJSON, &doc); err != nil || doc["type"] != "doc" {
+		doc = map[string]interface{}{"type": "doc", "content": []interface{}{}}
+	}
+	content, _ := doc["content"].([]interface{})
+	for _, vid := range []int{aID, bID} {
+		content = append(content, map[string]interface{}{
+			"type":  "snippet",
+			"attrs": map[string]interface{}{"variationId": vid},
+		})
+	}
+	doc["content"] = content
+	newDoc, err := json.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE scratchpad SET doc = $2, updated_at = NOW() WHERE scratchpad_id = $1`, scratchpadID, newDoc); err != nil {
+		return nil, fmt.Errorf("append widgets to pad: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return db.GetVariationContext(ctx, userID, bID)
 }

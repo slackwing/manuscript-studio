@@ -83,6 +83,7 @@ func (h *VariationHandlers) HandleCreateSketch(w http.ResponseWriter, r *http.Re
 		SourceVariationID int    `json:"source_variation_id"`
 		SketchID       string `json:"sketch_id"`
 		Text           string `json:"text"`
+		ManuscriptID   int    `json:"manuscript_id"`
 		ScratchpadID   int    `json:"scratchpad_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -100,6 +101,16 @@ func (h *VariationHandlers) HandleCreateSketch(w http.ResponseWriter, r *http.Re
 			return
 		}
 		ctxOut, err = h.DB.CreateVariationFrom(r.Context(), session.Username, req.SourceVariationID, optScratchpadID(req.ScratchpadID))
+	case "from-selection": // rework existing manuscript text: A=frozen original, B=copy; placed from birth
+		if req.ManuscriptID <= 0 || req.ScratchpadID <= 0 || req.Text == "" {
+			http.Error(w, "manuscript_id, scratchpad_id and text required", http.StatusBadRequest)
+			return
+		}
+		if !requireManuscriptAccess(w, r, h.DB, h.Config, req.ManuscriptID) {
+			return
+		}
+		ctxOut, err = h.DB.CreatePlacedSketchFromSelection(r.Context(), session.Username, req.ManuscriptID,
+			h.manuscriptDisplayName(r, req.ManuscriptID), req.Text, req.ScratchpadID)
 	case "text": // next-letter variation seeded with raw text ("sketch from placed text")
 		if req.SketchID == "" {
 			http.Error(w, "sketch_id required", http.StatusBadRequest)
@@ -373,6 +384,23 @@ func (h *VariationHandlers) HandleLinkSketch(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"manuscript_id": req.ManuscriptID, "manuscript_name": name})
+}
+
+// HandleSketchHome: GET /api/sketches/{sketch_id}/home — where the GROUP
+// lives (the margin sketch-glyph's navigation target).
+func (h *VariationHandlers) HandleSketchHome(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	sketchID := chi.URLParam(r, "sketch_id")
+	spid, ordinal, err := h.DB.SketchHome(r.Context(), session.Username, sketchID)
+	if err != nil {
+		writeVariationError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"scratchpad_id": spid, "ordinal": ordinal})
 }
 
 // HandleCanonizeVariation: POST /api/variations/{id}/canonize {manuscript_id}.

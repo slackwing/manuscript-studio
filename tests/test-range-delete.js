@@ -67,14 +67,15 @@ const psql = (sql) => execSync(
     return {
       selected: new Set([...document.querySelectorAll('.sentence.range-selected')].map(e => e.dataset.sentenceId)).size,
       modeOn: document.body.classList.contains('range-delete-mode'),
-      trash: document.querySelectorAll('.range-trash').length,
+      trash: document.querySelectorAll('.range-trash:not(.range-sketch)').length,
+      sketchBtn: document.querySelectorAll('.range-trash.range-sketch').length,
       plusHidden: [...document.querySelectorAll('.import-zone')].every(z => getComputedStyle(z).display === 'none'),
       nativeSelection: String(window.getSelection() || ''),
       trashGeom,
     };
   });
   check('range highlighted', mode.selected === pair.between.length, `${mode.selected}/${pair.between.length}`);
-  check('mode on + red trash shown', mode.modeOn && mode.trash === 1);
+  check('mode on + red trash shown (sketch button beside it)', mode.modeOn && mode.trash === 1 && mode.sketchBtn === 1);
   check('+ affordances hidden in mode', mode.plusHidden);
   check('NO native text selection after shift-click', mode.nativeSelection === '', mode.nativeSelection.slice(0, 40));
   check('trash fully off the sheet, in the gutter', mode.trashGeom && mode.trashGeom.rightVsSheet < 0, mode.trashGeom);

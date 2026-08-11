@@ -27,5 +27,11 @@
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"',
         '<path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/>');
     },
+    // The SKETCH icon: two layered panes (variations of one passage). The
+    // selection toolbar and the margin glyph of placed regions share it.
+    sketch(size) {
+      return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"',
+        '<rect x="3" y="6.5" width="10.5" height="10.5" rx="1.5"/><path d="M7 3.5h9.5v9.5"/>');
+    },
   };
 })();
