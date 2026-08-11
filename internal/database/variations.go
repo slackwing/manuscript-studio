@@ -517,6 +517,7 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 FOR UPDATE OF s
 	`, variationID).Scan(&owner, &sketchID, &linkedID, &canonID, &ordinal, &text)
+	_ = text // the placed variation itself is the record — no snapshot copy
 	if err != nil || owner != userID {
 		return nil, ErrNotOwner
 	}
@@ -526,35 +527,27 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 	if linkedID != nil && *linkedID != manuscriptID {
 		return nil, ErrLinkedElsewhere
 	}
-	// RE-placing is allowed (the placement rethink): a fresh "as placed"
-	// snapshot replaces the old one — the manuscript's git history is the
-	// history, so the superseded snapshot row is simply dropped. Order
-	// matters: ONE snapshot per sketch (partial unique index) and the
-	// sketch's canon pointer FKs the row — clear pointer, drop old,
-	// insert new, point at it. The caller is responsible for the
-	// manuscript-side region replacement (suggested edits); this is only
-	// the group bookkeeping.
+	// The placement rethink, refined: there is NO hidden snapshot — the
+	// placed variation ITSELF is the record of what went in (the manuscript
+	// is the source of truth; git is the history). canon_variation_id
+	// (legacy column name) points at the placed lettered variation and
+	// doubles as the "this group is placed" marker. Re-placing just
+	// repoints it. Legacy hidden snapshot rows (ordinal NULL) are dropped
+	// when encountered. The caller performs the manuscript-side region
+	// replacement (suggested edits); this is only the group bookkeeping.
 	if canonID != nil {
 		if _, err := tx.Exec(ctx, `UPDATE sketch SET canon_variation_id = NULL WHERE sketch_id = $1`, sketchID); err != nil {
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM variation WHERE variation_id = $1 AND ordinal IS NULL`, *canonID); err != nil {
-			return nil, fmt.Errorf("drop old placed snapshot: %w", err)
+			return nil, fmt.Errorf("drop legacy placed snapshot: %w", err)
 		}
-	}
-	var newCanonID int
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO variation (sketch_id, ordinal, text, state)
-		VALUES ($1, NULL, $2, 'frozen')
-		RETURNING variation_id
-	`, sketchID, text).Scan(&newCanonID); err != nil {
-		return nil, fmt.Errorf("create canon variation: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE sketch SET canon_variation_id = $2, linked_manuscript_id = $3, linked_manuscript_name = $4,
-		       placed_from_variation_id = $5
+		       placed_from_variation_id = $2
 		WHERE sketch_id = $1
-	`, sketchID, newCanonID, manuscriptID, manuscriptName, variationID); err != nil {
+	`, sketchID, variationID, manuscriptID, manuscriptName); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -687,26 +680,21 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 			return nil, fmt.Errorf("create sketch: %w", err)
 		}
 	}
-	// ONLY variation A — the frozen original. Further variations are the
-	// author's deliberate act (the sparkles button on the widget).
-	var aID, snapID int
+	// ONLY variation A — the frozen original, which IS the as-placed
+	// record (no snapshot copies). Further variations are the author's
+	// deliberate act (the sparkles button on the widget).
+	var aID int
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO variation (sketch_id, ordinal, text, state, scratchpad_id)
 		VALUES ($1, 1, $2, 'frozen', $3) RETURNING variation_id
 	`, sketchID, text, scratchpadID).Scan(&aID); err != nil {
 		return nil, fmt.Errorf("create variation A: %w", err)
 	}
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO variation (sketch_id, ordinal, text, state)
-		VALUES ($1, NULL, $2, 'frozen') RETURNING variation_id
-	`, sketchID, text).Scan(&snapID); err != nil {
-		return nil, fmt.Errorf("create placed snapshot: %w", err)
-	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE sketch SET canon_variation_id = $2, placed_from_variation_id = $3,
-		       linked_manuscript_id = $4, linked_manuscript_name = $5
+		UPDATE sketch SET canon_variation_id = $2, placed_from_variation_id = $2,
+		       linked_manuscript_id = $3, linked_manuscript_name = $4
 		WHERE sketch_id = $1
-	`, sketchID, snapID, aID, manuscriptID, manuscriptName); err != nil {
+	`, sketchID, aID, manuscriptID, manuscriptName); err != nil {
 		return nil, err
 	}
 	// The sketch's note (026) — every sketch carries one.

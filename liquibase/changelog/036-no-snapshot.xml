@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- The as-placed SNAPSHOT is retired: the placed variation itself is
+         the record (the manuscript is the source of truth; git is the
+         history). Repoint canon_variation_id from the hidden ordinal-NULL
+         snapshot rows to the placed lettered variation (last-placed when
+         known, else the lowest letter), then drop the hidden rows. -->
+    <changeSet id="036-no-snapshot" author="claude">
+        <sql>
+            UPDATE sketch s SET canon_variation_id = COALESCE(
+                s.placed_from_variation_id,
+                (SELECT v.variation_id FROM variation v
+                 WHERE v.sketch_id = s.sketch_id AND v.ordinal IS NOT NULL AND v.deleted_at IS NULL
+                 ORDER BY v.ordinal LIMIT 1))
+            WHERE s.canon_variation_id IN (SELECT variation_id FROM variation WHERE ordinal IS NULL);
+
+            UPDATE sketch s SET placed_from_variation_id = s.canon_variation_id
+            WHERE s.canon_variation_id IS NOT NULL AND s.placed_from_variation_id IS NULL;
+
+            DELETE FROM variation WHERE ordinal IS NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -81,6 +81,24 @@ function psql(sql) {
   const ids3 = await page.locator('.card-note').evaluateAll(cs => cs.map(c => c.dataset.noteId));
   check('the set itself is unchanged by scoring', ids1.join(',') === ids3.join(','));
 
+  // --- COMPLETED today stays on today's page, wearing the done check ---
+  const completeId = ids1[2];
+  const cst = await page.evaluate(async ({ id, csrf }) => {
+    const r = await fetch(`api/notes/${id}/complete`, { method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRF-Token': csrf } });
+    return r.status;
+  }, { id: completeId, csrf });
+  check('completed a visible task via API', cst < 300, `status=${cst}`);
+  await page.reload();
+  await page.waitForSelector('.card-note', { timeout: 8000 });
+  const afterComplete = await page.evaluate((id) => ({
+    total: document.querySelectorAll('.card-note').length,
+    stillThere: !!document.querySelector(`.card-note[data-note-id="${id}"]`),
+    done: !!document.querySelector(`.card-note[data-note-id="${id}"].daily-done`),
+  }), completeId);
+  check('completed-today task still shown, marked done',
+    afterComplete.stillThere && afterComplete.done && afterComplete.total === 16, JSON.stringify(afterComplete));
+
   // --- DAILY RULES: per-category caps with deterministic backfill ---
   // Recolor the pool for variety: seeds 1-6 → hone/green, 7-12 → edit/purple.
   psql(`UPDATE note SET task_type='hone', color='green' WHERE user_id='${TEST_USERNAME}' AND body ~ 'Daily seed ([1-6])$'`);

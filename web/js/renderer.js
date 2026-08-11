@@ -707,7 +707,7 @@ const WriteSysRenderer = {
     // A placed sketch region's opener wears the SKETCH icon (click →
     // navigate to the group's widget); plain anchors keep the ⚓.
     if (cmd.kind === 'snippet') {
-      const icon = window.WriteSysIcons && window.WriteSysIcons.sketch ? window.WriteSysIcons.sketch(11) : '⧉';
+      const icon = window.WriteSysIcons && window.WriteSysIcons.goto ? window.WriteSysIcons.goto(11) : '↗';
       return `<span class="sentence cmd-anchor-glyph cmd-sketch-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="sketch">${icon}</span>`;
     }
     return `<span class="sentence cmd-anchor-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="anchor">⚓</span>`;
@@ -777,8 +777,8 @@ const WriteSysRenderer = {
       // sketch region wears the SKETCH icon (click → its widget); plain
       // anchors keep the ⚓.
       const isSketch = c.kind === 'snippet';
-      const icon = isSketch && window.WriteSysIcons && window.WriteSysIcons.sketch
-        ? window.WriteSysIcons.sketch(11) : '⚓';
+      const icon = isSketch && window.WriteSysIcons && window.WriteSysIcons.goto
+        ? window.WriteSysIcons.goto(11) : (isSketch ? '↗' : '⚓');
       const extraCls = isSketch ? ' cmd-sketch-glyph' : '';
       return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`
         + `<span class="cmd-anchor-glyph cmd-anchor-margin cmd-anchor-margin-inline${extraCls}"${slug}${titleAttr} aria-label="${isSketch ? 'sketch' : 'anchor'}">${icon}</span>`;

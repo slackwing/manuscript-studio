@@ -1043,10 +1043,9 @@ class SketchView {
       });
     }
     // NO explanatory bar: the live render IS the placed truth (the
-    // manuscript is the source of truth — nothing else to explain). A note
-    // appears only for the ANOMALY: the region can't be resolved, so the
-    // as-placed snapshot stands in.
-    const snap = this.ctx.canon ? this.ctx.canon.text : '';
+    // manuscript is the source of truth — nothing else to explain). There
+    // is no snapshot to fall back to (the placed variation itself is the
+    // record) — a resolution failure shows an ERROR, never a stale text.
     pane.innerHTML = '<div class="sn-render sn-peer"></div>';
     const host = pane.querySelector('.sn-render');
     const anomaly = (msg) => {
@@ -1056,20 +1055,25 @@ class SketchView {
       pane.insertBefore(note, host);
     };
     try {
-      const data = await bookData.load(sn.linked_manuscript_id, false);
       const canon = window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : (t) => t;
-      const res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, canon);
+      let data = await bookData.load(sn.linked_manuscript_id, false);
+      let res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, canon);
+      if (res.status !== 'ok') {
+        // The cache may predate the placement (a pad open while the region
+        // was suggested elsewhere) — retry ONCE with fresh book data
+        // before declaring the region missing.
+        data = await bookData.load(sn.linked_manuscript_id, true);
+        res = window.WriteSysRegion.resolve(data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, canon);
+      }
       if (this.compare !== 'canon' || !pane.isConnected) return;
       if (res.status !== 'ok') {
         anomaly(`Region #${esc(sn.sketch_id)} ${res.status === 'missing-anchor'
-          ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the as-placed snapshot.`);
-        renderBookText(host, snap);
+          ? 'not found in the effective manuscript' : 'has no matching &amp;end'}.`);
         return;
       }
       window.WriteSysScratchRender.render(host, res.items);
     } catch (e) {
-      anomaly(`Could not load manuscript ${sn.linked_manuscript_id} (${esc(e.message)}) — showing the snapshot.`);
-      renderBookText(host, snap);
+      anomaly(`Could not load manuscript ${sn.linked_manuscript_id} (${esc(e.message)}).`);
     }
   }
 

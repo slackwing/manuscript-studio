@@ -301,9 +301,9 @@ function noisyPng(w, h) {
     check('region now carries A\'s text (suggested replacement)',
       regionText.status === 'ok' && /dusk, and no one noticed/.test(regionText.text), JSON.stringify(regionText).slice(0, 120));
     const snapCount = psql(`SELECT count(*) FROM variation WHERE sketch_id='${sketchId}' AND ordinal IS NULL`);
-    check('old as-placed snapshot dropped (exactly one)', snapCount === '1', snapCount);
-    const snapText = psql(`SELECT LEFT(text, 30) FROM variation v JOIN sketch s ON s.canon_variation_id = v.variation_id WHERE s.sketch_id='${sketchId}'`);
-    check('snapshot refreshed to A\'s text (as placed = dusk)', /dusk/.test(snapText), snapText);
+    check('NO snapshot rows exist (the placed variation IS the record)', snapCount === '0', snapCount);
+    const canonPtr = psql(`SELECT canon_variation_id FROM sketch WHERE sketch_id='${sketchId}'`);
+    check('canon pointer = the placed variation itself (A)', canonPtr === String(varA), `${canonPtr} vs ${varA}`);
 
     // --- placed pane: ＋ sketch seeds a NEW variation from the live text ---
     await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-rail-canon`).click();

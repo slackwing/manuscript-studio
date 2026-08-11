@@ -56,11 +56,11 @@ const psql = (sql) => execSync(
     WHERE s.user_id='${TEST_USERNAME}' AND v.ordinal = 1 ORDER BY v.created_at DESC LIMIT 1`);
   check('group minted', /^[a-z0-9]{6,}$/.test(slug), slug);
   const rows = psql(`SELECT COALESCE(ordinal::text,'-') || '/' || state FROM variation WHERE sketch_id='${slug}' ORDER BY COALESCE(ordinal, 99)`).split('\n');
-  check('ONLY A (frozen) + the snapshot', rows.join(',') === '1/frozen,-/frozen', rows.join(','));
-  const facts = psql(`SELECT (canon_variation_id IS NOT NULL) || '/' ||
-    (placed_from_variation_id = (SELECT variation_id FROM variation WHERE sketch_id='${slug}' AND ordinal=1)) || '/' ||
+  check('ONLY A (frozen) — no snapshot rows', rows.join(',') === '1/frozen', rows.join(','));
+  const facts = psql(`SELECT (canon_variation_id = (SELECT variation_id FROM variation WHERE sketch_id='${slug}' AND ordinal=1)) || '/' ||
+    (placed_from_variation_id = canon_variation_id) || '/' ||
     (linked_manuscript_id IS NOT NULL) FROM sketch WHERE sketch_id='${slug}'`);
-  check('placed from birth, last-placed = A, linked', facts === 'true/true/true', facts);
+  check('placed from birth: canon = last-placed = A, linked', facts === 'true/true/true', facts);
   const aMatch = psql(`SELECT position('${pair.aText.replace(/'/g, "''")}' in text) > 0 FROM variation WHERE sketch_id='${slug}' AND ordinal=1`);
   check('A carries the selected text', aMatch === 't', aMatch);
   const pad = psql(`SELECT scratchpad_id FROM variation WHERE sketch_id='${slug}' AND ordinal=1`);

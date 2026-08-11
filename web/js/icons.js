@@ -32,11 +32,11 @@
       return svg(size, '0 0 20 20', 'fill="currentColor"',
         '<path d="M8 1.6l1.35 3.45L12.8 6.4 9.35 7.75 8 11.2 6.65 7.75 3.2 6.4l3.45-1.35z"/><path d="M14.8 9.4l.85 2.15 2.15.85-2.15.85-.85 2.15-.85-2.15-2.15-.85 2.15-.85z"/><path d="M8.4 13.6l.65 1.65 1.65.65-1.65.65-.65 1.65-.65-1.65-1.65-.65 1.65-.65z"/>');
     },
-    // The SKETCH icon: two layered panes (variations of one passage). The
-    // margin glyph of placed regions wears it.
-    sketch(size) {
-      return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"',
-        '<rect x="3" y="6.5" width="10.5" height="10.5" rx="1.5"/><path d="M7 3.5h9.5v9.5"/>');
+    // Go-to arrow (↗): the margin glyph of placed regions — click = go to
+    // the sketch. (Same mark the widget toolbars use for go-there.)
+    goto(size) {
+      return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"',
+        '<path d="M6 14L14 6M8.5 5.5H14.5V11.5"/>');
     },
   };
 })();

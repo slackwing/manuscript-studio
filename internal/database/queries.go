@@ -1856,16 +1856,18 @@ func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscrip
 		            WHERE nt.note_id = n.note_id),
 		           '[]'::json
 		       ) AS tags,
-		       EXISTS(
+		       (EXISTS(
 		           SELECT 1 FROM point_event pe
 		           WHERE pe.note_id = n.note_id AND pe.deleted_at IS NULL AND pe.scored_at >= $4
-		       ) AS done_today
+		       ) OR (n.completed_at IS NOT NULL AND n.completed_at >= $4)) AS done_today
 		FROM note n
 		LEFT JOIN scratchpad sp ON sp.scratchpad_id = n.scratchpad_id
 		LEFT JOIN manuscript  m ON m.manuscript_id  = n.manuscript_id
 		WHERE n.user_id = $1
 		  AND n.deleted_at IS NULL
-		  AND n.completed_at IS NULL
+		  -- Completed tasks stay on TODAY'S page (the satisfaction of the
+		  -- checkmark); they leave tomorrow.
+		  AND (n.completed_at IS NULL OR n.completed_at >= $4)
 		  AND n.manuscript_id = $2
 		  AND n.created_at < $4
 		  AND EXISTS (SELECT 1 FROM task_type tt WHERE tt.name = n.task_type AND tt.is_task)
