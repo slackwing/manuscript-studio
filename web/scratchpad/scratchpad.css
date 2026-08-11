@@ -256,9 +256,34 @@
   padding: 5px 8px;
   overflow: hidden;
 }
-.sn-head-right { display: none; }
-.sn-header.sn-head-split .sn-head-left { flex: 1 1 50%; }
-.sn-header.sn-head-split .sn-head-right {
+/* The plain self letter — identity, not a button (inert). */
+.sn-selfletter {
+  margin-left: auto;
+  font: 600 11px "Helvetica", sans-serif;
+  color: #57503f;
+  padding: 3px 6px;
+}
+.sn-selfletter.st-frozen { color: #2a6fb0; }
+.sn-selfletter.st-superseded { color: #b04038; }
+.sn-header.sn-head-split .sn-selfletter { display: none; }
+/* Split: the action ROW under the top bar — each half hosts its pane's
+   buttons with room to breathe (even 8px gaps between icon groups). */
+.sn-actionrow {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #e4ded1;
+  background: #f8f5ee;
+}
+.sn-act-self {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  overflow: hidden;
+}
+.sn-actionrow .sn-head-right {
   flex: 1 1 50%;
   min-width: 0;
   display: flex;
@@ -266,7 +291,7 @@
   flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 8px;
-  padding: 5px 8px;
+  padding: 3px 8px;
   border-left: 1px solid #d8d2c4;
   overflow: hidden;
 }
@@ -283,7 +308,7 @@
 /* the save slot absorbs the slack so the link chip sits by the status text */
 .sn-save { margin-right: auto; }
 .sn-status.sn-canonized { color: #7a5a34; }
-.sn-actions { display: inline-flex; align-items: center; flex: none; white-space: nowrap; }
+.sn-actions { display: inline-flex; align-items: center; flex: none; white-space: nowrap; gap: 2px; }
 .sn-actions button {
   font: 11px "Helvetica", sans-serif;
   border: 1px solid transparent;
@@ -818,3 +843,8 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 .sn-actions .sn-branch { color: #a49b8a; padding: 3px 5px; }
 .sn-actions .sn-branch svg { display: block; }
 .sn-actions .sn-branch:hover { color: #57503f; }
+
+/* The place button is the fleuron glyph — same mark as the rail's placed
+   button (placing = gilding the book). */
+.sn-actions .sn-place { font-size: 12px; line-height: 1; }
+.sn-actions .sn-place:hover { color: #7a5a34; }

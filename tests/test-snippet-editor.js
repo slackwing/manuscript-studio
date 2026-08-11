@@ -75,6 +75,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   });
     check('copy two right of freeze (branch between)', order.copy === order.freeze + 2, JSON.stringify(order));
   await copyBtn.click();
+  await page.waitForSelector('.sn-copyref.sn-copied', { timeout: 4000 }); // write is async
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   const variationId = await page.evaluate(() => document.querySelector('.sn-widget').dataset.variationId);
   check('copies ms-variation:<id>', clip === `ms-variation:${variationId}`, clip);

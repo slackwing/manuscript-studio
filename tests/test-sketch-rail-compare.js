@@ -45,13 +45,14 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     const w = document.querySelector('.sn-widget');
     return {
       letters: [...w.querySelectorAll('.sn-rail-btn')].map(b => b.textContent.trim()),
-      selfTop: w.querySelector('.sn-rail-btn').classList.contains('sn-rail-self'),
+      railSelf: !!w.querySelector('.sn-rail .sn-rail-self'),
+      topbarLetter: (w.querySelector('.sn-selfletter') || {}).textContent || '',
       overflow: !!w.querySelector('.sn-more-btn'),
       firstTitle: w.querySelectorAll('.sn-rail-peer')[0].title,
     };
   });
-  check('rail lists ALL 10 letters, self on top, no overflow',
-    rail.letters.length === 10 && rail.selfTop && !rail.overflow, JSON.stringify(rail.letters));
+  check('rail lists the 9 SIBLINGS (self plain in the top bar), no overflow',
+    rail.letters.length === 9 && !rail.railSelf && rail.topbarLetter === 'A' && !rail.overflow, JSON.stringify(rail.letters));
   check('sibling tooltip says "Compare to variation …"', /^Compare to variation [A-Z]\./.test(rail.firstTitle), rail.firstTitle);
 
   // Open compare with B, swap to C, close on second click.
@@ -71,9 +72,13 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     selfInRail: !!el.querySelector('.sn-rail .sn-rail-self'),
     corner: (el.querySelector('.sn-pane-letter') || {}).textContent || '',
     topLetter: (el.querySelector('.sn-rail .sn-rail-btn') || {}).textContent || '',
+    selfActionsInRow: !!el.querySelector('.sn-act-self .sn-actions-main'),
+    topbarLetterHidden: el.querySelector('.sn-selfletter') && getComputedStyle(el.querySelector('.sn-selfletter')).display === 'none',
   }));
-  check('self letter moved to the left pane corner', !splitRail.selfInRail && splitRail.corner === 'A', JSON.stringify(splitRail));
+  check('self letter on the left pane corner (topbar letter hidden)',
+    !splitRail.selfInRail && splitRail.corner === 'A' && splitRail.topbarLetterHidden, JSON.stringify(splitRail));
   check('siblings shifted up (B tops the rail)', splitRail.topLetter === 'B', splitRail.topLetter);
+  check('self actions moved down into the left half-toolbar', splitRail.selfActionsInRow);
   check('peer actions: ↗ goto, branch, supersede, freeze, copy — no trash',
     paneB.peerBtns === 'peer-goto,peer-branch,peer-supersede,peer-freeze,peer-copyref', paneB.peerBtns);
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
@@ -110,10 +115,17 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   check('clicking C again closes the split', await w.locator('.sn-split-left').count() === 0);
   check('header unsplits with the pane', !(await w.locator('.sn-header').evaluate(el => el.classList.contains('sn-head-split'))));
   const closedRail = await w.evaluate(el => ({
-    selfTop: (el.querySelector('.sn-rail .sn-rail-btn') || {}).classList ? el.querySelector('.sn-rail .sn-rail-btn').classList.contains('sn-rail-self') : false,
+    topbarLetter: (el.querySelector('.sn-selfletter') || {}).textContent || '',
+    letterVisible: el.querySelector('.sn-selfletter') && getComputedStyle(el.querySelector('.sn-selfletter')).display !== 'none',
+    railHasSelf: !!el.querySelector('.sn-rail .sn-rail-self'),
     corner: !!el.querySelector('.sn-pane-letter'),
+    actionRowHidden: (el.querySelector('.sn-actionrow') || {}).style ? el.querySelector('.sn-actionrow').style.display === 'none' : false,
+    actionsInTopbar: !!el.querySelector('.sn-head-left .sn-actions-main'),
   }));
-  check('self letter returns to the rail top on close', closedRail.selfTop && !closedRail.corner, JSON.stringify(closedRail));
+  check('closed: self letter plain in the top bar, rail self-free, actions back up',
+    closedRail.topbarLetter === 'A' && closedRail.letterVisible && !closedRail.railHasSelf
+    && !closedRail.corner && closedRail.actionRowHidden && closedRail.actionsInTopbar,
+    JSON.stringify(closedRail));
 
   // Left pane stays editable while split.
   await w.locator('.sn-rail-peer', { hasText: 'B' }).click();

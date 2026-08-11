@@ -108,7 +108,7 @@ function noisyPng(w, h) {
     // click flips into the monospace editor; blur returns to preview.
     await page.waitForSelector('.sn-widget .sn-render .sn-empty', { timeout: 10000 });
     const draftStatus = await page.textContent('.sn-widget .sn-status');
-    check('status reads Sketch · A · draft', /Sketch · A · draft/.test(draftStatus), draftStatus.trim());
+    check('status reads Sketch A (state via pane color, not words)', /^\s*Sketch A\s*$/.test(draftStatus), draftStatus.trim());
     await page.click('.sn-widget .sn-render');
     await page.waitForSelector('.sn-widget .sn-text', { timeout: 5000 });
     await page.fill('.sn-widget .sn-text', BLOCK_TEXT);
@@ -155,9 +155,9 @@ function noisyPng(w, h) {
     await page.waitForFunction(() => document.querySelectorAll('.sn-widget').length === 2, null, { timeout: 10000 });
     const bWidget = page.locator(`.sn-widget[data-variation-id="${varB}"]`);
 
-    // B's rail: B on top (its own variation), then A below (no label).
-    await bWidget.locator('.sn-rail-self').waitFor({ timeout: 10000 });
-    check('B letter on top of the rail (self)', (await bWidget.locator('.sn-rail-self').textContent()).trim() === 'B');
+    // B's identity: plain letter in the top bar; the rail lists sibling A.
+    await bWidget.locator('.sn-selfletter').waitFor({ timeout: 10000 });
+    check('B letter plain in the top bar', (await bWidget.locator('.sn-selfletter').textContent()).trim() === 'B');
     check('rail lists sibling A (no label)',
       (await bWidget.locator('.sn-rail-peer').allTextContents()).join('').includes('A'));
 
