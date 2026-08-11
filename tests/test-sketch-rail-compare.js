@@ -74,12 +74,12 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     rightLabel: (el.querySelector('.sn-actionrow .sn-head-right .sn-act-label') || {}).textContent || '',
     topLetter: (el.querySelector('.sn-rail .sn-rail-btn') || {}).textContent || '',
     selfActionsInRow: !!el.querySelector('.sn-act-self .sn-actions-main'),
-    labelAfterActions: (() => { const h = el.querySelector('.sn-act-self'); return h && h.lastElementChild && h.lastElementChild.classList.contains('sn-act-label'); })(),
-    topbarLetterHidden: el.querySelector('.sn-selfletter') && getComputedStyle(el.querySelector('.sn-selfletter')).display === 'none',
+    labelAfterActions: (() => { const c = el.querySelector('.sn-act-self .sn-actcluster'); return c && c.lastElementChild && c.lastElementChild.classList.contains('sn-act-label'); })(),
+    clusterLeftTopbar: !el.querySelector('.sn-head-left .sn-actcluster'),
   }));
   check('half-toolbars cap with plain pane labels (A left, B right)',
     !splitRail.selfInRail && splitRail.leftLabel === 'A' && splitRail.rightLabel === 'B'
-    && splitRail.labelAfterActions && splitRail.topbarLetterHidden, JSON.stringify(splitRail));
+    && splitRail.labelAfterActions && splitRail.clusterLeftTopbar, JSON.stringify(splitRail));
   check('siblings shifted up (B tops the rail)', splitRail.topLetter === 'B', splitRail.topLetter);
   check('self actions moved down into the left half-toolbar', splitRail.selfActionsInRow);
   check('peer actions: ↗ goto, branch, supersede, freeze, copy — no trash',

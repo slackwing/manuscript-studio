@@ -256,16 +256,17 @@
   padding: 5px 8px;
   overflow: hidden;
 }
-/* The plain self letter — identity, not a button (inert). */
-.sn-selfletter {
+/* The action CLUSTER: buttons + the pane's plain letter label, one node
+   that relocates between the top bar and the split's left half-toolbar —
+   identical look in both homes by construction. */
+.sn-actcluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
-  font: 600 11px "Helvetica", sans-serif;
-  color: #57503f;
-  padding: 3px 6px;
+  min-width: 0;
+  flex: none;
 }
-.sn-selfletter.st-frozen { color: #2a6fb0; }
-.sn-selfletter.st-superseded { color: #b04038; }
-.sn-header.sn-head-split .sn-selfletter { display: none; }
 /* Split: the action ROW under the top bar — each half hosts its pane's
    buttons with room to breathe (even 8px gaps between icon groups). */
 .sn-actionrow {
@@ -286,13 +287,13 @@
 }
 /* Pane labels capping the half-toolbars: plain identity, not buttons. */
 .sn-act-label {
-  font: 600 11px "Helvetica", sans-serif;
+  font: 600 11px/1 "Helvetica", sans-serif;
   color: #57503f;
   padding: 3px 4px;
 }
 .sn-act-label.st-frozen { color: #2a6fb0; }
 .sn-act-label.st-superseded { color: #b04038; }
-.sn-act-label-gilt { color: #66492b; font-size: 13px; }
+.sn-act-label-gilt { color: #66492b; font-size: 12px; line-height: 1; }
 .sn-actionrow .sn-head-right {
   flex: 1 1 50%;
   min-width: 0;
@@ -305,8 +306,6 @@
   border-left: 1px solid #d8d2c4;
   overflow: hidden;
 }
-/* Equidistant icons in the half-toolbars: buttons share the bar's gap. */
-.sn-actionrow .sn-actions { gap: 6px; }
 .sn-status {
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -320,12 +319,13 @@
 /* the save slot absorbs the slack so the link chip sits by the status text */
 .sn-save { margin-right: auto; }
 .sn-status.sn-canonized { color: #66492b; }
-.sn-actions { display: inline-flex; align-items: center; flex: none; white-space: nowrap; gap: 2px; }
+.sn-actions { display: inline-flex; align-items: center; flex: none; white-space: nowrap; gap: 6px; }
+.sn-actions a { padding: 3px 5px; display: inline-flex; align-items: center; }
 .sn-actions button {
   font: 11px "Helvetica", sans-serif;
   border: 1px solid transparent;
   background: transparent;
-  padding: 3px 7px;
+  padding: 3px 5px;
   cursor: pointer;
   color: #57503f;
 }
@@ -842,11 +842,11 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 
 /* The place button is the fleuron glyph — same mark as the rail's placed
    button (placing = gilding the book). */
-.sn-actions .sn-place { font-size: 12px; line-height: 1; }
+.sn-actions .sn-place { font-size: 12px; line-height: 1; padding: 3px 5px; }
 .sn-actions .sn-place:hover { color: #66492b; }
 
 /* The gap between "SKETCH X" and the link chip mirrors the note-square →
    status distance (one extra step beyond the bar's base gap). */
 .sn-topgap { width: 2px; flex: none; }
 /* Placed mark: gilded fleuron beside the chip — ONE brown everywhere. */
-.sn-placedmark { color: #66492b; font-size: 13px; line-height: 1; }
+.sn-placedmark { color: #66492b; font-size: 12px; line-height: 1; }

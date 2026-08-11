@@ -535,21 +535,23 @@ class SketchView {
       <div class="sn-header${this.compare != null ? ' sn-head-split' : ''}">
         <div class="sn-head-left">
           <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span><span class="sn-topgap"></span>${linkBit}${this.canonized() ? '<span class="sn-placedmark" title="Placed in the manuscript">\u2766</span>' : ''}<span class="sn-save"></span>
-          <span class="sn-actions sn-actions-main">
-            <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
-            <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
-            <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-            <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
-            <button type="button" data-act="branch" class="sn-branch" title="New variation based on this one">${SPARK_SVG}</button>
-            ${this.canonized() && sn.linked_manuscript_id ? `<button type="button" data-act="place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">❦</button>` : ''}
+          <span class="sn-actcluster">
+            <span class="sn-actions sn-actions-main">
+              <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
+              <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
+              <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+              <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
+              <button type="button" data-act="branch" class="sn-branch" title="New variation based on this one">${SPARK_SVG}</button>
+              ${this.canonized() && sn.linked_manuscript_id ? `<button type="button" data-act="place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">❦</button>` : ''}
+            </span>
+            <span class="sn-act-label sn-selfletter st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</span>
           </span>
-          <span class="sn-selfletter st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</span>
         </div>
       </div>
       <div class="sn-cols">
         <div class="sn-main">
           <div class="sn-actionrow" style="display: none">
-            <div class="sn-act-self"><span class="sn-act-label st-${this.stateName()}" title="This pane is variation ${this.letter()}.">${esc(this.letter())}</span></div>
+            <div class="sn-act-self"></div>
             <div class="sn-head-right"></div>
           </div>
           <div class="sn-body"></div>
@@ -685,22 +687,24 @@ class SketchView {
       const head = this.dom.querySelector('.sn-header');
       const headRight = this.dom.querySelector('.sn-actionrow .sn-head-right');
       const row = this.dom.querySelector('.sn-actionrow');
-      const mainActs = this.dom.querySelector('.sn-actions-main');
+      // The action CLUSTER (buttons + pane label) is ONE node that moves
+      // between the top bar (single pane) and the left half-toolbar
+      // (split) — one component, so the two states can never diverge.
+      // Move ONLY on an actual side change: a re-insert detaches it
+      // mid-gesture and swallows in-flight clicks.
+      const cluster = this.dom.querySelector('.sn-actcluster');
       if (headRight) {
         headRight.innerHTML = '';
         head.classList.toggle('sn-head-split', this.compare != null);
-        if (row && mainActs) {
-          // Move the node ONLY on an actual side change — a re-insert
-          // detaches it mid-gesture and swallows in-flight clicks.
+        if (row && cluster) {
           if (this.compare != null) {
             row.style.display = 'flex';
             const half = this.dom.querySelector('.sn-act-self');
-            // Actions BEFORE the pane's letter label (which caps the half).
-            if (mainActs.parentNode !== half) half.insertBefore(mainActs, half.querySelector('.sn-act-label'));
+            if (cluster.parentNode !== half) half.appendChild(cluster);
           } else {
             row.style.display = 'none';
-            const letter = this.dom.querySelector('.sn-selfletter');
-            if (letter && mainActs.nextElementSibling !== letter) letter.parentNode.insertBefore(mainActs, letter);
+            const headLeft = this.dom.querySelector('.sn-head-left');
+            if (cluster.parentNode !== headLeft) headLeft.appendChild(cluster);
           }
         }
       }
