@@ -236,27 +236,25 @@ function noisyPng(w, h) {
     check('Canon tab appears on BOTH variations of the group', true);
     check('canonized group wears the leather state', await page.locator('.sn-widget.sn-canon').count() === 2);
 
-    // Canon tab: live view resolves the region from the effective manuscript.
+    // Placed pane: bare live render — no explanatory bar (the live view IS
+    // the placed truth); its header carries ↗ open-in-book + the pencil.
     await page.locator(`.sn-widget[data-variation-id="${varB}"] .sn-rail-canon`).click();
-    await page.waitForFunction(() => {
-      const notes = Array.from(document.querySelectorAll('.sn-widget .sn-note'));
-      const live = notes.find(n => /effective manuscript/i.test(n.textContent));
-      if (!live) return false;
-      const host = live.parentElement.querySelector('.sn-render');
+    await page.waitForFunction((vid) => {
+      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      const host = w && w.querySelector('.sn-split-right .sn-render');
       return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
-    }, null, { timeout: 15000 });
-    check('Canon tab live-resolves region from effective manuscript', true);
-
-    // In-body toggle to the as-canonized snapshot.
-    await page.click('.sn-canonswap');
-    await page.waitForFunction(() => {
-      const note = Array.from(document.querySelectorAll('.sn-widget .sn-note'))
-        .find(n => /As placed/i.test(n.textContent));
-      if (!note) return false;
-      const host = note.parentElement.querySelector('.sn-render');
-      return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
-    }, null, { timeout: 10000 });
-    check('as-canonized snapshot behind the in-body toggle', true);
+    }, varB, { timeout: 15000 });
+    check('placed pane live-resolves region from effective manuscript', true);
+    const canonPane = await page.evaluate((vid) => {
+      const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      return {
+        notes: w.querySelectorAll('.sn-split-right .sn-note').length,
+        open: w.querySelectorAll('.sn-head-right .sn-open-icon').length,
+        pencil: w.querySelectorAll('.sn-head-right .sn-from-placed').length,
+      };
+    }, varB);
+    check('no explanatory bar on the placed pane', canonPane.notes === 0, JSON.stringify(canonPane));
+    check('placed header: ↗ open-in-book + pencil', canonPane.open === 1 && canonPane.pencil === 1, JSON.stringify(canonPane));
 
     // Canonized group's link chip is permanent (no unlink ×).
     const linkState = await page.evaluate(() => ({
