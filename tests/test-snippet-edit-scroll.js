@@ -45,10 +45,18 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForTimeout(1200);
   // A freeze toggle cycle rebuilds the widget with focus on its button
   // (matches the reproduction sequence).
+  // (The status reads just "Sketch X" now — state shows via the pressed
+  // freeze button, so wait on that.)
   await page.locator('.sn-widget [data-act="freeze"]').last().click();
-  await page.waitForFunction(() => /frozen/.test(document.querySelector('.sn-widget .sn-status').textContent), null, { timeout: 10000 });
+  await page.waitForFunction(() => {
+    const b = [...document.querySelectorAll('.sn-widget [data-act="freeze"]')].pop();
+    return b && b.classList.contains('pressed');
+  }, null, { timeout: 10000 });
   await page.locator('.sn-widget [data-act="freeze"]').last().click();
-  await page.waitForFunction(() => /draft/.test(document.querySelector('.sn-widget .sn-status').textContent), null, { timeout: 10000 });
+  await page.waitForFunction(() => {
+    const b = [...document.querySelectorAll('.sn-widget [data-act="freeze"]')].pop();
+    return b && !b.classList.contains('pressed');
+  }, null, { timeout: 10000 });
   await page.waitForTimeout(400);
 
   // PM selection at DOC START; reader scrolled to the bottom by wheel.
