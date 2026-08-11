@@ -657,8 +657,8 @@ func (db *DB) SketchHome(ctx context.Context, userID, sketchID string) (scratchp
 
 // CreatePlacedSketchFromSelection mints the "rework existing manuscript
 // text" group in one stroke (the placement rethink, phase 3):
-//   A = the selected text, FROZEN — the as-placed baseline;
-//   B = an editable copy (draft);
+//   A = the selected text, FROZEN — the as-placed baseline (further
+//   variations are the author's own act, via the widget);
 //   the group is linked to the manuscript and PLACED from birth (canon
 //   snapshot = A's text, last-placed = A) so wordcount counts it via the
 //   manuscript only. Widget nodes for A and B are appended to the given
@@ -687,18 +687,14 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 			return nil, fmt.Errorf("create sketch: %w", err)
 		}
 	}
-	var aID, bID, snapID int
+	// ONLY variation A — the frozen original. Further variations are the
+	// author's deliberate act (the sparkles button on the widget).
+	var aID, snapID int
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO variation (sketch_id, ordinal, text, state, scratchpad_id)
 		VALUES ($1, 1, $2, 'frozen', $3) RETURNING variation_id
 	`, sketchID, text, scratchpadID).Scan(&aID); err != nil {
 		return nil, fmt.Errorf("create variation A: %w", err)
-	}
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO variation (sketch_id, ordinal, text, scratchpad_id)
-		VALUES ($1, 2, $2, $3) RETURNING variation_id
-	`, sketchID, text, scratchpadID).Scan(&bID); err != nil {
-		return nil, fmt.Errorf("create variation B: %w", err)
 	}
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO variation (sketch_id, ordinal, text, state)
@@ -731,12 +727,10 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 		doc = map[string]interface{}{"type": "doc", "content": []interface{}{}}
 	}
 	content, _ := doc["content"].([]interface{})
-	for _, vid := range []int{aID, bID} {
-		content = append(content, map[string]interface{}{
-			"type":  "snippet",
-			"attrs": map[string]interface{}{"variationId": vid},
-		})
-	}
+	content = append(content, map[string]interface{}{
+		"type":  "snippet",
+		"attrs": map[string]interface{}{"variationId": aID},
+	})
 	doc["content"] = content
 	newDoc, err := json.Marshal(doc)
 	if err != nil {
@@ -748,5 +742,5 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return db.GetVariationContext(ctx, userID, bID)
+	return db.GetVariationContext(ctx, userID, aID)
 }

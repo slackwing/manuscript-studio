@@ -36,23 +36,20 @@ const WriteSysSketchFromSelection = {
     }, true);
   },
 
-  // Called by range-delete when the gutter buttons render.
+  // Called by range-delete when the gutter buttons render. Sparkles — the
+  // same "new variation from this" mark the widget toolbars use.
   buttonHTML() {
-    return window.WriteSysIcons && window.WriteSysIcons.sketch ? window.WriteSysIcons.sketch(12) : '⧉';
+    return window.WriteSysIcons && window.WriteSysIcons.sparkles ? window.WriteSysIcons.sparkles(12) : '✧';
   },
 
   open(rangeIds) {
     this.close();
-    const r = window.WriteSysRenderer;
-    const firstText = (r.sentenceMap[rangeIds[0]] || '').replace(/[#&*{}\n\t]/g, ' ').trim();
-    const defaultLabel = firstText.split(/\s+/).slice(0, 4).join(' ');
     const wrap = document.createElement('div');
     wrap.id = 'sketch-sel-modal';
     wrap.innerHTML = `
       <div class="ssm-box" role="dialog" aria-label="sketch from selection">
         <h3>sketch from selection</h3>
-        <p class="ssm-hint">${rangeIds.length} sentence${rangeIds.length > 1 ? 's' : ''} → variation A (frozen original) + B (editable copy), placed in the book.</p>
-        <label>Label <input id="ssm-label" type="text" autocomplete="off"></label>
+        <p class="ssm-hint">${rangeIds.length} sentence${rangeIds.length > 1 ? 's' : ''} → variation A (the frozen original), placed in the book.</p>
         <label class="ssm-radio"><input type="radio" name="ssm-pad" value="new" checked> New scratchpad</label>
         <label class="ssm-radio"><input type="radio" name="ssm-pad" value="existing"> Append to
           <select id="ssm-pad-pick" disabled><option>Loading…</option></select></label>
@@ -62,7 +59,6 @@ const WriteSysSketchFromSelection = {
         </div>
       </div>`;
     document.body.appendChild(wrap);
-    document.getElementById('ssm-label').value = defaultLabel;
     wrap.addEventListener('click', (e) => { if (e.target === wrap) this.close(); });
     document.getElementById('ssm-cancel').addEventListener('click', () => this.close());
     document.getElementById('ssm-go').addEventListener('click', () => this.create(rangeIds));
@@ -103,7 +99,6 @@ const WriteSysSketchFromSelection = {
         text += (t.startsWith('\n') || text === '' ? '' : ' ') + t;
       }
       text = text.trim();
-      const label = (document.getElementById('ssm-label').value || '').trim() || 'Sketch';
       const mode = document.querySelector('input[name="ssm-pad"]:checked').value;
       let padId;
       if (mode === 'existing') {
@@ -113,7 +108,7 @@ const WriteSysSketchFromSelection = {
         const pad = await (await fetch('api/scratchpads', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
-          body: JSON.stringify({ title: label }),
+          body: JSON.stringify({ title: 'Untitled' }),
         })).json();
         padId = pad.scratchpad_id;
       }
@@ -137,7 +132,10 @@ const WriteSysSketchFromSelection = {
         });
         if (!pr.ok) throw new Error(`anchor suggestion failed on ${id} (${pr.status})`);
       };
-      const opener = `&sketch#${slug}{${label.replace(/[{}]/g, '')}}`;
+      // Label-less by design: the empty brace group keeps the token valid
+      // (bare &sketch#id is prose per grammar) and the outline skips
+      // unlabeled anchors.
+      const opener = `&sketch#${slug}{}`;
       if (firstId === lastId) {
         await put(firstId, `${opener}\n\t${eff(firstId)}\n&end#${slug}`);
       } else {

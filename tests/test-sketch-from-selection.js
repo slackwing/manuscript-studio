@@ -47,9 +47,7 @@ const psql = (sql) => execSync(
 
   await page.locator('.range-trash.range-sketch').click();
   await page.waitForSelector('#sketch-sel-modal', { timeout: 5000 });
-  const label = await page.inputValue('#ssm-label');
-  check('label prefilled from the selection', label.length > 0, label);
-  await page.fill('#ssm-label', 'Reworked passage');
+  check('no label input (anchors are label-less)', await page.locator('#ssm-label').count() === 0);
   await page.locator('#ssm-go').click();
   await page.waitForSelector('#sketch-sel-modal', { state: 'detached', timeout: 20000 });
 
@@ -58,7 +56,7 @@ const psql = (sql) => execSync(
     WHERE s.user_id='${TEST_USERNAME}' AND v.ordinal = 1 ORDER BY v.created_at DESC LIMIT 1`);
   check('group minted', /^[a-z0-9]{6,}$/.test(slug), slug);
   const rows = psql(`SELECT COALESCE(ordinal::text,'-') || '/' || state FROM variation WHERE sketch_id='${slug}' ORDER BY COALESCE(ordinal, 99)`).split('\n');
-  check('A frozen, B draft, snapshot frozen', rows.join(',') === '1/frozen,2/draft,-/frozen', rows.join(','));
+  check('ONLY A (frozen) + the snapshot', rows.join(',') === '1/frozen,-/frozen', rows.join(','));
   const facts = psql(`SELECT (canon_variation_id IS NOT NULL) || '/' ||
     (placed_from_variation_id = (SELECT variation_id FROM variation WHERE sketch_id='${slug}' AND ordinal=1)) || '/' ||
     (linked_manuscript_id IS NOT NULL) FROM sketch WHERE sketch_id='${slug}'`);
@@ -67,9 +65,11 @@ const psql = (sql) => execSync(
   check('A carries the selected text', aMatch === 't', aMatch);
   const pad = psql(`SELECT scratchpad_id FROM variation WHERE sketch_id='${slug}' AND ordinal=1`);
   const nodes = psql(`SELECT (LENGTH(doc::text) - LENGTH(REPLACE(doc::text, '"snippet"', ''))) / LENGTH('"snippet"') FROM scratchpad WHERE scratchpad_id=${pad}`);
-  check('both widgets appended to the pad doc', nodes === '2', nodes);
+  check('exactly ONE widget appended to the pad doc', nodes === '1', nodes);
   const sugAnchors = psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND (text LIKE '%&sketch#${slug}%' OR text LIKE '%&end#${slug}%')`);
   check('selection wrapped in &sketch anchors (2 suggestions)', sugAnchors === '2', sugAnchors);
+  const openerForm = psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text LIKE '%&sketch#${slug}{}%'`);
+  check('anchor is label-less (&sketch#id{})', openerForm === '1', openerForm);
 
   // --- Book: margin glyph is the sketch icon; click navigates ---
   await page.waitForSelector(`.cmd-sketch-glyph[data-slug="${slug}"]`, { timeout: 20000 });
@@ -80,6 +80,13 @@ const psql = (sql) => execSync(
   check('glyph click opens the home pad', true);
   await page.waitForSelector(`.sn-widget[data-ordinal="1"]`, { timeout: 10000 });
   check('the A widget is there', true);
+  check('a paragraph follows the widget (caret room — the breathing rule)',
+    await page.evaluate(() => {
+      const w = document.querySelector('.spm-editor .ProseMirror .sn-widget');
+      const host = w && (w.closest('[data-variation-id]') || w);
+      const n = host && host.nextElementSibling;
+      return !!n && n.tagName === 'P';
+    }));
   const hash = await page.evaluate(() => window.location.hash);
   check('deep-link hash carries the sketch', hash.includes(`sketch=${slug}`), hash);
 

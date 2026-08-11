@@ -440,8 +440,16 @@
 .sn-actions .sn-place:hover { color: #66492b; }
 /* .sn-from-placed is a hook class only — the button wears the standard
    borderless .sn-branch skin (outline is reserved for pressed states). */
-/* Last placed: a whisper — thin gilt underline on the rail letter. */
-.sn-rail-btn.sn-last-placed { box-shadow: inset 0 -2px 0 #c9a227; }
+/* Last placed: a whisper — small gold corner chip, upper right. */
+.sn-rail-btn.sn-last-placed { position: relative; overflow: hidden; }
+.sn-rail-btn.sn-last-placed::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-left: 6px solid transparent;
+  border-top: 6px solid #c9a227;
+}
 .sn-actions .sn-goto-ext { color: #a49b8a; padding: 3px 5px; }
 .sn-actions .sn-goto-ext svg { display: block; }
 .sn-actions .sn-goto-ext:hover { color: #2a6fb0; }
@@ -655,22 +663,14 @@
    wears the GILDING's gold, and the gilt edge is 2px (1px read as fuzz —
    same lesson as the manuscript chip); padding drops 1px so the outer size
    matches its rail siblings. */
+/* Plain brown fleuron, like the title bar's mark family — pressed look
+   ONLY when selected, exactly like the sibling letters. */
 .sn-rail-canon {
-  color: #c9a227;
-  background: linear-gradient(170deg, #66492b 0%, #5b3f22 60%, #6b4a28 100%);
-  border: 2px solid #c9a227;
-  border-radius: 3px;
-  padding: 2px 0;
-  box-shadow: inset 0 1px 0 rgba(255, 236, 180, 0.35);
+  color: #66492b;
   font-size: 12px;
 }
-.sn-rail-canon:hover { filter: brightness(1.12); }
-/* Active: brighten the leather only — the old 1px gold OUTLINE drew a
-   second rim outside the border with its own corner geometry, which is
-   exactly what read as sloppy gilding. */
-.sn-rail-canon.active {
-  background: linear-gradient(170deg, #8a6a40 0%, #6b4a28 60%, #66492b 100%);
-}
+.sn-rail-canon:hover { color: #8a6a40; }
+.sn-rail-canon.active { background: #ddd8cc; border-color: #c2baa8; }
 
 /* ---- narrow viewports (mobile) ---- */
 @media (max-width: 640px) {
@@ -848,5 +848,20 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 /* The gap between "SKETCH X" and the link chip mirrors the note-square →
    status distance (one extra step beyond the bar's base gap). */
 .sn-topgap { width: 2px; flex: none; }
-/* Placed mark: gilded fleuron beside the chip — ONE brown everywhere. */
-.sn-placedmark { color: #66492b; font-size: 12px; line-height: 1; }
+/* Placed mark beside the chip: IDENTICAL treatment to the linked
+   manuscript circle (leather + gilt, header scale). */
+.sn-placedmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid #c9a227;
+  background: linear-gradient(#66492b, #573d21);
+  color: #f3e6c4;
+  font-size: 11px;
+  line-height: 1;
+  flex: none;
+}

@@ -27,8 +27,13 @@
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"',
         '<path d="M6.2 9.8l3.6-3.6"/><path d="M7.3 4.3l1.4-1.4a2.75 2.75 0 013.9 3.9l-1.4 1.4"/><path d="M8.7 11.7l-1.4 1.4a2.75 2.75 0 01-3.9-3.9l1.4-1.4"/>');
     },
+    // Sparkles — "new variation from this" (the widget toolbars' mark).
+    sparkles(size) {
+      return svg(size, '0 0 20 20', 'fill="currentColor"',
+        '<path d="M8 1.6l1.35 3.45L12.8 6.4 9.35 7.75 8 11.2 6.65 7.75 3.2 6.4l3.45-1.35z"/><path d="M14.8 9.4l.85 2.15 2.15.85-2.15.85-.85 2.15-.85-2.15-2.15-.85 2.15-.85z"/><path d="M8.4 13.6l.65 1.65 1.65.65-1.65.65-.65 1.65-.65-1.65-1.65-.65 1.65-.65z"/>');
+    },
     // The SKETCH icon: two layered panes (variations of one passage). The
-    // selection toolbar and the margin glyph of placed regions share it.
+    // margin glyph of placed regions wears it.
     sketch(size) {
       return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"',
         '<rect x="3" y="6.5" width="10.5" height="10.5" rx="1.5"/><path d="M7 3.5h9.5v9.5"/>');

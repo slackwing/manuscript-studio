@@ -2034,18 +2034,30 @@ export async function createScratchpadEditor(els, scratchpadId) {
       gapCursor(),
       columnResizing(),
       tableEditing(),
-      // Trailing-node guarantee: the doc always ends with an empty paragraph.
-      // A sketch/table/image as the LAST node leaves nowhere obvious to put
-      // the caret to keep writing (the gap cursor exists but is undiscoverable
-      // at the doc edge) — so any edit that leaves a non-paragraph last child
-      // gets a paragraph appended, and there's always a line to click below.
+      // Breathing-room guarantee: every WIDGET (sketch) is followed by a
+      // TEXTBLOCK, and the doc ends with a paragraph. Two consecutive
+      // widgets left nowhere to click a caret between them (the gap cursor
+      // is undiscoverable) — so any edit that leaves a widget butted against
+      // another widget (or the doc edge) gets an empty paragraph inserted
+      // after it. Same rule the doc bottom always had, generalized.
       new Plugin({
         appendTransaction(trs, _old, newState) {
           if (!trs.some(tr => tr.docChanged)) return null;
-          const last = newState.doc.lastChild;
-          if (last && last.type === newState.schema.nodes.paragraph) return null;
-          return newState.tr.insert(newState.doc.content.size,
-            newState.schema.nodes.paragraph.create());
+          const { doc, schema: sc } = newState;
+          const inserts = [];
+          doc.forEach((node, offset, index) => {
+            if (node.type !== sc.nodes.snippet) return;
+            const next = doc.maybeChild(index + 1);
+            if (!next || next.type === sc.nodes.snippet) {
+              inserts.push(offset + node.nodeSize);
+            }
+          });
+          if (!inserts.length) return null;
+          let tr = newState.tr;
+          for (let i = inserts.length - 1; i >= 0; i--) {
+            tr = tr.insert(inserts[i], sc.nodes.paragraph.create());
+          }
+          return tr;
         },
       }),
     ],
@@ -2070,10 +2082,24 @@ export async function createScratchpadEditor(els, scratchpadId) {
   activeView = view;
   // Docs SAVED with a trailing sketch/table/image predate the trailing-node
   // plugin (which only runs on edits) — normalize once at open.
-  if (!view.state.doc.lastChild
-      || view.state.doc.lastChild.type !== schema.nodes.paragraph) {
-    view.dispatch(view.state.tr.insert(view.state.doc.content.size,
-      schema.nodes.paragraph.create()));
+  {
+    const doc0 = view.state.doc;
+    const inserts0 = [];
+    doc0.forEach((node, offset, index) => {
+      if (node.type !== schema.nodes.snippet) return;
+      const next = doc0.maybeChild(index + 1);
+      if (!next || next.type === schema.nodes.snippet) inserts0.push(offset + node.nodeSize);
+    });
+    if (!doc0.lastChild || doc0.lastChild.type !== schema.nodes.paragraph) {
+      if (!inserts0.includes(doc0.content.size)) inserts0.push(doc0.content.size);
+    }
+    if (inserts0.length) {
+      let tr0 = view.state.tr;
+      inserts0.sort((a, b) => b - a).forEach((pos) => {
+        tr0 = tr0.insert(pos, schema.nodes.paragraph.create());
+      });
+      view.dispatch(tr0);
+    }
   }
   updateToolbar();
   setSaveState('saved');
