@@ -369,3 +369,19 @@ body.home-page {
 .points-cell.lit.future { background: #74b355; }
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }
+
+/* Daily task rules: one row of the note's own chips + count + add. */
+.dr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+.dr-rule { padding: 4px 0; border-bottom: 1px dashed #eceae4; margin-bottom: 6px; }
+.dr-row .blocked-chip { cursor: pointer; }
+/* The color dot matches the blocked icon's 26px circle. */
+.dr-row .color-dot-solo, .dr-row .color-dot-solo .color-dot-current { width: 26px; height: 26px; }
+.dr-row .color-dot-current.dot-anyval, .dr-row .dot-palette .dot-option.dot-anyval { border: 1px dashed #999; }
+.dr-colordot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); display: inline-block; }
+.dr-tag-input { width: 90px; padding: 4px 7px; border: 1px dashed #ccc; border-radius: 6px; font-size: 12px; }
+.dr-tag-input:focus { outline: none; border-color: #999; }
+.dr-count { width: 56px; padding: 4px 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+.dr-count-label { font-size: 12px; color: #6f6a60; white-space: nowrap; }
+#dr-add { padding: 5px 12px; border-radius: 6px; border: 1px solid #2a6fb0; background: #2a6fb0; color: #fff; cursor: pointer; font-size: 12px; }
+.dr-del { display: inline-flex !important; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid #c0392b; border-radius: 50%; background: #fff; color: #c0392b; font: 600 12px/1 "Helvetica", sans-serif; cursor: pointer; }
+.dr-tag-x { cursor: pointer; color: #999; }

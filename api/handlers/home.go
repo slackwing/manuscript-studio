@@ -256,12 +256,19 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 	now := time.Now().In(loc)
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 	seed := dayStart.Format("2006-01-02")
-	rows, err := h.DB.ListDailyTaskNotes(ctx, session.Username, manuscriptID, seed, dayStart, 16)
+	rows, err := h.DB.ListDailyTaskNotes(ctx, session.Username, manuscriptID, seed, dayStart)
 	if err != nil {
 		log.Printf("daily-tasks: list (manuscript %d): %v", manuscriptID, err)
 		http.Error(w, "Failed to list daily tasks", http.StatusInternalServerError)
 		return
 	}
+	// Daily rules: per-category caps with deterministic BACKFILL to 16.
+	rules, err := h.DB.ListDailyRules(ctx, session.Username)
+	if err != nil {
+		log.Printf("daily-tasks: rules: %v", err)
+		rules = nil // rules are an enhancement — never break the page
+	}
+	rows = database.ApplyDailyRules(rules, rows, 16)
 	name := manuscriptDisplayName(ctx, h.DB, h.Config, manuscriptID)
 	notes := make([]homeNote, 0, len(rows))
 	for _, n := range rows {

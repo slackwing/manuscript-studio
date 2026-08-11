@@ -662,9 +662,12 @@
     wrap.className = 'color-dot-solo';
     const dot = document.createElement('span');
     dot.className = 'color-dot-current';
-    const fill = (c) => (c === 'gray' ? '#c9c4b8' : `var(--highlight-${c})`);
+    const fill = (c) => (c === 'any' ? 'transparent' : c === 'gray' ? '#c9c4b8' : `var(--highlight-${c})`);
     let cur = current;
-    const paint = (c) => { dot.style.background = fill(c); };
+    const paint = (c) => {
+      dot.style.background = fill(c);
+      dot.classList.toggle('dot-anyval', c === 'any'); // dashed "any" ring
+    };
     paint(cur);
     wrap.appendChild(dot);
     const palette = document.createElement('div');
@@ -674,6 +677,7 @@
       d.className = 'dot-option';
       d.dataset.color = color;
       d.style.background = fill(color);
+      if (color === 'any') d.classList.add('dot-anyval');
       d.addEventListener('click', async (e) => {
         e.stopPropagation();
         const prev = cur;
@@ -699,6 +703,6 @@
     return wrap;
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

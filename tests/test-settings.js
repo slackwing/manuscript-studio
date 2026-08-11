@@ -49,8 +49,8 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
 
   // --- Copy: bare section heads (non-task first), no descriptions ---
   const heads = await page.locator('.home-section-head h2').allInnerTexts();
-  check('sections: non-task, task, note actions',
-    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Note actions', heads.join('|'));
+  check('sections: non-task, task, daily rules, note actions',
+    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Daily task rules|Note actions', heads.join('|'));
 
   // --- Categories: reminder is non-task; tasks hold the built-ins ---
   const ttNames = await page.locator('#tt-chips .tt-chip > span:first-child').allInnerTexts();
@@ -215,6 +215,45 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.waitForTimeout(800);
   const changed = psql(`SELECT task_type FROM note WHERE note_id = ${noteId}`).trim();
   check('changing away from a deleted type sticks', changed === 'write', changed);
+
+  // --- Daily task rules: builder wears the note's chips; add + delete ---
+  await page.goto(SETTINGS_URL);
+  await page.waitForSelector('#dr-builder .dim-type', { timeout: 6000 });
+  const builder = await page.evaluate(() => ({
+    type: document.querySelector('#dr-builder .dim-type .dim-label').textContent,
+    blocked: !!document.querySelector('#dr-builder .blocked-chip'),
+    colorDot: !!document.querySelector('#dr-builder .color-dot-solo'),
+    dotSize: (document.querySelector('#dr-builder .color-dot-current') || {}).offsetWidth || 0,
+    blockedSize: (document.querySelector('#dr-builder .blocked-chip') || {}).offsetWidth || 0,
+    tagInput: !!document.querySelector('#dr-builder .dr-tag-input'),
+    count: !!document.querySelector('#dr-builder .dr-count'),
+  }));
+  check('rule builder: type chip defaults to any', builder.type === 'any', builder.type);
+  check('rule builder: blocked circle + color dot + tag + count present',
+    builder.blocked && builder.colorDot && builder.tagInput && builder.count, JSON.stringify(builder));
+  check('color dot matches the blocked icon diameter', builder.dotSize === builder.blockedSize,
+    `${builder.dotSize} vs ${builder.blockedSize}`);
+  await page.locator('#dr-builder .dim-priority').click();
+  await page.waitForSelector('.dim-pop button[data-v="must"]');
+  await page.locator('.dim-pop button[data-v="must"]').click();
+  await page.waitForTimeout(300);
+  await page.fill('#dr-builder .dr-count', '2');
+  await page.locator('#dr-builder .dr-count').dispatchEvent('change');
+  await page.locator('#dr-add').click();
+  await page.waitForSelector('.dr-rule', { timeout: 5000 });
+  const ruleRow = await page.locator('.dr-rule').first().innerText();
+  check('rule listed (must ≤ 2 / day)', /must/.test(ruleRow) && /≤ 2 \/ day/.test(ruleRow), ruleRow.replace(/\n/g, ' '));
+  await page.locator('.dr-rule .dr-del').first().click();
+  await page.waitForFunction(() => document.querySelectorAll('.dr-rule').length === 0, null, { timeout: 5000 });
+  check('rule deletable from the list', true);
+  await page.goto(HOME_URL);
+  try {
+    await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 4000 });
+  } catch (e) {
+    await page.waitForSelector('#home-new-pad');
+    await page.locator('.card-scratchpad').first().click();
+    await page.waitForSelector('.spm-overlay .ProseMirror');
+  }
 
   // --- Note actions: award / complete / delete → audit rows with undo ---
   const csrf2 = await page.evaluate(() => sessionStorage.getItem('csrf_token'));

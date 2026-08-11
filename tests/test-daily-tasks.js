@@ -81,6 +81,49 @@ function psql(sql) {
   const ids3 = await page.locator('.card-note').evaluateAll(cs => cs.map(c => c.dataset.noteId));
   check('the set itself is unchanged by scoring', ids1.join(',') === ids3.join(','));
 
+  // --- DAILY RULES: per-category caps with deterministic backfill ---
+  // Recolor the pool for variety: seeds 1-6 → hone/green, 7-12 → edit/purple.
+  psql(`UPDATE note SET task_type='hone', color='green' WHERE user_id='${TEST_USERNAME}' AND body ~ 'Daily seed ([1-6])$'`);
+  psql(`UPDATE note SET task_type='edit', color='purple' WHERE user_id='${TEST_USERNAME}' AND body ~ 'Daily seed (7|8|9|10|11|12)$'`);
+  const addRule = (body) => page.evaluate(async ({ body, csrf }) => {
+    const r = await fetch('api/daily-rules', { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify(body) });
+    return r.status;
+  }, { body, csrf });
+  check('rule hone ≤ 1 accepted', (await addRule({ task_type: 'hone', max_per_day: 1, tags: [] })) === 200);
+  check('rule purple ≤ 2 accepted', (await addRule({ color: 'purple', max_per_day: 2, tags: [] })) === 200);
+  await page.reload();
+  await page.waitForSelector('.card-note', { timeout: 8000 });
+  const ruled = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.card-note')];
+    const types = cards.map(c => (c.querySelector('.dim-type') || {}).textContent || '');
+    return {
+      total: cards.length,
+      hone: types.filter(t => t === 'hone').length,
+      purple: cards.filter(c => c.classList.contains('color-purple')).length,
+    };
+  });
+  // Pool: 6 hone + 6 purple + 6 write. Caps skip 5 hones and 4 purples →
+  // 9 remain (below 16, so every eligible task shows).
+  check('caps applied: ≤1 hone, ≤2 purple', ruled.hone === 1 && ruled.purple === 2, JSON.stringify(ruled));
+  check('backfill keeps every eligible task (9 here)', ruled.total === 9, String(ruled.total));
+  const ruledIds1 = await page.locator('.card-note').evaluateAll(cs => cs.map(c => c.dataset.noteId));
+  await page.reload();
+  await page.waitForSelector('.card-note', { timeout: 8000 });
+  const ruledIds2 = await page.locator('.card-note').evaluateAll(cs => cs.map(c => c.dataset.noteId));
+  check('ruled pick is deterministic across reloads', ruledIds1.join(',') === ruledIds2.join(','));
+  // Removing the rules restores the plain 16.
+  const ruleIds = await page.evaluate(async () => (await (await fetch('api/daily-rules', { credentials: 'same-origin' })).json()).rules.map(r => r.rule_id));
+  for (const id of ruleIds) {
+    await page.evaluate(async ({ id, csrf }) => {
+      await fetch(`api/daily-rules/${id}`, { method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } });
+    }, { id, csrf });
+  }
+  await page.reload();
+  await page.waitForSelector('.card-note', { timeout: 8000 });
+  check('deleting rules restores the plain 16', (await page.locator('.card-note').count()) === 16);
+
   await cleanupTestNotes();
   await browser.close();
   process.exit(failed ? 1 : 0);

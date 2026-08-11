@@ -17,7 +17,7 @@ const WriteSysSettings = {
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.tt-chip')) this.disarmAll();
     });
-    await Promise.all([this.reload(), this.reloadActions()]);
+    await Promise.all([this.reload(), this.reloadActions(), this.initRules()]);
   },
 
   csrf() {
@@ -174,6 +174,172 @@ const WriteSysSettings = {
       status.textContent = 'Failed to add: ' + e.message;
     }
   },
+};
+
+// ---- Daily task rules: each rule ANDs its selectors (unset = any) and
+// caps how many matching tasks the daily page shows (-1 = unlimited).
+// The builder row wears the NOTE's own chips: type / priority / blast
+// radius dropdowns, the blocked circle, a color dot sized like the
+// blocked icon, +tags — then the max count and Add.
+WriteSysSettings.rulesBuilder = { task_type: null, priority: null, impact: null, blocked: null, color: null, tags: [] };
+
+WriteSysSettings.initRules = async function () {
+  await Promise.all([this.renderRuleBuilder(), this.reloadRules()]);
+};
+
+WriteSysSettings.reloadRules = async function () {
+  const list = document.getElementById('dr-list');
+  try {
+    const r = await fetch('api/daily-rules', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    this.rules = (await r.json()).rules || [];
+  } catch (e) {
+    document.getElementById('dr-status').textContent = 'Failed to load rules.';
+    return;
+  }
+  list.innerHTML = '';
+  document.getElementById('dr-status').textContent = this.rules.length ? '' : 'No rules — the daily page shows any 16 tasks.';
+  this.rules.forEach((rule) => {
+    const row = document.createElement('div');
+    row.className = 'dr-row dr-rule';
+    const chip = (text, cls) => {
+      const c = document.createElement('span');
+      c.className = 'tag-chip dim-chip ' + (cls || '');
+      c.textContent = text;
+      row.appendChild(c);
+    };
+    if (rule.task_type) chip(rule.task_type, 'dim-type');
+    if (rule.priority) chip(rule.priority, 'dim-priority');
+    if (rule.impact) chip(rule.impact, 'dim-impact');
+    if (rule.blocked) chip('⊘ blocked', 'dim-blocked-ro');
+    if (rule.color) {
+      const dot = document.createElement('span');
+      dot.className = 'dr-colordot';
+      dot.style.background = `var(--highlight-${rule.color})`;
+      row.appendChild(dot);
+    }
+    (rule.tags || []).forEach((t) => chip(t, ''));
+    const n = document.createElement('span');
+    n.className = 'dr-count-label';
+    n.textContent = rule.max_per_day === -1 ? '∞ / day' : `≤ ${rule.max_per_day} / day`;
+    row.appendChild(n);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'tt-del dr-del';
+    del.textContent = '×';
+    del.addEventListener('click', async () => {
+      try {
+        await fetch(`api/daily-rules/${rule.rule_id}`, {
+          method: 'DELETE', credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': this.csrf() },
+        });
+      } catch (e) { /* reload shows the truth */ }
+      this.reloadRules();
+    });
+    row.appendChild(del);
+    list.appendChild(row);
+  });
+};
+
+WriteSysSettings.renderRuleBuilder = async function () {
+  const W = window.WriteSysNoteWidget;
+  const b = this.rulesBuilder;
+  const host = document.getElementById('dr-builder');
+  host.innerHTML = '';
+  const rerender = () => this.renderRuleBuilder();
+
+  host.appendChild(W.buildDimChip({
+    cls: 'dim-type',
+    value: b.task_type || 'any',
+    loadOptions: async () => [{ value: 'any', label: 'any' }]
+      .concat((await W.listTaskTypes()).filter((t) => !t.deleted && t.is_task)
+        .map((t) => ({ value: t.name, label: t.name }))),
+    onPick: (v) => { b.task_type = v === 'any' ? null : v; rerender(); },
+  }));
+  host.appendChild(W.buildDimChip({
+    cls: 'dim-priority',
+    value: b.priority || 'any',
+    loadOptions: async () => ['any', 'can', 'would', 'should', 'must'].map((v) => ({ value: v, label: v })),
+    onPick: (v) => { b.priority = v === 'any' ? null : v; rerender(); },
+  }));
+  host.appendChild(W.buildDimChip({
+    cls: 'dim-impact',
+    value: b.impact || 'any',
+    loadOptions: async () => ['any', 'n/a', 'sentence', 'chapter', 'novel', 'recurring'].map((v) => ({ value: v, label: v })),
+    onPick: (v) => { b.impact = v === 'any' ? null : v; rerender(); },
+  }));
+
+  const blocked = document.createElement('div');
+  blocked.className = 'blocked-chip dr-blocked' + (b.blocked ? ' active' : '');
+  blocked.title = b.blocked ? 'Rule matches BLOCKED tasks — click for any' : 'Click: rule matches only BLOCKED tasks';
+  blocked.innerHTML = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5.5 5.5l9 9"/></svg>';
+  blocked.addEventListener('click', () => { b.blocked = b.blocked ? null : true; rerender(); });
+  host.appendChild(blocked);
+
+  host.appendChild(W.buildColorDot({
+    colors: ['any', 'yellow', 'green', 'blue', 'purple', 'red', 'orange'],
+    current: b.color || 'any',
+    onPick: (c) => { b.color = c === 'any' ? null : c; },
+  }));
+
+  b.tags.forEach((t, i) => {
+    const c = document.createElement('span');
+    c.className = 'tag-chip';
+    c.textContent = t;
+    const x = document.createElement('span');
+    x.className = 'dr-tag-x';
+    x.textContent = ' ×';
+    x.addEventListener('click', () => { b.tags.splice(i, 1); rerender(); });
+    c.appendChild(x);
+    host.appendChild(c);
+  });
+  const tagIn = document.createElement('input');
+  tagIn.type = 'text';
+  tagIn.className = 'dr-tag-input';
+  tagIn.placeholder = '+tag';
+  tagIn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && tagIn.value.trim()) {
+      b.tags.push(tagIn.value.trim());
+      rerender();
+    }
+  });
+  host.appendChild(tagIn);
+
+  const count = document.createElement('input');
+  count.type = 'number';
+  count.className = 'dr-count';
+  count.min = '-1';
+  count.max = '16';
+  count.value = String(b.max ?? 1);
+  count.title = 'Max matching tasks per day (-1 = unlimited)';
+  count.addEventListener('change', () => { b.max = parseInt(count.value, 10); });
+  host.appendChild(count);
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.id = 'dr-add';
+  add.textContent = 'Add rule';
+  add.addEventListener('click', async () => {
+    const body = {
+      task_type: b.task_type, priority: b.priority, impact: b.impact,
+      color: b.color, blocked: b.blocked, tags: b.tags,
+      max_per_day: Number.isFinite(b.max) ? b.max : 1,
+    };
+    try {
+      const r = await fetch('api/daily-rules', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error((await r.text()).trim() || String(r.status));
+      this.rulesBuilder = { task_type: null, priority: null, impact: null, blocked: null, color: null, tags: [] };
+      await this.renderRuleBuilder();
+      await this.reloadRules();
+    } catch (e) {
+      document.getElementById('dr-status').textContent = 'Could not add rule: ' + e.message;
+    }
+  });
+  host.appendChild(add);
 };
 
 // ---- Note actions: the last 20 (points awarded / deleted / completed),

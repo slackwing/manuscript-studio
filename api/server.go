@@ -37,6 +37,7 @@ type Server struct {
 	variationHandlers    *handlers.VariationHandlers
 	taskTypeHandlers     *handlers.TaskTypeHandlers
 	noteActionHandlers   *handlers.NoteActionHandlers
+	dailyRuleHandlers    *handlers.DailyRuleHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 }
@@ -88,6 +89,10 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 			Config:       cfg,
+		},
+		dailyRuleHandlers: &handlers.DailyRuleHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
 		},
 		homeHandlers: &handlers.HomeHandlers{
 			DB:           dbWrapper,
@@ -246,6 +251,9 @@ func (s *Server) setupRouter() {
 			r.Get("/home", s.homeHandlers.HandleHome)
 			r.Get("/daily-tasks", s.homeHandlers.HandleDailyTasks)
 			r.Get("/points-daily", s.homeHandlers.HandleDailyPoints)
+			r.Get("/daily-rules", s.dailyRuleHandlers.HandleList)
+			r.Post("/daily-rules", s.dailyRuleHandlers.HandleCreate)
+			r.Delete("/daily-rules/{rule_id}", s.dailyRuleHandlers.HandleDelete)
 			r.Post("/manuscripts/{manuscript_id}/opened", s.homeHandlers.HandleManuscriptOpened)
 
 			// Scratchpads (SCRATCHPAD_PLAN.md): user-owned, not
