@@ -74,8 +74,8 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   }));
   check('self letter moved to the left pane corner', !splitRail.selfInRail && splitRail.corner === 'A', JSON.stringify(splitRail));
   check('siblings shifted up (B tops the rail)', splitRail.topLetter === 'B', splitRail.topLetter);
-  check('peer actions: ↗ goto, supersede, freeze, copy — no trash',
-    paneB.peerBtns === 'peer-goto,peer-supersede,peer-freeze,peer-copyref', paneB.peerBtns);
+  check('peer actions: ↗ goto, branch, supersede, freeze, copy — no trash',
+    paneB.peerBtns === 'peer-goto,peer-branch,peer-supersede,peer-freeze,peer-copyref', paneB.peerBtns);
   await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(700);
   const paneC = await w.locator('.sn-split-right').evaluate(el => ({ ordinal: el.dataset.ordinal }));

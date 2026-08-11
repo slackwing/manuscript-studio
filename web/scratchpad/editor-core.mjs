@@ -305,6 +305,7 @@ const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" st
 // Superseded: a plain down arrow (reddens on hover / while set).
 const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
 const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1c0-.55-.45-1-1-1H3.5c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h1"/></svg>';
+const BRANCH_SVG = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="4.8" r="1.7"/><circle cx="6" cy="15.2" r="1.7"/><circle cx="14.2" cy="7.6" r="1.7"/><path d="M6 6.7v6.6"/><path d="M12.6 8.6c-3 1-5.4 1.7-6.2 3.6"/></svg>';
 const PLACE_SVG = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9M6.5 8.5L10 12l3.5-3.5M4 15.5h12"/></svg>';
 const GOTO_SVG = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14L14 6M8.5 5.5H14.5V11.5"/></svg>';
 
@@ -517,7 +518,7 @@ class SketchView {
     const linkBit = '<span class="sn-linkslot"></span>';
 
     const openBook = this.canonized() && sn.linked_manuscript_id
-      ? `<a class="sn-open" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.sketch_id)}" title="Open in book">Open in book ↗</a>`
+      ? `<a class="sn-open sn-open-icon" href="index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.sketch_id)}" title="Open in book">${GOTO_SVG}</a>`
       : '';
     // Layout: main column (header + body) plus the letter RAIL down the right
     // edge — a symmetric "titlebar" whose top button is THIS variation's letter
@@ -538,6 +539,7 @@ class SketchView {
                 <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG}</button>
                 <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
                 <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
+                <button type="button" data-act="branch" class="sn-branch" title="New variation based on this one">${BRANCH_SVG}</button>
                 <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
                 ${this.canonized() && sn.linked_manuscript_id ? `<button type="button" data-act="place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">${PLACE_SVG}</button>` : ''}
               </span>
@@ -560,6 +562,7 @@ class SketchView {
       this.setVariationState(this.frozen() ? 'draft' : 'frozen'));
     this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
       this.setVariationState(this.superseded() ? 'draft' : 'superseded'));
+    this.dom.querySelector('[data-act="branch"]').addEventListener('click', () => this.branchVariation(this.variationId));
     const placeBtn = this.dom.querySelector('[data-act="place"]');
     if (placeBtn) placeBtn.addEventListener('click', () => this.placeVariation(this.variationId));
     this.dom.querySelector('[data-act="copyref"]').addEventListener('click', async (e) => {
@@ -868,6 +871,7 @@ class SketchView {
       headRight.innerHTML = `
         <span class="sn-actions">
           <button type="button" data-act="peer-goto" class="sn-goto-ext" title="Go to source">${GOTO_SVG}</button>
+          <button type="button" data-act="peer-branch" class="sn-branch" title="New variation based on this one">${BRANCH_SVG}</button>
           ${this.canonized() && this.ctx.sketch.linked_manuscript_id ? `<button type="button" data-act="peer-place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">${PLACE_SVG}</button>` : ''}
           <button type="button" data-act="peer-supersede" class="sn-supersede${st === 'superseded' ? ' pressed' : ''}" title="${st === 'superseded' ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
           <button type="button" data-act="peer-freeze" class="sn-freeze${st === 'frozen' ? ' pressed' : ''}" title="${st === 'frozen' ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
@@ -875,6 +879,7 @@ class SketchView {
         </span>`;
       headRight.querySelector('[data-act="peer-goto"]').addEventListener('click', () =>
         this.gotoVariationSource(variationId, sketchId, ordinal));
+      headRight.querySelector('[data-act="peer-branch"]').addEventListener('click', () => this.branchVariation(variationId));
       const peerPlace = headRight.querySelector('[data-act="peer-place"]');
       if (peerPlace) peerPlace.addEventListener('click', () => this.placeVariation(variationId));
       const applyPeerState = async (state) => {
@@ -930,6 +935,23 @@ class SketchView {
     return ta;
   }
 
+  // New variation BASED ON an existing one (the branch icon): next letter,
+  // text copied, widget inserted right after this one.
+  async branchVariation(sourceId) {
+    try {
+      const ctx = await variationApi.createFrom(sourceId);
+      const pos = this.getPos();
+      if (pos != null) {
+        this.view.dispatch(this.view.state.tr.insert(pos + this.node.nodeSize,
+          this.view.state.schema.nodes.snippet.create({ variationId: ctx.variation.variation_id })));
+      }
+      await this.refresh();
+      await refreshSketchSiblings(this.ctx.sketch.sketch_id, this.variationId);
+    } catch (e) {
+      alert('Could not create the variation: ' + e.message);
+    }
+  }
+
   // PLACE a variation into the manuscript (the canonize rethink): replace
   // the text between the group's &sketch anchors with this variation's
   // text — one reviewable suggested edit per affected sentence — then let
@@ -982,7 +1004,7 @@ class SketchView {
     // live placed text — edit what's in the book without touching it.
     const headRight = this.dom.querySelector('.sn-head-right');
     if (headRight && !headRight.childElementCount) {
-      headRight.innerHTML = `<span class="sn-actions"><button type="button" data-act="from-placed" class="sn-from-placed" title="Sketch from placed text — a new variation seeded with what's in the book">＋ sketch</button></span>`;
+      headRight.innerHTML = `<span class="sn-actions"><button type="button" data-act="from-placed" class="sn-branch sn-from-placed" title="New variation from the placed text — start editing what's in the book">${BRANCH_SVG}</button></span>`;
       headRight.querySelector('[data-act="from-placed"]').addEventListener('click', async () => {
         try {
           const data = await bookData.load(sn.linked_manuscript_id, true);
