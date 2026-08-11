@@ -53,7 +53,7 @@ const WriteSysImportScratchpad = {
         // -5px: vertically centred in the GAP — -9 hugged the descenders
         // (g/y) of the line above and floated far from the next line's caps.
         zone.style.top = '-5px';
-        zone.innerHTML = '<button type="button" class="import-tab" title="Import from scratchpad (canonize)">+</button><span class="import-rule"></span>';
+        zone.innerHTML = '<button type="button" class="import-tab" title="Place a sketch here (from a scratchpad)">+</button><span class="import-rule"></span>';
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
           this.openModal({ mode: 'append', sentenceId: boundaryId });
@@ -78,7 +78,7 @@ const WriteSysImportScratchpad = {
         btn.type = 'button';
         btn.className = 'ph-fill-btn';
         btn.textContent = '⧉';
-        btn.title = `Fill placeholder #${slug} from scratchpad (canonize)`;
+        btn.title = `Fill placeholder #${slug} by placing a sketch`;
         btn.style.top = '2px';
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -131,8 +131,8 @@ const WriteSysImportScratchpad = {
     const overlay = document.createElement('div');
     overlay.id = 'import-modal-overlay';
     overlay.innerHTML = `
-      <div id="import-modal" role="dialog" aria-label="canonize a sketch variation">
-        <h3>canonize a sketch variation</h3>
+      <div id="import-modal" role="dialog" aria-label="place a sketch variation">
+        <h3>place a sketch variation</h3>
         <p class="im-hint">${target.mode === 'replace'
           ? `Replaces placeholder <code>#${this.esc(target.slug)}</code> with the variation's text, wrapped in <code>&amp;sketch#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit. (The placeholder's own slug retires.)`
           : 'Inserts the variation\'s text after this paragraph, wrapped in <code>&amp;sketch#id{label}</code> … <code>&amp;end#id</code>, as one suggested edit.'}</p>
@@ -144,7 +144,7 @@ const WriteSysImportScratchpad = {
         <div class="im-error" id="im-error" hidden></div>
         <div class="im-actions">
           <button type="button" id="im-cancel">Never mind</button>
-          <button type="button" id="im-go" disabled>Canonize</button>
+          <button type="button" id="im-go" disabled>Place</button>
         </div>
       </div>`;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) this.closeModal(); });
@@ -190,7 +190,7 @@ const WriteSysImportScratchpad = {
       const curManuscript = (window.WriteSysRenderer && window.WriteSysRenderer.manuscriptId) || 0;
       const letter = (n) => String.fromCharCode(64 + n);
       holder.innerHTML = rows.map((v, i) => {
-        const blockedWhy = v.canonized ? 'already canonized'
+        const blockedWhy = v.canonized ? 'already placed (re-place from its widget)'
           : (v.linked_manuscript_id && v.linked_manuscript_id !== curManuscript
             ? `linked to ${this.esc(v.linked_manuscript_name || 'another manuscript')}` : '');
         return `

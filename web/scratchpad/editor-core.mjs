@@ -258,6 +258,12 @@ export const variationApi = {
   // No source freezing; the source is left as-is.
   createFrom: (sourceId) => apiCall('POST', 'api/sketches',
     { mode: 'variation', source_variation_id: sourceId, scratchpad_id: currentScratchpadId }),
+  // Next-letter variation seeded with raw text — "sketch from placed text".
+  createFromText: (sketchId, text) => apiCall('POST', 'api/sketches',
+    { mode: 'text', sketch_id: sketchId, text, scratchpad_id: currentScratchpadId }),
+  // Suggestion PUT (the book's own primitive) — placement writes region
+  // replacements through it, one reviewable suggestion per sentence.
+  putSuggestion: (sentenceId, text) => apiCall('PUT', `api/sentences/${encodeURIComponent(sentenceId)}/suggestion`, { text }),
   saveText: (id, text) => apiCall('PUT', `api/variations/${id}`, { text }),
   // ONE lifecycle state (draft | frozen | superseded) — setting frozen or
   // superseded cancels the other (single column server-side).
@@ -299,6 +305,7 @@ const SNOW_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" st
 // Superseded: a plain down arrow (reddens on hover / while set).
 const DOWN_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v9"/><path d="M4.5 8.5L8 12l3.5-3.5"/></svg>';
 const COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1c0-.55-.45-1-1-1H3.5c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h1"/></svg>';
+const PLACE_SVG = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9M6.5 8.5L10 12l3.5-3.5M4 15.5h12"/></svg>';
 const GOTO_SVG = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14L14 6M8.5 5.5H14.5V11.5"/></svg>';
 
 // Clipboard sketch reference (the copy button on each widget writes this;
@@ -532,6 +539,7 @@ class SketchView {
                 <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
                 <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
                 <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
+                ${this.canonized() && sn.linked_manuscript_id ? `<button type="button" data-act="place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">${PLACE_SVG}</button>` : ''}
               </span>
             </div>
             <div class="sn-head-right"></div>
@@ -552,6 +560,8 @@ class SketchView {
       this.setVariationState(this.frozen() ? 'draft' : 'frozen'));
     this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
       this.setVariationState(this.superseded() ? 'draft' : 'superseded'));
+    const placeBtn = this.dom.querySelector('[data-act="place"]');
+    if (placeBtn) placeBtn.addEventListener('click', () => this.placeVariation(this.variationId));
     this.dom.querySelector('[data-act="copyref"]').addEventListener('click', async (e) => {
       const b = e.currentTarget;
       // The app's own record of the copy comes FIRST: some browsers
@@ -617,17 +627,18 @@ class SketchView {
     // Split open → the self letter travels to the LEFT pane's upper-right
     // corner (renderBody mounts it) and the sibling buttons shift up to
     // take its place; unsplit → self letter tops the rail as usual.
+    const lastPlaced = this.ctx.sketch.placed_from_variation_id || 0;
     if (this.compare == null) {
-      btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</button>`);
+      btns.push(`<button type="button" class="sn-rail-btn sn-rail-self st-${this.stateName()}${this.variationId === lastPlaced ? ' sn-last-placed' : ''}" title="This widget is variation ${this.letter()}.${this.variationId === lastPlaced ? ' (Last placed.)' : ''}">${esc(this.letter())}</button>`);
     }
     const others = (this.ctx.siblings || []).filter(x => x.variation_id !== this.variationId);
     for (const x of others) {
       const st = x.state || 'draft';
       const stNote = st === 'superseded' ? ' (superseded)' : st === 'frozen' ? ' (frozen)' : '';
-      btns.push(`<button type="button" data-compare="${x.variation_id}" class="sn-rail-btn sn-rail-peer st-${st}${this.compare === x.variation_id ? ' active' : ''}" title="Compare to variation ${letterOf(x.ordinal)}.${stNote}">${esc(letterOf(x.ordinal))}</button>`);
+      btns.push(`<button type="button" data-compare="${x.variation_id}" class="sn-rail-btn sn-rail-peer st-${st}${this.compare === x.variation_id ? ' active' : ''}${x.variation_id === lastPlaced ? ' sn-last-placed' : ''}" title="Compare to variation ${letterOf(x.ordinal)}.${stNote}${x.variation_id === lastPlaced ? ' (Last placed.)' : ''}">${esc(letterOf(x.ordinal))}</button>`);
     }
     if (this.canonized()) {
-      btns.push(`<button type="button" data-compare="canon" class="sn-rail-btn sn-rail-canon${this.compare === 'canon' ? ' active' : ''}" title="Compare to the canon version — the text placed into the book.">❦</button>`);
+      btns.push(`<button type="button" data-compare="canon" class="sn-rail-btn sn-rail-canon${this.compare === 'canon' ? ' active' : ''}" title="The placed text — live from the book.">❦</button>`);
     }
     return btns.join('');
   }
@@ -758,7 +769,7 @@ class SketchView {
     // retry ladder, dirty tracking and auto-grow as the suggest-edit modal.
     const pane = window.WriteSysEditPane.createMonoEditor({
       value: restored ? draft.t : serverText,
-      placeholder: 'Sketch in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Canonize from the book view (+ between paragraphs).',
+      placeholder: 'Sketch in .manuscript form — plain text, *italics*, \\n\\n section breaks, commands allowed. Place from the book view (+ between paragraphs).',
       // Mirror the text into the overlay, rendering each tab as a faint grey
       // → glyph so invisible whitespace is visible. Everything else is neutral
       // (the textarea's own text sits transparent on top).
@@ -857,12 +868,15 @@ class SketchView {
       headRight.innerHTML = `
         <span class="sn-actions">
           <button type="button" data-act="peer-goto" class="sn-goto-ext" title="Go to source">${GOTO_SVG}</button>
+          ${this.canonized() && this.ctx.sketch.linked_manuscript_id ? `<button type="button" data-act="peer-place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">${PLACE_SVG}</button>` : ''}
           <button type="button" data-act="peer-supersede" class="sn-supersede${st === 'superseded' ? ' pressed' : ''}" title="${st === 'superseded' ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
           <button type="button" data-act="peer-freeze" class="sn-freeze${st === 'frozen' ? ' pressed' : ''}" title="${st === 'frozen' ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
           <button type="button" data-act="peer-copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
         </span>`;
       headRight.querySelector('[data-act="peer-goto"]').addEventListener('click', () =>
         this.gotoVariationSource(variationId, sketchId, ordinal));
+      const peerPlace = headRight.querySelector('[data-act="peer-place"]');
+      if (peerPlace) peerPlace.addEventListener('click', () => this.placeVariation(variationId));
       const applyPeerState = async (state) => {
         try {
           await variationApi.setState(variationId, state);
@@ -916,6 +930,34 @@ class SketchView {
     return ta;
   }
 
+  // PLACE a variation into the manuscript (the canonize rethink): replace
+  // the text between the group's &sketch anchors with this variation's
+  // text — one reviewable suggested edit per affected sentence — then let
+  // the server refresh the "as placed" snapshot and the last-placed marker.
+  async placeVariation(variationId) {
+    const sn = this.ctx.sketch;
+    if (!sn.canon_variation_id || !sn.linked_manuscript_id) return;
+    try {
+      const data = await bookData.load(sn.linked_manuscript_id, true);
+      // Always a FRESH context: the widget's cached text can lag behind
+      // API-side edits, and placing stale text would be silent data loss.
+      const varCtx = await variationApi.context(variationId);
+      const plan = window.WriteSysRegion.replacePlan(
+        data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, varCtx.variation.text.replace(/\s+$/, ''));
+      if (plan.status !== 'ok') {
+        alert(`Could not find the placed region #${sn.sketch_id} in the manuscript (${plan.status}).`);
+        return;
+      }
+      for (const p of plan.plan) await variationApi.putSuggestion(p.id, p.text);
+      await variationApi.canonize(variationId, sn.linked_manuscript_id);
+      delete bookData.cache[sn.linked_manuscript_id]; // region content changed
+      await this.refresh();
+      await refreshSketchSiblings(sn.sketch_id, this.variationId);
+    } catch (e) {
+      alert('Could not place the variation: ' + e.message);
+    }
+  }
+
   // Navigate to a variation's home widget: ask the server which scratchpad hosts
   // it, then set the URL hash to open that scratchpad and scroll to the widget.
   // Identity is (sketch, ordinal) — NOT the global variation_id — so the URL is
@@ -936,11 +978,32 @@ class SketchView {
   // fallback and via the in-body toggle.
   async renderCanon(showSnapshot, pane) {
     const sn = this.ctx.sketch;
+    // The placed pane's one action: start a NEW variation seeded with the
+    // live placed text — edit what's in the book without touching it.
+    const headRight = this.dom.querySelector('.sn-head-right');
+    if (headRight && !headRight.childElementCount) {
+      headRight.innerHTML = `<span class="sn-actions"><button type="button" data-act="from-placed" class="sn-from-placed" title="Sketch from placed text — a new variation seeded with what's in the book">＋ sketch</button></span>`;
+      headRight.querySelector('[data-act="from-placed"]').addEventListener('click', async () => {
+        try {
+          const data = await bookData.load(sn.linked_manuscript_id, true);
+          const seed = window.WriteSysRegion.regionRawText(
+            data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, null);
+          if (seed == null) { alert('Could not resolve the placed region.'); return; }
+          const ctx = await variationApi.createFromText(sn.sketch_id, seed);
+          const pos = this.getPos();
+          if (pos != null) {
+            this.view.dispatch(this.view.state.tr.insert(pos + this.node.nodeSize,
+              this.view.state.schema.nodes.snippet.create({ variationId: ctx.variation.variation_id })));
+          }
+          await this.refresh();
+        } catch (e) { alert('Could not sketch from the placed text: ' + e.message); }
+      });
+    }
     const snap = this.ctx.canon ? this.ctx.canon.text : '';
     const canonizedOn = this.ctx.canon ? (this.ctx.canon.created_at || '').slice(0, 10) : '';
     if (showSnapshot) {
       pane.innerHTML = `
-        <div class="sn-note">As canonized (${esc(canonizedOn)}) — the text at the moment it entered the book. <a href="#" class="sn-canonswap">Show live</a></div>
+        <div class="sn-note">As placed (${esc(canonizedOn)}) — the text at the moment it was placed. <a href="#" class="sn-canonswap">Show live</a></div>
         <div class="sn-render sn-peer"></div>`;
       pane.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(false, pane); });
       renderBookText(pane.querySelector('.sn-render'), snap);
@@ -956,12 +1019,12 @@ class SketchView {
       if (res.status !== 'ok') {
         pane.querySelector('.sn-note').innerHTML =
           `<span class="sn-error">Region #${esc(sn.sketch_id)} ${res.status === 'missing-anchor'
-            ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the as-canonized snapshot.</span>`;
+            ? 'not found in the effective manuscript' : 'has no matching &amp;end'} — showing the as-placed snapshot.</span>`;
         renderBookText(host, snap);
         return;
       }
       pane.querySelector('.sn-note').innerHTML =
-        `Live from the effective manuscript (committed + your suggestions). <a href="#" class="sn-canonswap">Show as-canonized</a>`;
+        `Live from the effective manuscript (committed + your suggestions). <a href="#" class="sn-canonswap">Show as placed</a>`;
       pane.querySelector('.sn-canonswap').addEventListener('click', (e) => { e.preventDefault(); this.renderCanon(true, pane); });
       window.WriteSysScratchRender.render(host, res.items);
     } catch (e) {

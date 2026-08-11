@@ -13,12 +13,18 @@
 const { chromium } = require('playwright');
 const zlib = require('zlib');
 const {
-  TEST_URL,
+  TEST_URL, TEST_MANUSCRIPT_ID,
   cleanupTestAnnotations, loginAsTestUser,
   waitForPagination, paginationStamp, waitForRepagination,
 } = require('./test-utils');
 
 const HOME_URL = new URL('home.html', TEST_URL).href;
+const { execSync } = require('child_process');
+function psql(sql) {
+  return execSync(
+    `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
+    { encoding: 'utf8' }).trim();
+}
 
 // A real, valid PNG of random noise (incompressible → ~w*h*4 bytes) to
 // exercise the raised body limit on api/scratchpad-images.
@@ -245,7 +251,7 @@ function noisyPng(w, h) {
     await page.click('.sn-canonswap');
     await page.waitForFunction(() => {
       const note = Array.from(document.querySelectorAll('.sn-widget .sn-note'))
-        .find(n => /As canonized/i.test(n.textContent));
+        .find(n => /As placed/i.test(n.textContent));
       if (!note) return false;
       const host = note.parentElement.querySelector('.sn-render');
       return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
@@ -259,6 +265,56 @@ function noisyPng(w, h) {
     }));
     check('canonize auto-linked the group (chips, no unlink ×)',
       linkState.chips === 2 && linkState.unlinks === 0, JSON.stringify(linkState));
+
+    // --- RE-PLACE (the placement rethink): edit A, then place A instead ---
+    await page.evaluate((id) => window.WriteSysScratchpadModal.open(id), padId);
+    await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"] .sn-place`, { timeout: 10000 });
+    check('placed group offers the place action on variations',
+      await page.locator('.sn-widget .sn-place').count() >= 1);
+    check('last-placed whispers on B (gilt underline)',
+      await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-rail-peer.sn-last-placed`).count() === 1);
+    // The canonize dialog froze all variations (auto-accepted) — thaw A to
+    // rework it, the exact re-place workflow.
+    await page.evaluate((vid) => window.WriteSysScratchpad.variationApi.setState(vid, 'draft'), varA);
+    await page.evaluate((vid) =>
+      window.WriteSysScratchpad.variationApi.saveText(vid, 'The keg arrived at dusk, and no one noticed.'), varA);
+    await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-place`).click();
+    // (Poll the DB from Node — Playwright's waitForFunction treats an async
+    // predicate's Promise as instantly truthy.)
+    let placedOk = false;
+    for (let i = 0; i < 60; i++) {
+      if (psql(`SELECT placed_from_variation_id FROM sketch WHERE sketch_id='${sketchId}'`) === String(varA)) { placedOk = true; break; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    check('re-place records A as last placed', placedOk);
+    // Region content now proposes A's text (via the standard suggestions).
+    const regionText = await page.evaluate(async (arg) => {
+      const mig = await (await fetch(`api/migrations/latest?manuscript_id=${arg.mid}`, { credentials: 'same-origin' })).json();
+      const data = await (await fetch(`api/migrations/${mig.migration_id}/manuscript`, { credentials: 'same-origin' })).json();
+      const sugMap = {};
+      try {
+        const sug = await (await fetch(`api/migrations/${mig.migration_id}/suggestions`, { credentials: 'same-origin' })).json();
+        (sug.suggestions || []).forEach(x => { sugMap[x.sentence_id] = x.text; });
+      } catch (e) { /* none */ }
+      const res = window.WriteSysRegion.resolve(data.sentences || [], sugMap, arg.sid, window.WriteSysCommand,
+        window.WriteSysCanonicalize ? window.WriteSysCanonicalize.canonicalize : null);
+      return { status: res.status, text: res.items.map(i => i.text).join(' ') };
+    }, { mid: TEST_MANUSCRIPT_ID, sid: sketchId });
+    check('region now carries A\'s text (suggested replacement)',
+      regionText.status === 'ok' && /dusk, and no one noticed/.test(regionText.text), JSON.stringify(regionText).slice(0, 120));
+    const snapCount = psql(`SELECT count(*) FROM variation WHERE sketch_id='${sketchId}' AND ordinal IS NULL`);
+    check('old as-placed snapshot dropped (exactly one)', snapCount === '1', snapCount);
+    const snapText = psql(`SELECT LEFT(text, 30) FROM variation v JOIN sketch s ON s.canon_variation_id = v.variation_id WHERE s.sketch_id='${sketchId}'`);
+    check('snapshot refreshed to A\'s text (as placed = dusk)', /dusk/.test(snapText), snapText);
+
+    // --- placed pane: ＋ sketch seeds a NEW variation from the live text ---
+    await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-rail-canon`).click();
+    await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"] .sn-head-right .sn-from-placed`, { timeout: 8000 });
+    const widgetsBeforeFP = await page.locator('.sn-widget').count();
+    await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-from-placed`).click();
+    await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, widgetsBeforeFP, { timeout: 10000 });
+    const seeded = psql(`SELECT LEFT(text, 60) FROM variation WHERE sketch_id='${sketchId}' AND ordinal = 3`);
+    check('＋ sketch mints C seeded with the placed (live) text', /dusk, and no one noticed/.test(seeded), seeded);
 
     check('no page errors', errs.length === 0, errs.slice(0, 3).join('; '));
   } finally {

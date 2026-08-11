@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Placement (the canonize rethink): "canonized" is really PLACED — a
+         sketch group has a place in the manuscript (the &sketch anchor
+         range) and placing a variation is a one-time export of its text
+         there. Re-placing is allowed (a different variation's text replaces
+         the region as suggested edits). placed_from_variation_id remembers
+         WHICH lettered variation was most recently placed — a minor rail
+         affordance; the canon_variation_id snapshot (legacy column name)
+         stays the "as placed" copy. -->
+    <changeSet id="034-placement" author="claude">
+        <sql>
+            ALTER TABLE sketch ADD COLUMN placed_from_variation_id INTEGER REFERENCES variation(variation_id) ON DELETE SET NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

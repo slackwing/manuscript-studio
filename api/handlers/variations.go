@@ -81,6 +81,8 @@ func (h *VariationHandlers) HandleCreateSketch(w http.ResponseWriter, r *http.Re
 	var req struct {
 		Mode           string `json:"mode"`
 		SourceVariationID int    `json:"source_variation_id"`
+		SketchID       string `json:"sketch_id"`
+		Text           string `json:"text"`
 		ScratchpadID   int    `json:"scratchpad_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -98,6 +100,12 @@ func (h *VariationHandlers) HandleCreateSketch(w http.ResponseWriter, r *http.Re
 			return
 		}
 		ctxOut, err = h.DB.CreateVariationFrom(r.Context(), session.Username, req.SourceVariationID, optScratchpadID(req.ScratchpadID))
+	case "text": // next-letter variation seeded with raw text ("sketch from placed text")
+		if req.SketchID == "" {
+			http.Error(w, "sketch_id required", http.StatusBadRequest)
+			return
+		}
+		ctxOut, err = h.DB.CreateVariationFromText(r.Context(), session.Username, req.SketchID, req.Text, optScratchpadID(req.ScratchpadID))
 	default:
 		http.Error(w, "mode must be new or variation", http.StatusBadRequest)
 		return

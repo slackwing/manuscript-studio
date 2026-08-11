@@ -393,6 +393,20 @@
 }
 
 /* copy reference (⧉→clipboard): flashes green once copied */
+.sn-actions .sn-place { color: #a49b8a; padding: 3px 5px; }
+.sn-actions .sn-place svg { display: block; }
+.sn-actions .sn-place:hover { color: #7a5a34; }
+.sn-actions .sn-from-placed {
+  font: 11px "Helvetica", sans-serif;
+  color: #7a5a34;
+  border: 1px solid #d9c9a8;
+  border-radius: 4px;
+  padding: 2px 7px;
+  background: #faf6ec;
+}
+.sn-actions .sn-from-placed:hover { background: #f3ead6; }
+/* Last placed: a whisper — thin gilt underline on the rail letter. */
+.sn-rail-btn.sn-last-placed { box-shadow: inset 0 -2px 0 #c9a227; }
 .sn-actions .sn-goto-ext { color: #a49b8a; padding: 3px 5px; }
 .sn-actions .sn-goto-ext svg { display: block; }
 .sn-actions .sn-goto-ext:hover { color: #2a6fb0; }

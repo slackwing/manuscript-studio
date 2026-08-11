@@ -77,6 +77,75 @@ const WriteSysRegion = {
     return { status: 'missing-end', items };
   },
 
+  // replacePlan computes the suggested edits that RE-PLACE a region: the
+  // text between the &sketch/&snippet opener and its &end is replaced by
+  // newText, anchors untouched. Returns { status, plan: [{id, text}] } —
+  // one suggestion per affected sentence (interior sentences suggest '',
+  // the standard delete). Works on RAW effective text (committed text or
+  // the pending suggestion), so the plan composes with in-flight edits.
+  // Sentences whose text would not change are omitted from the plan.
+  replacePlan(sentences, sugMap, slug, cmdLib, newText) {
+    const plan = [];
+    const push = (s, eff, text) => { if (text !== eff) plan.push({ id: s.id, text }); };
+    // Token scan over one raw text: the whole-text block-command case plus
+    // inline tokens (findInline skips the whole-is-block case by design).
+    const tokensOf = (eff) => {
+      const trimmed = eff.trim();
+      if (cmdLib.isBlockCommandText && cmdLib.isBlockCommandText(trimmed)) {
+        const cmd = cmdLib.parse(trimmed);
+        if (cmd) return [{ kind: cmd.kind, slug: cmd.slug, start: 0, end: Array.from(eff).length, block: true }];
+      }
+      return cmdLib.findInline(eff);
+    };
+    const pts = (text, a, b) => Array.from(text).slice(a, b).join('');
+    let state = 'before';
+    for (const s of sentences) {
+      const eff = (sugMap && sugMap[s.id] !== undefined) ? sugMap[s.id] : s.text;
+      if (state === 'before') {
+        const toks = tokensOf(eff);
+        const open = toks.find((c) => (c.kind === 'anchor' || c.kind === 'snippet') && c.slug === slug);
+        if (!open) continue;
+        const after = toks.find((c) => c.kind === 'end' && c.slug === slug && c.start >= open.end);
+        if (open.block) {
+          // A sole-line opener: the new content follows it, indented — the
+          // tight placement form.
+          push(s, eff, eff.replace(/\s+$/, '') + '\n\t' + newText);
+          state = 'inside';
+        } else if (after) {
+          push(s, eff, pts(eff, 0, open.end) + '\n\t' + newText + '\n' + pts(eff, after.start));
+          return { status: 'ok', plan };
+        } else {
+          push(s, eff, pts(eff, 0, open.end) + '\n\t' + newText);
+          state = 'inside';
+        }
+        continue;
+      }
+      // state === 'inside' — delete until the matching &end.
+      const toks = tokensOf(eff);
+      const endTok = toks.find((c) => c.kind === 'end' && c.slug === slug);
+      if (endTok) {
+        push(s, eff, endTok.block ? eff : pts(eff, endTok.start));
+        return { status: 'ok', plan };
+      }
+      push(s, eff, '');
+    }
+    return { status: state === 'before' ? 'missing-anchor' : 'missing-end', plan: [] };
+  },
+
+  // regionRawText joins resolve()'s fragments back into an approximate raw
+  // text of what's currently placed — the seed for "sketch from placed
+  // text". Fragment markers ('\n\n' section breaks etc.) ride along;
+  // unmarked fragments joined with a space.
+  regionRawText(sentences, sugMap, slug, cmdLib, canonize) {
+    const res = this.resolve(sentences, sugMap, slug, cmdLib, canonize);
+    if (res.status !== 'ok') return null;
+    let out = '';
+    for (const it of res.items) {
+      out += (it.text.startsWith('\n') || out === '' ? '' : ' ') + it.text;
+    }
+    return out.trim();
+  },
+
   // effectiveSlugs collects every slug used by any block command in the
   // effective manuscript (committed + suggestions) — canonize-time
   // uniqueness validation (decision 6).

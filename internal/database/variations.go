@@ -57,7 +57,10 @@ type SketchInfo struct {
 	SketchID            string `json:"sketch_id"`
 	LinkedManuscriptID   int    `json:"linked_manuscript_id"`
 	LinkedManuscriptName string `json:"linked_manuscript_name"`
-	CanonVariationID        int    `json:"canon_variation_id"` // 0 = none
+	CanonVariationID        int    `json:"canon_variation_id"` // 0 = none (legacy name; the "as placed" snapshot)
+	// The lettered variation most recently PLACED into the manuscript —
+	// a minor rail affordance ("last placed"). 0 = unknown/never.
+	PlacedFromVariationID int `json:"placed_from_variation_id"`
 }
 
 // VariationContext is everything one widget needs in a single payload: the variation,
@@ -215,16 +218,16 @@ func (db *DB) CreateVariationFrom(ctx context.Context, userID string, sourceID i
 func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*VariationContext, error) {
 	out := &VariationContext{Siblings: []VariationRef{}}
 	var owner string
-	var linkedID, canonID *int
+	var linkedID, canonID, placedFromID *int
 	err := db.Pool.QueryRow(ctx, `
 		SELECT v.variation_id, v.sketch_id, v.ordinal, v.text, v.state, v.scratchpad_id, v.created_at, v.updated_at,
-		       s.user_id, s.linked_manuscript_id, s.linked_manuscript_name, s.canon_variation_id
+		       s.user_id, s.linked_manuscript_id, s.linked_manuscript_name, s.canon_variation_id, s.placed_from_variation_id
 		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 AND v.deleted_at IS NULL
 	`, id).Scan(&out.Variation.VariationID, &out.Variation.SketchID, &out.Variation.Ordinal,
 		&out.Variation.Text, &out.Variation.State, &out.Variation.ScratchpadID,
 		&out.Variation.CreatedAt, &out.Variation.UpdatedAt,
-		&owner, &linkedID, &out.Sketch.LinkedManuscriptName, &canonID)
+		&owner, &linkedID, &out.Sketch.LinkedManuscriptName, &canonID, &placedFromID)
 	if err != nil || owner != userID {
 		return nil, ErrNotOwner
 	}
@@ -234,6 +237,9 @@ func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*
 	}
 	if canonID != nil {
 		out.Sketch.CanonVariationID = *canonID
+	}
+	if placedFromID != nil {
+		out.Sketch.PlacedFromVariationID = *placedFromID
 	}
 
 	// Siblings = every lettered variation in this group (including this one), by
@@ -516,11 +522,24 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 	if ordinal == nil {
 		return nil, ErrVariationCanon
 	}
-	if canonID != nil {
-		return nil, ErrAlreadyCanonized
-	}
 	if linkedID != nil && *linkedID != manuscriptID {
 		return nil, ErrLinkedElsewhere
+	}
+	// RE-placing is allowed (the placement rethink): a fresh "as placed"
+	// snapshot replaces the old one — the manuscript's git history is the
+	// history, so the superseded snapshot row is simply dropped. Order
+	// matters: ONE snapshot per sketch (partial unique index) and the
+	// sketch's canon pointer FKs the row — clear pointer, drop old,
+	// insert new, point at it. The caller is responsible for the
+	// manuscript-side region replacement (suggested edits); this is only
+	// the group bookkeeping.
+	if canonID != nil {
+		if _, err := tx.Exec(ctx, `UPDATE sketch SET canon_variation_id = NULL WHERE sketch_id = $1`, sketchID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM variation WHERE variation_id = $1 AND ordinal IS NULL`, *canonID); err != nil {
+			return nil, fmt.Errorf("drop old placed snapshot: %w", err)
+		}
 	}
 	var newCanonID int
 	if err := tx.QueryRow(ctx, `
@@ -531,15 +550,54 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 		return nil, fmt.Errorf("create canon variation: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE sketch SET canon_variation_id = $2, linked_manuscript_id = $3, linked_manuscript_name = $4
+		UPDATE sketch SET canon_variation_id = $2, linked_manuscript_id = $3, linked_manuscript_name = $4,
+		       placed_from_variation_id = $5
 		WHERE sketch_id = $1
-	`, sketchID, newCanonID, manuscriptID, manuscriptName); err != nil {
+	`, sketchID, newCanonID, manuscriptID, manuscriptName, variationID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return db.GetVariationContext(ctx, userID, variationID)
+}
+
+// CreateVariationFromText adds the next-letter variation to an EXISTING
+// group, seeded with the given text (the placed pane's "sketch from placed
+// text" — start editing what's in the book, in a new variation). Homed in
+// the given scratchpad.
+func (db *DB) CreateVariationFromText(ctx context.Context, userID, sketchID, text string, scratchpadID *int) (*VariationContext, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var owner string
+	if err := tx.QueryRow(ctx, `
+		SELECT user_id FROM sketch WHERE sketch_id = $1 FOR UPDATE
+	`, sketchID).Scan(&owner); err != nil || owner != userID {
+		return nil, ErrNotOwner
+	}
+	var next int
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(MAX(ordinal), 0) + 1 FROM variation WHERE sketch_id = $1
+	`, sketchID).Scan(&next); err != nil {
+		return nil, err
+	}
+	if next > MaxVariationOrdinal {
+		return nil, ErrOrdinalCap
+	}
+	s, err := scanVariation(tx.QueryRow(ctx, `
+		INSERT INTO variation (sketch_id, ordinal, text, scratchpad_id)
+		VALUES ($1, $2, $3, $4)
+		RETURNING `+variationCols, sketchID, next, text, scratchpadID))
+	if err != nil {
+		return nil, fmt.Errorf("create variation from text: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return db.GetVariationContext(ctx, userID, s.VariationID)
 }
 
 // CountCanonizedAmong reports how many of the given placed variations belong to a
