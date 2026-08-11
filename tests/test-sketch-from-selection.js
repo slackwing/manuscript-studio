@@ -7,7 +7,7 @@
 // the sketch icon; clicking it deep-links to the widget.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_PASSWORD } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, waitForPagination } = require('./test-utils');
 const BASE = 'http://localhost:5001';
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -30,7 +30,7 @@ const psql = (sql) => execSync(
   }, [TEST_USERNAME, TEST_PASSWORD]);
   await page.goto(TEST_URL);
   await page.waitForSelector('.sentence[data-sentence-id]', { timeout: 60000 });
-  await page.waitForTimeout(4000);
+  await waitForPagination(page);
 
   const pair = await page.evaluate(() => {
     const spans = [...document.querySelectorAll('.sentence[data-sentence-id]')]
