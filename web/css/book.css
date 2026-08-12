@@ -3238,13 +3238,20 @@ p.section-break {
        modal clear of the bar, but here it sits at the top and was sliding
        UNDER it, decapitating the title bar. */
     z-index: 21000;
+    /* Track the DYNAMIC viewport: with inset:0 alone, Android's collapsing
+       URL bar left a gap of undarkened page below the backdrop mid-scroll.
+       An explicit dvh height animates with the bar (bottom is ignored when
+       top+height are set). */
+    height: 100vh;   /* fallback */
+    height: 100dvh;
   }
   #suggestion-modal {
     position: static;
     transform: none;
     flex: none;
     width: 94vw;
-    max-height: 62vh;
+    max-height: 62vh;   /* fallback */
+    max-height: 62dvh;  /* keyboard/URL bar can't push it past the backdrop */
     margin: 0 0 12px;
   }
   /* The sentence's notes below the modal — each card its own island, the

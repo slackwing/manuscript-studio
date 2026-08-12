@@ -417,3 +417,31 @@ body.home-page {
 #dr-add { padding: 5px 12px; border-radius: 6px; border: 1px solid #2a6fb0; background: #2a6fb0; color: #fff; cursor: pointer; font-size: 12px; }
 .dr-del { display: inline-flex !important; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 1px solid #c0392b; border-radius: 50%; background: #fff; color: #c0392b; font: 600 12px/1 "Helvetica", sans-serif; cursor: pointer; }
 .dr-tag-x { cursor: pointer; color: #999; }
+
+/* ---- Mobile (phones) ---- */
+@media (max-width: 640px) {
+  /* The bookshelf was background-attachment:fixed with cover — sized against
+     the LIVE viewport, so Android's collapsing URL bar re-scaled it on every
+     scroll ("the background picture gets bigger"). Paint it on a fixed
+     underlay with a CONSTANT height instead: 100lvh (large-viewport height,
+     the URL-bar-hidden size) never changes while scrolling. */
+  body.home-page { background: #f3f1ec; }
+  body.home-page::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;   /* fallback */
+    height: 100lvh;  /* stable across URL-bar show/hide */
+    z-index: -1;
+    background:
+      linear-gradient(rgba(243, 241, 236, 0.75), rgba(243, 241, 236, 0.75)),
+      url("../img/login-bookshelf.jpg") center / cover no-repeat;
+  }
+  /* Cards ~30% smaller — zoom (unlike transform) actually reflows layout, so
+     the whole card (text, chips, icons) shrinks proportionally and the
+     auto-fill grid recalculates to TWO columns on a phone. Headers, points
+     grid and the rest of the page stay as they are. */
+  .card-grid { zoom: 0.7; }
+}

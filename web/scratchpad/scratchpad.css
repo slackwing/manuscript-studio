@@ -691,6 +691,12 @@
      render pane scales inside its shadow root — see scratch-render.js. */
   .sn-text, .sn-text-overlay { font-size: 9px; padding: 5px 6px; }
   textarea.sn-mono-ro { font-size: 9px; padding: 5px 6px; }
+  /* Same Android URL-bar gap as the suggest-edit backdrop: give the pad
+     overlay a dynamic-viewport height so the dark layer tracks the bar. */
+  .spm-overlay {
+    height: 100vh;   /* fallback */
+    height: 100dvh;
+  }
   /* Action icons smaller + tighter so the split view's half-toolbars fit
      (icons only — the tap targets stay buttons). */
   .sn-widget .sn-actions { gap: 2px; }
