@@ -176,30 +176,23 @@ const WriteSysSuggestions = {
         </div>
       </div>`;
     document.body.appendChild(overlay);
-    document.body.appendChild(modal);
 
-    // MOBILE: the note margin is hidden, so the sentence's notes float here —
-    // stacked below this modal on the same dark overlay, each card its own
-    // island (the SHARED note widget, same handlers as the margin). The stack
-    // tracks the modal's bottom edge as it grows/shrinks.
+    // MOBILE: the note margin is hidden, so the sentence's notes stack BELOW
+    // the modal — and everything lives INSIDE the overlay as normal flowing
+    // content (the overlay becomes a scrollable column, see the book.css
+    // mobile block). No fixed-position math: real phones bring pinch zoom,
+    // keyboards, and collapsing URL bars that make measured coordinates lie.
+    // Desktop keeps the classic fixed-centered modal (modal stays a sibling).
+    const mobile = window.matchMedia('(max-width: 1239px)').matches;
     let notesStack = null;
-    let unplaceStack = null;
-    if (window.matchMedia('(max-width: 1239px)').matches
-        && window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
-      notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
-      if (notesStack) {
-        document.body.appendChild(notesStack);
-        const place = () => {
-          const r = modal.getBoundingClientRect();
-          notesStack.style.top = (r.bottom + 12) + 'px';
-          notesStack.style.maxHeight = Math.max(72, window.innerHeight - r.bottom - 24) + 'px';
-        };
-        place();
-        const ro = new ResizeObserver(place);
-        ro.observe(modal);
-        window.addEventListener('resize', place);
-        unplaceStack = () => { ro.disconnect(); window.removeEventListener('resize', place); };
+    if (mobile) {
+      overlay.appendChild(modal);
+      if (window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
+        notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
+        if (notesStack) overlay.appendChild(notesStack);
       }
+    } else {
+      document.body.appendChild(modal);
     }
 
     // Version selector → right pane (read-only, same monospace metrics as the
@@ -277,7 +270,6 @@ const WriteSysSuggestions = {
       if (!(await saver.flush())) return;
       saver.destroy();
       if (notesStack) {
-        if (unplaceStack) unplaceStack();
         notesStack.remove();
         notesStack = null;
       }
@@ -304,7 +296,7 @@ const WriteSysSuggestions = {
         window.WriteSysPush.refresh();
       }
     };
-    overlay.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();

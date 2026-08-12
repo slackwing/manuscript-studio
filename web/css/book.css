@@ -3222,28 +3222,37 @@ p.section-break {
      it so it can't add width. */
   #note-margin { display: none !important; }
 
-  /* Suggest-edit modal hugs the TOP on mobile (centered would fight the
-     on-screen keyboard) and stays short enough to leave room for the note
-     stack floating beneath it. */
-  #suggestion-modal {
-    top: 8px;
-    transform: translateX(-50%);
-    max-height: 62vh;
-  }
-  /* The sentence's notes, stacked below the modal on the dark backdrop —
-     each card floats as its own island (gap shows the backdrop through).
-     Position (top/max-height) is set by JS tracking the modal's bottom edge. */
-  #sgm-notes-stack {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    width: min(980px, 94vw);
-    z-index: 201;
+  /* Suggest-edit on mobile: the OVERLAY is a scrollable column and the modal
+     + note stack are normal flowing children inside it — no fixed-position
+     coordinate math (pinch zoom, keyboards and collapsing URL bars make
+     measured positions lie on real phones). Tapping the dark backdrop
+     itself closes (the JS checks the click target). */
+  #suggestion-modal-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     overflow-y: auto;
+    padding: 8px 0 32px;
+    -webkit-overflow-scrolling: touch;
+  }
+  #suggestion-modal {
+    position: static;
+    transform: none;
+    flex: none;
+    width: 94vw;
+    max-height: 62vh;
+    margin: 0 0 12px;
+  }
+  /* The sentence's notes below the modal — each card its own island, the
+     backdrop showing through the gaps. Empty stack (no notes) shows nothing. */
+  #sgm-notes-stack {
+    flex: none;
+    width: 94vw;
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
+  #sgm-notes-stack:empty { display: none; }
   #sgm-notes-stack .sticky-note {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   }

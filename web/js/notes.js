@@ -298,10 +298,12 @@ const WriteSysNotes = {
     this.currentSentenceText = sentenceText || '';
     const all = (window.WriteSysRenderer && window.WriteSysRenderer.currentNotes) || [];
     this.notes = all.filter(a => a.sentence_id === sentenceId);
-    if (!this.notes.length) return null;
+    // Always return a container — even empty. CSS hides an empty stack, and
+    // notes that arrive after the modal opened (slow fetch on a phone) can
+    // still populate it through refreshMobileNoteStack.
     const stack = document.createElement('div');
     stack.id = 'sgm-notes-stack';
-    this.populateMobileNoteStack(stack);
+    if (this.notes.length) this.populateMobileNoteStack(stack);
     return stack;
   },
 
@@ -314,7 +316,7 @@ const WriteSysNotes = {
   refreshMobileNoteStack() {
     const stack = document.getElementById('sgm-notes-stack');
     if (!stack) return;
-    if (!this.notes.length) { stack.remove(); return; }
+    if (!this.notes.length) { stack.innerHTML = ''; return; } // :empty hides it
     this.populateMobileNoteStack(stack);
   },
 

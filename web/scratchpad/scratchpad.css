@@ -682,12 +682,10 @@
   .ProseMirror h2 { font-size: 14px; }
   .ProseMirror h3 { font-size: 12px; }
   .ProseMirror h4 { font-size: 11px; }
-  /* Sketch widget spans the FULL pad width — dialog edge to dialog edge:
-     the beige gutter and the sheet's side borders go, and the widget's
-     negative inset eats the sheet's remaining 12px side padding. */
-  .spm-editor { padding-left: 0; padding-right: 0; }
-  .ProseMirror { border-left: none; border-right: none; }
-  .sn-widget { margin-left: -12px; margin-right: -12px; border-left: none; border-right: none; }
+  /* Sketch widget: NO extra inset (the desktop 66px margins are gone), but
+     the sheet's natural padding stays — with the smaller mobile fonts that
+     modest margin reads right (full-bleed tried and reverted). */
+  .sn-widget { margin-left: 0; margin-right: 0; }
   /* Widget text 20% smaller (12→10 mono); padding around it halved
      (10px 12px → 5px 6px). The serif render pane scales inside its shadow
      root — see scratch-render.js. */
