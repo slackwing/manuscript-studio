@@ -14,7 +14,7 @@ import {
   EditorState, NodeSelection, TextSelection, Selection,
   EditorView,
   keymap, history, undo, redo,
-  baseKeymap, toggleMark, setBlockType, wrapIn, chainCommands,
+  baseKeymap, toggleMark, setBlockType, wrapIn, liftTarget, chainCommands,
   addListNodes, wrapInList, splitListItem, liftListItem, sinkListItem,
   dropCursor, gapCursor,
   tableNodes, tableEditing, columnResizing, goToNextCell,
@@ -1572,6 +1572,28 @@ function inTable(state) {
   return false;
 }
 
+function inBlockquote(state) {
+  const $from = state.selection.$from;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type === schema.nodes.blockquote) return true;
+  }
+  return false;
+}
+
+// Blockquote is a toggle: inside a quote the button lifts one level out
+// (wrapIn alone would stack quote-in-quote on every press); outside, it wraps.
+function toggleBlockquote(state, dispatch) {
+  const { $from, $to } = state.selection;
+  const range = $from.blockRange($to, n => n.type === schema.nodes.blockquote);
+  if (range) {
+    const target = liftTarget(range);
+    if (target == null) return false;
+    if (dispatch) dispatch(state.tr.lift(range, target).scrollIntoView());
+    return true;
+  }
+  return wrapIn(schema.nodes.blockquote)(state, dispatch);
+}
+
 // SVG toolbar glyphs (text labels read as buttons, not tools).
 const ICON_UL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="2.5" cy="12.5" r="1.4"/><rect x="6" y="2.7" width="9" height="1.6" rx="0.8"/><rect x="6" y="7.2" width="9" height="1.6" rx="0.8"/><rect x="6" y="11.7" width="9" height="1.6" rx="0.8"/></svg>';
 const ICON_OL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><text x="0" y="5.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">1.</text><text x="0" y="10.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">2.</text><text x="0" y="15.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">3.</text><rect x="6" y="2.7" width="9" height="1.6" rx="0.8"/><rect x="6" y="7.2" width="9" height="1.6" rx="0.8"/><rect x="6" y="11.7" width="9" height="1.6" rx="0.8"/></svg>';
@@ -1936,7 +1958,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { html: ICON_UL, title: 'Bullet list (Ctrl+Shift+8)', run: wrapInList(schema.nodes.bullet_list) },
     { html: ICON_OL, title: 'Numbered list (Ctrl+Shift+7)', run: wrapInList(schema.nodes.ordered_list) },
     { sep: true },
-    { label: '❝', title: 'Blockquote (Ctrl+Shift+9)', run: wrapIn(schema.nodes.blockquote) },
+    { label: '❝', title: 'Blockquote (Ctrl+Shift+9)', run: toggleBlockquote, active: inBlockquote },
     { label: '—', title: 'Horizontal rule', run: (s, d) => insertBlockSafely(s, d, schema.nodes.horizontal_rule.create()) },
     { sep: true },
     { table: true },
@@ -2028,7 +2050,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
         // Lists + quote: the Docs/Notion conventions.
         'Shift-Mod-7': wrapInList(schema.nodes.ordered_list),
         'Shift-Mod-8': wrapInList(schema.nodes.bullet_list),
-        'Shift-Mod-9': wrapIn(schema.nodes.blockquote),
+        'Shift-Mod-9': toggleBlockquote,
         'Enter': splitListItem(li),
         'Tab': chainCommands(goToNextCell(1), sinkListItem(li)),
         'Shift-Tab': chainCommands(goToNextCell(-1), liftListItem(li)),

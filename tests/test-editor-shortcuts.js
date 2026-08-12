@@ -2,7 +2,8 @@
 //   Alt+D   → inserts today's date as "Saturday, August 1" (prose AND variation
 //             textareas via the shared edit pane);
 //   Ctrl+Alt+1-4 → headings H1-H4 (plain Alt+N = Firefox tab switching);
-//   Ctrl+Shift+8/7/9 → bullet / numbered / blockquote;
+//   Ctrl+Shift+8/7/9 → bullet / numbered / blockquote (9 toggles: unquotes
+//   when already inside a quote instead of nesting);
 //   toolbar hints advertise the shortcuts.
 const pw = require('playwright');
 const engine = pw[process.env.BROWSER || 'chromium'];
@@ -45,6 +46,31 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.keyboard.press('Control+Shift+8');
   const hasUl = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.toString().includes('bullet_list'));
   check('Ctrl+Shift+8 wraps in a bullet list', hasUl);
+
+  // Blockquote toggles: wrap once, then unquote — never quote-in-quote.
+  // Enter twice exits the bullet list (second Enter lifts the empty item).
+  await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('quoted');
+  const quoteDepth = () => page.evaluate(() =>
+    (window.WriteSysScratchpad.view.state.doc.toString().match(/blockquote\(/g) || []).length);
+  await page.keyboard.press('Control+Shift+9');
+  check('Ctrl+Shift+9 wraps in a blockquote', (await quoteDepth()) === 1, String(await quoteDepth()));
+  await page.keyboard.press('Control+Shift+9');
+  check('Ctrl+Shift+9 in a quote unquotes (no nesting)', (await quoteDepth()) === 0, String(await quoteDepth()));
+  // The toolbar runs commands on mousedown (preventDefault keeps focus in
+  // the editor), so the test fires mousedown rather than click.
+  const quoteBtnToggles = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('#spm-toolbar button')].find(x => x.textContent.trim() === '❝');
+    const depth = () => (window.WriteSysScratchpad.view.state.doc.toString().match(/blockquote\(/g) || []).length;
+    const press = () => btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    press();
+    const wrapped = depth();
+    press();
+    return { wrapped, after: depth() };
+  });
+  check('toolbar ❝ wraps then unquotes', quoteBtnToggles.wrapped === 1 && quoteBtnToggles.after === 0, JSON.stringify(quoteBtnToggles));
 
   // Alt+D inside a variation textarea (shared edit pane).
   await page.evaluate(async () => {
