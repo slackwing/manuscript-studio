@@ -96,6 +96,31 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const sel = await page.evaluate(() => document.querySelector('.sn-widget textarea').selectionStart);
   check('and the caret actually moved', sel > 0 && sel < 59, `sel=${sel}`);
 
+  // REGRESSION ("typing yanks the scroll up"): scrolled to the pad BOTTOM,
+  // every keystroke ran autoGrow's height='auto' collapse, momentarily
+  // shrinking the pad and CLAMPING scrollTop up. Type at the end of the
+  // textarea while pinned to the bottom — the scroll must not move.
+  await page.evaluate(() => {
+    const ta = document.querySelector('.sn-widget textarea');
+    // TALL sketch: the collapse-to-'auto' only shrinks past the rows-attr
+    // floor, so the bug needs real height to give up.
+    ta.value += '\n' + Array.from({ length: 50 }, (_, i) => `sketch line ${i}`).join('\n');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    const h = document.querySelector('.spm-editor');
+    h.scrollTop = h.scrollHeight;
+  });
+  await page.waitForTimeout(900); // past any scroll hold from the clicks above
+  const bottomBefore = await page.evaluate(() => document.querySelector('.spm-editor').scrollTop);
+  for (const ch of 'typing at the bottom') {
+    await page.keyboard.type(ch);
+    await page.waitForTimeout(15);
+  }
+  const bottomAfter = await page.evaluate(() => document.querySelector('.spm-editor').scrollTop);
+  check('typing at the pad bottom does not move the scroll',
+    Math.abs(bottomAfter - bottomBefore) <= 4, `before=${bottomBefore} after=${bottomAfter}`);
+
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();
   process.exit(failed ? 1 : 0);

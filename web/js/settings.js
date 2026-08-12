@@ -411,6 +411,16 @@ WriteSysSettings.reloadActions = async function () {
       inp.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(false); });
     });
     tr.appendChild(when);
+    // Go-to arrow: the action's note itself, on the landing notes grid.
+    const gotoTd = document.createElement('td');
+    gotoTd.className = 'na-goto-cell';
+    const gotoA = document.createElement('a');
+    gotoA.className = 'na-goto';
+    gotoA.href = `home.html?view=notes&note=${a.note_id}`;
+    gotoA.title = 'Go to note';
+    gotoA.innerHTML = window.WriteSysIcons.goto(13);
+    gotoTd.appendChild(gotoA);
+    tr.appendChild(gotoTd);
     const prev = document.createElement('td');
     prev.className = 'na-prev';
     prev.textContent = a.body || '(no text)';
@@ -426,8 +436,47 @@ WriteSysSettings.reloadActions = async function () {
     btn.className = 'na-undo';
     const req = { credentials: 'same-origin', headers: { 'X-CSRF-Token': this.csrf() } };
     if (a.kind === 'points') {
-      btn.textContent = `unaward ${a.points} point${a.points === 1 ? '' : 's'}`;
-      btn.onclick = () => fetch(`api/point-events/${a.event_id}`, { ...req, method: 'DELETE' }).then(() => this.reloadActions());
+      // "edit N points" → inline number input. Enter/blur commits: 0 unawards
+      // (deletes the event), any other value edits it in place.
+      btn.textContent = `edit ${a.points} point${a.points === 1 ? '' : 's'}`;
+      btn.onclick = () => {
+        if (undoTd.querySelector('input')) return;
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '0';
+        inp.max = '99';
+        inp.value = String(a.points);
+        inp.className = 'na-points-input';
+        btn.replaceWith(inp);
+        inp.focus();
+        inp.select();
+        let settled = false;
+        const done = async (commit) => {
+          if (settled) return;
+          settled = true;
+          const n = parseInt(inp.value, 10);
+          if (commit && Number.isFinite(n) && n >= 0 && n !== a.points) {
+            try {
+              if (n === 0) {
+                await fetch(`api/point-events/${a.event_id}`, { ...req, method: 'DELETE' });
+              } else {
+                await fetch(`api/point-events/${a.event_id}`, {
+                  ...req,
+                  method: 'PUT',
+                  headers: { ...req.headers, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ points: n }),
+                });
+              }
+            } catch (err) { /* reload shows the truth either way */ }
+          }
+          this.reloadActions();
+        };
+        inp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') done(true);
+          if (e.key === 'Escape') done(false);
+        });
+        inp.addEventListener('blur', () => done(true));
+      };
     } else if (a.kind === 'deleted') {
       btn.textContent = 'undo delete';
       btn.onclick = () => fetch(`api/notes/${a.note_id}/restore`, { ...req, method: 'POST' }).then(() => this.reloadActions());

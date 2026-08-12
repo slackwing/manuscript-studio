@@ -155,8 +155,15 @@
     ta.value = opts.value || '';
     ta.rows = Math.max(6, (opts.value || '').split('\n').length + 2);
     const autoGrow = () => {
+      // Pin the wrap's height while the textarea is momentarily 'auto': the
+      // instant collapse shrinks the scroll host's content, and a reader
+      // scrolled near the bottom gets their scrollTop CLAMPED up — the
+      // "every keystroke scrolls the pad" bug. All synchronous, so the pin
+      // never renders.
+      wrap.style.minHeight = wrap.offsetHeight + 'px';
       ta.style.height = 'auto';
       ta.style.height = ta.scrollHeight + 'px';
+      wrap.style.minHeight = '';
       if (overlay && opts.overlayHTML) overlay.innerHTML = opts.overlayHTML(ta.value);
     };
     ta.addEventListener('input', () => {

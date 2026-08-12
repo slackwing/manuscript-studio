@@ -49,6 +49,29 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
     [...document.querySelectorAll('.points-col')].findIndex(c => c.classList.contains('today')));
   check('today sits ~80% across', todayIdx / colCount > 0.7 && todayIdx / colCount < 0.9,
     `${todayIdx}/${colCount}`);
+  // TODAY marker: black triangle + caption centered under today's column.
+  const marker = await page.evaluate(() => {
+    const m = document.querySelector('#points-today .pt-mark');
+    if (!m) return null;
+    const today = document.querySelector('.points-col.today');
+    const mr = m.getBoundingClientRect(), tr = today.getBoundingClientRect();
+    return {
+      caption: m.querySelector('.pt-caption')?.textContent,
+      hasArrow: !!m.querySelector('.pt-arrow'),
+      centerOff: Math.abs((mr.left + mr.right) / 2 - (tr.left + tr.right) / 2),
+    };
+  });
+  check('TODAY marker present (arrow + caption)', marker && marker.hasArrow && marker.caption === 'TODAY',
+    JSON.stringify(marker));
+  check('marker centered under today’s column', marker && marker.centerOff <= 2, marker && `Δ=${marker.centerOff}`);
+  // Bulldozed cells keep the SAME gold — the dark shade read as a today
+  // highlight and is gone.
+  const shades = await page.evaluate(() => {
+    const lit = document.querySelector('.points-cell.lit:not(.bulldozed):not(.future)');
+    const doze = document.querySelector('.points-cell.lit.bulldozed');
+    return { lit: lit && getComputedStyle(lit).backgroundColor, doze: doze && getComputedStyle(doze).backgroundColor };
+  });
+  check('bulldozed cells same gold as natural', !shades.doze || shades.doze === shades.lit, JSON.stringify(shades));
   const gridEdges = await page.evaluate(() => {
     const g = document.getElementById('points-grid').getBoundingClientRect();
     const sec = document.querySelector('#home-root section:nth-of-type(2) .card-grid, #home-root .card-grid').getBoundingClientRect();

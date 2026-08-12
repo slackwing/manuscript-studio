@@ -245,13 +245,20 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 
 // migrateNotes runs the planned moves in one all-or-nothing tx.
 func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog.Logger, plan map[string]plannedMove) (int, error) {
+	// ONE query for every mapped old sentence's notes — a round-trip per
+	// sentence here made note collection the dominant cost of a migration.
+	oldIDs := make([]string, 0, len(plan))
+	for oldID := range plan {
+		oldIDs = append(oldIDs, oldID)
+	}
+	notesByOld, err := db.GetActiveNotesForSentences(ctx, oldIDs)
+	if err != nil {
+		return 0, fmt.Errorf("get notes for mapped sentences: %w", err)
+	}
 	var items []database.NoteMigrationItem
 	sources := 0
 	for oldID, move := range plan {
-		annots, err := db.GetActiveNotesForSentence(ctx, oldID)
-		if err != nil {
-			return 0, fmt.Errorf("get notes for %s: %w", oldID, err)
-		}
+		annots := notesByOld[oldID]
 		if len(annots) == 0 {
 			continue
 		}
@@ -293,16 +300,18 @@ type plannedMove struct {
 // the total number of suggestion rows inserted across all paired sentences —
 // a useful log signal for "did we move anything?".
 func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) (int, error) {
-	moved := 0
+	// All exact-match pairings in one statement — not a round-trip each.
+	var fromIDs, toIDs []string
 	for oldID, move := range plan {
 		if move.NewSentenceID == "" || move.Confidence < 1.0 {
 			continue
 		}
-		n, err := db.CopySuggestionsForward(ctx, oldID, move.NewSentenceID)
-		if err != nil {
-			return moved, fmt.Errorf("copy suggestions %s → %s: %w", oldID, move.NewSentenceID, err)
-		}
-		moved += n
+		fromIDs = append(fromIDs, oldID)
+		toIDs = append(toIDs, move.NewSentenceID)
+	}
+	moved, err := db.CopySuggestionsForwardBulk(ctx, fromIDs, toIDs)
+	if err != nil {
+		return 0, fmt.Errorf("copy suggestions forward: %w", err)
 	}
 	return moved, nil
 }

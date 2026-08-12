@@ -107,6 +107,44 @@ func (h *NoteActionHandlers) HandleUnaward(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleEditPoints: PUT /api/point-events/{event_id} {points} — edit an
+// award's value in place (the settings table's inline editor; 0 goes
+// through DELETE instead).
+func (h *NoteActionHandlers) HandleEditPoints(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	id, err := strconv.Atoi(chi.URLParam(r, "event_id"))
+	if err != nil {
+		http.Error(w, "Invalid event id", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Points int `json:"points"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Points < 1 || body.Points > 99 {
+		http.Error(w, "points (1-99) required", http.StatusBadRequest)
+		return
+	}
+	ok, err := h.DB.UpdatePointEvent(r.Context(), id, session.Username, body.Points)
+	if err != nil {
+		log.Printf("note-actions: edit points %d → %d: %v", id, body.Points, err)
+		http.Error(w, "Failed to edit points", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *NoteActionHandlers) noteUndo(w http.ResponseWriter, r *http.Request,
 	verb string, undo func(username string, noteID int) (bool, error)) {
 	session, err := auth.GetSession(r)

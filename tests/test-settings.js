@@ -306,11 +306,28 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.locator('.na-row.na-completed .na-undo').first().click();
   await page.waitForTimeout(700);
   check('undo complete restores the note', psql(`SELECT completed_at IS NULL FROM note WHERE note_id=${noteId}`).trim() === 't');
-  const unawardLabel = (await page.locator('.na-row.na-points .na-undo').first().innerText()).trim();
-  check('unaward button names the points', unawardLabel === 'unaward 7 points', unawardLabel);
+  // Points row: go-to arrow links to the note on the landing grid.
+  const gotoHref = await page.locator('.na-row.na-points .na-goto').first().getAttribute('href');
+  check('go-to arrow links to the note', gotoHref === `home.html?view=notes&note=${noteId}`, gotoHref);
+  // "edit N points" → inline number input; a nonzero value EDITS in place.
+  const editLabel = (await page.locator('.na-row.na-points .na-undo').first().innerText()).trim();
+  check('points button reads "edit N points"', editLabel === 'edit 7 points', editLabel);
   await page.locator('.na-row.na-points .na-undo').first().click();
+  const ptsInp = page.locator('.na-row.na-points .na-points-input');
+  check('click swaps in a number input', await ptsInp.count() === 1);
+  await ptsInp.fill('3');
+  await ptsInp.press('Enter');
   await page.waitForTimeout(700);
-  check('unaward hard-deletes the event', psql(`SELECT count(*) FROM point_event WHERE note_id=${noteId}`).trim() === '0');
+  check('nonzero edit updates the event in place',
+    psql(`SELECT points FROM point_event WHERE note_id=${noteId}`).trim() === '3');
+  check('button relabels after the edit',
+    (await page.locator('.na-row.na-points .na-undo').first().innerText()).trim() === 'edit 3 points');
+  // Zero unawards: the event is hard-deleted.
+  await page.locator('.na-row.na-points .na-undo').first().click();
+  await page.locator('.na-row.na-points .na-points-input').fill('0');
+  await page.locator('.na-row.na-points .na-points-input').press('Enter');
+  await page.waitForTimeout(700);
+  check('zero unawards (event hard-deleted)', psql(`SELECT count(*) FROM point_event WHERE note_id=${noteId}`).trim() === '0');
   check('all three rows undone (table empty)', await page.locator('.na-row').count() === 0);
 
   // Back into the pad for the sketch checks below.

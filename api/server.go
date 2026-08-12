@@ -307,6 +307,7 @@ func (s *Server) setupRouter() {
 			r.Get("/note-actions", s.noteActionHandlers.HandleList)
 			r.Put("/note-actions/date", s.noteActionHandlers.HandleSetDate)
 			r.Delete("/point-events/{event_id}", s.noteActionHandlers.HandleUnaward)
+			r.Put("/point-events/{event_id}", s.noteActionHandlers.HandleEditPoints)
 			r.Post("/notes/{note_id}/restore", s.noteActionHandlers.HandleRestore)
 			r.Post("/notes/{note_id}/uncomplete", s.noteActionHandlers.HandleUncomplete)
 

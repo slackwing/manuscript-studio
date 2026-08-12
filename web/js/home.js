@@ -138,6 +138,14 @@ const WriteSysHome = {
       }
       grid.appendChild(col);
     }
+    // TODAY marker: a little black triangle under today's column + caption.
+    // (The column itself stays plain gold — no special shade for today.)
+    const marker = document.getElementById('points-today');
+    if (marker) {
+      const c = Math.round((today.getTime() - windowStart.getTime()) / DAY);
+      marker.innerHTML = `<span class="pt-mark" style="left:${c * (CELL + GAP) + CELL / 2}px">
+        <span class="pt-arrow"></span><span class="pt-caption">TODAY</span></span>`;
+    }
   },
 
   esc(t) {
@@ -272,6 +280,7 @@ const WriteSysHome = {
       noteList = nt.slice(0, this.RECENT);
       html = (this.points ? `<section class="home-section" id="points-section">
           <div id="points-grid" class="points-grid"></div>
+          <div id="points-today" class="points-today-row"></div>
         </section>` : '')
         + this.section('Manuscripts', ms.length,
         ms.slice(0, this.RECENT).map(m => this.manuscriptCard(m)).join(''),
@@ -309,6 +318,20 @@ const WriteSysHome = {
     }
 
     this.renderPointsGrid();
+
+    // ?note=<id> deep-link (the settings table's go-to arrow): scroll to
+    // the note's card and flash it. Once — a later re-render must not yank
+    // the scroll back.
+    const targetNote = new URLSearchParams(window.location.search).get('note');
+    if (targetNote && !this._noteDeepLinked) {
+      const card = root.querySelector(`.card-note[data-note-id="${CSS.escape(targetNote)}"]`);
+      if (card) {
+        this._noteDeepLinked = true;
+        card.scrollIntoView({ block: 'center' });
+        card.classList.add('note-flash');
+        setTimeout(() => card.classList.remove('note-flash'), 2400);
+      }
+    }
 
     // Manuscript card's "daily tasks" link (a span — the card itself is an
     // anchor, so stop the card navigation and go to the daily view).

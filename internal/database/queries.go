@@ -578,6 +578,27 @@ func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSent
 	return int(tag.RowsAffected()), nil
 }
 
+// CopySuggestionsForwardBulk: CopySuggestionsForward over every (from, to)
+// pair in ONE statement — the migration processor carries suggestions for
+// every exact-match pairing, and a round-trip per sentence made this scale
+// with manuscript size. Pairs are parallel slices; returns rows inserted.
+func (db *DB) CopySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []string) (int, error) {
+	if len(fromIDs) == 0 {
+		return 0, nil
+	}
+	tag, err := db.Pool.Exec(ctx, `
+		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
+		SELECT m.to_id, sc.user_id, sc.text, NOW(), NOW()
+		FROM unnest($1::text[], $2::text[]) AS m(from_id, to_id)
+		JOIN suggested_change sc ON sc.sentence_id = m.from_id
+		ON CONFLICT (sentence_id, user_id) DO NOTHING
+	`, fromIDs, toIDs)
+	if err != nil {
+		return 0, fmt.Errorf("copy suggestions forward: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 // SetPreviousSentenceID: used by the backfill CLI. The migration processor
 // sets this at insert time instead.
 func (db *DB) SetPreviousSentenceID(ctx context.Context, sentenceID string, previousSentenceID *string) error {
@@ -623,23 +644,19 @@ func (db *DB) CreateSentences(ctx context.Context, sentences []models.Sentence) 
 	}
 	defer tx.Rollback(ctx)
 
-	query := `
-		INSERT INTO sentence (sentence_id, migration_id, commit_hash, text, ordinal, previous_sentence_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`
-
-	for _, s := range sentences {
-		_, err := tx.Exec(ctx, query,
-			s.SentenceID,
-			s.MigrationID,
-			s.CommitHash,
-			s.Text,
-			s.Ordinal,
-			s.PreviousSentenceID,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to insert sentence %s: %w", s.SentenceID, err)
-		}
+	// COPY, not row-at-a-time INSERTs: a migration writes ~1000+ rows, and one
+	// network round-trip per row made this the slowest phase of every push —
+	// any DB latency blip multiplied by the row count.
+	rows := make([][]interface{}, len(sentences))
+	for i, s := range sentences {
+		rows[i] = []interface{}{s.SentenceID, s.MigrationID, s.CommitHash, s.Text, s.Ordinal, s.PreviousSentenceID}
+	}
+	if _, err := tx.CopyFrom(ctx,
+		pgx.Identifier{"sentence"},
+		[]string{"sentence_id", "migration_id", "commit_hash", "text", "ordinal", "previous_sentence_id"},
+		pgx.CopyFromRows(rows),
+	); err != nil {
+		return fmt.Errorf("failed to bulk-insert sentences: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -666,15 +683,19 @@ func (db *DB) StoreCommandSlugs(ctx context.Context, migrationID int, slugs []se
 		return fmt.Errorf("failed to clear command_slug for migration %d: %w", migrationID, err)
 	}
 
+	// One pipelined batch instead of a round-trip per slug (ON CONFLICT rules
+	// out COPY here).
 	const q = `
 		INSERT INTO command_slug (migration_id, slug, sentence_id, kind)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (migration_id, slug) DO NOTHING
 	`
+	b := &pgx.Batch{}
 	for _, s := range slugs {
-		if _, err := tx.Exec(ctx, q, migrationID, s.Slug, s.SentenceID, string(s.Kind)); err != nil {
-			return fmt.Errorf("failed to insert slug %q for migration %d: %w", s.Slug, migrationID, err)
-		}
+		b.Queue(q, migrationID, s.Slug, s.SentenceID, string(s.Kind))
+	}
+	if err := tx.SendBatch(ctx, b).Close(); err != nil {
+		return fmt.Errorf("failed to insert slugs for migration %d: %w", migrationID, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1408,6 +1429,44 @@ func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.Not
 	return &av, nil
 }
 
+// GetActiveNotesForSentences: GetActiveNotesForSentence over a whole ID set
+// in ONE query — the migration processor asks about every mapped old
+// sentence, and a round-trip per sentence made note collection scale with
+// manuscript size instead of note count.
+func (db *DB) GetActiveNotesForSentences(ctx context.Context, sentenceIDs []string) (map[string][]models.Note, error) {
+	byID := make(map[string][]models.Note)
+	if len(sentenceIDs) == 0 {
+		return byID, nil
+	}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
+		       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id
+		FROM note a
+		WHERE a.sentence_id = ANY($1)
+		  AND a.deleted_at IS NULL
+		  AND a.completed_at IS NULL
+	`, sentenceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query notes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a models.Note
+		if err := rows.Scan(&a.NoteID, &a.SentenceID, &a.UserID, &a.Color, &a.Body,
+			&a.Priority, &a.TaskType, &a.Impact, &a.Blocked, &a.Position,
+			&a.CreatedAt, &a.UpdatedAt, &a.DeletedAt, &a.CompletedAt, &a.SketchID); err != nil {
+			return nil, fmt.Errorf("failed to scan note: %w", err)
+		}
+		byID[a.SentenceID] = append(byID[a.SentenceID], a)
+	}
+	// A connection drop mid-iteration would otherwise return a PARTIAL map as
+	// success — the migration processor would silently strand missing notes.
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating notes: %w", err)
+	}
+	return byID, nil
+}
+
 func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
 		SELECT a.note_id, a.sentence_id, a.user_id, a.color, a.body,
@@ -2115,6 +2174,21 @@ func (db *DB) DeletePointEvent(ctx context.Context, eventID int, username string
 		DELETE FROM point_event pe USING note n
 		WHERE pe.point_event_id = $1 AND n.note_id = pe.note_id AND n.user_id = $2
 	`, eventID, username)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// UpdatePointEvent edits an award's value in place (the settings table's
+// inline "edit N points"). Ownership via the event's note. false = no such
+// event owned by this user.
+func (db *DB) UpdatePointEvent(ctx context.Context, eventID int, username string, points int) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE point_event pe SET points = $3
+		FROM note n
+		WHERE pe.point_event_id = $1 AND n.note_id = pe.note_id AND n.user_id = $2
+	`, eventID, username, points)
 	if err != nil {
 		return false, err
 	}
