@@ -281,6 +281,41 @@ const WriteSysNotes = {
     // scrollHeight is 0 on detached elements — re-run after DOM-attach so
     // pre-existing long notes open at full height instead of waiting for input.
     container.querySelectorAll('.note-input').forEach(t => this.autoResizeTextarea(t));
+
+    // Mobile: the suggest-edit modal's floating note stack mirrors the margin.
+    // Every mutation path (delete/complete/color/…) funnels through this
+    // re-render, so refreshing the stack here keeps it in sync for free.
+    this.refreshMobileNoteStack();
+  },
+
+  // ---- Mobile note stack (the margin is hidden ≤1239px) ----
+  // The suggest-edit modal hosts the sentence's notes as floating cards
+  // below it — the SAME shared widget + handler wiring as the margin
+  // (createStickyNoteElement), just parented to a floating container.
+  buildMobileNoteStack(sentenceId, sentenceText) {
+    this.commitPendingNote(null);
+    this.currentSentenceId = sentenceId;
+    this.currentSentenceText = sentenceText || '';
+    const all = (window.WriteSysRenderer && window.WriteSysRenderer.currentNotes) || [];
+    this.notes = all.filter(a => a.sentence_id === sentenceId);
+    if (!this.notes.length) return null;
+    const stack = document.createElement('div');
+    stack.id = 'sgm-notes-stack';
+    this.populateMobileNoteStack(stack);
+    return stack;
+  },
+
+  populateMobileNoteStack(stack) {
+    stack.innerHTML = '';
+    this.notes.forEach(note => stack.appendChild(this.createStickyNoteElement(note)));
+    stack.querySelectorAll('.note-input').forEach(t => this.autoResizeTextarea(t));
+  },
+
+  refreshMobileNoteStack() {
+    const stack = document.getElementById('sgm-notes-stack');
+    if (!stack) return;
+    if (!this.notes.length) { stack.remove(); return; }
+    this.populateMobileNoteStack(stack);
   },
 
   createNextAnnotatedSentenceButton() {

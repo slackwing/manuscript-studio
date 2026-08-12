@@ -2278,10 +2278,10 @@ p.section-break {
 #suggestion-modal .sgm-left { flex: 1; display: flex; flex-direction: column; }
 #suggestion-modal .sgm-left .sn-text-wrap { flex: 1; }
 #suggestion-modal .sgm-version-text { flex: 1; overflow-y: auto; }
-.sgm-close {
-  font-size: 15px;
-  line-height: 1;
-}
+/* The widget chrome gives its header no padding of its own here (no
+   .sn-head-left wrapper) — pad it so SUGGEST EDIT doesn't hug the corner.
+   No close button: clicking the dark backdrop (or Escape) closes. */
+#suggestion-modal .sn-header { padding: 8px 12px; align-items: center; }
 
 .suggestion-modal-title {
   font-size: 16px;
@@ -3079,7 +3079,7 @@ p.section-break {
     top: 40px;
     left: 0 !important;          /* beat the inline left JS sets for desktop */
     width: 33.333%;
-    height: 104px;               /* ~2.6x the 40px top bar */
+    height: 135px;               /* was 104px; +30% breathing room */
     box-sizing: border-box;
     padding: 6px 8px;
     flex-direction: column;
@@ -3103,18 +3103,46 @@ p.section-break {
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
   #mc-info { font-size: 9px; text-align: center; }
   #manuscript-chrome #push-button-container { margin-top: 2px; }
-  /* The second bar draws its own full-width border; no tab rule here. */
-  #manuscript-chrome .pane-tabs { justify-content: center; margin-top: 5px; padding-bottom: 0; border-bottom: none; }
+  /* Pane tabs leave the chrome cell and become REAL TABS capping the right
+     two-thirds: a fixed strip between the top bar and the outline/stats
+     content. (position:fixed escapes the chrome's overflow:hidden.) */
+  #manuscript-chrome .pane-tabs {
+    position: fixed;
+    top: 40px;
+    left: 33.333%;
+    width: 66.667%;
+    height: 26px;
+    margin: 0;
+    padding: 0 10px;
+    box-sizing: border-box;
+    background: #fff;
+    border-bottom: 1px solid #e3e0d8;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    pointer-events: auto;
+    z-index: 101;
+  }
+  #manuscript-chrome .pane-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;         /* the active rule sits ON the strip's rule */
+  }
+  #manuscript-chrome .pane-tab.active { border-bottom-color: #57503f; }
+  #manuscript-chrome .pane-tab:hover { text-decoration: none; }
 
   /* --- second bar, right two-thirds: the outline (only when there's real
          structure — an outline-less manuscript shows no empty bar) --- */
   #outline-margin.has-outline {
     display: block !important;
-    top: 40px;
+    top: 66px;                   /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
-    height: 104px;
-    max-height: 104px;
+    height: 109px;               /* 135 bar − 26 tabs */
+    max-height: 109px;
     box-sizing: border-box;
     padding: 6px 10px 6px 10px;
     background: #fff;
@@ -3134,11 +3162,11 @@ p.section-break {
      (visibility itself is decided by the .pane-on/.pane-off rules at the
      very end of the file). */
   #stats-margin.pane-on {
-    top: 40px;
+    top: 66px;                   /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
-    height: 104px;
-    max-height: 104px;
+    height: 109px;               /* 135 bar − 26 tabs */
+    max-height: 109px;
     box-sizing: border-box;
     padding: 6px 10px;
     background: #fff;
@@ -3160,7 +3188,7 @@ p.section-break {
              version stripped all of these to "maximize" width — that made the
              pages stop looking like pages. Don't do that again; a dedicated
              mobile UI comes later.) --- */
-  #app-container { padding-top: 144px; }   /* 40 top bar + 104 second bar */
+  #app-container { padding-top: 175px; }   /* 40 top bar + 135 second bar */
   .pagedjs_pages {
     margin-top: 0 !important;
     /* small top/bottom breathing room; the horizontal fit is handled by the
@@ -3188,10 +3216,37 @@ p.section-break {
          loads at 1:1 with no side-scroll. (Pre-existing; exposed once the rest
          of the mobile layout was correct.) --- */
   html, body { overflow-x: hidden; max-width: 100%; }
-  /* The sticky-note margin isn't part of the mobile layout yet (a dedicated
-     mobile notes UI comes later); it's positioned for the desktop gutter, so
-     on mobile it just juts off-screen right. Hide it so it can't add width. */
+  /* The sticky-note margin isn't part of the mobile layout (notes float
+     under the suggest-edit modal instead — #sgm-notes-stack); it's positioned
+     for the desktop gutter, so on mobile it just juts off-screen right. Hide
+     it so it can't add width. */
   #note-margin { display: none !important; }
+
+  /* Suggest-edit modal hugs the TOP on mobile (centered would fight the
+     on-screen keyboard) and stays short enough to leave room for the note
+     stack floating beneath it. */
+  #suggestion-modal {
+    top: 8px;
+    transform: translateX(-50%);
+    max-height: 62vh;
+  }
+  /* The sentence's notes, stacked below the modal on the dark backdrop —
+     each card floats as its own island (gap shows the backdrop through).
+     Position (top/max-height) is set by JS tracking the modal's bottom edge. */
+  #sgm-notes-stack {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(980px, 94vw);
+    z-index: 201;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #sgm-notes-stack .sticky-note {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  }
 }
 
 /* In the wider part of the compact layout (769–1239px: too narrow for the

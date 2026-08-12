@@ -13,7 +13,7 @@ const WriteSysScratchRender = {
     const root = host.attachShadow({ mode: 'open' });
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'css/book.css?v=162';
+    link.href = 'css/book.css?v=163';
     root.appendChild(link);
     const style = document.createElement('style');
     style.textContent = `
@@ -39,6 +39,12 @@ const WriteSysScratchRender = {
         background: transparent !important;
       }
       .scratch-book .ph { cursor: default; }
+      /* Mobile (matches scratchpad.css's widget block): serif render 20%
+         smaller, text padding halved. Media queries are viewport-based, so
+         they work inside the shadow tree. */
+      @media (max-width: 640px) {
+        .scratch-book { font-size: 8.5pt; padding: 7px 9px; }
+      }
     `;
     root.appendChild(style);
     const div = document.createElement('div');

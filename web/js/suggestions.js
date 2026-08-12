@@ -156,9 +156,6 @@ const WriteSysSuggestions = {
         <div class="sn-main">
           <div class="sn-header">
             <span class="sn-status" title="Your edit auto-saves as you type. Closing flushes first — nothing is lost.">Suggest edit</span><span class="sn-save"></span>
-            <span class="sn-actions">
-              <button type="button" class="sgm-close" title="Close (your edit auto-saves)">×</button>
-            </span>
           </div>
           <div class="sn-body">
             <div class="sn-split">
@@ -180,6 +177,30 @@ const WriteSysSuggestions = {
       </div>`;
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
+
+    // MOBILE: the note margin is hidden, so the sentence's notes float here —
+    // stacked below this modal on the same dark overlay, each card its own
+    // island (the SHARED note widget, same handlers as the margin). The stack
+    // tracks the modal's bottom edge as it grows/shrinks.
+    let notesStack = null;
+    let unplaceStack = null;
+    if (window.matchMedia('(max-width: 1239px)').matches
+        && window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
+      notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
+      if (notesStack) {
+        document.body.appendChild(notesStack);
+        const place = () => {
+          const r = modal.getBoundingClientRect();
+          notesStack.style.top = (r.bottom + 12) + 'px';
+          notesStack.style.maxHeight = Math.max(72, window.innerHeight - r.bottom - 24) + 'px';
+        };
+        place();
+        const ro = new ResizeObserver(place);
+        ro.observe(modal);
+        window.addEventListener('resize', place);
+        unplaceStack = () => { ro.disconnect(); window.removeEventListener('resize', place); };
+      }
+    }
 
     // Version selector → right pane (read-only, same monospace metrics as the
     // edit pane so the two align char-for-char).
@@ -255,6 +276,11 @@ const WriteSysSuggestions = {
     const close = async () => {
       if (!(await saver.flush())) return;
       saver.destroy();
+      if (notesStack) {
+        if (unplaceStack) unplaceStack();
+        notesStack.remove();
+        notesStack = null;
+      }
       overlay.remove();
       modal.remove();
       const finalText = (this.bySentenceId[sentenceId] !== undefined)
@@ -279,7 +305,6 @@ const WriteSysSuggestions = {
       }
     };
     overlay.addEventListener('click', close);
-    modal.querySelector('.sgm-close').addEventListener('click', close);
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
