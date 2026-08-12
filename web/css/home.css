@@ -439,9 +439,11 @@ body.home-page {
       linear-gradient(rgba(243, 241, 236, 0.75), rgba(243, 241, 236, 0.75)),
       url("../img/login-bookshelf.jpg") center / cover no-repeat;
   }
-  /* Cards ~30% smaller — zoom (unlike transform) actually reflows layout, so
+  /* Cards ~20% smaller — zoom (unlike transform) actually reflows layout, so
      the whole card (text, chips, icons) shrinks proportionally and the
-     auto-fill grid recalculates to TWO columns on a phone. Headers, points
-     grid and the rest of the page stay as they are. */
-  .card-grid { zoom: 0.7; }
+     auto-fill grid recalculates to TWO columns on a phone. (0.7 read too
+     small; 0.8 with slimmer page gutters keeps both columns on ~390px
+     phones.) Headers, points grid and the rest of the page stay as they are. */
+  .home-main { padding-left: 14px; padding-right: 14px; }
+  .card-grid { zoom: 0.8; }
 }
