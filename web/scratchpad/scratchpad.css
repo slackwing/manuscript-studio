@@ -686,11 +686,11 @@
      the sheet's natural padding stays — with the smaller mobile fonts that
      modest margin reads right (full-bleed tried and reverted). */
   .sn-widget { margin-left: 0; margin-right: 0; }
-  /* Widget text 20% smaller (12→10 mono); padding around it halved
-     (10px 12px → 5px 6px). The serif render pane scales inside its shadow
-     root — see scratch-render.js. */
-  .sn-text, .sn-text-overlay { font-size: 10px; padding: 5px 6px; }
-  textarea.sn-mono-ro { font-size: 10px; padding: 5px 6px; }
+  /* Widget monospace 12→9 (10 still read big next to the compact serif
+     preview); padding around it halved (10px 12px → 5px 6px). The serif
+     render pane scales inside its shadow root — see scratch-render.js. */
+  .sn-text, .sn-text-overlay { font-size: 9px; padding: 5px 6px; }
+  textarea.sn-mono-ro { font-size: 9px; padding: 5px 6px; }
   /* Action icons smaller + tighter so the split view's half-toolbars fit
      (icons only — the tap targets stay buttons). */
   .sn-widget .sn-actions { gap: 2px; }

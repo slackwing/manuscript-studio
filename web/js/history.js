@@ -110,15 +110,21 @@ const WriteSysHistory = {
 
         const sentenceRect = sentence.getBoundingClientRect();
         const pageRect = pageArea.getBoundingClientRect();
+        // Rect deltas are SCREEN px but this container lives inside the
+        // (mobile-)scaled page subtree — convert to layout px or the offset
+        // scales twice and the bars drift off their sentences (see
+        // renderer.pageScale). Computed line/font sizes are already layout px.
+        const s = (window.WriteSysRenderer && window.WriteSysRenderer.pageScale)
+          ? window.WriteSysRenderer.pageScale() : 1;
 
         // sentenceRect.height is the text-run box, not the full line slot;
         // pad by half the line-leading so adjacent bars tile without gaps.
-        const lineHeight = parseFloat(getComputedStyle(sentence).lineHeight) || sentenceRect.height;
-        const fontHeight = parseFloat(getComputedStyle(sentence).fontSize) || sentenceRect.height;
+        const lineHeight = parseFloat(getComputedStyle(sentence).lineHeight) || sentenceRect.height / s;
+        const fontHeight = parseFloat(getComputedStyle(sentence).fontSize) || sentenceRect.height / s;
         const padPerSide = Math.max(0, (lineHeight - fontHeight) / 2);
 
-        const top = Math.round(sentenceRect.top - pageRect.top - padPerSide);
-        const height = Math.round(sentenceRect.height + padPerSide * 2);
+        const top = Math.round((sentenceRect.top - pageRect.top) / s - padPerSide);
+        const height = Math.round(sentenceRect.height / s + padPerSide * 2);
 
         const totalWidthEm = this.LANE_COUNT * this.LANE_WIDTH_EM + (this.LANE_COUNT - 1) * this.LANE_GAP_EM;
         const container = document.createElement('div');

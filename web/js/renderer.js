@@ -979,10 +979,26 @@ const WriteSysRenderer = {
     return barNotes;
   },
 
+  // Margin bars are positioned INSIDE the scaled .pagedjs_pages subtree using
+  // getBoundingClientRect deltas — SCREEN px. On mobile the sheet wears
+  // transform:scale(s), so a screen-px offset applied as a style inside the
+  // subtree gets scaled AGAIN (s² instead of s): bars drift progressively up
+  // the page — the "highlight lines not aligned to the text" bug. Divide the
+  // rect math by the current scale to get layout px, which are scale-proof.
+  pageScale() {
+    const pages = document.querySelector('.pagedjs_pages');
+    if (!pages) return 1;
+    const t = getComputedStyle(pages).transform;
+    if (!t || t === 'none') return 1;
+    const a = parseFloat((t.match(/matrix\(([^,]+)/) || [])[1]);
+    return a > 0 ? a : 1;
+  },
+
   calculateRainbowBarPosition(sentenceRect, pageRect) {
+    const s = this.pageScale();
     return {
-      top: Math.round(sentenceRect.top - pageRect.top),
-      height: Math.round(sentenceRect.height)
+      top: Math.round((sentenceRect.top - pageRect.top) / s),
+      height: Math.round(sentenceRect.height / s)
     };
   },
 

@@ -3234,6 +3234,10 @@ p.section-break {
     overflow-y: auto;
     padding: 8px 0 32px;
     -webkit-overflow-scrolling: touch;
+    /* Above the fixed top bar (#controls, z 10000) — desktop centers the
+       modal clear of the bar, but here it sits at the top and was sliding
+       UNDER it, decapitating the title bar. */
+    z-index: 21000;
   }
   #suggestion-modal {
     position: static;
