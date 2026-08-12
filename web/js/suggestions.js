@@ -321,8 +321,14 @@ const WriteSysSuggestions = {
       }
     });
 
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    // Autofocus only on desktop: on a phone, focusing pops the keyboard and
+    // the browser PANS to the caret — shoving the modal's title bar off-screen
+    // and burying the note stack. Mobile users tap the pane when they want to
+    // type; until then the modal (and the notes below it) stay fully visible.
+    if (!window.matchMedia('(max-width: 1239px)').matches) {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
     pane.autoGrow();
     if (restored) {
       modal.querySelector('.sn-save').textContent = 'restored unsaved draft';
