@@ -404,11 +404,11 @@ body.home-page {
 
 /* All-notes search filters: the shared criteria chip-row + literal text
    search, above the notes grid. */
-.nf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
-.nf-bar .nf-crit { margin: 0; flex: 0 1 auto; }
+/* Chips row on top; the text search sits on ITS OWN LINE below. */
+.nf-bar { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 0 0 14px; }
+.nf-bar .nf-crit { margin: 0; }
 .nf-text {
-  flex: 1 1 180px;
-  min-width: 140px;
+  width: 100%;
   padding: 6px 10px;
   border: 1px solid #ccc;
   border-radius: 6px;
