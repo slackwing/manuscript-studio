@@ -136,10 +136,16 @@ const WriteSysSketchFromSelection = {
       // (bare &sketch#id is prose per grammar) and the outline skips
       // unlabeled anchors.
       const opener = `&sketch#${slug}{}`;
+      // The first sentence keeps ITS OWN leading marker after the opener —
+      // "But first…" starting an indented paragraph must still start one
+      // inside the region. Only a marker-less (mid-paragraph) start gets a
+      // plain "\n" join (canonicalize's same-paragraph anchor form).
+      const first = eff(firstId);
+      const joined = /^\n[\n\t]/.test(first) ? `${opener}${first}` : `${opener}\n${first}`;
       if (firstId === lastId) {
-        await put(firstId, `${opener}\n\t${eff(firstId)}\n&end#${slug}`);
+        await put(firstId, `${joined}\n&end#${slug}`);
       } else {
-        await put(firstId, `${opener}\n\t${eff(firstId)}`);
+        await put(firstId, joined);
         await put(lastId, `${eff(lastId)}\n&end#${slug}`);
       }
       this.close();

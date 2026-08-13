@@ -27,3 +27,10 @@
 {"name": "hash header trailing space stripped", "in": "## Chapter 1   ", "out": "## Chapter 1"}
 {"name": "whole-block &end emits just its token", "in": "  &end#kegparty  ", "out": "&end#kegparty"}
 {"name": "section-marked &end keeps its marker", "in": "\n\n&end#kegparty", "out": "\n\n&end#kegparty"}
+{"name": "leading anchor keeps indented-paragraph marker before prose", "in": "&sketch#abc{}\n\tBut first we must get there.", "out": "&sketch#abc{}\n\tBut first we must get there."}
+{"name": "leading anchor keeps section marker before prose", "in": "&anchor#x{lbl}\n\nNew section prose.", "out": "&anchor#x{lbl}\n\nNew section prose."}
+{"name": "messy marker run after anchor collapses to indented", "in": "\n&sketch#abc{}\n\n\tBut first we must get there.", "out": "&sketch#abc{}\n\tBut first we must get there."}
+{"name": "wrap artifact \\n\\t\\n\\t after anchor collapses to one indent", "in": "&sketch#abc{}\n\t\n\tBut first we must get there.", "out": "&sketch#abc{}\n\tBut first we must get there."}
+{"name": "spaces-only gap after anchor stays same-paragraph", "in": "&sketch#abc{} same paragraph prose.", "out": "&sketch#abc{}\nsame paragraph prose."}
+{"name": "single newline after anchor stays same-paragraph", "in": "&sketch#abc{}\nsame paragraph prose.", "out": "&sketch#abc{}\nsame paragraph prose."}
+{"name": "outer marker plus anchor marker both survive", "in": "\n\t&sketch#abc{}\n\tIndented para.", "out": "\n\t&sketch#abc{}\n\tIndented para."}

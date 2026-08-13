@@ -73,7 +73,19 @@ func canonicalizeBody(body string) string {
 			restTrimmed := strings.TrimLeft(rest, " \t\n")
 			if restTrimmed != "" {
 				// Anchor leads a paragraph, prose follows → block anchor form.
-				return cmd.Raw + "\n" + canonicalizeProse(restTrimmed)
+				// A STRUCTURAL MARKER in the whitespace between anchor and
+				// prose is the prose's paragraph break — collapsing it to a
+				// bare "\n" merged the paragraph into the previous one (the
+				// sketch-from-selection "new paragraph removed" bug). Keep
+				// \n\t (indented) or \n\n (section); plain runs stay "\n".
+				ws := rest[:len(rest)-len(restTrimmed)]
+				join := "\n"
+				if strings.Contains(ws, "\n\t") {
+					join = "\n\t"
+				} else if strings.Contains(ws, "\n\n") {
+					join = "\n\n"
+				}
+				return cmd.Raw + join + canonicalizeProse(restTrimmed)
 			}
 			// Anchor with no trailing prose is a whole-block command.
 			return cmd.Raw

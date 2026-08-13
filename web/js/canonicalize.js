@@ -45,9 +45,17 @@ const WriteSysCanonicalize = (function () {
       if (trimmed.startsWith('&anchor') || trimmed.startsWith('&snippet') || trimmed.startsWith('&sketch')) {
         const a = cmd.parse(trimmed);
         if (a && (a.kind === 'anchor' || a.kind === 'snippet')) {
-          const rest = trimmed.slice(a.raw.length).replace(/^[ \t\n]+/, '');
+          const restRaw = trimmed.slice(a.raw.length);
+          const rest = restRaw.replace(/^[ \t\n]+/, '');
           if (rest !== '') {
-            return a.raw + '\n' + canonicalizeProse(rest);
+            // A STRUCTURAL MARKER in the whitespace between anchor and prose
+            // is the prose's paragraph break — collapsing it to a bare "\n"
+            // merged the paragraph into the previous one (the
+            // sketch-from-selection "new paragraph removed" bug). Keep \n\t
+            // (indented) or \n\n (section); plain runs stay "\n". Go lockstep.
+            const ws = restRaw.slice(0, restRaw.length - rest.length);
+            const join = ws.includes('\n\t') ? '\n\t' : (ws.includes('\n\n') ? '\n\n' : '\n');
+            return a.raw + join + canonicalizeProse(rest);
           }
           return a.raw;
         }
