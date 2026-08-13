@@ -38,6 +38,16 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.keyboard.press('Control+Alt+3');
   types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name + ':' + (window.WriteSysScratchpad.view.state.doc.firstChild.attrs.level || ''));
   check('Ctrl+Alt+3 → H3', types === 'heading:3', types);
+  // TOGGLE: the same shortcut (or button) on an active heading reverts to a
+  // paragraph — "can't unselect H2" regression.
+  await page.keyboard.press('Control+Alt+3');
+  types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name);
+  check('Ctrl+Alt+3 again toggles BACK to paragraph', types === 'paragraph', types);
+  await page.keyboard.press('Control+Alt+2');
+  await page.evaluate(() => { /* toolbar path: click the active H2 button */ });
+  await page.locator('.sp-toolbar button', { hasText: /^H2$/ }).click();
+  types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name);
+  check('clicking the active H2 button unsets it', types === 'paragraph', types);
 
   // Lists / quote on a fresh paragraph.
   await page.keyboard.press('Control+End');

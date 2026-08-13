@@ -47,6 +47,34 @@ function psql(sql) {
 
   await page.screenshot({ path: `${OUT}/home-notes.png` });
 
+  // ---- All-notes view: search filters (shared criteria row + literal text) ----
+  psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, scratchpad_id) VALUES ('test','blue','Come back to this scene.','can','hone','a1',${padId})`);
+  await page.goto(new URL('home.html?view=notes', HOME_URL).href);
+  await page.waitForSelector('.nf-bar');
+  check('filter bar shows the shared criteria chips',
+    await page.locator('#nf-crit .dim-type').count() === 1
+    && await page.locator('#nf-crit .blocked-chip').count() === 1
+    && await page.locator('#nf-crit .dr-tag-input').count() === 1);
+  await page.waitForSelector('.card-note');
+  const before = await page.locator('.card-note').count();
+  check('both notes listed unfiltered', before >= 2, String(before));
+  // literal text: "Come back" matches, "Come on back" would not
+  await page.locator('#nf-text').fill('Come back');
+  await page.waitForFunction(() => document.querySelectorAll('.card-note').length === 1, null, { timeout: 5000 });
+  check('literal text search narrows to the matching note',
+    /Come back/.test(await page.locator('.card-note .note-readonly-body').first().textContent()));
+  await page.locator('#nf-text').fill('Come on back');
+  await page.waitForFunction(() => document.querySelectorAll('.card-note').length === 0, null, { timeout: 5000 });
+  check('literal match only — "Come on back" matches nothing',
+    await page.locator('.home-empty').textContent().then(t => /No matching/.test(t)));
+  await page.locator('#nf-text').fill('');
+  // color filter via the shared dot: pick blue
+  await page.locator('#nf-crit .color-dot-solo').click();
+  await page.locator('#nf-crit .dot-palette .dot-option[data-color="blue"]').click();
+  await page.waitForFunction(() => document.querySelectorAll('.card-note').length === 1, null, { timeout: 5000 });
+  check('color chip filters to the blue note',
+    await page.locator('.card-note').evaluate(el => el.classList.contains('color-blue')));
+
   // cleanup
   psql(`DELETE FROM note WHERE scratchpad_id=${padId}; DELETE FROM scratchpad WHERE scratchpad_id=${padId};`);
   await browser.close();

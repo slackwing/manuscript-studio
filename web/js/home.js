@@ -194,6 +194,58 @@ const WriteSysHome = {
   // come from buildNoteElement, so they always match the real note (font,
   // chips, everything). Only the frame, the context, and click-to-open are
   // card-specific. Returns an HTMLElement (not a string) since it composes DOM.
+  // ---- All-notes search filters -----------------------------------------
+  // The SAME criteria chip-row the settings Daily-task-rules builder uses
+  // (note-widget.js buildCriteriaRow) plus a literal text search. Filtering
+  // is client-side over the already-loaded notes; only the GRID re-renders,
+  // so the text input keeps focus while typing.
+  mountNoteFilters(root) {
+    const grid = root.querySelector('[data-note-grid]');
+    if (!grid) return;
+    if (!this.noteFilter) {
+      this.noteFilter = { task_type: null, priority: null, impact: null, blocked: null, color: null, tags: [], text: '' };
+    }
+    const bar = document.createElement('div');
+    bar.className = 'nf-bar';
+    bar.innerHTML = '<div id="nf-crit" class="dr-row nf-crit"></div>'
+      + '<input type="text" id="nf-text" class="nf-text" placeholder="search text (literal)">';
+    grid.parentNode.insertBefore(bar, grid);
+    const txt = bar.querySelector('#nf-text');
+    txt.value = this.noteFilter.text;
+    txt.addEventListener('input', () => {
+      this.noteFilter.text = txt.value;
+      this.applyNoteFilter();
+    });
+    this.renderNoteCritRow();
+    this.applyNoteFilter();
+  },
+
+  renderNoteCritRow() {
+    const host = document.getElementById('nf-crit');
+    if (!host) return;
+    window.WriteSysNoteWidget.buildCriteriaRow(host, this.noteFilter, () => {
+      this.renderNoteCritRow();
+      this.applyNoteFilter();
+    });
+  },
+
+  applyNoteFilter() {
+    const grid = document.querySelector('[data-note-grid]');
+    if (!grid) return;
+    const f = this.noteFilter;
+    const W = window.WriteSysNoteWidget;
+    const needle = f.text.trim().toLowerCase();
+    const matches = (this.data.notes || []).filter(n =>
+      W.criteriaMatches(f, n)
+      && (!needle || (n.body || '').toLowerCase().includes(needle)));
+    grid.innerHTML = '';
+    if (!matches.length) {
+      grid.innerHTML = '<div class="home-empty">No matching notes.</div>';
+      return;
+    }
+    matches.forEach(n => grid.appendChild(this.noteCardEl(n)));
+  },
+
   noteCardEl(n) {
     const ctx = n.context || 'no context';
     const card = document.createElement('div');
@@ -316,6 +368,8 @@ const WriteSysHome = {
         else grid.outerHTML = '<div class="home-empty">Nothing here yet.</div>';
       }
     }
+
+    if (view === 'notes') this.mountNoteFilters(root);
 
     this.renderPointsGrid();
 

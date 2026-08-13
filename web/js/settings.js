@@ -248,62 +248,9 @@ WriteSysSettings.renderRuleBuilder = async function () {
   host.innerHTML = '';
   const rerender = () => this.renderRuleBuilder();
 
-  host.appendChild(W.buildDimChip({
-    cls: 'dim-type',
-    value: b.task_type || 'any',
-    loadOptions: async () => [{ value: 'any', label: 'any' }]
-      .concat((await W.listTaskTypes()).filter((t) => !t.deleted && t.is_task)
-        .map((t) => ({ value: t.name, label: t.name }))),
-    onPick: (v) => { b.task_type = v === 'any' ? null : v; rerender(); },
-  }));
-  host.appendChild(W.buildDimChip({
-    cls: 'dim-priority',
-    value: b.priority || 'any',
-    loadOptions: async () => ['any', 'can', 'would', 'should', 'must'].map((v) => ({ value: v, label: v })),
-    onPick: (v) => { b.priority = v === 'any' ? null : v; rerender(); },
-  }));
-  host.appendChild(W.buildDimChip({
-    cls: 'dim-impact',
-    value: b.impact || 'any',
-    loadOptions: async () => ['any', 'n/a', 'sentence', 'chapter', 'novel', 'recurring'].map((v) => ({ value: v, label: v })),
-    onPick: (v) => { b.impact = v === 'any' ? null : v; rerender(); },
-  }));
-
-  const blocked = document.createElement('div');
-  blocked.className = 'blocked-chip dr-blocked' + (b.blocked ? ' active' : '');
-  blocked.title = b.blocked ? 'Rule matches BLOCKED tasks — click for any' : 'Click: rule matches only BLOCKED tasks';
-  blocked.innerHTML = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5.5 5.5l9 9"/></svg>';
-  blocked.addEventListener('click', () => { b.blocked = b.blocked ? null : true; rerender(); });
-  host.appendChild(blocked);
-
-  host.appendChild(W.buildColorDot({
-    colors: ['any', 'yellow', 'green', 'blue', 'purple', 'red', 'orange'],
-    current: b.color || 'any',
-    onPick: (c) => { b.color = c === 'any' ? null : c; },
-  }));
-
-  b.tags.forEach((t, i) => {
-    const c = document.createElement('span');
-    c.className = 'tag-chip';
-    c.textContent = t;
-    const x = document.createElement('span');
-    x.className = 'dr-tag-x';
-    x.textContent = ' ×';
-    x.addEventListener('click', () => { b.tags.splice(i, 1); rerender(); });
-    c.appendChild(x);
-    host.appendChild(c);
-  });
-  const tagIn = document.createElement('input');
-  tagIn.type = 'text';
-  tagIn.className = 'dr-tag-input';
-  tagIn.placeholder = '+tag';
-  tagIn.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && tagIn.value.trim()) {
-      b.tags.push(tagIn.value.trim());
-      rerender();
-    }
-  });
-  host.appendChild(tagIn);
+  // The SHARED criteria chip-row (note-widget.js) — the identical selectors
+  // the All-notes search filters use. Rule-only extras (count + Add) follow.
+  W.buildCriteriaRow(host, b, rerender);
 
   const count = document.createElement('input');
   count.type = 'number';

@@ -703,6 +703,90 @@
     return wrap;
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  // ---- Shared criteria chip-row ------------------------------------------
+  // ONE row of note-dimension selectors — task type / priority / impact /
+  // blocked / color / +tags, each wildcardable ("any") — used by BOTH the
+  // settings Daily-task-rules builder and the All-notes search filters.
+  // Renders into `host` (cleared), mutates `crit` in place; every change
+  // calls onChange, and the caller re-renders by calling this again.
+  // crit = { task_type, priority, impact, blocked, color, tags: [] } (null = any).
+  function buildCriteriaRow(host, crit, onChange) {
+    host.innerHTML = '';
+    const change = () => onChange();
+
+    host.appendChild(buildDimChip({
+      cls: 'dim-type',
+      value: crit.task_type || 'any',
+      loadOptions: async () => [{ value: 'any', label: 'any' }]
+        .concat((await listTaskTypes()).filter((t) => !t.deleted && t.is_task)
+          .map((t) => ({ value: t.name, label: t.name }))),
+      onPick: (v) => { crit.task_type = v === 'any' ? null : v; change(); },
+    }));
+    host.appendChild(buildDimChip({
+      cls: 'dim-priority',
+      value: crit.priority || 'any',
+      loadOptions: async () => ['any', 'can', 'would', 'should', 'must'].map((v) => ({ value: v, label: v })),
+      onPick: (v) => { crit.priority = v === 'any' ? null : v; change(); },
+    }));
+    host.appendChild(buildDimChip({
+      cls: 'dim-impact',
+      value: crit.impact || 'any',
+      loadOptions: async () => ['any', 'n/a', 'sentence', 'chapter', 'novel', 'recurring'].map((v) => ({ value: v, label: v })),
+      onPick: (v) => { crit.impact = v === 'any' ? null : v; change(); },
+    }));
+
+    const blocked = document.createElement('div');
+    blocked.className = 'blocked-chip dr-blocked' + (crit.blocked ? ' active' : '');
+    blocked.title = crit.blocked ? 'Matching BLOCKED tasks — click for any' : 'Click: match only BLOCKED tasks';
+    blocked.innerHTML = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5.5 5.5l9 9"/></svg>';
+    blocked.addEventListener('click', () => { crit.blocked = crit.blocked ? null : true; change(); });
+    host.appendChild(blocked);
+
+    host.appendChild(buildColorDot({
+      colors: ['any', 'yellow', 'green', 'blue', 'purple', 'red', 'orange'],
+      current: crit.color || 'any',
+      onPick: (c) => { crit.color = c === 'any' ? null : c; change(); },
+    }));
+
+    crit.tags.forEach((t, i) => {
+      const c = document.createElement('span');
+      c.className = 'tag-chip';
+      c.textContent = t;
+      const x = document.createElement('span');
+      x.className = 'dr-tag-x';
+      x.textContent = ' ×';
+      x.addEventListener('click', () => { crit.tags.splice(i, 1); change(); });
+      c.appendChild(x);
+      host.appendChild(c);
+    });
+    const tagIn = document.createElement('input');
+    tagIn.type = 'text';
+    tagIn.className = 'dr-tag-input';
+    tagIn.placeholder = '+tag';
+    tagIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && tagIn.value.trim()) {
+        crit.tags.push(tagIn.value.trim());
+        change();
+      }
+    });
+    host.appendChild(tagIn);
+  }
+
+  // criteriaMatches mirrors the server's daily-rule semantics (AND across
+  // dimensions; null = any; tags must ALL be present on the note).
+  function criteriaMatches(crit, note) {
+    if (crit.task_type && (note.task_type || '') !== crit.task_type) return false;
+    if (crit.priority && (note.priority || '') !== crit.priority) return false;
+    if (crit.impact && (note.impact || '') !== crit.impact) return false;
+    if (crit.blocked && !note.blocked) return false;
+    if (crit.color && note.color !== crit.color) return false;
+    if (crit.tags.length) {
+      const names = new Set((note.tags || []).map((t) => (t.tag_name || '').toLowerCase()));
+      if (!crit.tags.every((t) => names.has(t.toLowerCase()))) return false;
+    }
+    return true;
+  }
+
+  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

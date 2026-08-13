@@ -402,6 +402,21 @@ body.home-page {
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }
 
+/* All-notes search filters: the shared criteria chip-row + literal text
+   search, above the notes grid. */
+.nf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.nf-bar .nf-crit { margin: 0; flex: 0 1 auto; }
+.nf-text {
+  flex: 1 1 180px;
+  min-width: 140px;
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: 13px "Helvetica", sans-serif;
+  background: #fff;
+}
+.nf-text:focus { outline: none; border-color: #999; }
+
 /* Daily task rules: one row of the note's own chips + count + add. */
 .dr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
 .dr-rule { padding: 4px 0; border-bottom: 1px dashed #eceae4; margin-bottom: 6px; }

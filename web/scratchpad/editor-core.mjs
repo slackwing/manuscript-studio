@@ -1951,7 +1951,12 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { sep: true },
     ...[1, 2, 3, 4].map(l => ({
       label: 'H' + l, title: `Heading ${l} (Ctrl+Alt+${l})`,
-      run: setBlockType(schema.nodes.heading, { level: l }),
+      // TOGGLE: clicking the active heading reverts to a paragraph
+      // (plain setBlockType is a no-op on an already-set heading — the
+      // "can't unselect H2" trap).
+      run: (s, d) => headingActive(s, l)
+        ? setBlockType(schema.nodes.paragraph)(s, d)
+        : setBlockType(schema.nodes.heading, { level: l })(s, d),
       active: s => headingActive(s, l),
     })),
     { sep: true },
@@ -2045,7 +2050,9 @@ export async function createScratchpadEditor(els, scratchpadId) {
         // Headings: Ctrl+Alt+1..4 (the Docs standard; plain Alt+N is the
         // browser's tab switcher in Firefox).
         ...Object.fromEntries([1, 2, 3, 4].map((l) => [
-          `Mod-Alt-${l}`, setBlockType(schema.nodes.heading, { level: l }),
+          `Mod-Alt-${l}`, (s, d) => headingActive(s, l)
+            ? setBlockType(schema.nodes.paragraph)(s, d)
+            : setBlockType(schema.nodes.heading, { level: l })(s, d),
         ])),
         // Lists + quote: the Docs/Notion conventions.
         'Shift-Mod-7': wrapInList(schema.nodes.ordered_list),
