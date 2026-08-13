@@ -13,7 +13,7 @@ const WriteSysScratchRender = {
     const root = host.attachShadow({ mode: 'open' });
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'css/book.css?v=166';
+    link.href = 'css/book.css?v=167';
     root.appendChild(link);
     const style = document.createElement('style');
     style.textContent = `

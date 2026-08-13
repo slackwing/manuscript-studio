@@ -1598,6 +1598,41 @@ func (db *DB) RemoveTagFromNote(ctx context.Context, noteID int, tagID int) erro
 	return nil
 }
 
+// TagCount: one row of the tag-autocomplete source — a tag name and how many
+// ACTIVE (non-deleted) notes wear it, most-common first.
+type TagCount struct {
+	TagName string `json:"tag_name"`
+	Count   int    `json:"count"`
+}
+
+// ListTagCounts powers the tag-input autocomplete: the user's tags ranked by
+// how many live notes carry them. Computed on demand — tag edits must show
+// immediately (a cron would lag), and the per-user tag set is tiny.
+func (db *DB) ListTagCounts(ctx context.Context, username string) ([]TagCount, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT t.tag_name, count(*) AS n
+		FROM tag t
+		JOIN note_tag nt ON nt.tag_id = t.tag_id
+		JOIN note a ON a.note_id = nt.note_id AND a.deleted_at IS NULL
+		WHERE t.user_id = $1
+		GROUP BY t.tag_name
+		ORDER BY n DESC, t.tag_name
+	`, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query tag counts: %w", err)
+	}
+	defer rows.Close()
+	out := []TagCount{}
+	for rows.Next() {
+		var tc TagCount
+		if err := rows.Scan(&tc.TagName, &tc.Count); err != nil {
+			return nil, fmt.Errorf("failed to scan tag count: %w", err)
+		}
+		out = append(out, tc)
+	}
+	return out, rows.Err()
+}
+
 func (db *DB) GetTagsForNote(ctx context.Context, noteID int) ([]models.Tag, error) {
 	query := `
 		SELECT t.tag_id, t.tag_name, t.user_id, t.created_at

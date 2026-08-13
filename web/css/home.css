@@ -462,3 +462,29 @@ body.home-page {
   .home-main { padding-left: 14px; padding-right: 14px; }
   .card-grid { zoom: 0.8; }
 }
+
+/* Tag autocomplete dropdown (shared note widget + criteria rows): existing
+   tags matching the typed prefix, most-used first, with live counts. */
+.tag-suggest {
+  position: absolute;
+  z-index: 30000;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px -8px rgba(20, 16, 8, 0.35);
+  padding: 3px;
+  font: 12px "Helvetica", sans-serif;
+}
+.tag-suggest-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #333;
+}
+.tag-suggest-row:hover, .tag-suggest-row.active { background: #eef4fb; }
+.tag-suggest-n { color: #a39d90; }
+

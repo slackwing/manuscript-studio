@@ -311,6 +311,7 @@ func (s *Server) setupRouter() {
 			r.Post("/notes/{note_id}/restore", s.noteActionHandlers.HandleRestore)
 			r.Post("/notes/{note_id}/uncomplete", s.noteActionHandlers.HandleUncomplete)
 
+			r.Get("/tag-counts", s.noteHandlers.HandleTagCounts)
 			r.Get("/notes/{note_id}/tags", s.noteHandlers.HandleGetTagsForNote)
 			r.Post("/notes/{note_id}/tags", s.noteHandlers.HandleAddTagToNote)
 			r.Delete("/notes/{note_id}/tags/{tag_id}", s.noteHandlers.HandleRemoveTagFromNote)

@@ -566,6 +566,7 @@
           const chip = e.target.closest('.tag-chip');
           if (handlers.onRemoveTag) {
             await handlers.onRemoveTag(parseInt(chip.dataset.tagId, 10), chip.dataset.tagName);
+            tagCounts.bust();
             // The component owns the re-render: every call site's handler just
             // mutates note.tags, and the chips redraw here — no site has to
             // remember to re-render (that drift is how the float lost its live
@@ -594,6 +595,110 @@
     return noteEl;
   }
 
+  // ---- Tag autocomplete ---------------------------------------------------
+  // Suggestion source: the user's tags ranked by live-note usage, served from
+  // localStorage instantly (then refreshed in the background) and BUSTED on
+  // any tag add/remove. Computed by one SQL GROUP BY on demand — a cron would
+  // lag behind edits, and the per-user tag set is tiny.
+  const tagCounts = {
+    KEY: 'ms_tag_counts',
+    data: null,
+    inflight: null,
+    load() {
+      if (this.data) return Promise.resolve(this.data);
+      try {
+        const ls = JSON.parse(localStorage.getItem(this.KEY) || 'null');
+        if (ls && Array.isArray(ls.tags)) {
+          this.data = ls.tags;
+          this.refresh(); // background revalidate
+          return Promise.resolve(this.data);
+        }
+      } catch (e) { /* fall through to fetch */ }
+      return this.refresh();
+    },
+    refresh() {
+      if (this.inflight) return this.inflight;
+      this.inflight = fetch('api/tag-counts', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : { tags: [] }))
+        .then((d) => {
+          this.data = d.tags || [];
+          try { localStorage.setItem(this.KEY, JSON.stringify({ at: Date.now(), tags: this.data })); } catch (e) {}
+          return this.data;
+        })
+        .catch(() => (this.data = this.data || []))
+        .finally(() => { this.inflight = null; });
+      return this.inflight;
+    },
+    bust() {
+      this.data = null;
+      try { localStorage.removeItem(this.KEY); } catch (e) {}
+    },
+  };
+
+  // attachTagAutocomplete(input, commit): dropdown of existing tags matching
+  // the typed prefix, most-common first, each with its live count. ArrowDown/
+  // ArrowUp cycle (wrapping), Enter confirms the highlighted tag (plain Enter
+  // still commits the typed text), Escape closes the dropdown first. Rows use
+  // mousedown so picking works before the input's blur-commit fires.
+  function attachTagAutocomplete(input, commit) {
+    const dd = document.createElement('div');
+    dd.className = 'tag-suggest';
+    dd.style.display = 'none';
+    input.parentNode.style.position = 'relative';
+    input.parentNode.appendChild(dd);
+    let items = [];
+    let sel = -1;
+    const hide = () => { dd.style.display = 'none'; items = []; sel = -1; };
+    const paint = () => {
+      dd.querySelectorAll('.tag-suggest-row').forEach((r, i) =>
+        r.classList.toggle('active', i === sel));
+    };
+    const show = async () => {
+      const q = input.value.trim().toLowerCase();
+      if (!q) { hide(); return; }
+      const all = await tagCounts.load();
+      items = all.filter((t) => t.tag_name.startsWith(q) && t.tag_name !== q).slice(0, 8);
+      if (!items.length) { hide(); return; }
+      sel = -1;
+      dd.innerHTML = items.map((t) =>
+        `<div class="tag-suggest-row"><span class="tag-suggest-name"></span><span class="tag-suggest-n">×${t.count}</span></div>`).join('');
+      dd.querySelectorAll('.tag-suggest-name').forEach((el, i) => { el.textContent = items[i].tag_name; });
+      dd.querySelectorAll('.tag-suggest-row').forEach((row, i) => {
+        row.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // beat the input's blur-commit
+          const name = items[i].tag_name;
+          hide();
+          commit(name);
+        });
+      });
+      dd.style.left = input.offsetLeft + 'px';
+      dd.style.top = (input.offsetTop + input.offsetHeight + 2) + 'px';
+      dd.style.display = 'block';
+    };
+    input.addEventListener('input', show);
+    // Capture phase: run BEFORE the host input's own Enter/Escape handlers.
+    input.addEventListener('keydown', (e) => {
+      if (dd.style.display === 'none') return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        const n = items.length;
+        sel = e.key === 'ArrowDown' ? (sel + 1) % n : (sel - 1 + n) % n;
+        paint();
+      } else if (e.key === 'Enter' && sel >= 0) {
+        // Feed the highlighted name into the input and let the host's own
+        // Enter handler commit it — one commit path per host.
+        input.value = items[sel].tag_name;
+        hide();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hide();
+      }
+    }, true);
+    input.addEventListener('blur', hide);
+  }
+
   // Inline tag input — the manuscript flow, but committing via handlers.onAddTag.
   // After the handler mutates note.tags, the component re-renders its own chips
   // (one place, so no call site drifts out of sync).
@@ -617,10 +722,12 @@
       editable.remove();
       if (name && handlers.onAddTag) {
         await handlers.onAddTag(name);
+        tagCounts.bust();
         renderTags(noteEl, note, handlers);
       }
     };
     const cancel = () => { if (done) return; done = true; editable.remove(); };
+    attachTagAutocomplete(input, (name) => { input.value = name; commit(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === 'Tab' || e.key === ' ') { e.preventDefault(); commit(); }
       else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
@@ -770,6 +877,7 @@
       }
     });
     host.appendChild(tagIn);
+    attachTagAutocomplete(tagIn, (name) => { crit.tags.push(name); change(); });
   }
 
   // criteriaMatches mirrors the server's daily-rule semantics (AND across
@@ -787,6 +895,6 @@
     return true;
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

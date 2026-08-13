@@ -624,6 +624,24 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleTagCounts: GET /api/tag-counts — the user's tags ranked by how many
+// live notes wear them (the tag-input autocomplete source).
+func (h *NoteHandlers) HandleTagCounts(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	counts, err := h.DB.ListTagCounts(r.Context(), session.Username)
+	if err != nil {
+		log.Printf("tags: counts: %v", err)
+		http.Error(w, "Failed to list tag counts", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"tags": counts})
+}
+
 func (h *NoteHandlers) HandleGetTagsForNote(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	noteIDStr := chi.URLParam(r, "note_id")
