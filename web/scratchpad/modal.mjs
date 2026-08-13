@@ -4,7 +4,7 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=66';
+import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=67';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
@@ -175,6 +175,7 @@ export const ScratchpadModal = {
     let tries = 0;
     const waitForEl = () => {
       const el = find();
+      if (el && window.msScrollDiag) window.msScrollDiag.push('scroll-to-note', { noteId });
       if (el) return this.settleScrollTo(el, () => {
         el.classList.add('sn-note-anchor-flash');
         setTimeout(() => el.classList.remove('sn-note-anchor-flash'), 1600);
@@ -196,6 +197,7 @@ export const ScratchpadModal = {
       // not fight it (suspension covers the smooth pass and the tail of async
       // widget growth).
       suspendScrollHolds(1500);
+      if (window.msScrollDiag) window.msScrollDiag.push('settle-step', { n, last });
       el.scrollIntoView({ behavior: last ? 'smooth' : 'auto', block: 'center' });
       if (last) { if (done) done(); return; }
       n++;
@@ -213,6 +215,7 @@ export const ScratchpadModal = {
       const el = this.overlay && this.overlay.querySelector(
         `.sn-widget[data-sketch-id="${CSS.escape(sketchId)}"][data-ordinal="${ordinal}"]`);
       if (el) {
+        if (window.msScrollDiag) window.msScrollDiag.push('scroll-to-widget', { sketchId, ordinal });
         suspendScrollHolds(3200); // deliberate scroll — holds follow, not fight
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('sn-flash');

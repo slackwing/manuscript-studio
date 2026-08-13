@@ -359,6 +359,73 @@ function renderBookText(host, text) {
   window.WriteSysScratchRender.renderText(host, canon(t));
 }
 
+// ---- Scroll flight recorder ------------------------------------------------
+// Always-on ring buffer of scroll-relevant events in the pad. When the scroll
+// JUMPS (>300px in one event), the whole buffer dumps to the console as
+// [ms-scrolldiag] lines — copy-paste them into a bug report. Manual dump:
+// window.msScrollDiag.dump(). Overhead is a few pushes per interaction.
+const scrollDiag = {
+  buf: [],
+  t0: (typeof performance !== 'undefined' ? performance.now() : 0),
+  host: null,
+  push(kind, data) {
+    this.buf.push({ t: Math.round(performance.now() - this.t0), kind, ...data });
+    if (this.buf.length > 100) this.buf.shift();
+  },
+  el(e) {
+    if (!e || !e.tagName) return String(e);
+    const cls = String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className || '')
+      .split(/\s+/).slice(0, 3).join('.');
+    const w = e.closest && e.closest('.sn-widget');
+    return e.tagName + (cls ? '.' + cls : '')
+      + (e.dataset && e.dataset.noteId ? `[note=${e.dataset.noteId}]` : '')
+      + (w ? `[widget=${w.dataset.variationId}]` : '');
+  },
+  state() {
+    try {
+      const v = activeView;
+      const sel = v && v.state.selection.from;
+      return {
+        scrollTop: this.host ? Math.round(this.host.scrollTop) : null,
+        selFrom: sel,
+        docSize: v && v.state.doc.content.size,
+        activeEl: this.el(document.activeElement),
+        suspendLeft: Math.max(0, Math.round(holdSuspendUntil - performance.now())),
+        holds: this.host && scrollHolds.has(this.host)
+          ? { base: Math.round(scrollHolds.get(this.host).base), fns: scrollHolds.get(this.host).fns.length }
+          : null,
+      };
+    } catch (e) { return { err: String(e) }; }
+  },
+  dump(reason) {
+    /* eslint-disable no-console */
+    console.log(`[ms-scrolldiag] ==== ${reason || 'manual dump'} ====`);
+    console.log('[ms-scrolldiag] state ' + JSON.stringify(this.state()));
+    this.buf.forEach((e) => console.log('[ms-scrolldiag] ' + JSON.stringify(e)));
+    console.log(`[ms-scrolldiag] ==== end (${this.buf.length} events; copy everything above) ====`);
+  },
+  install(host) {
+    if (this.host === host) return;
+    this.host = host;
+    this.buf = [];
+    this.t0 = performance.now();
+    let last = host.scrollTop;
+    host.addEventListener('scroll', () => {
+      const now = host.scrollTop;
+      const d = now - last;
+      this.push('scroll', { from: Math.round(last), to: Math.round(now) });
+      const jumped = Math.abs(d) > 300;
+      last = now;
+      if (jumped) this.dump(`JUMP ${Math.round(d)}px`);
+    });
+    const overlay = host.closest('.spm-overlay') || host;
+    overlay.addEventListener('mousedown', (e) => this.push('mousedown', { on: this.el(e.target) }), true);
+    overlay.addEventListener('focusin', (e) => this.push('focusin', { on: this.el(e.target) }), true);
+    overlay.addEventListener('focusout', (e) => this.push('focusout', { on: this.el(e.target) }), true);
+    if (typeof window !== 'undefined') window.msScrollDiag = this;
+  },
+};
+
 // ---- Shared scroll hold ----------------------------------------------------
 // ONE pin per scroll host, shared by every widget that re-renders in the same
 // window. Pinning raw scrollTop per-widget was wrong twice over: (a) when a
@@ -380,9 +447,11 @@ const scrollHolds = new Map(); // host → {base, fns, until, pin}
 let holdSuspendUntil = 0;
 export function suspendScrollHolds(ms) {
   holdSuspendUntil = Math.max(holdSuspendUntil, performance.now() + ms);
+  scrollDiag.push('suspend-holds', { ms });
 }
 function holdScroll(host, ms, deltaFn) {
   let h = scrollHolds.get(host);
+  scrollDiag.push('hold', { fresh: !h, ms, delta: !!deltaFn, base: Math.round(h ? h.base : host.scrollTop) });
   if (!h) {
     h = { base: host.scrollTop, fns: [], until: 0 };
     h.sum = () => h.fns.reduce((s, f) => s + f(), 0);
@@ -392,7 +461,10 @@ function holdScroll(host, ms, deltaFn) {
         return;
       }
       const want = h.base + h.sum();
-      if (host.scrollTop !== want) host.scrollTop = want;
+      if (host.scrollTop !== want) {
+        scrollDiag.push('pin-fight', { from: Math.round(host.scrollTop), to: Math.round(want) });
+        host.scrollTop = want;
+      }
     };
     scrollHolds.set(host, h);
     host.addEventListener('scroll', h.pin, true);
@@ -2113,6 +2185,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
     },
   });
   activeView = view;
+  const diagHost = view.dom.closest('.spm-editor');
+  if (diagHost) scrollDiag.install(diagHost);
   // Docs SAVED with a trailing sketch/table/image predate the trailing-node
   // plugin (which only runs on edits) — normalize once at open.
   {
