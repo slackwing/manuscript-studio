@@ -829,18 +829,27 @@ class SketchView {
         // Anchor the CLICK POINT across the serif→mono switch: the two render
         // the same text at very different heights (mono wraps more), so a
         // scrollTop pin alone lets the clicked word drift thousands of px on
-        // a long sketch. Remember which paragraph was clicked (and how far
-        // into it) + the viewport y — renderEdit restores the same spot.
-        this._editAnchor = { y: e.clientY, f: null, para: -1, pf: 0 };
+        // a long sketch. Remember the clicked SENTENCE'S TEXT (found again in
+        // the raw text by normalized search — immune to smartquotes, markdown
+        // markers and \n\t vs \n\n paragraph styles, which broke an earlier
+        // paragraph-index mapping) + how far into it, + the viewport y.
+        this._editAnchor = { y: e.clientY, f: null, needle: null, plen: 0, pf: 0 };
         const bodyR = host.getBoundingClientRect();
         this._editAnchor.f = (e.clientY - bodyR.top) / Math.max(1, bodyR.height);
         const path = e.composedPath ? e.composedPath() : [];
-        const pEl = path.find((el) => el && el.tagName === 'P');
-        if (pEl && host.shadowRoot) {
-          const ps = Array.from(host.shadowRoot.querySelectorAll('p'));
-          this._editAnchor.para = ps.indexOf(pEl);
-          const pr = pEl.getBoundingClientRect();
-          this._editAnchor.pf = (e.clientY - pr.top) / Math.max(1, pr.height);
+        const el = path.find((n) => n && n.nodeType === 1
+          && ((n.classList && n.classList.contains('sentence')) || n.tagName === 'P'));
+        if (el) {
+          // Needle = the text AROUND the clicked line (fraction into the
+          // element × its length), so the restored offset needs no
+          // interpolation across long sentences.
+          const txt = el.textContent || '';
+          const pr = el.getBoundingClientRect();
+          const pf = (e.clientY - pr.top) / Math.max(1, pr.height);
+          const k = Math.max(0, Math.min(Math.round(pf * txt.length), txt.length));
+          const start = Math.max(0, k - 60);
+          this._editAnchor.needle = txt.slice(start, k + 60);
+          this._editAnchor.mid = k - start;
         }
         this.mode = 'edit';
         this.renderBody();
@@ -959,15 +968,14 @@ class SketchView {
       const host = this.scrollHost();
       const overlay = pane.wrap.querySelector('.sn-text-overlay');
       let targetY = null;
-      if (a.para >= 0) {
-        const paras = ta.value.split('\n\n');
-        if (a.para < paras.length) {
-          let off = 0;
-          for (let i = 0; i < a.para; i++) off += paras[i].length + 2;
-          caret = Math.min(off + Math.round((a.pf || 0) * paras[a.para].length), ta.value.length);
-          const y1 = overlayYAtOffset(overlay, off);
-          const y2 = overlayYAtOffset(overlay, off + paras[a.para].length);
-          if (y1 != null) targetY = y2 != null ? y1 + (y2 - y1) * (a.pf || 0) : y1;
+      if (a.needle) {
+        // Repeated phrases: prefer the occurrence nearest the click's
+        // proportional position in the text.
+        const hint = (a.f || 0) * ta.value.length;
+        const rawStart = findNormalized(ta.value, a.needle, hint);
+        if (rawStart >= 0) {
+          caret = Math.min(rawStart + (a.mid || 0), ta.value.length);
+          targetY = overlayYAtOffset(overlay, caret);
         }
       }
       if (targetY == null && a.f != null) {
@@ -1316,6 +1324,48 @@ let activeView = null;
 // Viewport y of character `offset` inside the edit pane's mirror overlay
 // (identical metrics to the textarea — see .sn-text/.sn-text-overlay). Walks
 // the overlay's text nodes accumulating lengths; null when unmappable.
+// Find rendered text inside raw text, tolerating the render's cosmetic
+// transforms (smartquotes, stripped markdown markers, collapsed structural
+// whitespace): both sides normalize to lowercase alphanumerics + single
+// spaces, and an index map converts the match back to a RAW offset. -1 when
+// not found.
+function findNormalized(raw, needle, hintOffset) {
+  const norm = (str, withIdx) => {
+    const chars = [];
+    const idx = withIdx ? [] : null;
+    let lastSpace = true;
+    for (let i = 0; i < str.length; i++) {
+      const c = str[i].toLowerCase();
+      if (c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+        chars.push(c);
+        if (idx) idx.push(i);
+        lastSpace = false;
+      } else if (!lastSpace) {
+        chars.push(' ');
+        if (idx) idx.push(i);
+        lastSpace = true;
+      }
+    }
+    return { str: chars.join(''), idx };
+  };
+  const hay = norm(raw, true);
+  const need = norm(needle, false).str.trim();
+  if (!need) return -1;
+  // All occurrences; pick the one closest to the caller's position hint
+  // (prose repeats — a first-match rule anchored to the wrong copy).
+  let best = -1;
+  let bestDist = Infinity;
+  let pos = hay.str.indexOf(need);
+  while (pos >= 0) {
+    const rawPos = hay.idx[pos];
+    const dist = hintOffset == null ? 0 : Math.abs(rawPos - hintOffset);
+    if (dist < bestDist) { bestDist = dist; best = rawPos; }
+    if (hintOffset == null) break;
+    pos = hay.str.indexOf(need, pos + 1);
+  }
+  return best;
+}
+
 function overlayYAtOffset(overlay, offset) {
   if (!overlay) return null;
   try {

@@ -7,6 +7,7 @@
 const { chromium } = require('playwright');
 const { TEST_URL, loginAsTestUser } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
+const JOINER = process.argv[2] === 'nn' ? '\n\n' : '\n\t';
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -15,6 +16,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.goto(HOME_URL);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror');
+  await page.evaluate((j) => { window.__joiner = j; }, JOINER);
   await page.locator('.spm-editor .ProseMirror').click();
   // LONG sketch (~6KB like the real one), ZEBRAMARK at ~75%
   await page.evaluate(async () => {
@@ -25,7 +27,10 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     for (let i = 0; i < 24; i++) lines.push(i === 20
       ? sent.repeat(3) + 'and here sits the ZEBRAMARK word the reader clicked on, ' + sent.repeat(2)
       : sent.repeat(5) + `(paragraph ${i}).`);
-    await ed.variationApi.saveText(c.variation.variation_id, lines.join('\n\n'));
+    // BOTH paragraph styles must anchor: the-wildfire's indented \n\t (which
+    // broke a paragraph-index mapping) and plain \n\n. The joiner comes from
+    // the test harness via window.__joiner.
+    await ed.variationApi.saveText(c.variation.variation_id, lines.join(window.__joiner || '\n\t'));
   });
   await page.waitForTimeout(2200); // save settles
   // Reopen the pad so the widget loads the API-saved text fresh.
