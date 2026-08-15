@@ -824,8 +824,28 @@ class SketchView {
     // work; the click still fires and enters edit, which focuses the textarea
     // itself. (Same trick the compare peer pane uses.)
     host.addEventListener('mousedown', (e) => { e.preventDefault(); });
-    host.addEventListener('click', () => {
-      if (!this.readonly()) { this.mode = 'edit'; this.renderBody(); return; }
+    host.addEventListener('click', (e) => {
+      if (!this.readonly()) {
+        // Anchor the CLICK POINT across the serif→mono switch: the two render
+        // the same text at very different heights (mono wraps more), so a
+        // scrollTop pin alone lets the clicked word drift thousands of px on
+        // a long sketch. Remember which paragraph was clicked (and how far
+        // into it) + the viewport y — renderEdit restores the same spot.
+        this._editAnchor = { y: e.clientY, f: null, para: -1, pf: 0 };
+        const bodyR = host.getBoundingClientRect();
+        this._editAnchor.f = (e.clientY - bodyR.top) / Math.max(1, bodyR.height);
+        const path = e.composedPath ? e.composedPath() : [];
+        const pEl = path.find((el) => el && el.tagName === 'P');
+        if (pEl && host.shadowRoot) {
+          const ps = Array.from(host.shadowRoot.querySelectorAll('p'));
+          this._editAnchor.para = ps.indexOf(pEl);
+          const pr = pEl.getBoundingClientRect();
+          this._editAnchor.pf = (e.clientY - pr.top) / Math.max(1, pr.height);
+        }
+        this.mode = 'edit';
+        this.renderBody();
+        return;
+      }
       // Read-only states open the raw source in a non-editable mono pane
       // (copy-paste), keeping the state's disabled background.
       this.mountReadonlyMono(host, this.ctx.variation.text,
@@ -927,8 +947,41 @@ class SketchView {
     // (jumping to the top of the sketch) — the main "click-to-edit scrolls me
     // up" trigger. preserveScroll (around renderBody) is the backstop.
     ta.focus({ preventScroll: true });
-    ta.setSelectionRange(ta.value.length, ta.value.length);
     pane.autoGrow();
+    // Land where the reader CLICKED: map the clicked paragraph (+ fraction
+    // into it) to a character offset in the raw text, put the caret there
+    // (not at the end — a caret-reveal at the end would scroll away), and
+    // shift the scroll so that spot sits at the SAME viewport y as the click.
+    const a = this._editAnchor;
+    this._editAnchor = null;
+    let caret = ta.value.length;
+    if (a) {
+      const host = this.scrollHost();
+      const overlay = pane.wrap.querySelector('.sn-text-overlay');
+      let targetY = null;
+      if (a.para >= 0) {
+        const paras = ta.value.split('\n\n');
+        if (a.para < paras.length) {
+          let off = 0;
+          for (let i = 0; i < a.para; i++) off += paras[i].length + 2;
+          caret = Math.min(off + Math.round((a.pf || 0) * paras[a.para].length), ta.value.length);
+          const y1 = overlayYAtOffset(overlay, off);
+          const y2 = overlayYAtOffset(overlay, off + paras[a.para].length);
+          if (y1 != null) targetY = y2 != null ? y1 + (y2 - y1) * (a.pf || 0) : y1;
+        }
+      }
+      if (targetY == null && a.f != null) {
+        const r = pane.wrap.getBoundingClientRect();
+        targetY = r.top + a.f * r.height;
+      }
+      if (host && targetY != null && Number.isFinite(targetY)) {
+        host.scrollTop += targetY - a.y;
+        // Re-arm the shared pin so it defends the ADJUSTED position (a fresh
+        // or re-armed hold adopts the current scrollTop).
+        holdScroll(host, 700, null);
+      }
+    }
+    ta.setSelectionRange(caret, caret);
     if (restored) {
       this.saveEl.textContent = 'restored unsaved draft';
       saver.poke(); // push the recovered text up as soon as saves work
@@ -1260,6 +1313,31 @@ let activeView = null;
 // one-shot restore misses that. So we pin .spm-editor's scrollTop: any scroll in
 // the next ~450ms is forced back to the snapshot, then we release. This is the
 // deterministic root fix for "clicking the note jumps to the top."
+// Viewport y of character `offset` inside the edit pane's mirror overlay
+// (identical metrics to the textarea — see .sn-text/.sn-text-overlay). Walks
+// the overlay's text nodes accumulating lengths; null when unmappable.
+function overlayYAtOffset(overlay, offset) {
+  if (!overlay) return null;
+  try {
+    const walker = document.createTreeWalker(overlay, NodeFilter.SHOW_TEXT);
+    let acc = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      const len = node.textContent.length;
+      if (acc + len >= offset) {
+        const range = document.createRange();
+        const local = Math.max(0, Math.min(offset - acc, len));
+        range.setStart(node, local);
+        range.setEnd(node, Math.min(local + 1, len));
+        const r = range.getBoundingClientRect();
+        return r.height > 0 || r.top !== 0 ? r.top : null;
+      }
+      acc += len;
+    }
+  } catch (e) { /* geometry race */ }
+  return null;
+}
+
 function lockScratchpadScroll(fn) {
   const host = activeView && activeView.dom.closest('.spm-editor');
   if (!host) return fn();

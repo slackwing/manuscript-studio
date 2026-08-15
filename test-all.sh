@@ -81,6 +81,7 @@ SLOW_TESTS=(
   test-sketch-rail-compare
   test-snippet-caret
   test-snippet-edit-scroll
+  test-snippet-edit-anchor
   test-snippet-leading-indent
   test-snippet-save-race
   test-suggest-edit-pane
