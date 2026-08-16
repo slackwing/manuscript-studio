@@ -65,6 +65,18 @@ const WriteSysCanonicalize = (function () {
     return canonicalizeProse(trimmed);
   }
 
+  // Bare "\n" + block anchor = "anchor on its own line". Trimming it
+  // space-joined the anchor onto the END of the previous paragraph in the
+  // pushed source (the glued-opener bug) — keep the separator. Go lockstep.
+  function leadingAnchorNewline(body) {
+    if (!body.startsWith('\n')) return false;
+    const rest = body.replace(/^[ \t\n]+/, '');
+    if (!(rest.startsWith('&anchor') || rest.startsWith('&snippet') || rest.startsWith('&sketch'))) return false;
+    const cmd = cmdLib();
+    const a = cmd && cmd.parse(rest);
+    return !!(a && (a.kind === 'anchor' || a.kind === 'snippet'));
+  }
+
   function canonicalize(text) {
     if (text === '' || text == null) return '';
     let marker = '';
@@ -75,6 +87,9 @@ const WriteSysCanonicalize = (function () {
     } else if (body.startsWith(MARKER_PARAGRAPH)) {
       marker = MARKER_PARAGRAPH;
       body = body.slice(MARKER_PARAGRAPH.length);
+    } else if (leadingAnchorNewline(body)) {
+      marker = '\n';
+      body = body.replace(/^[ \t\n]+/, '');
     }
     return marker + canonicalizeBody(body);
   }

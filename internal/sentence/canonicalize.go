@@ -44,13 +44,35 @@ func Canonicalize(text string) string {
 	} else if strings.HasPrefix(body, MarkerParagraph) {
 		marker = MarkerParagraph
 		body = body[len(MarkerParagraph):]
+	} else if leadingAnchorNewline(body) {
+		// Bare "\n" + block anchor = "anchor on its own line". Trimming it
+		// space-joined the anchor onto the END of the previous paragraph in
+		// the pushed source (the glued-opener bug) — keep the separator.
+		marker = "\n"
+		body = strings.TrimLeft(body, " \t\n")
 	}
 
 	body = canonicalizeBody(body)
 	return marker + body
 }
 
-// canonicalizeBody canonicalizes a marker-stripped block body.
+// leadingAnchorNewline reports whether text begins with a bare "\n" (not a
+// structural marker) directly followed by a block anchor command — the
+// "anchor on its own line" form. Dropping that newline space-joined the
+// anchor onto the END of the previous paragraph in the pushed source (the
+// glued-opener bug), so canonicalize must preserve it.
+func leadingAnchorNewline(body string) bool {
+	if !strings.HasPrefix(body, "\n") {
+		return false
+	}
+	rest := strings.TrimLeft(body, " \t\n")
+	if !(strings.HasPrefix(rest, "&anchor") || strings.HasPrefix(rest, "&snippet") || strings.HasPrefix(rest, "&sketch")) {
+		return false
+	}
+	cmd, ok := ParseCommand(rest)
+	return ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSnippet)
+}
+
 func canonicalizeBody(body string) string {
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {

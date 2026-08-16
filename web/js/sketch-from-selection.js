@@ -141,7 +141,10 @@ const WriteSysSketchFromSelection = {
       // inside the region. Only a marker-less (mid-paragraph) start gets a
       // plain "\n" join (canonicalize's same-paragraph anchor form).
       const first = eff(firstId);
-      const joined = /^\n[\n\t]/.test(first) ? `${opener}${first}` : `${opener}\n${first}`;
+      // Leading \n before the opener: canonicalize preserves it and the push
+      // assembler gives the anchor its OWN LINE (without it the opener gets
+      // space-glued to the end of the previous paragraph).
+      const joined = /^\n[\n\t]/.test(first) ? `\n${opener}${first}` : `${opener}\n${first}`;
       if (firstId === lastId) {
         await put(firstId, `${joined}\n&end#${slug}`);
       } else {

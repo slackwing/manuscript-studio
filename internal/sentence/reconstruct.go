@@ -62,11 +62,14 @@ func Reconstruct(sentences []string) string {
 			if prevWasStructural {
 				b.WriteByte('\n')
 				b.WriteString(s)
-			} else if prevWasContent {
+			} else if prevWasContent && !strings.HasPrefix(s, "\n") {
 				// Continuation within a paragraph.
 				b.WriteByte(' ')
 				b.WriteString(s)
 			} else {
+				// Starts with its own separator (e.g. "\n&sketch#…{}" — the
+				// own-line anchor form): no space, or it trails the previous
+				// line.
 				b.WriteString(s)
 			}
 		}
