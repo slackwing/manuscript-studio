@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.5.0"
+const Version = "2.6.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -640,9 +640,11 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 	return boundaries
 }
 
-// commandKeywords are the recognized &-command names. A '&' begins a command
-// only when immediately followed by one of these and then '#' or '{'.
-var commandKeywords = []string{"title", "part", "chapter", "anchor", "reference", "meta", "placeholder", "snippet", "sketch", "end"}
+// Command recognition is SYNTACTIC (v2.6.0): a '&' begins a command when
+// immediately followed by a lowercase name [a-z]+ and then '#' or '{' — no
+// keyword list, so new command names need no segman release. Keywords appear
+// below ONLY where a command's segmentation class differs from the default
+// (reference: never block; title/part/chapter: always block).
 
 // isSlugChar reports whether r is in the #slug charset [a-z0-9-].
 func isSlugChar(r rune) bool {
@@ -660,32 +662,31 @@ func isBlockCommandAt(runes []rune, i int) bool {
 		return false
 	}
 	switch kw {
-	case "reference":
+	case "reference": // always inline
 		return false
-	case "anchor", "placeholder", "snippet", "sketch", "end":
-		return commandIsSoleLineContent(runes, i)
-	default: // title, part, chapter
+	case "title", "part", "chapter": // structural headers: always block
 		return true
+	default: // anchor family and ANY future command: block iff sole-line
+		return commandIsSoleLineContent(runes, i)
 	}
 }
 
-// commandKeywordAt returns the command keyword the '&' at index i introduces,
-// or "" if this is not a command. A command is '&' + exact keyword + ('#' or
-// '{'); anything else (e.g. "Smith & Sons", "R&D") is literal.
+// commandKeywordAt returns the command name the '&' at index i introduces,
+// or "" if this is not a command. A command is '&' + [a-z]+ + ('#' or '{');
+// anything else (e.g. "Smith & Sons", "R&D", "A &chapter of accidents") is
+// literal prose.
 func commandKeywordAt(runes []rune, i int) string {
-	for _, kw := range commandKeywords {
-		end := i + 1 + len(kw)
-		if end >= len(runes) {
-			continue
-		}
-		if string(runes[i+1:end]) != kw {
-			continue
-		}
-		if runes[end] == '#' || runes[end] == '{' {
-			return kw
-		}
+	j := i + 1
+	for j < len(runes) && runes[j] >= 'a' && runes[j] <= 'z' {
+		j++
 	}
-	return ""
+	if j == i+1 || j >= len(runes) {
+		return ""
+	}
+	if runes[j] != '#' && runes[j] != '{' {
+		return ""
+	}
+	return string(runes[i+1 : j])
 }
 
 // commandIsSoleLineContent reports whether the command token starting at index

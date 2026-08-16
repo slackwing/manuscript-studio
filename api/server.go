@@ -272,6 +272,7 @@ func (s *Server) setupRouter() {
 			r.Put("/sketches/{sketch_id}/link", s.variationHandlers.HandleLinkSketch)
 			r.Post("/sketches/{sketch_id}/freeze-all", s.variationHandlers.HandleFreezeAllVariations)
 			r.Get("/sketches/{sketch_id}/home", s.variationHandlers.HandleSketchHome)
+			r.Post("/sketches/{sketch_id}/place-plan", s.variationHandlers.HandlePlacePlan)
 			r.Get("/variations", s.variationHandlers.HandleListVariations)
 			// Static path before the {variation_id} pattern so chi doesn't
 			// treat "deleted" as an id.

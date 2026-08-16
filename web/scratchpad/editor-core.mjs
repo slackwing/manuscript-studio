@@ -1114,17 +1114,37 @@ class SketchView {
     const sn = this.ctx.sketch;
     if (!sn.canon_variation_id || !sn.linked_manuscript_id) return;
     try {
-      const data = await bookData.load(sn.linked_manuscript_id, true);
       // Always a FRESH context: the widget's cached text can lag behind
       // API-side edits, and placing stale text would be silent data loss.
       const varCtx = await variationApi.context(variationId);
-      const plan = window.WriteSysRegion.replacePlan(
-        data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, varCtx.variation.text.replace(/\s+$/, ''));
-      if (plan.status !== 'ok') {
-        alert(`Could not find the placed region #${sn.sketch_id} in the manuscript (${plan.status}).`);
-        return;
+      const text = varCtx.variation.text.replace(/\s+$/, '');
+      // SMART per-sentence plan (server-side, the migration pipeline's own
+      // aligner): unchanged sentences untouched, changed ones get real
+      // reviewable diffs, removals/additions in order — instead of the old
+      // whole-text-on-opener + blanket-delete plan.
+      let planEdits = null;
+      try {
+        const r = await fetch(`api/sketches/${encodeURIComponent(sn.sketch_id)}/place-plan`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+          body: JSON.stringify({ manuscript_id: sn.linked_manuscript_id, text }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.status === 'ok') planEdits = (d.plan || []).map((p) => ({ id: p.sentence_id, text: p.text }));
+        }
+      } catch (e) { /* legacy fallback below */ }
+      if (!planEdits) {
+        const data = await bookData.load(sn.linked_manuscript_id, true);
+        const plan = window.WriteSysRegion.replacePlan(
+          data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, text);
+        if (plan.status !== 'ok') {
+          alert(`Could not find the placed region #${sn.sketch_id} in the manuscript (${plan.status}).`);
+          return;
+        }
+        planEdits = plan.plan;
       }
-      for (const p of plan.plan) await variationApi.putSuggestion(p.id, p.text);
+      for (const p of planEdits) await variationApi.putSuggestion(p.id, p.text);
       await variationApi.canonize(variationId, sn.linked_manuscript_id);
       delete bookData.cache[sn.linked_manuscript_id]; // region content changed
       await this.refresh();

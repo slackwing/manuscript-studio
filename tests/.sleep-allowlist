@@ -23,4 +23,4 @@ test-snippet-leading-indent.js:2
 test-suggest-edit-pane.js:2
 test-complete-annotation.js:1
 test-snippet-edit-anchor.js:3
-test-sketch-place-push.js:6
+test-sketch-place-push.js:8

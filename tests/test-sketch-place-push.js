@@ -166,6 +166,35 @@ function setupBareRemote() {
   check('second push does not duplicate anchors',
     pushed2 && pushed2.text === f);
 
+  // --- SMART RE-PLACE (place-plan endpoint): a ONE-WORD edit must yield a
+  //     surgical per-sentence plan — no whole-region rewrite, no blanket
+  //     deletes (the 2026-08-16 review-unreadability root cause). ---
+  const sugsBefore = parseInt(psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`), 10);
+  await page.goto(new URL('home.html', TEST_URL).href);
+  await page.evaluate((id) => window.WriteSysScratchpadModal.open(id), padId);
+  await page.waitForSelector('.sn-widget [data-act="branch"]', { timeout: 15000 });
+  const wBefore = await page.locator('.sn-widget').count();
+  await page.locator('.sn-widget [data-act="branch"]').last().click();
+  await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, wBefore, { timeout: 15000 });
+  await page.waitForTimeout(1200);
+  await page.locator('.sn-widget .sn-render.sn-clickable').last().click();
+  await page.waitForSelector('.sn-widget textarea.sn-text', { timeout: 15000 });
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('PLACEDMARK alpha paragraph replacing the original region text GLORIOUSLY.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('PLACEDMARK beta second paragraph keeping its indent marker.');
+  await page.waitForTimeout(2500);
+  await page.locator('.sn-widget [data-act="place"]').last().click();
+  await page.waitForTimeout(3000);
+  const sugsAfter = parseInt(psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`), 10);
+  check('re-place adds NO blanket suggestions (surgical per-sentence plan)',
+    sugsAfter <= sugsBefore + 1, `before=${sugsBefore} after=${sugsAfter}`);
+  check('the one-word edit landed in a suggestion',
+    psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text LIKE '%GLORIOUSLY%'`) === '1');
+  check('no empty-delete artifacts from the re-place',
+    psql(`SELECT count(*) FROM suggested_change sc JOIN sentence s ON s.sentence_id=sc.sentence_id WHERE sc.user_id='${TEST_USERNAME}' AND trim(sc.text)='' AND s.text LIKE '%PLACEDMARK%'`) === '0');
+
   // Cleanup.
   psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   try { git('remote remove origin'); } catch (_) {}

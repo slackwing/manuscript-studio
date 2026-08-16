@@ -9,9 +9,12 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"strings"
+
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 // Variations (VARIATIONS_PLAN.md, as clarified): sketch groups + flat sibling
@@ -384,6 +387,91 @@ func (h *VariationHandlers) HandleLinkSketch(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"manuscript_id": req.ManuscriptID, "manuscript_name": name})
+}
+
+// HandlePlacePlan: POST /api/sketches/{sketch_id}/place-plan
+// {manuscript_id, text} — the smart per-sentence placement plan. Aligns the
+// region's EFFECTIVE sentences (committed + this user's suggestions) against
+// the new text with the migration pipeline's marker-aware segmentation, and
+// returns one suggestion per changed sentence (unchanged omitted, removed as
+// "", additions attached in order). Replaces the old whole-text-on-opener +
+// blanket-delete plan that made region reviews unreadable and left delete
+// artifacts behind (2026-08-16). Layouts the planner can't handle (inline
+// legacy anchors) return a non-ok status and the client falls back.
+func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	sketchID := chi.URLParam(r, "sketch_id")
+	var req struct {
+		ManuscriptID int    `json:"manuscript_id"`
+		Text         string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ManuscriptID <= 0 || strings.TrimSpace(req.Text) == "" {
+		http.Error(w, "manuscript_id and text required", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	mig, err := h.DB.GetLatestMigration(ctx, req.ManuscriptID)
+	if err != nil || mig == nil {
+		http.Error(w, "No migration for manuscript", http.StatusNotFound)
+		return
+	}
+	sentences, err := h.DB.GetSentencesByMigration(ctx, mig.MigrationID)
+	if err != nil {
+		http.Error(w, "Failed to load sentences", http.StatusInternalServerError)
+		return
+	}
+	sugs, err := h.DB.GetSuggestionsForMigration(ctx, mig.MigrationID, session.Username)
+	if err != nil {
+		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
+		return
+	}
+	sugMap := make(map[string]string, len(sugs))
+	for _, s := range sugs {
+		sugMap[s.SentenceID] = s.Text
+	}
+	eff := func(i int) string {
+		if t, has := sugMap[sentences[i].SentenceID]; has {
+			return t
+		}
+		return sentences[i].Text
+	}
+	// Locate the region's BLOCK anchors in effective text.
+	isAnchor := func(text string, wantEnd bool) bool {
+		trimmed := strings.TrimSpace(text)
+		cmd, ok := sentence.ParseCommand(trimmed)
+		if !ok || cmd.Raw != trimmed || cmd.Slug != sketchID {
+			return false
+		}
+		if wantEnd {
+			return cmd.Kind == sentence.CmdEnd
+		}
+		return cmd.Kind == sentence.CmdAnchor || cmd.Kind == sentence.CmdSnippet
+	}
+	openIdx, endIdx := -1, -1
+	for i := range sentences {
+		if openIdx < 0 && isAnchor(eff(i), false) {
+			openIdx = i
+		} else if openIdx >= 0 && isAnchor(eff(i), true) {
+			endIdx = i
+			break
+		}
+	}
+	respond := func(status string, plan []sentence.PlaceEdit) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": status, "plan": plan})
+	}
+	if openIdx < 0 || endIdx < 0 || endIdx-openIdx < 2 {
+		respond("unsupported-layout", nil)
+		return
+	}
+	interior := make([]sentence.PlaceOld, 0, endIdx-openIdx-1)
+	for i := openIdx + 1; i < endIdx; i++ {
+		interior = append(interior, sentence.PlaceOld{ID: sentences[i].SentenceID, Text: eff(i)})
+	}
+	respond("ok", sentence.PlacePlan(interior, req.Text))
 }
 
 // HandleSketchHome: GET /api/sketches/{sketch_id}/home — where the GROUP
