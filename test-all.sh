@@ -91,6 +91,7 @@ SLOW_TESTS=(
   test-suggested-edits
   test-suggestion-scroll
   test-push-suggestions
+  test-sketch-place-push
   verify-fixes
   test-delete-and-recreate
   test-note-and-tags
