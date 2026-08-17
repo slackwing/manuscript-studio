@@ -110,6 +110,9 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 		BranchName:      branchName,
 		SentenceCount:   len(newSentences),
 		AdditionsCount:  len(newSentences),
+		// Bootstrap by definition has no tracked changes (nothing to pair
+		// against), so changes_count is explicitly 0 — not "unset".
+		ChangesCount:    0,
 		SentenceIDArray: newSentenceIDs,
 	}); err != nil {
 		return nil, fmt.Errorf("mark migration done: %w", err)
@@ -212,7 +215,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		SentenceCount:     len(newSentences),
 		AdditionsCount:    len(diff.Added),
 		DeletionsCount:    len(diff.Deleted),
-		ChangesCount:      len(diff.Deleted),
+		ChangesCount:      changesCount,
 		SentenceIDArray:   newSentenceIDs,
 	}); err != nil {
 		return nil, fmt.Errorf("mark migration done: %w", err)
@@ -236,8 +239,8 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		SentenceCount:        len(newSentences),
 		AdditionsCount:       len(diff.Added),
 		DeletionsCount:       len(diff.Deleted),
-		ChangesCount:         len(diff.Deleted),
-		NotesMigrated:  notesMigrated,
+		ChangesCount:         changesCount,
+		NotesMigrated:        notesMigrated,
 		Message:              fmt.Sprintf("Migration complete: %d sentences, %d notes migrated", len(newSentences), notesMigrated),
 		UnresolvedReferences: unresolved,
 	}, nil

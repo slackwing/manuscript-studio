@@ -1,25 +1,18 @@
 /**
- * PENDING-FIX ledger for the render pipeline (CODE_REVIEW_AUG_2026.md AREA 3).
+ * FORMER pending-fix ledger for the render pipeline (CODE_REVIEW_AUG_2026.md
+ * AREA 3) — both fixes have landed, so every assertion here is now FATAL
+ * (failures exit 1, like any other test).
  *
- * Every assertion here pins an invariant that SHOULD hold but is known-broken
- * today. Assertions run for real; failures are counted and printed as
- * "PENDING-FIX: ..." lines, and the script exits 0 — it only exits non-zero
- * if the harness itself crashes. When a fix lands, its assertions flip to ✅
- * ("fix landed") — move them into the main e2e files then.
- *
- * Currently pinned:
- *   R25 — renderManuscript has no reentrancy guard (renderer.js:209–340).
- *     Two overlapping calls each capture the same "old pages" snapshot; the
- *     loser's tree is stranded. Verified 2026-08-17: two .pagedjs_pages
- *     trees survive, every sentence rendered twice. Invariant after fix:
- *     overlapping calls settle to exactly ONE tree, sentence count unchanged.
- *   OUTLINE-EMPTY — outline.render() (outline.js:137–141) clears the DOM
- *     when the outline empties but leaves stale this.itemNodes/caretEl, so
- *     the NEXT renderManuscript rejects inside updatePageInfo → updateCaret
- *     (null '.outline-nav' at outline.js:307). Trigger: the only
- *     outline-worthy suggestion (&chapter etc.) is deleted, then an in-place
- *     re-render runs. Invariant after fix: renderManuscript resolves and the
- *     outline is empty.
+ * Invariants held:
+ *   R25 — renderManuscript is serialized (renderer.js renderManuscript wraps
+ *     _renderManuscriptNow): overlapping calls coalesce — the second awaits
+ *     the first, then ONE queued re-render runs with the LATEST opts. After
+ *     two overlapping calls: exactly one .pagedjs_pages tree, sentence count
+ *     unchanged, and the second call's opts (selectSentenceId) honored.
+ *   OUTLINE-EMPTY — outline.render() resets itemNodes/itemStarts/caretEl when
+ *     the outline empties (and updateCaret is null-safe), so an in-place
+ *     re-render after the last outline-worthy suggestion is removed resolves
+ *     cleanly with an empty nav.
  */
 const { execSync } = require('child_process');
 const { chromium } = require('playwright');
@@ -33,15 +26,15 @@ const psql = (sql) => execSync(
   { encoding: 'utf-8' }).trim();
 
 (async () => {
-  console.log('=== Render pipeline PENDING-FIX ledger ===\n');
+  console.log('=== Render pipeline fixed-invariants (R25 + outline empty-state) ===\n');
   psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-  let pending = 0;
-  const pin = (name, ok, extra) => {
-    if (ok) console.log(`✅ ${name} (holds — once its siblings pass too, move the cluster to the main suite)`);
-    else { pending += 1; console.log(`PENDING-FIX: ${name}${extra !== undefined ? ' — ' + extra : ''}`); }
+  let failed = false;
+  const check = (name, ok, extra) => {
+    console.log(`${ok ? '✅' : '❌'} ${name}${extra !== undefined && !ok ? ' — ' + extra : ''}`);
+    if (!ok) failed = true;
   };
 
   try {
@@ -63,28 +56,40 @@ const psql = (sql) => execSync(
       trees: document.querySelectorAll('.pagedjs_pages').length,
       spans: document.querySelectorAll('.pagedjs_pages .sentence').length,
     }));
+    // A sentence to select via the SECOND call's opts — proves the queued
+    // re-render runs with the latest caller's opts.
+    const selId = await page.evaluate(() => {
+      const el = document.querySelector('.pagedjs_pages .sentence[data-sentence-id]');
+      return el && el.dataset.sentenceId;
+    });
     let r25err = null;
     try {
-      await page.evaluate(() => {
+      await page.evaluate((id) => {
         const R = window.WriteSysRenderer;
         window.__p1 = R.renderManuscript();
-        window.__p2 = R.renderManuscript();
-      });
+        window.__p2 = R.renderManuscript({ selectSentenceId: id });
+      }, selId);
       await page.evaluate(() => Promise.all([window.__p1, window.__p2]));
     } catch (e) { r25err = e.message.split('\n')[0]; }
-    const after = await page.evaluate(() => ({
+    const after = await page.evaluate((id) => ({
       trees: document.querySelectorAll('.pagedjs_pages').length,
       spans: document.querySelectorAll('.pagedjs_pages .sentence').length,
-    }));
-    pin('R25: overlapping renderManuscript calls settle without throwing',
+      selApplied: [...document.querySelectorAll(`.pagedjs_pages .sentence[data-sentence-id="${CSS.escape(id)}"]`)]
+        .some((el) => el.classList.contains('selected')),
+      selState: window.WriteSysRenderer.currentSelectedSentenceId,
+    }), selId);
+    check('R25: overlapping renderManuscript calls settle without throwing',
       r25err === null, r25err || '');
-    pin('R25: exactly one .pagedjs_pages tree survives overlapping renders',
+    check('R25: exactly one .pagedjs_pages tree survives overlapping renders',
       after.trees === 1, `trees=${after.trees}`);
-    pin('R25: sentences render exactly once after overlapping renders',
+    check('R25: sentences render exactly once after overlapping renders',
       after.spans === before.spans, `before=${before.spans} after=${after.spans}`);
+    check("R25: the second call's opts are honored (selectSentenceId applied)",
+      after.selApplied && after.selState === selId,
+      `selApplied=${after.selApplied} selState=${after.selState}`);
 
     // ---- OUTLINE-EMPTY: outline non-empty → empty transition ---------------
-    // Fresh page (R25 may have stranded a tree).
+    // Fresh page for a clean baseline.
     await page.goto(TEST_URL);
     await waitForPagination(page);
     const sid = await page.evaluate(() => {
@@ -106,6 +111,7 @@ const psql = (sql) => execSync(
       await window.WriteSysRenderer.renderManuscript();
     }, sid);
     const hadOutline = await page.evaluate(() => !!document.querySelector('.outline-chapter'));
+    check('OUTLINE-EMPTY: chapter suggestion shows in the nav (premise)', hadOutline);
     // Delete the suggestion → the outline must empty on the next render.
     let emptyErr = null;
     try {
@@ -123,25 +129,19 @@ const psql = (sql) => execSync(
       items: document.querySelectorAll('.outline-item').length,
       chapter: !!document.querySelector('.outline-chapter'),
     }));
-    if (!hadOutline) {
-      console.log('SKIP: outline-empty pin — the chapter suggestion never showed in the nav');
-    } else {
-      pin('OUTLINE-EMPTY: renderManuscript resolves after the outline empties',
-        emptyErr === null, emptyErr || '');
-      pin('OUTLINE-EMPTY: outline DOM is empty after the last chapter suggestion is removed',
-        outlineNow.items === 0 && !outlineNow.chapter, `items=${outlineNow.items}`);
-    }
+    check('OUTLINE-EMPTY: renderManuscript resolves after the outline empties',
+      emptyErr === null, emptyErr || '');
+    check('OUTLINE-EMPTY: outline DOM is empty after the last chapter suggestion is removed',
+      outlineNow.items === 0 && !outlineNow.chapter, `items=${outlineNow.items}`);
 
   } catch (e) {
-    console.log(`❌ Harness errored: ${e.message}`);
-    await browser.close();
+    console.log(`❌ Test errored: ${e.message}`);
+    failed = true;
+  } finally {
     psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
-    process.exit(1);
+    await browser.close();
   }
 
-  psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
-  await browser.close();
-  console.log(`\n${pending} PENDING-FIX assertion${pending === 1 ? '' : 's'} (expected until the fix phase; exit 0)`);
-  console.log('RESULT: PASS (ledger)');
-  process.exit(0);
+  console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
+  process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error('Test crashed:', e); process.exit(1); });

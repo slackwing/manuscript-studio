@@ -40,6 +40,9 @@ type UpdateNoteRequest struct {
 }
 
 type ReorderNoteRequest struct {
+	// SentenceID is accepted for backwards compatibility but IGNORED — the
+	// sentence is derived from the note row server-side, never trusted from
+	// the body.
 	SentenceID string `json:"sentence_id"`
 	NewIndex   int    `json:"new_index"`
 }
@@ -285,6 +288,12 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	csrfToken := r.Header.Get("X-CSRF-Token")
+	if !auth.ValidateCSRFToken(r, h.SessionStore, csrfToken) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+
 	priority := req.Priority
 	if priority == "" {
 		priority = "none"
@@ -491,7 +500,7 @@ func (h *NoteHandlers) HandleReorderNote(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.DB.ReorderNote(ctx, noteID, req.SentenceID, req.NewIndex); err != nil {
+	if err := h.DB.ReorderNote(ctx, noteID, req.NewIndex); err != nil {
 		log.Printf("notes: reorder %d: %v", noteID, err)
 		http.Error(w, "Failed to reorder", http.StatusInternalServerError)
 		return

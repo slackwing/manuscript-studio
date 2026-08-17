@@ -153,18 +153,21 @@ const WriteSysCommand = {
         marker = '';
         continue;
       }
-      // Leading-anchor block form (canonicalize output): "&anchor{...}\nprose".
-      // canonicalize joins a block anchor to its paragraph with a single \n,
-      // and segman splits it into its own sentence. Mirror that split here so
-      // the render preview matches the pushed/segmented result: emit the anchor
-      // as a command fragment, then the trailing prose as its paragraph.
+      // Leading-command block form (canonicalize output): "&anchor{...}\nprose"
+      // or "&snippet#x{...}\nprose" (sketch spelling included — parse()
+      // normalizes it to kind 'snippet'). canonicalize joins a leading block
+      // anchor/snippet to its paragraph with a single \n (canonicalize.js:45–47
+      // / canonicalize.go — the same kinds, kept in lockstep), and segman
+      // splits it into its own sentence. Mirror that split here so the render
+      // preview matches the pushed/segmented result: emit the command as a
+      // fragment, then the trailing prose as its paragraph.
       //
       // The block's leading marker (\n\n / \n\t) belongs to the PARAGRAPH, so it
       // rides on the PROSE fragment — that's what drives indent/section behavior
       // (e.g. a paragraph after a placeholder keeps its \n\t indent). The anchor
       // glyph is just a left-margin decoration on that paragraph and carries no
       // marker of its own.
-      if (cmd && cmd.kind === 'anchor') {
+      if (cmd && (cmd.kind === 'anchor' || cmd.kind === 'snippet')) {
         const after = trimmed.slice(cmd.raw.length);
         if (after.startsWith('\n')) {
           const prose = after.slice(1);

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Variations (VARIATIONS_PLAN.md, as clarified): a sketch is an abstract GROUP —
@@ -115,6 +116,75 @@ func newSketchID() (string, error) {
 	return string(out), nil
 }
 
+// ownerErr normalizes an owner-check scan result: "no such row" and "row
+// owned by someone else" both read as ErrNotOwner (→ 404, no existence
+// leak), while any other failure — dropped connection, canceled context —
+// surfaces as itself, wrapped (→ 500 at the handler, never a masked 404).
+func ownerErr(err error, owner, userID, op string) error {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotOwner
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	if owner != userID {
+		return ErrNotOwner
+	}
+	return nil
+}
+
+// isUniqueViolation reports whether err is a Postgres 23505 unique violation.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// errSketchIDCollision marks a retriable random-id collision inside
+// createSketchTx (never escapes to callers).
+var errSketchIDCollision = errors.New("sketch id collision")
+
+// createSketchTx BEGINs a transaction, inserts a fresh sketch row with an id
+// from genID (production callers pass newSketchID; tests inject collisions),
+// runs body inside the SAME tx, and commits. Postgres aborts the whole
+// transaction on any statement error, so an id collision cannot be retried
+// in-tx (every follow-up statement dies with 25P02) — instead the entire tx
+// body is rolled back and re-run with a fresh id, max 3 attempts.
+func (db *DB) createSketchTx(ctx context.Context, userID string, genID func() (string, error), body func(tx pgx.Tx, sketchID string) error) (string, error) {
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		sketchID, err := genID()
+		if err != nil {
+			return "", err
+		}
+		err = func() error {
+			tx, err := db.Pool.Begin(ctx)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback(ctx)
+			if _, err := tx.Exec(ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`, sketchID, userID); err != nil {
+				if isUniqueViolation(err) {
+					return fmt.Errorf("%w: %v", errSketchIDCollision, err)
+				}
+				return fmt.Errorf("create sketch: %w", err)
+			}
+			if err := body(tx, sketchID); err != nil {
+				return err
+			}
+			return tx.Commit(ctx)
+		}()
+		if err == nil {
+			return sketchID, nil
+		}
+		if !errors.Is(err, errSketchIDCollision) {
+			return "", err
+		}
+		lastErr = err
+	}
+	return "", fmt.Errorf("create sketch: %d id attempts exhausted: %w", maxAttempts, lastErr)
+}
+
 func scanVariation(row pgx.Row) (Variation, error) {
 	var s Variation
 	err := row.Scan(&s.VariationID, &s.SketchID, &s.Ordinal, &s.Text, &s.State,
@@ -127,46 +197,32 @@ const variationCols = `variation_id, sketch_id, ordinal, text, state, scratchpad
 // CreateSketch makes a fresh group: sketch row + variation A. scratchpadID is
 // the variation's home (the scratchpad whose widget is being created).
 func (db *DB) CreateSketch(ctx context.Context, userID string, scratchpadID *int) (*VariationContext, error) {
-	tx, err := db.Pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-	var sketchID string
-	for attempt := 0; ; attempt++ {
-		sketchID, err = newSketchID()
+	var variationID int
+	_, err := db.createSketchTx(ctx, userID, newSketchID, func(tx pgx.Tx, sketchID string) error {
+		s, err := scanVariation(tx.QueryRow(ctx, `
+			INSERT INTO variation (sketch_id, ordinal, scratchpad_id) VALUES ($1, 1, $2)
+			RETURNING `+variationCols, sketchID, scratchpadID))
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("create variation A: %w", err)
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`, sketchID, userID)
-		if err == nil {
-			break
+		variationID = s.VariationID
+		// Every sketch carries ONE note (026), minted with it — blank, yellow,
+		// manuscript inherited from the host pad's link (a copy, not synced).
+		// No task_type: notes start untyped ('n/a', NULL) until the user picks
+		// one (033).
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
+			SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
+			       $2, 'yellow', 'none', 'a0', $3
+		`, scratchpadID, userID, sketchID); err != nil {
+			return fmt.Errorf("create sketch note: %w", err)
 		}
-		if attempt >= 3 {
-			return nil, fmt.Errorf("create sketch: %w", err)
-		}
-	}
-	s, err := scanVariation(tx.QueryRow(ctx, `
-		INSERT INTO variation (sketch_id, ordinal, scratchpad_id) VALUES ($1, 1, $2)
-		RETURNING `+variationCols, sketchID, scratchpadID))
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("create variation A: %w", err)
-	}
-	// Every sketch carries ONE note (026), minted with it — blank, yellow,
-	// manuscript inherited from the host pad's link (a copy, not synced).
-	// No task_type: notes start untyped ('n/a', NULL) until the user picks
-	// one (033).
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
-		SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
-		       $2, 'yellow', 'none', 'a0', $3
-	`, scratchpadID, userID, sketchID); err != nil {
-		return nil, fmt.Errorf("create sketch note: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return db.GetVariationContext(ctx, userID, s.VariationID)
+	return db.GetVariationContext(ctx, userID, variationID)
 }
 
 // CreateVariationFrom adds the next-letter sibling variation based on source: text
@@ -185,11 +241,19 @@ func (db *DB) CreateVariationFrom(ctx context.Context, userID string, sourceID i
 		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 FOR UPDATE OF v
 	`, sourceID).Scan(&srcSketch, &srcOrdinal, &srcText, &owner)
-	if err != nil || owner != userID {
-		return nil, ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load source variation"); err != nil {
+		return nil, err
 	}
 	if srcOrdinal == nil {
 		return nil, ErrVariationNoLetter
+	}
+	// Serialize sibling creates on the GROUP: MAX(ordinal)+1 below is a
+	// check-then-act, and the source-row lock above doesn't help when two
+	// concurrent creates start from DIFFERENT siblings — they'd both compute
+	// the same next ordinal and one would die on the unique index. Lock the
+	// sketch row (as CreateVariationFromText does) so they queue instead.
+	if _, err := tx.Exec(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1 FOR UPDATE`, srcSketch); err != nil {
+		return nil, fmt.Errorf("lock sketch: %w", err)
 	}
 	var next int
 	if err := tx.QueryRow(ctx, `
@@ -229,8 +293,8 @@ func (db *DB) GetVariationContext(ctx context.Context, userID string, id int) (*
 		&out.Variation.Text, &out.Variation.State, &out.Variation.ScratchpadID,
 		&out.Variation.CreatedAt, &out.Variation.UpdatedAt,
 		&owner, &linkedID, &out.Sketch.LinkedManuscriptName, &canonID, &placedFromID)
-	if err != nil || owner != userID {
-		return nil, ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load variation context"); err != nil {
+		return nil, err
 	}
 	out.Sketch.SketchID = out.Variation.SketchID
 	if linkedID != nil {
@@ -304,8 +368,8 @@ func (db *DB) UpdateVariationText(ctx context.Context, userID string, id int, te
 		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1 FOR UPDATE OF v
 	`, id).Scan(&owner, &state, &ordinal)
-	if err != nil || owner != userID {
-		return ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load variation"); err != nil {
+		return err
 	}
 	if ordinal == nil {
 		return ErrVariationCanon
@@ -344,8 +408,8 @@ func (db *DB) SetVariationState(ctx context.Context, userID string, id int, stat
 		FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, id).Scan(&owner, &ordinal)
-	if err != nil || owner != userID {
-		return ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load variation"); err != nil {
+		return err
 	}
 	if ordinal == nil {
 		return ErrVariationCanon
@@ -358,10 +422,11 @@ func (db *DB) SetVariationState(ctx context.Context, userID string, id int, stat
 // canonize "Freeze all variations?" option). Owner-checked via the sketch.
 func (db *DB) FreezeAllVariations(ctx context.Context, userID, sketchID string) error {
 	var owner string
-	if err := db.Pool.QueryRow(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1`, sketchID).Scan(&owner); err != nil || owner != userID {
-		return ErrNotOwner
+	err := db.Pool.QueryRow(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1`, sketchID).Scan(&owner)
+	if err := ownerErr(err, owner, userID, "load sketch"); err != nil {
+		return err
 	}
-	_, err := db.Pool.Exec(ctx, `
+	_, err = db.Pool.Exec(ctx, `
 		UPDATE variation SET state = 'frozen' WHERE sketch_id = $1 AND ordinal IS NOT NULL AND state = 'draft'
 	`, sketchID)
 	return err
@@ -412,18 +477,24 @@ type DeletedVariation struct {
 }
 
 // SoftDeleteVariation marks a lettered variation deleted (owner-checked). The canon
-// variation (NULL ordinal) can't be deleted this way. Idempotent.
+// variation (NULL ordinal) can't be deleted this way, and neither can the
+// placed lettered variation the group's canon pointer targets — invariant
+// 2.2#8 ("canon frozen/immutable/undeletable"): GetVariationContext would
+// otherwise keep serving a soft-deleted row as canon. Idempotent.
 func (db *DB) SoftDeleteVariation(ctx context.Context, userID string, id int) error {
 	var owner string
-	var ordinal *int
+	var ordinal, canonID *int
 	err := db.Pool.QueryRow(ctx, `
-		SELECT s.user_id, v.ordinal FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
+		SELECT s.user_id, v.ordinal, s.canon_variation_id FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
-	`, id).Scan(&owner, &ordinal)
-	if err != nil || owner != userID {
-		return ErrNotOwner
+	`, id).Scan(&owner, &ordinal, &canonID)
+	if err := ownerErr(err, owner, userID, "load variation"); err != nil {
+		return err
 	}
 	if ordinal == nil {
+		return ErrVariationCanon
+	}
+	if canonID != nil && *canonID == id {
 		return ErrVariationCanon
 	}
 	_, err = db.Pool.Exec(ctx, `UPDATE variation SET deleted_at = NOW() WHERE variation_id = $1`, id)
@@ -437,8 +508,8 @@ func (db *DB) RestoreVariation(ctx context.Context, userID string, id int) error
 		SELECT s.user_id FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, id).Scan(&owner)
-	if err != nil || owner != userID {
-		return ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load variation"); err != nil {
+		return err
 	}
 	_, err = db.Pool.Exec(ctx, `UPDATE variation SET deleted_at = NULL WHERE variation_id = $1`, id)
 	return err
@@ -480,8 +551,8 @@ func (db *DB) LinkSketch(ctx context.Context, userID, sketchID string, manuscrip
 	err := db.Pool.QueryRow(ctx, `
 		SELECT user_id, canon_variation_id FROM sketch WHERE sketch_id = $1
 	`, sketchID).Scan(&owner, &canonID)
-	if err != nil || owner != userID {
-		return ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load sketch"); err != nil {
+		return err
 	}
 	if canonID != nil {
 		return ErrSketchCanonized
@@ -518,8 +589,8 @@ func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID,
 		WHERE v.variation_id = $1 FOR UPDATE OF s
 	`, variationID).Scan(&owner, &sketchID, &linkedID, &canonID, &ordinal, &text)
 	_ = text // the placed variation itself is the record — no snapshot copy
-	if err != nil || owner != userID {
-		return nil, ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load variation"); err != nil {
+		return nil, err
 	}
 	if ordinal == nil {
 		return nil, ErrVariationCanon
@@ -567,10 +638,11 @@ func (db *DB) CreateVariationFromText(ctx context.Context, userID, sketchID, tex
 	}
 	defer tx.Rollback(ctx)
 	var owner string
-	if err := tx.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		SELECT user_id FROM sketch WHERE sketch_id = $1 FOR UPDATE
-	`, sketchID).Scan(&owner); err != nil || owner != userID {
-		return nil, ErrNotOwner
+	`, sketchID).Scan(&owner)
+	if err := ownerErr(err, owner, userID, "load sketch"); err != nil {
+		return nil, err
 	}
 	var next int
 	if err := tx.QueryRow(ctx, `
@@ -618,8 +690,8 @@ func (db *DB) VariationHomeScratchpad(ctx context.Context, userID string, variat
 		SELECT s.user_id, v.scratchpad_id FROM variation v JOIN sketch s ON s.sketch_id = v.sketch_id
 		WHERE v.variation_id = $1
 	`, variationID).Scan(&owner, &spid)
-	if err != nil || owner != userID {
-		return 0, ErrNotOwner
+	if err := ownerErr(err, owner, userID, "load variation"); err != nil {
+		return 0, err
 	}
 	if spid == nil {
 		return 0, nil
@@ -632,8 +704,9 @@ func (db *DB) VariationHomeScratchpad(ctx context.Context, userID string, variat
 // The margin sketch-glyph's click navigates here. ordinal 0 = none found.
 func (db *DB) SketchHome(ctx context.Context, userID, sketchID string) (scratchpadID, ordinal int, err error) {
 	var owner string
-	if err = db.Pool.QueryRow(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1`, sketchID).Scan(&owner); err != nil || owner != userID {
-		return 0, 0, ErrNotOwner
+	err = db.Pool.QueryRow(ctx, `SELECT user_id FROM sketch WHERE sketch_id = $1`, sketchID).Scan(&owner)
+	if err = ownerErr(err, owner, userID, "load sketch"); err != nil {
+		return 0, 0, err
 	}
 	err = db.Pool.QueryRow(ctx, `
 		SELECT v.scratchpad_id, v.ordinal FROM variation v
@@ -658,76 +731,62 @@ func (db *DB) SketchHome(ctx context.Context, userID, sketchID string) (scratchp
 //   scratchpad's doc (the caller adds the &sketch anchors around the
 //   selection as suggested edits — the manuscript side of the placement).
 func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string, manuscriptID int, manuscriptName, text string, scratchpadID int) (*VariationContext, error) {
-	tx, err := db.Pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-	var padOwner string
-	if err := tx.QueryRow(ctx, `SELECT user_id FROM scratchpad WHERE scratchpad_id = $1`, scratchpadID).Scan(&padOwner); err != nil || padOwner != userID {
-		return nil, ErrNotOwner
-	}
-	var sketchID string
-	for attempt := 0; ; attempt++ {
-		sketchID, err = newSketchID()
-		if err != nil {
-			return nil, err
-		}
-		if _, err = tx.Exec(ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`, sketchID, userID); err == nil {
-			break
-		}
-		if attempt >= 3 {
-			return nil, fmt.Errorf("create sketch: %w", err)
-		}
-	}
-	// ONLY variation A — the frozen original, which IS the as-placed
-	// record (no snapshot copies). Further variations are the author's
-	// deliberate act (the sparkles button on the widget).
 	var aID int
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO variation (sketch_id, ordinal, text, state, scratchpad_id)
-		VALUES ($1, 1, $2, 'frozen', $3) RETURNING variation_id
-	`, sketchID, text, scratchpadID).Scan(&aID); err != nil {
-		return nil, fmt.Errorf("create variation A: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE sketch SET canon_variation_id = $2, placed_from_variation_id = $2,
-		       linked_manuscript_id = $3, linked_manuscript_name = $4
-		WHERE sketch_id = $1
-	`, sketchID, aID, manuscriptID, manuscriptName); err != nil {
-		return nil, err
-	}
-	// The sketch's note (026) — every sketch carries one.
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
-		VALUES ($1, $2, 'yellow', 'none', 'a0', $3)
-	`, manuscriptID, userID, sketchID); err != nil {
-		return nil, fmt.Errorf("create sketch note: %w", err)
-	}
-	// Append the two widget nodes to the pad doc (PM node type 'snippet' —
-	// legacy storage name; every saved doc embeds it).
-	var docJSON []byte
-	if err := tx.QueryRow(ctx, `SELECT doc FROM scratchpad WHERE scratchpad_id = $1 FOR UPDATE`, scratchpadID).Scan(&docJSON); err != nil {
-		return nil, fmt.Errorf("load pad doc: %w", err)
-	}
-	var doc map[string]interface{}
-	if err := json.Unmarshal(docJSON, &doc); err != nil || doc["type"] != "doc" {
-		doc = map[string]interface{}{"type": "doc", "content": []interface{}{}}
-	}
-	content, _ := doc["content"].([]interface{})
-	content = append(content, map[string]interface{}{
-		"type":  "snippet",
-		"attrs": map[string]interface{}{"variationId": aID},
+	_, err := db.createSketchTx(ctx, userID, newSketchID, func(tx pgx.Tx, sketchID string) error {
+		var padOwner string
+		err := tx.QueryRow(ctx, `SELECT user_id FROM scratchpad WHERE scratchpad_id = $1`, scratchpadID).Scan(&padOwner)
+		if err := ownerErr(err, padOwner, userID, "load scratchpad"); err != nil {
+			return err
+		}
+		// ONLY variation A — the frozen original, which IS the as-placed
+		// record (no snapshot copies). Further variations are the author's
+		// deliberate act (the sparkles button on the widget).
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO variation (sketch_id, ordinal, text, state, scratchpad_id)
+			VALUES ($1, 1, $2, 'frozen', $3) RETURNING variation_id
+		`, sketchID, text, scratchpadID).Scan(&aID); err != nil {
+			return fmt.Errorf("create variation A: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE sketch SET canon_variation_id = $2, placed_from_variation_id = $2,
+			       linked_manuscript_id = $3, linked_manuscript_name = $4
+			WHERE sketch_id = $1
+		`, sketchID, aID, manuscriptID, manuscriptName); err != nil {
+			return err
+		}
+		// The sketch's note (026) — every sketch carries one.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
+			VALUES ($1, $2, 'yellow', 'none', 'a0', $3)
+		`, manuscriptID, userID, sketchID); err != nil {
+			return fmt.Errorf("create sketch note: %w", err)
+		}
+		// Append the widget node to the pad doc (PM node type 'snippet' —
+		// legacy storage name; every saved doc embeds it).
+		var docJSON []byte
+		if err := tx.QueryRow(ctx, `SELECT doc FROM scratchpad WHERE scratchpad_id = $1 FOR UPDATE`, scratchpadID).Scan(&docJSON); err != nil {
+			return fmt.Errorf("load pad doc: %w", err)
+		}
+		var doc map[string]interface{}
+		if err := json.Unmarshal(docJSON, &doc); err != nil || doc["type"] != "doc" {
+			doc = map[string]interface{}{"type": "doc", "content": []interface{}{}}
+		}
+		content, _ := doc["content"].([]interface{})
+		content = append(content, map[string]interface{}{
+			"type":  "snippet",
+			"attrs": map[string]interface{}{"variationId": aID},
+		})
+		doc["content"] = content
+		newDoc, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE scratchpad SET doc = $2, updated_at = NOW() WHERE scratchpad_id = $1`, scratchpadID, newDoc); err != nil {
+			return fmt.Errorf("append widgets to pad: %w", err)
+		}
+		return nil
 	})
-	doc["content"] = content
-	newDoc, err := json.Marshal(doc)
 	if err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE scratchpad SET doc = $2, updated_at = NOW() WHERE scratchpad_id = $1`, scratchpadID, newDoc); err != nil {
-		return nil, fmt.Errorf("append widgets to pad: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return db.GetVariationContext(ctx, userID, aID)

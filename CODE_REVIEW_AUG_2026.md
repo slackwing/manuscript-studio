@@ -608,7 +608,8 @@ hard-error), #94/#111/#123 (close the three auth/CSRF gaps FIRST, then pin),
 - `command.js:159–167` — the leading-command split claims parity with
   canonicalize but checks `kind === 'anchor'` only, while canonicalize splits
   `&snippet`/`&sketch` too (canonicalize.js:45–47) — a real parity asymmetry,
-  currently masked.
+  currently masked. ✓ FIXED (Area-3 fix branch, commit pending): the split
+  now covers snippet/sketch; test-command-units C9 asserts the symmetry.
 
 **Duplication:** HTML escaper ×2 (renderer.js:763–770 ≡ text-markers.js:41–48,
 whose comment forbids exactly this); `applyInlineFormatting` ×2 with
@@ -866,8 +867,16 @@ the N12 canary), z-index `elementFromPoint` ladder, tag-suggest drift check
 2. Fix `changes_count` (processor.go:197–217) — one-line fix + test #127.
 3. Fix the doc-save in-flight data loss (editor-core:2147) — ideally by the
    DRY.md item-3 port onto `createAutosaver`.
-4. Delete dead code: suggestions.js:35–108; notes.js:391–421; the ~260 dead
-   book.css lines; fix the four lying comments (suggestions.js:1–11,
-   pagedjs-config.js:1, text-markers.js:39–40, editor-core:1740–1742).
+4. Delete dead code: suggestions.js:35–108 ✓ done (Area-3 fix branch, commit
+   pending); notes.js:391–421 and the ~260 dead book.css lines still open;
+   fix the four lying comments — suggestions.js:1–11 ✓, pagedjs-config.js:1 ✓,
+   text-markers.js:39–40 ✓ (all Area-3 fix branch, commit pending);
+   editor-core:1740–1742 still open (Area 1).
 5. Unify the escapers (DRY.md item 1 — now counted at ×6 across the repo) and
-   the CSRF/fetch helpers (DRY.md item 2).
+   the CSRF/fetch helpers (DRY.md item 2). ✓ partial (Area-3 fix branch,
+   commit pending): the render pipeline is single-escaper now — renderer.js's
+   private copy deleted, every call site uses text-markers.js escapeHTML
+   (home.html now loads text-markers.js before renderer.js) — and
+   single-PUT-path: WriteSysSuggestions.putSuggestion serves both the modal
+   autosaver and range-delete.js (hand-rolled fetch+CSRF removed). Escaper
+   copies outside the render pipeline (note-widget esc(), etc.) still open.

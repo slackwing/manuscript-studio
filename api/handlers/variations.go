@@ -400,7 +400,7 @@ func (h *VariationHandlers) HandleLinkSketch(w http.ResponseWriter, r *http.Requ
 // legacy anchors) return a non-ok status and the client falls back.
 func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Request) {
 	session, ok := h.requireSession(w, r)
-	if !ok {
+	if !ok || !h.requireCSRF(w, r) {
 		return
 	}
 	sketchID := chi.URLParam(r, "sketch_id")
@@ -410,6 +410,9 @@ func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Reque
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ManuscriptID <= 0 || strings.TrimSpace(req.Text) == "" {
 		http.Error(w, "manuscript_id and text required", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, req.ManuscriptID) {
 		return
 	}
 	ctx := r.Context()

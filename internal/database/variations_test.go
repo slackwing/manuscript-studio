@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -235,38 +236,63 @@ func TestCreateSketch_MintsVariationA_AndNote(t *testing.T) {
 
 // ---------------------------------------------------------------- #77 ⚠
 
-// The retry loop at variations.go:136–148 re-runs the INSERT inside the SAME
-// transaction that the collision just aborted, so every retry dies with
-// 25P02 ("current transaction is aborted"). Intended semantics: an ID
-// collision is retriable. This test pins the mechanism the loop depends on.
+// An ID collision must be retriable. The old loop re-ran the INSERT inside
+// the SAME transaction the collision had just aborted, so every retry died
+// with 25P02 ("current transaction is aborted") — no in-tx retry can ever
+// work without a savepoint. The fix (createSketchTx) rolls back the WHOLE
+// tx on a 23505 sketch-id collision and re-runs the entire body with a
+// fresh id, max 3 attempts; the id generator is injectable, so this test
+// forces a collision and proves the retry commits. (The test was rewritten
+// with the fix: its original form pinned the impossible in-tx mechanism.)
 func TestCreateSketch_IDCollisionRetryWorks(t *testing.T) {
-	t.Skip("PENDING-FIX: newSketchID collision retry re-INSERTs inside the aborted tx (variations.go:136–148) and always fails with 25P02; use a savepoint or generate/insert before the tx — enable after fix")
-
 	f := newVarFixture(t)
 	existing := f.newSketch(t, nil) // occupies one sketch_id
 
-	// Replicate exactly what CreateSketch's retry loop does: a failed INSERT
-	// followed by another INSERT in the same tx. For the retry to ever
-	// succeed, the second INSERT must work.
-	tx, err := f.pool.Begin(f.ctx)
+	// Generator collides on the first draw, then mints fresh ids.
+	calls := 0
+	gen := func() (string, error) {
+		calls++
+		if calls == 1 {
+			return existing.Sketch.SketchID, nil
+		}
+		return newSketchID()
+	}
+	gotSketchID, err := f.db.createSketchTx(f.ctx, f.user, gen, func(tx pgx.Tx, sketchID string) error {
+		_, err := tx.Exec(f.ctx, `INSERT INTO variation (sketch_id, ordinal) VALUES ($1, 1)`, sketchID)
+		return err
+	})
 	if err != nil {
-		t.Fatalf("begin: %v", err)
+		t.Fatalf("createSketchTx with one collision must succeed, got: %v", err)
 	}
-	defer tx.Rollback(f.ctx)
-	if _, err := tx.Exec(f.ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`,
-		existing.Sketch.SketchID, f.user); err == nil {
-		t.Fatal("duplicate sketch_id insert should have failed")
+	if calls < 2 {
+		t.Fatalf("generator called %d time(s), want a retry after the collision", calls)
 	}
-	freshID, err := newSketchID()
-	if err != nil {
-		t.Fatalf("newSketchID: %v", err)
+	if gotSketchID == existing.Sketch.SketchID {
+		t.Fatalf("retry reused the colliding id %q", gotSketchID)
 	}
-	if _, err := tx.Exec(f.ctx, `INSERT INTO sketch (sketch_id, user_id) VALUES ($1, $2)`,
-		freshID, f.user); err != nil {
-		t.Fatalf("retry insert after collision must succeed, got: %v", err)
+	// The whole body committed under the fresh id.
+	var variations int
+	if err := f.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM variation WHERE sketch_id = $1`, gotSketchID).Scan(&variations); err != nil {
+		t.Fatalf("count variations: %v", err)
 	}
-	if err := tx.Commit(f.ctx); err != nil {
-		t.Fatalf("commit: %v", err)
+	if variations != 1 {
+		t.Errorf("committed sketch has %d variations, want 1", variations)
+	}
+
+	// A generator that NEVER stops colliding exhausts its 3 attempts with a
+	// real error — and leaves nothing half-committed.
+	always := func() (string, error) { return existing.Sketch.SketchID, nil }
+	if _, err := f.db.createSketchTx(f.ctx, f.user, always, func(tx pgx.Tx, sketchID string) error {
+		return nil
+	}); err == nil {
+		t.Fatal("permanent collision should surface an error after max attempts")
+	}
+	var sketches int
+	if err := f.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM sketch WHERE user_id = $1`, f.user).Scan(&sketches); err != nil {
+		t.Fatalf("count sketches: %v", err)
+	}
+	if sketches != 2 { // existing + the successful retry above
+		t.Errorf("sketch count = %d, want 2 (failed attempts fully rolled back)", sketches)
 	}
 }
 
@@ -334,8 +360,6 @@ func TestCreateVariationFrom_NextLetter_TextCopied(t *testing.T) {
 // (surfaced as a 500). Intended semantics: both succeed with distinct
 // ordinals (or at worst a clean, mappable sentinel).
 func TestCreateVariationFrom_ConcurrentOrdinalRace(t *testing.T) {
-	t.Skip("PENDING-FIX: concurrent next-ordinal computation races (variations.go:186–201; unique idx violation surfaces as 500); lock the sketch row (as CreateVariationFromText does) — enable after fix")
-
 	f := newVarFixture(t)
 	a := f.newSketch(t, nil)
 	aID := a.Variation.VariationID
@@ -443,8 +467,6 @@ func TestGetVariationContext_FullPayload(t *testing.T) {
 // "canon variation frozen/immutable/undeletable"): deleting the current
 // canon variation is refused.
 func TestGetVariationContext_CanonUndeletable(t *testing.T) {
-	t.Skip("PENDING-FIX: SoftDeleteVariation only guards NULL-ordinal rows (variations.go:426), so the placed/canon lettered variation can be soft-deleted while GetVariationContext keeps serving it as canon (:281–288); refuse deleting the canon variation — enable after fix")
-
 	f := newVarFixture(t)
 	mID := f.newManuscript(t)
 	a := f.newSketch(t, nil)
@@ -1134,8 +1156,6 @@ func TestCreatePlacedSketchFromSelection_FullStroke(t *testing.T) {
 // semantics: only "no such row" and "wrong owner" map to ErrNotOwner;
 // genuine DB failures must surface as themselves (→ 500, logged).
 func TestVariations_DBErrorsNotMaskedAsNotOwner(t *testing.T) {
-	t.Skip("PENDING-FIX: owner-check error collapse (variations.go, ~12 sites: `if err != nil || owner != userID { return ErrNotOwner }`) turns real DB failures into 404s; distinguish pgx.ErrNoRows/wrong-owner from other errors — enable after fix")
-
 	f := newVarFixture(t)
 	a := f.newSketch(t, nil)
 	aID := a.Variation.VariationID

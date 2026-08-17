@@ -24,7 +24,7 @@ const psql = (sql) => execSync(
   { encoding: 'utf-8' }).trim();
 
 (async () => {
-  console.log('=== Render lifecycle e2e (R17 R18 R20 R21 R23 R24 R25 R26 R27) ===\n');
+  console.log('=== Render lifecycle e2e (R17 R18 R20 R21 R23 R24 R26 R27) ===\n');
   psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
 
   const browser = await chromium.launch({ headless: true });
@@ -278,18 +278,18 @@ const psql = (sql) => execSync(
       check('R27: reference click still works after an in-place re-render', true);
     }
 
-    // Clean the suggestions out before the remaining scenarios. Full page
-    // reload rather than an in-place re-render: emptying the outline
-    // in-place trips a live bug (outline.render leaves stale itemNodes when
-    // the outline transitions non-empty → empty; renderManuscript then
-    // rejects in updateCaret) — pinned in test-render-pending-fixes.js.
+    // Clean the suggestions out before the remaining scenarios — IN PLACE
+    // (refetch the now-empty suggestion set and re-render): the outline
+    // empties without a page reload now that outline.render resets its
+    // cached nodes on the non-empty → empty transition (asserted in
+    // test-render-pending-fixes.js). This exercises the fixed path.
     psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
-    await page.goto(TEST_URL);
-    await waitForPagination(page);
+    await reloadSuggestionsAndRender();
+    check('in-place re-render after clearing suggestions empties the outline',
+      await page.evaluate(() => document.querySelectorAll('.outline-item').length === 0));
 
-    // R25 (render reentrancy) lives in test-render-pending-fixes.js: two
-    // overlapping renderManuscript calls currently strand a second
-    // .pagedjs_pages tree (verified 2026-08: trees=2, sentences doubled).
+    // R25 (render reentrancy: overlapping calls coalesce to one tree) is
+    // asserted in test-render-pending-fixes.js.
 
     // ---- R20: responsive scaling math -------------------------------------
     await page.setViewportSize({ width: 500, height: 800 });

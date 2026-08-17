@@ -1,8 +1,8 @@
 package database
 
-// AREA 2 §2.4 "Tags, reorder, users/access" — rows #47–#56.
-// #52's cross-user leg is a PENDING-FIX skip (ReorderNote's position list is
-// not user-scoped).
+// AREA 2 §2.4 "Tags, reorder, users/access" — rows #47–#56. (The former
+// PENDING-FIX skip on #52's cross-user leg is enabled — ReorderNote is now
+// user-scoped and derives the sentence from the note row.)
 
 import (
 	"testing"
@@ -169,7 +169,7 @@ func TestReorderNote_FractionalTargetSlot(t *testing.T) {
 	c := f.createNote(t, sids[0], "c")
 
 	// Move c to the front.
-	if err := f.db.ReorderNote(f.ctx, c.NoteID, sids[0], 0); err != nil {
+	if err := f.db.ReorderNote(f.ctx, c.NoteID, 0); err != nil {
 		t.Fatalf("reorder: %v", err)
 	}
 	notes, err := f.db.GetNotesBySentence(f.ctx, sids[0], f.username)
@@ -189,7 +189,7 @@ func TestReorderNote_FractionalTargetSlot(t *testing.T) {
 
 	// Move c between a and b (index 1 of [c a b] target list semantics: the
 	// slot positions come from the CURRENT list) — must land between them.
-	if err := f.db.ReorderNote(f.ctx, c.NoteID, sids[0], 2); err != nil {
+	if err := f.db.ReorderNote(f.ctx, c.NoteID, 2); err != nil {
 		t.Fatalf("reorder 2: %v", err)
 	}
 	notes, err = f.db.GetNotesBySentence(f.ctx, sids[0], f.username)
@@ -202,13 +202,12 @@ func TestReorderNote_FractionalTargetSlot(t *testing.T) {
 	}
 }
 
-// #52 ⚠ PENDING-FIX (scope leg): ReorderNote's position list (queries.go
-// :1681) is NOT user-scoped while every visible list is — in a multi-user
-// manuscript the target index is computed against the wrong array. Intended
-// semantics: reordering my note computes slots over MY active notes only.
+// #52 (scope leg, fixed): ReorderNote's position list used to span ALL
+// users' notes on the sentence while every visible list is user-scoped — in
+// a multi-user manuscript the target index was computed against the wrong
+// array. It now scopes to the note owner's active notes (and derives the
+// sentence from the note row, not the request body).
 func TestReorderNote_UserScopedPositions(t *testing.T) {
-	t.Skip("PENDING-FIX: ReorderNote computes positions across ALL users' notes on the sentence — enable after the position query is user-scoped")
-
 	f := newITFixture(t)
 	other := f.newUser(t)
 	_, sids := f.makeDoneMigration(t, "c52b", "A shared sentence.")
@@ -222,7 +221,7 @@ func TestReorderNote_UserScopedPositions(t *testing.T) {
 	// Index 1 over MY list [mineA, mineB] = between them → the new position
 	// must sort AFTER mineA's. (Unscoped, index 1 of [theirs, mineA, mineB]
 	// lands BEFORE mineA.)
-	if err := f.db.ReorderNote(f.ctx, mineB.NoteID, sids[0], 1); err != nil {
+	if err := f.db.ReorderNote(f.ctx, mineB.NoteID, 1); err != nil {
 		t.Fatalf("reorder: %v", err)
 	}
 	var posA, posB string

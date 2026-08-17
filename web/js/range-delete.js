@@ -17,8 +17,6 @@ const WriteSysRangeDelete = {
   range: [],        // sentence ids currently selected
   btn: null,
 
-  csrf() { return (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || ''; },
-
   init() {
     if (!document.getElementById('manuscript-content')) return; // book page only
     // Capture phase: sentence spans live inside paged.js content; suggestion
@@ -157,14 +155,16 @@ const WriteSysRangeDelete = {
     const firstId = ids[0];
     if (this.btn) { this.btn.disabled = true; this.btn.innerHTML = '…'; }
     try {
+      // The shared write path (WriteSysSuggestions.putSuggestion) handles
+      // CSRF + 401. Mid-range failure aborts the loop: earlier PUTs stand,
+      // later sentences are never attempted; the refetch below reflects the
+      // partial state.
       for (const id of ids) {
-        const resp = await fetch(`api/sentences/${encodeURIComponent(id)}/suggestion`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
-          credentials: 'same-origin',
-          body: JSON.stringify({ text: '' }),
-        });
-        if (!resp.ok) throw new Error(`delete-suggestion failed on ${id} (${resp.status})`);
+        try {
+          await window.WriteSysSuggestions.putSuggestion(id, '');
+        } catch (e) {
+          throw new Error(`delete-suggestion failed on ${id} (${e.status || e.message})`);
+        }
       }
     } catch (err) {
       alert(err.message + ' — some sentences may already carry the suggestion; review and retry.');

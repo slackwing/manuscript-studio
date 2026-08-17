@@ -137,6 +137,13 @@ const WriteSysOutline = {
     if (items.length === 0) {
       this.el.innerHTML = '';
       this.el.classList.remove('has-outline');
+      // Reset the cached DOM handles too — leaving stale itemNodes/caretEl
+      // here made the NEXT renderManuscript reject inside updatePageInfo →
+      // updateCaret (querying '.outline-nav' in an emptied container) when
+      // the outline transitioned non-empty → empty in place.
+      this.itemNodes = [];
+      this.itemStarts = [];
+      this.caretEl = null;
       return;
     }
 
@@ -303,8 +310,11 @@ const WriteSysOutline = {
       else if (rBot > cBot) this.el.scrollTop = rBot - this.el.clientHeight + 6;
     }
     // Glide the caret to vertically center on the active row (both measured
-    // relative to the nav so translateY is nav-local).
-    const navTop = this.el.querySelector('.outline-nav').getBoundingClientRect().top;
+    // relative to the nav so translateY is nav-local). Null-safe: a scroll/
+    // resize handler may fire after the outline emptied.
+    const nav = this.el.querySelector('.outline-nav');
+    if (!nav) return;
+    const navTop = nav.getBoundingClientRect().top;
     const rowRect = active.getBoundingClientRect();
     const y = (rowRect.top + rowRect.height / 2) - navTop;
     this.caretEl.style.opacity = '1';

@@ -1,9 +1,7 @@
 package database
 
-// AREA 2 §2.4 "Notes & versions" — rows #30–#46.
-// #36, #37 (race leg) and #46 (column leg) are PENDING-FIX skips: the real
-// assertions are written to the intended semantics; delete the t.Skip line
-// once the underlying fix lands.
+// AREA 2 §2.4 "Notes & versions" — rows #30–#46. (The former PENDING-FIX
+// skips #36, #37 race leg, #46 column leg are enabled — their fixes landed.)
 
 import (
 	"strings"
@@ -223,13 +221,11 @@ func TestCreateNote_PositionAfterReorderedMax(t *testing.T) {
 	}
 }
 
-// #36 ⚠ PENDING-FIX: CreateNote's manuscript-stamp step swallows the lookup
-// error (queries.go ~:1081 — `if err == nil { ... }` silently skips the
-// stamp). Intended semantics: a sentence note must ALWAYS come out stamped
-// with its manuscript, or the create must fail loudly.
+// #36 (fixed): CreateNote's manuscript-stamp step used to swallow the lookup
+// error (`if err == nil { ... }` silently skipped the stamp). Semantics now
+// enforced: a sentence note ALWAYS comes out stamped with its manuscript, or
+// the create fails loudly (notes.go CreateNote fails the tx).
 func TestCreateNote_ManuscriptStampNeverSilentlySkipped(t *testing.T) {
-	t.Skip("PENDING-FIX: CreateNote silently skips the manuscript stamp when the migration lookup errors — enable after the silent-skip is removed (fail the tx instead)")
-
 	f := newITFixture(t)
 	_, sids := f.makeDoneMigration(t, "c36", "A sentence.")
 
@@ -313,13 +309,11 @@ func TestCreateScratchpadNote_NoVersionRow(t *testing.T) {
 	}
 }
 
-// #37 ⚠ PENDING-FIX (race leg): CreateScratchpadNote does the MAX(position)
+// #37 (race leg, fixed): CreateScratchpadNote used to do the MAX(position)
 // read-then-insert with neither the createNoteMu mutex nor a tx (vs
-// CreateNote at queries.go:1014) — concurrent creates can mint duplicate
-// positions. Intended semantics: every note in a pad has a distinct position.
+// CreateNote) — concurrent creates could mint duplicate positions. It now
+// takes the same mutex + tx, so every note in a pad has a distinct position.
 func TestCreateScratchpadNote_ConcurrentPositionRace(t *testing.T) {
-	t.Skip("PENDING-FIX: CreateScratchpadNote's position assignment is unguarded (no mutex/tx, unlike CreateNote) — enable after it is serialized")
-
 	f := newITFixture(t)
 	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "race pad")
 	if err != nil {
@@ -721,14 +715,12 @@ func TestGetActiveNotesForSentences_BatchEqualsSingles(t *testing.T) {
 	}
 }
 
-// #46 ⚠ PENDING-FIX (column leg): GetActiveNotesForSentences (queries.go
-// :1441) and GetActiveNotesForSentence (:1471) OMIT manuscript_id and
-// scratchpad_id from their column lists — the other three copies of the note
-// column list select them. Intended semantics: all copies return the same
-// shape, so a stamped sentence note carries its ManuscriptID here too.
+// #46 (column leg, fixed): GetActiveNotesForSentence(s) used to OMIT
+// manuscript_id and scratchpad_id from their column lists while the other
+// three copies selected them. All five readers now share the one noteColumns
+// const (notes.go), so a stamped sentence note carries its ManuscriptID
+// everywhere.
 func TestGetActiveNotesForSentences_ManuscriptColumnsSelected(t *testing.T) {
-	t.Skip("PENDING-FIX: GetActiveNotesForSentence(s) omit manuscript_id/scratchpad_id from the drifted note column list — enable after the column lists are unified")
-
 	f := newITFixture(t)
 	_, sids := f.makeDoneMigration(t, "c46b", "A stamped sentence.")
 	note := f.createNote(t, sids[0], "stamped note")

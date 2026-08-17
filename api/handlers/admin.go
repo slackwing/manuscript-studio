@@ -505,6 +505,10 @@ func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.Ma
 // — useful for tests and one-off refreshes; only serving switches on the
 // config flag.
 func (h *AdminHandlers) HandleWordcountCompute(w http.ResponseWriter, r *http.Request) {
+	if !h.checkSystemToken(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	rows, err := h.DB.ComputeWordcountHistory(r.Context(), h.Config.WordcountHistory.Location())
 	if err != nil {
 		http.Error(w, "Wordcount compute failed: "+err.Error(), http.StatusInternalServerError)

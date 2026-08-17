@@ -206,7 +206,43 @@ const WriteSysRenderer = {
   //     scroll to the top during a re-paginate.
   //   selectSentenceId: string — after the new render, add the .selected
   //     class to that sentence's span(s) so it's easy to spot post-edit.
+  //
+  // SERIALIZED (R25): renders must never overlap — two concurrent
+  // _renderManuscriptNow calls would each snapshot the same "old pages" and
+  // strand the loser's .pagedjs_pages tree. While a render is in flight,
+  // further calls COALESCE: they await the current render, then exactly ONE
+  // queued re-render runs with the LATEST caller's opts (intermediate opts
+  // are superseded — last writer wins). Every caller's promise resolves only
+  // after a render that started at-or-after its call completed, which
+  // preserves the "await renderManuscript() ⇒ the page reflects my change"
+  // contract that suggestions.js close() and range-delete rely on.
   async renderManuscript(opts = {}) {
+    if (this._renderInFlight) {
+      this._renderQueuedOpts = opts; // latest wins
+      if (!this._renderQueued) {
+        this._renderQueued = (async () => {
+          try { await this._renderInFlight; } catch (e) { /* rerun regardless */ }
+          // The in-flight render's own `finally` has already cleared
+          // _renderInFlight (its await was registered first), so this
+          // recursive call starts a fresh render rather than re-queueing.
+          this._renderQueued = null;
+          const queuedOpts = this._renderQueuedOpts;
+          this._renderQueuedOpts = null;
+          return this.renderManuscript(queuedOpts);
+        })();
+      }
+      return this._renderQueued;
+    }
+    const run = this._renderManuscriptNow(opts);
+    this._renderInFlight = run;
+    try {
+      return await run;
+    } finally {
+      this._renderInFlight = null;
+    }
+  },
+
+  async _renderManuscriptNow(opts = {}) {
     const container = document.getElementById('manuscript-content');
     const { anchorSentenceId, selectSentenceId } = opts;
 
@@ -239,9 +275,9 @@ const WriteSysRenderer = {
     // that note's textarea has the typing caret. Side-bars (rainbow)
     // still convey the note set at a glance — see addRainbowBars().
 
-    // Suggestions are now rendered inline by renderSentencesToHTML (the
-    // fragment model — SUGGESTION_RENDER_PLAN.md), so the old applyToSpans
-    // overlay is no longer needed here.
+    // Suggestions are rendered inline by renderSentencesToHTML (the
+    // fragment model — SUGGESTION_RENDER_PLAN.md); no post-render overlay
+    // pass exists.
 
     if (typeof smartquotes !== 'undefined') {
       smartquotes.element(tempContainer);
@@ -505,8 +541,7 @@ const WriteSysRenderer = {
           // carried transfers to that paragraph's break class.
           if (f.cmd.kind === 'anchor' || f.cmd.kind === 'snippet') {
             pendingMarginGlyphs.push({ cmd: f.cmd, id, changed });
-            pendingCarriedCls = strongestCls(pendingCarriedCls,
-              f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : ''));
+            pendingCarriedCls = strongestCls(pendingCarriedCls, this.markerClass(f.marker));
             continue;
           }
           // &end: never shown in the preview (the raw text keeps it), and it
@@ -543,7 +578,7 @@ const WriteSysRenderer = {
             pieceText = chars.slice(0, last.start).join('').replace(/\s+$/, '');
           }
         }
-        let cls = f.marker === '\n\n' ? 'section-break' : (f.marker === '\n\t' ? 'indented' : '');
+        let cls = this.markerClass(f.marker);
         const body = this.stripLeadingMarker(pieceText);
         let inner;
         if (suggestion !== undefined && loneProse && !isDeleteProposal) {
@@ -561,7 +596,7 @@ const WriteSysRenderer = {
         }
         const sugClass = (suggestion !== undefined ? ' has-suggestion' : '')
           + (isDeleteProposal ? ' suggested-delete' : '');
-        let span = `<span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${inner}</span>`;
+        let span = `<span class="sentence${sugClass}" data-sentence-id="${escapeHTML(id)}">${inner}</span>`;
         // Pending margin glyphs attach to THIS paragraph, absolutely placed
         // in the left margin aligned to its top; the carried break class wins
         // over the prose's own weaker one.
@@ -656,13 +691,20 @@ const WriteSysRenderer = {
     return '';
   },
 
+  // markerClass maps a fragment's leading structural marker to its paragraph
+  // break class: '\n\n' → section-break, '\n\t' → indented, else ''.
+  markerClass(marker) {
+    return marker === '\n\n' ? 'section-break' : (marker === '\n\t' ? 'indented' : '');
+  },
+
   // markerGlyphDiff returns a glyph indicator when a suggestion changed a
   // sentence's leading structural break: green §/¶ if a break was added,
   // struck-through §/¶ if removed. Returns '' when unchanged. § = section
-  // (\n\n), ¶ = paragraph (\n\t).
+  // (\n\n), ¶ = paragraph (\n\t) — the glyphs come from text-markers.js
+  // (script-global SECTION_GLYPH/PARAGRAPH_GLYPH; it loads first).
   markerGlyphDiff(committedMarker, effectiveMarker) {
     if (committedMarker === effectiveMarker) return '';
-    const glyph = (m) => (m === '\n\n' ? '§' : (m === '\n\t' ? '¶' : ''));
+    const glyph = (m) => (m === '\n\n' ? SECTION_GLYPH : (m === '\n\t' ? PARAGRAPH_GLYPH : ''));
     if (!committedMarker && effectiveMarker) {
       // Break added.
       return `<span class="marker-added">${glyph(effectiveMarker)}</span>`;
@@ -689,39 +731,39 @@ const WriteSysRenderer = {
   renderBlockCommandFrag(cmd, id, changed, marker) {
     // Structural break class from the fragment's leading marker — block
     // placeholders honor \n\t (indent) and \n\n (section) like prose does.
-    const markerCls = marker === '\n\t' ? 'indented' : (marker === '\n\n' ? 'section-break' : '');
+    const markerCls = this.markerClass(marker);
     if (cmd.kind === 'placeholder') {
       const lib = window.WriteSysPlaceholder;
       const spec = window.WriteSysCommand.placeholderSpec(cmd.args);
       const sugClass = changed ? ' has-suggestion' : '';
       if (!lib || !spec.valid) {
         // Mis-syntaxed placeholder prints as literal prose (PLACEHOLDER_PLAN.md).
-        return `<p><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${this.escapeHtml(cmd.raw)}</span></p>`;
+        return `<p><span class="sentence${sugClass}" data-sentence-id="${escapeHTML(id)}">${escapeHTML(cmd.raw)}</span></p>`;
       }
       if (spec.unit === 'paragraphs') {
-        return lib.blockHTML(spec, cmd.slug, id, changed, this.escapeHtml.bind(this), markerCls);
+        return lib.blockHTML(spec, cmd.slug, id, changed, escapeHTML, markerCls);
       }
       // A sentences-unit placeholder alone on its line: a one-run paragraph.
       const chCls = changed ? ' cmd-suggested' : '';
-      return `<p class="ph-line${markerCls ? ' ' + markerCls : ''}${chCls}"><span class="sentence${sugClass}" data-sentence-id="${this.escapeHtml(id)}">${lib.inlineHTML(spec, cmd.slug)}</span></p>`;
+      return `<p class="ph-line${markerCls ? ' ' + markerCls : ''}${chCls}"><span class="sentence${sugClass}" data-sentence-id="${escapeHTML(id)}">${lib.inlineHTML(spec, cmd.slug)}</span></p>`;
     }
     if (cmd.kind === 'meta') {
       // A changed &meta renders as a small blue marker (it's otherwise
       // invisible) so the author can find and click it; unchanged is hidden.
       if (changed) {
-        return `<div class="cmd-meta cmd-suggested"><span class="sentence" data-sentence-id="${this.escapeHtml(id)}" title="changed setting — click to view">⚙</span></div>`;
+        return `<div class="cmd-meta cmd-suggested"><span class="sentence" data-sentence-id="${escapeHTML(id)}" title="changed setting — click to view">⚙</span></div>`;
       }
-      return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
+      return `<div class="cmd-meta" hidden><span class="sentence" data-sentence-id="${escapeHTML(id)}"></span></div>`;
     }
     if (cmd.kind === 'end') {
       // Region terminator: NEVER rendered in the preview — it exists in the
       // raw text (suggest-edit shows it) and that's the only place it should.
-      const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
-      return `<div class="cmd-end"${slugAttr} hidden><span class="sentence" data-sentence-id="${this.escapeHtml(id)}"></span></div>`;
+      const slugAttr = cmd.slug ? ` data-slug="${escapeHTML(cmd.slug)}"` : '';
+      return `<div class="cmd-end"${slugAttr} hidden><span class="sentence" data-sentence-id="${escapeHTML(id)}"></span></div>`;
     }
     const form = window.WriteSysCommand && window.WriteSysCommand.structuralForm(cmd.raw);
     if (!form) return null;
-    const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+    const slugAttr = cmd.slug ? ` data-slug="${escapeHTML(cmd.slug)}"` : '';
     const chCls = changed ? ' cmd-suggested' : '';
     // A block anchor renders as a ⚓ glyph marker (grey; hover reveals its
     // label). The label itself is outline metadata, never shown as book text.
@@ -733,7 +775,7 @@ const WriteSysRenderer = {
     }
     // Heading shows the LABEL only. The description is outline metadata and is
     // never rendered in the book (it appears in the left-margin outline nav).
-    const inner = `<span class="sentence" data-sentence-id="${this.escapeHtml(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
+    const inner = `<span class="sentence" data-sentence-id="${escapeHTML(id)}">${this.applyInlineFormatting(form.visible)}</span>`;
     return `<${form.tag} class="${form.cls}${chCls}"${slugAttr}>${inner}</${form.tag}>`;
   },
 
@@ -745,29 +787,21 @@ const WriteSysRenderer = {
   // hoverable/annotatable like any fragment.
   anchorGlyphHTML(cmd, id, changed, margin) {
     const label = (cmd.args && cmd.args[0]) || '';
-    const titleAttr = label ? ` title="${this.escapeHtml(label)}"` : '';
+    const titleAttr = label ? ` title="${escapeHTML(label)}"` : '';
     const chCls = changed ? ' cmd-suggested' : '';
     const marginCls = margin ? ' cmd-anchor-margin' : '';
-    const slugAttr = cmd.slug ? ` data-slug="${this.escapeHtml(cmd.slug)}"` : '';
+    const slugAttr = cmd.slug ? ` data-slug="${escapeHTML(cmd.slug)}"` : '';
     // A placed sketch region's opener wears the SKETCH icon (click →
     // navigate to the group's widget); plain anchors keep the ⚓.
     if (cmd.kind === 'snippet') {
       const icon = window.WriteSysIcons && window.WriteSysIcons.goto ? window.WriteSysIcons.goto(11) : '↗';
-      return `<span class="sentence cmd-anchor-glyph cmd-sketch-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="sketch">${icon}</span>`;
+      return `<span class="sentence cmd-anchor-glyph cmd-sketch-glyph${marginCls}${chCls}" data-sentence-id="${escapeHTML(id)}"${slugAttr}${titleAttr} aria-label="sketch">${icon}</span>`;
     }
-    return `<span class="sentence cmd-anchor-glyph${marginCls}${chCls}" data-sentence-id="${this.escapeHtml(id)}"${slugAttr}${titleAttr} aria-label="anchor">⚓</span>`;
+    return `<span class="sentence cmd-anchor-glyph${marginCls}${chCls}" data-sentence-id="${escapeHTML(id)}"${slugAttr}${titleAttr} aria-label="anchor">⚓</span>`;
   },
 
-  // Escape first, then substitute *x* → <em> — otherwise the escape pass
-  // would re-escape our own <em> tags.
-  escapeHtml(text) {
-    return String(text)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  },
+  // HTML escaping uses the shared escapeHTML from text-markers.js (loaded
+  // before this file on every page that uses the renderer) — no private copy.
 
   applyInlineFormatting(text) {
     // Inline &-commands (&reference / &anchor) are rendered specially; the
@@ -777,18 +811,18 @@ const WriteSysRenderer = {
       ? window.WriteSysCommand.findInline(text)
       : [];
     if (cmds.length === 0) {
-      return this.escapeHtml(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      return escapeHTML(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
     }
     const chars = Array.from(text);
     let out = '';
     let pos = 0;
     for (const c of cmds) {
       const before = chars.slice(pos, c.start).join('');
-      out += this.escapeHtml(before).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      out += escapeHTML(before).replace(/\*([^*]+)\*/g, '<em>$1</em>');
       out += this.renderInlineCommand(c);
       pos = c.end;
     }
-    out += this.escapeHtml(chars.slice(pos).join('')).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    out += escapeHTML(chars.slice(pos).join('')).replace(/\*([^*]+)\*/g, '<em>$1</em>');
     return out;
   },
 
@@ -799,7 +833,7 @@ const WriteSysRenderer = {
   renderInlineCommand(c) {
     if (c.kind === 'end') {
       // Invisible region terminator, same treatment as an inline anchor.
-      const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
+      const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
       return `<span class="inline-end"${slug} aria-hidden="true"></span>`;
     }
     if (c.kind === 'placeholder') {
@@ -808,14 +842,14 @@ const WriteSysRenderer = {
       if (!lib || !spec || !spec.valid || spec.unit !== 'sentences') {
         // Mis-syntax — including a paragraphs-form riding mid-line, which
         // must be alone on its line — prints as literal prose.
-        return this.escapeHtml(c.raw || '');
+        return escapeHTML(c.raw || '');
       }
       return lib.inlineHTML(spec, c.slug);
     }
     if (c.kind === 'anchor' || c.kind === 'snippet') {
-      const slug = c.slug ? ` data-slug="${this.escapeHtml(c.slug)}"` : '';
+      const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
       const label = (c.args && c.args[0]) || c.slug || '';
-      const titleAttr = label ? ` title="${this.escapeHtml(label)}"` : '';
+      const titleAttr = label ? ` title="${escapeHTML(label)}"` : '';
       // The zero-width target stays inline (scroll anchor); the VISIBLE
       // marker rides in the left margin at this line's height (absolute, no
       // top → static-position y), so the flow is never touched. A placed
@@ -831,11 +865,11 @@ const WriteSysRenderer = {
     // reference
     const slugMap = (window.WriteSysOutline && window.WriteSysOutline.slugMap) || {};
     const targetId = c.slug ? slugMap[c.slug] : undefined;
-    const notes = c.notes ? this.escapeHtml(c.notes) : ('↪ ' + this.escapeHtml(c.slug || ''));
+    const notes = c.notes ? escapeHTML(c.notes) : ('↪ ' + escapeHTML(c.slug || ''));
     if (targetId) {
-      return `<a class="inline-ref" data-ref-target="${this.escapeHtml(targetId)}" title="${this.escapeHtml(c.slug)}">${notes}</a>`;
+      return `<a class="inline-ref" data-ref-target="${escapeHTML(targetId)}" title="${escapeHTML(c.slug)}">${notes}</a>`;
     }
-    return `<span class="inline-ref broken" title="unresolved reference: ${this.escapeHtml(c.slug || '')}">${notes}</span>`;
+    return `<span class="inline-ref broken" title="unresolved reference: ${escapeHTML(c.slug || '')}">${notes}</span>`;
   },
 
   // renderInlineCommandsInHtml post-processes diff HTML (already escaped, so
@@ -848,6 +882,14 @@ const WriteSysRenderer = {
     // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
     // Args are plain (no nested braces in the escaped stream we care about).
     // 'sketch' is the successor spelling of 'snippet' — same command kind.
+    //
+    // TODO(CODE_REVIEW_AUG_2026.md §3.1/#15): this regex hand-duplicates the
+    // command grammar that command.js parse() owns (keyword list, ≤4 brace
+    // groups, slug charset, sketch→snippet aliasing) — adding a command
+    // keyword there without updating this regex silently breaks diff
+    // rendering. Deliberately NOT unified this pass (rewriting the escaped-
+    // HTML scan over the real parser is risky); test-render-units R14 pins
+    // the current behavior. Unify when the renderer is next rewritten.
     const re = /&amp;(reference|anchor|placeholder|snippet|sketch)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')

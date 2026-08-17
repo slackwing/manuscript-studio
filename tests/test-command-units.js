@@ -113,26 +113,33 @@ console.log('=== C8 segmentFragments-leading-anchor-newline-form ===');
   check('whitespace-only trailing prose dropped', alone.length === 1 && alone[0].kind === 'command');
 }
 
-// ---- C9 ⚠: snippet/sketch newline-form asymmetry (PINNED) --------------
-console.log('=== C9 segmentFragments-snippet-newline-asymmetry (pin) ===');
+// ---- C9: snippet/sketch newline form splits like anchor (FIXED) --------
+console.log('=== C9 segmentFragments-snippet-newline-symmetry ===');
 {
-  // PIN-OR-FIX (CODE_REVIEW_AUG_2026.md §3.4 C9, §3.1): "command.js:159–167 —
-  // the leading-command split claims parity with canonicalize but checks
-  // `kind === 'anchor'` only, while canonicalize splits `&snippet`/`&sketch`
-  // too (canonicalize.js:45–47) — a real parity asymmetry, currently masked."
-  // We PIN the current asymmetric behavior: a "&snippet#x{}\nprose" block
-  // stays ONE prose fragment (no command/prose split), while the identical
-  // anchor form splits (C8). The fix phase may flip this to split snippets
-  // like canonicalize does — update these assertions then.
+  // RESOLVED (CODE_REVIEW_AUG_2026.md §3.4 C9, §3.1): the leading-command
+  // split (command.js segmentFragments) now matches canonicalize
+  // (canonicalize.js:45–47 / canonicalize.go): &snippet — and its &sketch
+  // spelling, which parse() normalizes to kind 'snippet' — splits into
+  // [command, prose] exactly like &anchor (C8). The former asymmetry (the
+  // snippet form staying one prose fragment) is gone.
   const sn = cmd.segmentFragments('&snippet#ab{}\nprose');
-  check('PINNED: snippet newline form does NOT split (stays one prose frag)',
-    sn.length === 1 && sn[0].kind === 'prose' && sn[0].text === '&snippet#ab{}\nprose');
+  check('snippet newline form splits into [command:snippet, prose]',
+    sn.length === 2 && sn[0].kind === 'command' && sn[0].cmd.kind === 'snippet'
+    && sn[1].kind === 'prose' && sn[1].text === 'prose');
   const sk = cmd.segmentFragments('&sketch#ab{}\nprose');
-  check('PINNED: sketch spelling behaves the same (no split)',
-    sk.length === 1 && sk[0].kind === 'prose');
-  // Contrast case, guaranteed by C8: anchor DOES split. Re-assert here so a
-  // future symmetric fix flips exactly one of these two expectations.
-  check('contrast: anchor newline form splits', cmd.segmentFragments('&anchor#ab{lbl}\nprose').length === 2);
+  check('sketch spelling splits the same (kind normalized to snippet)',
+    sk.length === 2 && sk[0].kind === 'command' && sk[0].cmd.kind === 'snippet'
+    && sk[0].cmd.raw === '&sketch#ab{}' && sk[1].kind === 'prose');
+  check('block marker rides the PROSE fragment (like C8 anchors)', (() => {
+    const m = cmd.segmentFragments('\n\t&snippet#ab{}\nprose');
+    return m.length === 2 && m[0].marker === '' && m[1].marker === '\n\t';
+  })());
+  // Contrast case, guaranteed by C8: anchor splits identically.
+  check('anchor newline form splits (symmetry)', cmd.segmentFragments('&anchor#ab{lbl}\nprose').length === 2);
+  // A snippet mid-prose is untouched — the split is leading-command only.
+  const inline = cmd.segmentFragments('The fire &snippet#s{} spread.');
+  check('inline snippet mid-prose stays one prose fragment',
+    inline.length === 1 && inline[0].kind === 'prose');
 }
 
 // ---- C10: marker reset + empty blocks ---------------------------------

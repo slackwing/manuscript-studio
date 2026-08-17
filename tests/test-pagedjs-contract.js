@@ -172,14 +172,18 @@ const psql = (sql) => execSync(
     check('P2: ordinary pages keep their folio',
       p2.otherTagged === false && p2.otherFolioVisible === true,
       `otherTagged=${p2.otherTagged} otherVisible=${p2.otherFolioVisible}`);
-    // Cleanup the suggestion (page reload afterwards resets outline state —
-    // the in-place empty-outline transition is a pinned pending fix).
+    // Cleanup the suggestion IN PLACE (refetch + re-render): the outline
+    // empties without a reload now that outline.render resets its cached
+    // nodes on the non-empty → empty transition (asserted in
+    // test-render-pending-fixes.js).
     await page.evaluate(async (sid) => {
       await fetch(`api/sentences/${encodeURIComponent(sid)}/suggestion`, {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': localStorage.getItem('csrf_token') || '' },
         credentials: 'same-origin',
       });
+      await window.WriteSysSuggestions.loadForMigration(window.WriteSysRenderer.currentMigrationID);
+      await window.WriteSysRenderer.renderManuscript();
     }, partSid);
 
   } catch (e) {

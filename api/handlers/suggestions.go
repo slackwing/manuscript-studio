@@ -125,8 +125,15 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 		return
 	}
 	migration, err := h.DB.GetMigrationByID(ctx, sentenceMigrationID)
-	if err != nil || migration == nil {
+	if err != nil {
 		http.Error(w, "Failed to load migration", http.StatusInternalServerError)
+		return
+	}
+	if migration == nil {
+		// Defensive: the access guard above already 404s sentences whose
+		// migration isn't 'done', and done rows never change status — but a
+		// missing migration is "not found", never a server error.
+		http.Error(w, "Migration not found", http.StatusNotFound)
 		return
 	}
 	latest, err := h.DB.GetLatestMigration(ctx, migration.ManuscriptID)

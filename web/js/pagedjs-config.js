@@ -1,4 +1,9 @@
-// Must load BEFORE Paged.js so handlers apply on first run.
+// Registers the WriteSys Paged.js handler. This file loads AFTER Paged.js in
+// index.html; ordering doesn't matter because setupPagedJS polls every 100ms
+// until the Paged global exists, then registers exactly once. The only hard
+// requirement is that registration lands before the first `new
+// Paged.Previewer()` (renderer.js renderManuscript) — renders are async and
+// start well after DOMContentLoaded, which the poll comfortably beats.
 
 (function() {
   function setupPagedJS() {

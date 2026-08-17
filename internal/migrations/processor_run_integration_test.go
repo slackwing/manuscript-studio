@@ -10,15 +10,12 @@ import (
 	"testing"
 )
 
-// #127 ⚠ — "Changes" is defined at processor.go:197–202 as sentences tracked
-// to a successor with sub-unity confidence, but :215 and :239 store
-// len(diff.Deleted) instead (the computed changesCount is discarded). The two
-// diverge whenever a deleted sentence gets NO pairing at all — e.g. a full
-// rewrite with zero matches: every old sentence is "deleted", none is a
-// tracked change.
+// #127 — "Changes" is defined in processor.go as sentences tracked to a
+// successor with sub-unity confidence (the fixed code stores that computed
+// count; the old code stored len(diff.Deleted)). The two diverge whenever a
+// deleted sentence gets NO pairing at all — e.g. a full rewrite with zero
+// matches: every old sentence is "deleted", none is a tracked change.
 func TestMigration_ChangesCountIsSubUnityPairingCount(t *testing.T) {
-	t.Skip("PENDING-FIX: processor.go:197–202 computes changesCount then :215/:239 store len(diff.Deleted); use the computed count — enable after fix")
-
 	f := newFixture(t)
 
 	// v1 → v2 share no vocabulary: similarity < 0.40 for every pair, so the

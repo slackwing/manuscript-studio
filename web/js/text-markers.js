@@ -36,10 +36,11 @@ if (typeof window !== 'undefined') {
   window.WriteSysTextMarkers = { toGlyphs, fromGlyphs, SECTION_GLYPH, PARAGRAPH_GLYPH };
 }
 
-// Shared HTML-escaper. Lives here because text-markers.js is the first
-// application script in index.html's load order, so every later script
-// (picker.js, info-tooltip.js, suggestions.js) can use it. Do not
-// re-declare per-file copies.
+// Shared HTML-escaper — the ONE escaper for the app. The load-order
+// invariant is that text-markers.js loads BEFORE its consumers
+// (info-tooltip.js, renderer.js, suggestions.js, outline.js) in every page
+// that uses them — not that it loads first overall. Do not re-declare
+// per-file copies.
 function escapeHTML(s) {
   return String(s)
     .replace(/&/g, '&amp;')

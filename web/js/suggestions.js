@@ -1,14 +1,24 @@
 /**
  * Suggested-edits feature.
  *
- * Keyed by original sentence_id so it never drifts even if a suggestion adds
- * or removes sentence boundaries. The word-level diff (via diff-match-patch)
- * is rendered inline into the existing .sentence span by applyToSpans(),
- * called from renderManuscript() AFTER wrapSentences() and BEFORE smartquotes
- * so the diff compares straight quotes against straight quotes.
+ * Suggestions are keyed by original sentence_id so they never drift even if
+ * an edit adds or removes sentence boundaries. Rendering is the FRAGMENT
+ * MODEL (SUGGESTION_RENDER_PLAN.md): renderer.js renderSentencesToHTML
+ * builds each sentence from its EFFECTIVE text (the suggestion if one
+ * exists, else committed), segmented into command/prose fragments; a
+ * lone-prose edit is word-diffed against the committed prose via
+ * renderDiffHTML (defined in this file, called from the renderer). The diff
+ * runs on RAW straight-quote text; smartquotes runs on the assembled HTML
+ * afterwards (AGENTS.md N9 — don't reorder).
  *
  * Loaded in parallel with the manuscript; endpoint failure is non-fatal.
  */
+
+// Desktop↔mobile breakpoint — must match book.css:3056
+// `@media (max-width: 1239px)`. DERIVED, not arbitrary (AGENTS.md N13):
+// 2×(band 300 + gap 32) + page 576 = 1240 is the narrowest viewport where
+// the page and both gutter bands fit side by side.
+const SUGGESTIONS_MOBILE_MEDIA = '(max-width: 1239px)';
 
 const WriteSysSuggestions = {
   apiBaseUrl: 'api',
@@ -30,81 +40,22 @@ const WriteSysSuggestions = {
     }
   },
 
-  // For each .sentence with a suggestion, replace innerHTML with word-level
-  // diff. Idempotent — spans are recreated on every re-render.
-  applyToSpans(container) {
-    const root = container || document;
-    const spans = root.querySelectorAll('.sentence[data-sentence-id]');
-    const dmp = (typeof diff_match_patch !== 'undefined') ? new diff_match_patch() : null;
-
-    spans.forEach(span => {
-      const id = span.dataset.sentenceId;
-      const suggestion = this.bySentenceId[id];
-      if (suggestion === undefined) return;
-
-      // Use sentenceMap (storage form, leading \n\t / \n\n included) rather
-      // than span.textContent (which has those stripped). This way a sentence
-      // that was already a new paragraph diffs cleanly against a suggestion
-      // that preserves that leading marker — the marker shows up as EQ
-      // instead of an INS that would render a duplicate paragraph break in
-      // the preview.
-      const map = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap) || {};
-      let original = (map[id] !== undefined) ? map[id] : span.textContent;
-      let suggestionText = suggestion;
-
-      // Structural preview: if the original and/or the suggestion is a
-      // structural sentence (Markdown header or block &-command), render the
-      // preview in the SUGGESTION's resulting structure (e.g. &part -> an
-      // <h2> Part heading) with the word-level diff of the VISIBLE text shown
-      // inside it — so a suggested "## Chapter 1" -> "&part{Part 1}{...}"
-      // previews as a real Part heading, not raw &part{...} diff text.
-      const cmd = window.WriteSysCommand;
-      const origForm = cmd ? cmd.structuralForm(original) : null;
-      const sugForm = cmd ? cmd.structuralForm(suggestionText) : null;
-      if (sugForm || origForm) {
-        this.applyStructuralSuggestion(span, id, origForm, sugForm, original, suggestionText, dmp);
-        return;
-      }
-
-      span.classList.add('has-suggestion');
-      span.innerHTML = renderDiffHTML(original, suggestionText, dmp);
-    });
-  },
-
-  // applyStructuralSuggestion renders a suggestion whose result is structural
-  // (a heading or block command). It diffs the visible forms of both sides and
-  // re-wraps the sentence's block container into the suggestion's target
-  // element (h1/h2/h3/div + cmd-* class), so the preview looks like the
-  // resulting heading while still showing what changed.
-  applyStructuralSuggestion(span, id, origForm, sugForm, original, suggestionText, dmp) {
-    // Visible text to diff: the structural "visible" field when a side is
-    // structural, else the raw text (a suggestion turning a command back into
-    // prose diffs against the prose).
-    const oldVisible = origForm ? origForm.visible : original;
-    const newVisible = sugForm ? sugForm.visible : suggestionText;
-
-    // Target structure is the suggestion's form if it has one (that's what the
-    // edit produces); otherwise the sentence becomes ordinary content.
-    const target = sugForm || origForm;
-
-    span.classList.add('has-suggestion', 'has-structural-suggestion');
-    span.innerHTML = renderDiffHTML(oldVisible, newVisible, dmp);
-
-    // Re-parent: replace the containing block element (<p>/<h*>/<div>) with the
-    // target tag + class, keeping this span inside. Guard against acting twice
-    // on the same already-transformed container.
-    const block = span.closest('p, h1, h2, h3, h4, h5, h6, div.cmd-anchor');
-    if (!block || !target) return;
-    const desiredTag = target.tag.toUpperCase();
-    const desiredCls = target.cls;
-    if (block.tagName === desiredTag && block.classList.contains(desiredCls)) return;
-
-    const replacement = document.createElement(target.tag);
-    replacement.className = desiredCls + ' suggested-structural';
-    // Move the span (and only the span — a structural sentence is one span)
-    // into the replacement.
-    replacement.appendChild(span);
-    block.replaceWith(replacement);
+  // putSuggestion PUTs a sentence's suggestion text — the ONE write path,
+  // shared by the modal autosaver and range-delete.js. Throws an Error with
+  // .status on a non-OK response (409 = stale migration). Callers own any
+  // local bySentenceId mirroring and/or refetching.
+  async putSuggestion(sentenceId, text) {
+    const resp = await authenticatedFetch(
+      `${this.apiBaseUrl}/sentences/${encodeURIComponent(sentenceId)}/suggestion`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+    if (!resp.ok) {
+      const err = new Error('HTTP ' + resp.status);
+      err.status = resp.status;
+      throw err;
+    }
   },
 
   openModal(sentenceId) {
@@ -183,7 +134,7 @@ const WriteSysSuggestions = {
     // mobile block). No fixed-position math: real phones bring pinch zoom,
     // keyboards, and collapsing URL bars that make measured coordinates lie.
     // Desktop keeps the classic fixed-centered modal (modal stays a sibling).
-    const mobile = window.matchMedia('(max-width: 1239px)').matches;
+    const mobile = window.matchMedia(SUGGESTIONS_MOBILE_MEDIA).matches;
     let notesStack = null;
     if (mobile) {
       overlay.appendChild(modal);
@@ -232,16 +183,7 @@ const WriteSysSuggestions = {
       draftKey,
       getValue: () => pane.textarea.value,
       save: async (newText) => {
-        const resp = await authenticatedFetch(`${this.apiBaseUrl}/sentences/${sentenceId}/suggestion`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: newText }),
-        });
-        if (!resp.ok) {
-          const err = new Error('HTTP ' + resp.status);
-          err.status = resp.status;
-          throw err;
-        }
+        await this.putSuggestion(sentenceId, newText);
         // Server collapses "text == original" into a delete; mirror locally.
         if (newText === original) delete this.bySentenceId[sentenceId];
         else this.bySentenceId[sentenceId] = newText;
@@ -329,7 +271,7 @@ const WriteSysSuggestions = {
     // the browser PANS to the caret — shoving the modal's title bar off-screen
     // and burying the note stack. Mobile users tap the pane when they want to
     // type; until then the modal (and the notes below it) stay fully visible.
-    if (!window.matchMedia('(max-width: 1239px)').matches) {
+    if (!window.matchMedia(SUGGESTIONS_MOBILE_MEDIA).matches) {
       textarea.focus();
       textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     }
@@ -356,7 +298,7 @@ const WriteSysSuggestions = {
 //     ("*A ... away*" becomes <strong>...*A</strong> ... <strong>away*</strong>)
 //     and per-segment substitution can't see the matching `*`.
 function renderDiffHTML(oldText, newText, dmp) {
-  if (!dmp) return `<strong>${applyInlineFormatting(newText)}</strong>`;
+  if (!dmp) return `<strong>${formatFallbackHTML(newText)}</strong>`;
   const a = dmp.diff_linesToWords_ ? dmp.diff_linesToWords_(oldText, newText) : null;
   let diffs;
   if (a) {
@@ -486,7 +428,9 @@ function renderStructuralMarkers(html) {
       continue;
     }
     if (c === '\n' && (html[i + 1] === '\n' || html[i + 1] === '\t')) {
-      const glyph = (html[i + 1] === '\n') ? '§' : '¶';
+      // §/¶ come from text-markers.js (script-global constants; it loads
+      // first) — the single home of the marker-glyph vocabulary.
+      const glyph = (html[i + 1] === '\n') ? SECTION_GLYPH : PARAGRAPH_GLYPH;
       const isEq = !inDel && !inStrong;
       if (leading && isEq) {
         // Pre-existing marker at sentence start — drop entirely.
@@ -548,10 +492,13 @@ function pairItalicsAcrossInserts(html) {
   return html;
 }
 
-// Used only by the no-d-m-p fallback path. The main path escapes
-// per-segment and then runs pairItalicsAcrossInserts on the joined HTML
-// to handle cross-insert italic pairs.
-function applyInlineFormatting(text) {
+// Used only by the no-d-m-p fallback path of renderDiffHTML. NOT the same
+// as renderer.js applyInlineFormatting — that one also renders inline
+// &-commands; this is a bare escape + *italics* pass, so it keeps a
+// distinct name. The main diff path escapes per-segment and then runs
+// pairItalicsAcrossInserts on the joined HTML to handle cross-insert
+// italic pairs.
+function formatFallbackHTML(text) {
   return escapeHTML(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
 }
 
