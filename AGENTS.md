@@ -4,6 +4,28 @@ For AI coding agents (Claude Code, Cursor, etc.) working on this repo.
 
 ---
 
+## 0. Standard job workflow
+
+Start every job from a **synced master** (`git fetch origin` first — never
+build on a stale base; parallel jobs land on main constantly) and do the work
+in a **fresh worktree** under `.claude/worktrees/`, one per job; remove it
+after merging.
+
+Then loop:
+
+1. **Develop.**
+2. **Basic functionality check** — run a local server and the most-relevant
+   tests against it. To avoid touching the user's `make dev` on 5001, run a
+   second server from your worktree: build, start with
+   `MANUSCRIPT_STUDIO_CONFIG_FILE` pointing at a copy of the dev config with
+   `port: 5002`, then run tests with `MS_TEST_PORT=5002`.
+3. **Commit and push.**
+4. **Tell the user** — in the session AND via Telegram.
+5. **Run the full suite** (`./test-all.sh`).
+6. Any issues → fix and go back to step 2.
+
+---
+
 ## 🚨 CRITICAL NOTICES — READ FIRST 🚨
 
 ### N1 — Never modify schema outside Liquibase
@@ -101,17 +123,14 @@ this: it fails if `UPSTREAM`'s ref disagrees with the vendored code's
 So: bump segman → re-vendor here → `go test ./internal/segman/` → commit
 → THEN deploy.
 
-### N9 — Render order in renderer.js is load-bearing
+### N9 — smartquotes runs LAST in the render pipeline
 
-In `web/js/renderer.js renderManuscript()` the order MUST be:
-
-```
-wrapSentences() → WriteSysSuggestions.applyToSpans() → smartquotes.element()
-```
-
-If `smartquotes` runs before `applyToSpans`, the DOM has curly apostrophes
-while the suggestion text has straight ones, and diff-match-patch reports
-every apostrophe as a spurious diff. Don't reorder.
+Suggestions render inline via `renderSentencesToHTML` (fragment model —
+SUGGESTION_RENDER_PLAN.md); the word-diff against the committed text runs on
+RAW straight-quote text, and `smartquotes` runs on the assembled HTML
+afterwards. If smartquotes ever runs before the diff, the DOM has curly
+apostrophes while the suggestion text has straight ones, and diff-match-patch
+reports every apostrophe as a spurious diff. Don't reorder.
 
 ### N10 — Classify every new tests/*.js file
 
@@ -275,13 +294,14 @@ in `test-all.sh` (see N10).
 
 ### Helpers
 
-Use `tests/test-utils.js`:
-- `TEST_MANUSCRIPT_ID` (`1`) and `TEST_MANUSCRIPT_NAME` (`"test-manuscripts"`)
-- `TEST_URL` — pre-built URL with the right manuscript_id
-- `TEST_USERNAME` / `TEST_PASSWORD` (both `"test"`)
-- `loginAsTestUser(page)` — logs in with the test user
-- `cleanupTestAnnotations()` — wipes annotation data, re-bootstraps the test
-  manuscript via the admin API
+Use `tests/test-utils.js` (all values are WORKER-scoped — see the parallel
+rules above; never hardcode ids/users):
+- `TEST_URL` / `TEST_MANUSCRIPT_ID` / `TEST_MANUSCRIPT_NAME` — this worker's fixture
+- `TEST_USERNAME` / `TEST_PASSWORD`
+- `loginAsTestUser(page)` — API login (fast path)
+- `cleanupTestAnnotations()` — fast wipe of the per-user layers
+- `MS_TEST_PORT` env var — point a run at a second dev server (e.g. a
+  worktree build serving on 5002) instead of the main one on 5001
 
 ### When a test fails
 
@@ -380,8 +400,9 @@ ARCHITECTURE.md §6.5–§6.7.
 - **401 → login redirect** (`web/js/auth.js authenticatedFetch`) — any
   401 response sends the user to `login.html` so an expired session can't
   silently break the UI.
-- **Manuscript picker + access guard** (`web/js/picker.js` top-bar
-  dropdown; `api/handlers/access.go` `requireManuscriptAccess*`). Manuscript
+- **Manuscript picker + access guard** (`web/js/manuscript-chip.js`, the
+  shared chip + picker component;
+  `api/handlers/access.go` `requireManuscriptAccess*`). Manuscript
   is no longer baked into the session — it's URL-driven via
   `?manuscript_id=N`. Every per-manuscript endpoint (handlers in
   `migrations.go`, `suggestions.go`, `annotations.go`) calls one of the
