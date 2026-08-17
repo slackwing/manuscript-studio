@@ -10,19 +10,22 @@
 // apiCall is stubbed via page.route, bookData's fetchJSON is replaced with a
 // counting fake, and everything else is in-memory.
 //
-// Technique note: modernizeDoc/apiCall/parseVariationRef/fmtDeleted/
-// findNormalized/insertBlockSafely are NOT exported by editor-core.mjs. The
-// test fetches the module source (same ?v pinned in modal.mjs), rewrites the
-// relative vendor import to an absolute URL, appends one export line, and
-// imports the result as a blob module — the code under test is byte-for-byte
-// the shipped module body. If this test fails with "does not provide an
-// export", editor-core either renamed one of those internals or modal.mjs's
-// pinned ?v drifted.
+// Technique note: since the module split (CODE_REVIEW_AUG_2026.md §1, phase
+// 2C-2) editor-core.mjs is the ASSEMBLY module and re-exports the internals
+// under test (modernizeDoc, apiCall, parseVariationRef, fmtDeleted,
+// findNormalized, insertBlockSafely) from its sibling modules (schema.mjs,
+// api.mjs, sketch-view.mjs, pad-notes.mjs, menus.mjs) — so the test imports
+// the REAL module URL (same ?v pinned in modal.mjs); the old fetch-and-
+// rewrite blob import is gone. The vendor bundle is imported by its plain
+// URL, which is exactly what every editor module resolves to, so instanceof
+// checks share one ProseMirror instance. If this test fails with missing
+// exports, editor-core dropped/renamed a re-export or modal.mjs's pinned ?v
+// drifted.
 const { chromium } = require('playwright');
 const { BASE_URL, loginAsTestUser } = require('./test-utils');
 
 // Keep in lockstep with web/scratchpad/modal.mjs's `./editor-core.mjs?v=N`.
-const EDITOR_CORE_V = 72;
+const EDITOR_CORE_V = 73;
 
 (async () => {
   const browser = await chromium.launch({ headless: true });
@@ -47,9 +50,9 @@ const EDITOR_CORE_V = 72;
     return route.fulfill({ status: 404, body: 'unrouted' });
   });
 
-  // home.html loads icons.js/edit-pane.js as plain scripts — editor-core
-  // dereferences window.WriteSysIcons at module-eval time, so import it from
-  // a page where those globals already exist (same load order as modal.mjs).
+  // home.html loads icons.js/edit-pane.js as plain scripts — the editor
+  // modules call into those window globals at runtime (letterOf, icons), so
+  // import from a page where they exist (same load order as modal.mjs).
   await page.goto(`${BASE_URL}/home.html`, { waitUntil: 'domcontentloaded' });
 
   const pinnedMatches = await page.evaluate(async (v) => {
@@ -61,13 +64,8 @@ const EDITOR_CORE_V = 72;
 
   const setup = await page.evaluate(async (v) => {
     const vendorURL = new URL('scratchpad/vendor/prosemirror.mjs', document.baseURI).href;
-    const src = await (await fetch(`scratchpad/editor-core.mjs?v=${v}`)).text();
-    if (!src.includes("from './vendor/prosemirror.mjs'")) return 'vendor import not found in source';
-    const patched = src.replace("from './vendor/prosemirror.mjs'", `from '${vendorURL}'`)
-      + '\nexport { modernizeDoc, apiCall, parseVariationRef, fmtDeleted, findNormalized, insertBlockSafely };\n';
-    const blobURL = URL.createObjectURL(new Blob([patched], { type: 'text/javascript' }));
     try {
-      window.__ec = await import(blobURL);
+      window.__ec = await import(new URL(`scratchpad/editor-core.mjs?v=${v}`, document.baseURI).href);
       window.__pm = await import(vendorURL);
     } catch (e) {
       return String(e);
@@ -314,8 +312,9 @@ const EDITOR_CORE_V = 72;
 
     // ---- bookdata-cache-semantics (:211–229) ------------------------------
     // bookData calls the bare global fetchJSON — swap in a counting fake
-    // (restored after). The blob module has its OWN cache object, so nothing
-    // the live app cached is touched.
+    // (restored after). This is the real module's cache now (real import, not
+    // a blob copy) — but this page never opens a pad, so the app has cached
+    // nothing, and the ids used here (901–903) are synthetic.
     {
       const realFetchJSON = window.fetchJSON;
       let latest = 0, manu = 0, sugg = 0;

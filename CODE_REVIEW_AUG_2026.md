@@ -46,13 +46,32 @@ wrong-sentence-PUT bug, one attribute-injection surface.
 
 ## 1.1 What's wrong
 
-**One file, ~14 concerns.** editor-core.mjs holds: the ProseMirror schema
-(46–145), a legacy-doc migrator (`modernizeDoc` 154–205), an HTTP client
-(`apiCall` 233–246), a per-manuscript data cache (`bookData` 211–229), scroll
-telemetry (362–427), a scroll-physics engine (`holdScroll` 429–489), an
-805-line NodeView class (`SketchView` 491–1296), a note subsystem
-(1332–1764), toolbar construction (2164–2250), two popover menus (1889–2070),
-and the doc autosave/close-guard machine (2079–2431).
+**One file, ~14 concerns.** ✓ FIXED (2C-2): split into cohesive ES modules
+under `web/scratchpad/`. Post-split map (one line per module; editor-core is
+the assembly/entry module and re-exports the whole public surface, so import
+sites — modal.mjs, tests — are unchanged apart from ?v= bumps; cross-module
+imports are pinned `?v=N` and every importer must use the identical
+specifier, since the URL incl. query is the module-instance key):
+- `schema.mjs` (175 ln) — node/mark specs, schema composition, `modernizeDoc`
+- `api.mjs` (116 ln) — `csrf`, `apiCall`, `variationApi`, `bookData`,
+  `uploadImage`, currentScratchpadId get/set
+- `scroll.mjs` (139 ln) — `scrollDiag`, shared scroll holds
+  (`holdScroll`/`suspendScrollHolds`)
+- `sketch-view.mjs` (935 ln) — `SketchView` + registries (`variationFlushers`,
+  `dirtyVariations`, `liveSketchViews`), `refreshSketchSiblings`,
+  `renderBookText`, `esc`/`letterOf`/`parseVariationRef`
+- `pad-notes.mjs` (465 ln) — note infra: activeView + teardown flags (via
+  getter/setter seams), `findNormalized`/`overlayYAtOffset`, note cache +
+  `NoteRefView`, note float, `buildNoteColorBar`
+- `menus.mjs` (329 ln) — PM command helpers, `insertBlockSafely`, table
+  picker, ⧉ Sketch ▾ menu (`buildPickerPop`)
+- `editor-core.mjs` (418 ln) — `createScratchpadEditor` (toolbar assembly,
+  keymap/plugins, doc autosaver wiring) + re-exports
+Original finding: editor-core.mjs held the ProseMirror schema, a legacy-doc
+migrator, an HTTP client, a per-manuscript data cache, scroll telemetry, a
+scroll-physics engine, an 805-line NodeView class, a note subsystem, toolbar
+construction, two popover menus, and the doc autosave/close-guard machine —
+one 2,4xx-line file.
 
 **The autosaver is duplicated and the copy has a data-loss bug.** ✓ FIXED
 (2C-1): the doc autosave is now a `createAutosaver` instance (shared chase,
@@ -78,15 +97,17 @@ wrapper (`apiCall`, `.status`-preserving) — `bookData` stays on the global
 (`buildPickerPop`) are single implementations. STILL OPEN: the canonize
 write-path exists twice with different plans (import-scratchpad:244–290 vs
 `placeVariation`) — deliberate for now (different composition semantics);
-remaining escaper copies (editor-core `esc`, import-scratchpad `esc`) await
-the file split.
+remaining escaper copies (`esc`, now single in sketch-view.mjs on the module
+side; import-scratchpad's copy stays — it's a classic script that can't
+import ESM).
 
 **State:** 14 mutable module globals (250, 330, 331, 336, 367, 440, 447, 1336,
 1423, 1426, 1537, 1540, 1647, 1744); reset discipline is partial —
 **`noteCache` (1423) is never invalidated across modal opens** ✓ FIXED
 (2C-1: cleared per `createScratchpadEditor`, like `noteColorGroups`). Icons
-are dereferenced at module-evaluation time (302–303, 1548) — an invisible
-load-order bomb. A bare global `fetchJSON` is used from an ES module with no
+were dereferenced at module-evaluation time — an invisible load-order bomb —
+✓ FIXED (2C-2: derefs moved inside functions in sketch-view.mjs /
+pad-notes.mjs). A bare global `fetchJSON` is used from an ES module with no
 import (still true for `bookData` + the pad GET — the units swap it).
 
 **Smaller defects:** ✓ FIXED (2C-1): `buildNoteColorBar` call/signature/
