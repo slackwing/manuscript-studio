@@ -27,29 +27,10 @@
   <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"></script>
 </head>
 <body>
-  <!-- Top bar (not paginated) -->
-  <div id="controls" class="pagedjs_ignore">
-    <div class="control-group control-group-left">
-      <a id="home-link" href="home.html" title="Home" aria-label="Home">
-        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
-          <path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/>
-        </svg>
-      </a>
-      <a id="brand" href="home.html">manuscript studio</a>
-      <div id="global-search">
-        <input id="gs-input" type="text" placeholder="Search" autocomplete="off">
-        <div id="gs-dropdown" hidden></div>
-      </div>
-    </div>
-    <div class="control-group control-group-right">
-      <button id="logout-btn" onclick="logout()">Logout</button>
-      <span id="cheatsheet-icon" tabindex="0" role="button" aria-label="Syntax cheatsheet" aria-expanded="false" title="Syntax cheatsheet">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-          <path fill="currentColor" d="M2 2.75A1.75 1.75 0 0 1 3.75 1h6.5A1.75 1.75 0 0 1 12 2.75v10.5A1.75 1.75 0 0 1 10.25 15h-6.5A1.75 1.75 0 0 1 2 13.25V2.75zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h6.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25h-6.5zM4.5 4.75A.75.75 0 0 1 5.25 4h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1-.75-.75zm0 3A.75.75 0 0 1 5.25 7h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1-.75-.75zm0 3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1-.75-.75z"/>
-        </svg>
-      </span>
-    </div>
-  </div>
+  <!-- Top bar (not paginated) — shared, filled synchronously by chrome.js.
+       data-extras adds this page's cheatsheet toggle to the right group. -->
+  <div id="controls" class="pagedjs_ignore" data-extras="cheatsheet"></div>
+  <script src="js/chrome.js?v=1"></script>
 
   <!-- Syntax cheatsheet: slide-in right panel toggled by #cheatsheet-icon -->
   <div id="cheatsheet-panel" class="pagedjs_ignore" aria-hidden="true"></div>

@@ -8,6 +8,10 @@ so far (shared note component, edit-pane, manuscript-chip, scroll hold) each
 started as a user-visible inconsistency. This file lists what's left, ranked.
 
 ## Done (for reference — the pattern to follow)
+- `js/chrome.js` — ONE top bar (#controls) for home/settings/reader. The
+  three hand-copies had drifted (the reader lost the settings gear); pages
+  keep an empty shell div and a `data-extras` slot names page-specific
+  right-side controls (reader's cheatsheet toggle).
 - `notes/note-widget.js` — ONE note component (margin/float/landing card).
 - `js/edit-pane.js` — ONE monospace editor + autosaver (snippet sketches,
   suggest-edit modal): debounce, retry ladder, dirty/flush, tab overlay.
