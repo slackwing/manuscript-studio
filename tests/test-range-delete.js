@@ -3,8 +3,8 @@
 // server on :5002.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, loginAsTestUser } = require('./test-utils');
-const BASE = 'http://localhost:5001';
+const {BASE_URL, TEST_URL, TEST_USERNAME, TEST_PASSWORD, loginAsTestUser} = require('./test-utils');
+const BASE = BASE_URL;
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf-8' }).trim();

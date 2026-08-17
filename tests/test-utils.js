@@ -277,6 +277,7 @@ module.exports = {
   get TEST_MANUSCRIPT_ID() { return TEST_MANUSCRIPT_ID; },
   TEST_MANUSCRIPT_NAME,
   get TEST_URL() { return TEST_URL; },
+  BASE_URL,
   API_BASE_URL,
   TEST_USERNAME,
   TEST_PASSWORD,

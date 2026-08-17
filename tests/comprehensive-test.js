@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { loginAsTestUser } = require('./test-utils');
+const {BASE_URL, loginAsTestUser} = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch({ headless: true });
@@ -11,7 +11,7 @@ const { loginAsTestUser } = require('./test-utils');
     // Login first
     await loginAsTestUser(page);
 
-    await page.goto('http://localhost:5001', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 10000 });
 
     await page.waitForSelector('.sentence', { timeout: 15000 });
     await new Promise(r => setTimeout(r, 2000));

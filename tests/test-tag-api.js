@@ -1,7 +1,6 @@
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
-  waitForPagination,
-} = require('./test-utils');
+const {BASE_URL, TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
+  waitForPagination,} = require('./test-utils');
 
 (async () => {
   console.log('=== Tag API Test ===\n');
@@ -45,7 +44,7 @@ const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestAnnotations, loginAsTestUser,
     const csrfToken = await page.evaluate(() => sessionStorage.getItem('csrf_token'));
 
     // Get the annotation ID via the API
-    const apiUrl = 'http://localhost:5001';
+    const apiUrl = BASE_URL;
     const annotationsResp = await fetch(`${apiUrl}/api/notes/sentence/${sentenceId}`, {
       headers: { 'Cookie': cookieHeader }
     });

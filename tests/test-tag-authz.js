@@ -4,9 +4,9 @@
 // session/ownership/CSRF checks at all — any authenticated user could read,
 // add, or delete tags on any other user's annotations by enumerating integer
 // IDs, and could attach tags to arbitrary migrations via the request body.
-const { SYSTEM_TOKEN, TEST_MANUSCRIPT_NAME, cleanupTestAnnotations } = require('./test-utils');
+const {BASE_URL, SYSTEM_TOKEN, TEST_MANUSCRIPT_NAME, cleanupTestAnnotations} = require('./test-utils');
 
-const API = 'http://localhost:5001/api';
+const API = `${BASE_URL}/api`;
 
 async function login(username, password) {
   const resp = await fetch(`${API}/login`, {

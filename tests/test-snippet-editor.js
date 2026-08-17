@@ -4,7 +4,7 @@
  * the textarea's tabs. Drives the real scratchpad modal on dev.
  */
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, BASE_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 
 (async () => {
@@ -66,7 +66,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   //    button (right of freeze) writes ms-variation:<id>; the ⧉ Sketch menu's
   //    "From clipboard" option enables only for a VALID copied reference
   //    and mints a related sibling variation.
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5001' });
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE_URL });
   const copyBtn = page.locator('.sn-widget .sn-copyref').first();
   check('copy button present (right of freeze)', (await copyBtn.count()) === 1);
   const order = await page.evaluate(() => {
