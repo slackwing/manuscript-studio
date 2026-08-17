@@ -32,7 +32,9 @@ function fromGlyphs(text) {
   return text;
 }
 
-window.WriteSysTextMarkers = { toGlyphs, fromGlyphs, SECTION_GLYPH, PARAGRAPH_GLYPH };
+if (typeof window !== 'undefined') {
+  window.WriteSysTextMarkers = { toGlyphs, fromGlyphs, SECTION_GLYPH, PARAGRAPH_GLYPH };
+}
 
 // Shared HTML-escaper. Lives here because text-markers.js is the first
 // application script in index.html's load order, so every later script
@@ -45,4 +47,8 @@ function escapeHTML(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { toGlyphs, fromGlyphs, escapeHTML, SECTION_GLYPH, PARAGRAPH_GLYPH };
 }

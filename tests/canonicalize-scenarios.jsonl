@@ -37,3 +37,5 @@
 {"name": "bare newline before anchor kept (own-line form)", "in": "\n&sketch#abc{}\n\tBut first we must get there.", "out": "\n&sketch#abc{}\n\tBut first we must get there."}
 {"name": "bare newline before labeled anchor kept", "in": "\n&anchor#x{lbl}\nSame paragraph prose.", "out": "\n&anchor#x{lbl}\nSame paragraph prose."}
 {"name": "bare newline before NON-anchor prose still trimmed", "in": "\nJust prose starting after a stray newline.", "out": "Just prose starting after a stray newline."}
+{"name": "bare newline before snippet-spelled opener kept", "in": "\n&snippet#abc{}\n\tBut first we must get there.", "out": "\n&snippet#abc{}\n\tBut first we must get there."}
+{"name": "bare newline before anchor with no prose kept", "in": "\n&anchor#x{lbl}", "out": "\n&anchor#x{lbl}"}

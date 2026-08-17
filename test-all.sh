@@ -65,6 +65,14 @@ FAST_TESTS=(
   test-snippet-no-scroll-jump
   test-scratchpad-notes
   test-stats-pane
+  # CODE_REVIEW_AUG_2026 coverage — unit batteries
+  test-command-units
+  test-text-markers-units
+  test-diff-units
+  test-render-units
+  test-editor-core-units
+  test-region-replaceplan-units
+  test-edit-pane-units
 )
 
 SLOW_TESTS=(
@@ -108,6 +116,21 @@ SLOW_TESTS=(
   test-rainbow-deletion
   test-inline-tag-input
   trash-icon-test
+  # CODE_REVIEW_AUG_2026 coverage — e2e batteries
+  test-render-lifecycle-e2e
+  test-suggestion-modal-e2e
+  test-pagedjs-contract
+  test-range-delete-e2e
+  test-doc-save-machine
+  test-sketchview-e2e
+  test-pad-notes-e2e
+  test-pad-toolbar-e2e
+  test-scroll-holds
+  test-pad-modal-lifecycle
+  test-import-scratchpad-e2e
+  # PENDING-FIX ledgers: exit 0 by design until the fix phase flips them
+  test-render-pending-fixes
+  test-editor-pending-fixes
 )
 
 # Tests that are NOT parallel-safe: order-sensitive fixtures or focus

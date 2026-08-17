@@ -227,4 +227,7 @@
   }
 
   window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft };
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft };
+  }
 })();
