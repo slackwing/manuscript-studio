@@ -521,6 +521,17 @@ const WriteSysRenderer = {
       const canonCommitted = canon(committed);
       const origProse = this.stripLeadingMarker(canonCommitted);
       const loneProse = frags.length === 1 && frags[0].kind === 'prose';
+      // A suggestion that ADDS structural commands (e.g. an &anchor) around a
+      // single prose body still deserves its word-level diff: the commands
+      // render blue (cmd-suggested) exactly as before, but the prose keeps
+      // green/red words. Conditions: exactly ONE prose fragment on the
+      // suggested side, and a committed baseline that is itself prose-only —
+      // otherwise the diff would chew on command text and produce noise.
+      const suggestedProseFrags = frags.filter((x) => x.kind === 'prose').length;
+      const committedAllProse = !cmdLib || suggestion === undefined
+        || cmdLib.segmentFragments(canonCommitted).every((x) => x.kind === 'prose');
+      const diffableProse = suggestion !== undefined && !isDeleteProposal
+        && suggestedProseFrags === 1 && (loneProse || committedAllProse);
 
       // A block anchor that leads a paragraph (canonicalize's "&anchor{x}\n
       // prose" form → [command:anchor, prose] with no marker on the prose) is
@@ -581,16 +592,22 @@ const WriteSysRenderer = {
         let cls = this.markerClass(f.marker);
         const body = this.stripLeadingMarker(pieceText);
         let inner;
-        if (suggestion !== undefined && loneProse && !isDeleteProposal) {
-          // A pure prose edit → word-level diff vs. the committed prose, then
+        if (f.kind === 'prose' && diffableProse) {
+          // A prose edit → word-level diff vs. the committed prose, then
           // render any inline &reference/&anchor tokens that survived the diff
           // as links/markers (they're escaped as &amp;… in the diff HTML).
+          // Applies to the LONE prose fragment even when suggested commands
+          // ride along in the same sentence (they render blue separately).
           inner = this.renderInlineCommandsInHtml(renderDiffHTML(origProse, body, this._dmp()));
           // Glyph diff: if this lone prose's leading structural break was
           // added or removed by the suggestion, show a §/¶ glyph (green added,
-          // struck removed) so the break change is reviewable.
-          const glyph = this.markerGlyphDiff(this.leadingMarker(canonCommitted), f.marker);
-          if (glyph) inner = glyph + inner;
+          // struck removed) so the break change is reviewable. Lone-prose
+          // only — with commands in the sentence the marker often belongs to
+          // (or is carried by) the command fragment, not this prose.
+          if (loneProse) {
+            const glyph = this.markerGlyphDiff(this.leadingMarker(canonCommitted), f.marker);
+            if (glyph) inner = glyph + inner;
+          }
         } else {
           inner = this.applyInlineFormatting(body);
         }

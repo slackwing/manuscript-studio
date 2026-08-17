@@ -74,6 +74,20 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
     const cmdSug = await render([{ id: 'r3c', text: 'Base.' }], { r3c: '&title{X}' });
     check('R3: command-from-suggestion marked blue (cmd-suggested), no diff',
       cmdSug.includes('cmd-title cmd-suggested') && !cmdSug.includes('<del'), cmdSug);
+    // A structural command riding along with ONE prose fragment no longer
+    // suppresses the prose's word diff (2026-08-17 enhancement): the command
+    // renders blue as before, the prose keeps green/red words.
+    const anchored = await render(
+      [{ id: 'r3d', text: 'One night five of us met.' }],
+      { r3d: '&anchor{camp}\nOne night five of us gathered.' });
+    check('R3: anchor+prose suggestion still word-diffs the prose',
+      anchored.includes('<del>met.') && anchored.includes('<strong>gathered.'), anchored);
+    check('R3: the riding anchor is marked suggested', /cmd-suggested/.test(anchored), anchored);
+    // Two prose fragments (added paragraph break) still take the no-diff
+    // path — there is no single sound baseline to diff each against.
+    const twoProse = await render([{ id: 'r3e', text: 'Base.' }], { r3e: '&anchor{x}\nOne.\n\nTwo.' });
+    check('R3: command + TWO prose fragments still does not diff',
+      !twoProse.includes('<del'), twoProse);
   }
 
   // ---- R4: marker glyph diff (4 branches + integrated) ------------------
