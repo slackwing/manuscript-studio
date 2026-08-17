@@ -286,6 +286,18 @@ const WriteSysSuggestions = {
       url.searchParams.set('scroll_to', sentenceId);
       window.history.replaceState(null, '', url.toString());
 
+      // Optimistic: patch the sentence inside the CURRENT pages so the edit
+      // is visible the instant the modal closes; the full re-paginate below
+      // (seconds on a long manuscript) then swaps in the authoritative
+      // layout. Selection is applied here for the interim too — the full
+      // render re-applies it on the fresh spans.
+      if (window.WriteSysRenderer && window.WriteSysRenderer.patchSentenceInPlace) {
+        if (window.WriteSysRenderer.patchSentenceInPlace(sentenceId)) {
+          document.querySelectorAll(`.sentence[data-sentence-id="${CSS.escape(sentenceId)}"]`)
+            .forEach((el) => el.classList.add('selected'));
+        }
+      }
+
       if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
         await window.WriteSysRenderer.renderManuscript({
           anchorSentenceId: sentenceId,

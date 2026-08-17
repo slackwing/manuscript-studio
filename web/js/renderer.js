@@ -262,6 +262,20 @@ const WriteSysRenderer = {
       const bookCssUrl = new URL('css/book.css', document.baseURI).href;
       await paged.preview(wrappedHtml, [bookCssUrl], appContainer);
 
+      // RE-capture the anchor offset from the OLD pages now, at swap time.
+      // paged.preview can take seconds on a long manuscript; the offset
+      // captured before it started goes stale the moment the user scrolls
+      // (or a mobile URL bar collapses) while pagination runs — restoring
+      // against the stale value is the "sometimes it still jumps" bug.
+      // Everything from here to the scrollBy below is synchronous, so this
+      // measurement can't go stale.
+      if (anchorSentenceId) {
+        for (const p of oldPages) {
+          const old = p.querySelector(`.sentence[data-sentence-id="${CSS.escape(anchorSentenceId)}"]`);
+          if (old) { anchorOffset = old.getBoundingClientRect().top; break; }
+        }
+      }
+
       oldPages.forEach(el => el.remove());
 
       // Re-run the inter-sentence space insertion now that the OLD pages
@@ -323,6 +337,37 @@ const WriteSysRenderer = {
     // numbers/counts and the caret are accurate for ALL pages — not a subset
     // that happened to exist when a fixed timer fired. Recompute now.
     if (window.WriteSysOutline) window.WriteSysOutline.updatePageInfo();
+  },
+
+  // Optimistic in-place patch (suggest-edit modal close): swap the edited
+  // sentence's rendered content directly inside the CURRENT paginated DOM so
+  // the edit shows instantly, while the authoritative full re-paginate runs
+  // behind it. Renders through the SAME pipeline (renderSentencesToHTML on
+  // just this sentence) and only applies in the simple case — one paragraph
+  // holding exactly one span — so the diff markup and classes come out
+  // identical to what the full render will produce. Anything structural
+  // (multi-fragment suggestion, page-split sentence, command blocks, margin
+  // glyphs) returns false and just waits for the real render.
+  patchSentenceInPlace(sentenceId) {
+    const spans = document.querySelectorAll(
+      `.pagedjs_pages .sentence[data-sentence-id="${CSS.escape(sentenceId)}"]`);
+    if (spans.length !== 1) return false; // absent, or split across a page break
+    const s = (this.currentSentences || []).find((x) => x.id === sentenceId);
+    if (!s) return false;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = this.renderSentencesToHTML([s]);
+    const fresh = tmp.querySelectorAll('.sentence');
+    const p = tmp.children[0];
+    if (fresh.length !== 1 || tmp.children.length !== 1 || !p
+        || p.tagName !== 'P' || p.children.length !== 1 || p.children[0] !== fresh[0]) {
+      return false;
+    }
+    // Same smartquotes pass the full render applies pre-pagination — without
+    // it the patch would flash straight quotes that the real render re-curls.
+    if (typeof smartquotes !== 'undefined') smartquotes.element(tmp);
+    spans[0].innerHTML = fresh[0].innerHTML;
+    spans[0].className = fresh[0].className;
+    return true;
   },
 
   applyResponsiveScaling() {
