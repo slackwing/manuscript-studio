@@ -11,7 +11,12 @@
  * targets must be committed sentences with no pending suggestion.
  */
 const WriteSysImportScratchpad = {
-  csrf() { return (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || ''; },
+  // THE CSRF getter is auth.js's getCSRFToken — no per-file copies.
+  csrf() { return window.getCSRFToken() || ''; },
+
+  // The go-button's ONE label: creation and the error-path reset both use it
+  // (the two hand-typed strings had drifted, Place vs Canonize).
+  GO_LABEL: 'Place',
 
   // ---------------------------------------------------------- affordances
 
@@ -144,7 +149,7 @@ const WriteSysImportScratchpad = {
         <div class="im-error" id="im-error" hidden></div>
         <div class="im-actions">
           <button type="button" id="im-cancel">Never mind</button>
-          <button type="button" id="im-go" disabled>Place</button>
+          <button type="button" id="im-go" disabled>${this.GO_LABEL}</button>
         </div>
       </div>`;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) this.closeModal(); });
@@ -188,7 +193,9 @@ const WriteSysImportScratchpad = {
       }
       // Ineligible: already-canonized groups, and groups linked elsewhere.
       const curManuscript = (window.WriteSysRenderer && window.WriteSysRenderer.manuscriptId) || 0;
-      const letter = (n) => String.fromCharCode(64 + n);
+      // THE shared variation-letter formatter (edit-pane.js) — same one the
+      // widget rails use.
+      const letter = window.WriteSysEditPane.letterOf;
       holder.innerHTML = rows.map((v, i) => {
         const blockedWhy = v.canonized ? 'already placed (re-place from its widget)'
           : (v.linked_manuscript_id && v.linked_manuscript_id !== curManuscript
@@ -310,7 +317,7 @@ const WriteSysImportScratchpad = {
     } catch (e) {
       this.showError(e.message);
       go.disabled = false;
-      go.textContent = 'Canonize';
+      go.textContent = this.GO_LABEL; // the ORIGINAL label, never a drifted copy
     }
   },
 

@@ -19,7 +19,7 @@
 
   // ---- autosaver -----------------------------------------------------------
   // createAutosaver({ getValue, save, statusEl, debounceMs, onDirty, onSaved,
-  //                   onFatal }):
+  //                   onFatal, setStatus }):
   //   getValue()        → current UI value (storage form)
   //   save(text)        → async; performs the write; throw err (.status) on fail
   //   statusEl          → element whose textContent shows saving…/failure text
@@ -28,6 +28,11 @@
   //   onFatal(err)      → return a STATUS STRING to stop retrying and pin that
   //                       text (e.g. 409 "frozen — not saved"); return null to
   //                       use the retry ladder.
+  //   setStatus(text, failing) → OPTIONAL override for the status writing —
+  //                       hosts with their own status vocabulary (the scratchpad
+  //                       doc's Saved/Saving…/Unsaved) map the pane's texts
+  //                       ('', 'saving…', failure lines) onto theirs. statusEl
+  //                       is still used for the 401 re-login link.
   // returns { poke, flush, isDirty, destroy }
   function createAutosaver(opts) {
     const statusEl = opts.statusEl;
@@ -55,6 +60,7 @@
       clearInterval(countdown); countdown = null;
     };
     const setStatus = (text, failing) => {
+      if (opts.setStatus) return opts.setStatus(text, failing);
       if (!statusEl) return;
       statusEl.textContent = text;
       // A failing save must be LOUD — the tiny grey status was overlooked
@@ -117,7 +123,10 @@
 
     const poke = () => {
       if (opts.onDirty) opts.onDirty(true);
-      draftWrite(opts.getValue());
+      // Only serialize the value when a draft net actually exists — getValue
+      // can be expensive per keystroke (the scratchpad doc saver serializes
+      // the whole ProseMirror doc).
+      if (opts.draftKey) draftWrite(opts.getValue());
       clearTimeout(t); clearRetry();
       t = setTimeout(save, debounceMs);
     };
@@ -226,8 +235,15 @@
     });
   }
 
-  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft };
+  // letterOf(1) = 'A' — THE variation-letter formatter (sketch widgets, the
+  // book-side place picker). The ordinal is an integer so a future cap lift
+  // can render AA/AB — for now the server refuses past Z. Lives here (the
+  // shared edit machinery both pages load early) so the classic-script book
+  // page and the lazy-loaded pad module format letters identically.
+  const letterOf = (ordinal) => ordinal ? String.fromCharCode(64 + ordinal) : '·';
+
+  window.WriteSysEditPane = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft, letterOf };
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft };
+    module.exports = { createAutosaver, createMonoEditor, tabMarkupHTML, dateString, readDraft, clearDraft, letterOf };
   }
 })();

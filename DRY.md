@@ -32,13 +32,16 @@ started as a user-visible inconsistency. This file lists what's left, ranked.
    half the app bypasses it. Everything should route through it (or a thin
    `apiCall(method, url, body)` built on it) so error shape (.status), CSRF
    and 401-guard behavior stay uniform.
-3. **The doc-save retry ladder in `createScratchpadEditor`.** The scratchpad
-   DOC autosave (saveNow/scheduleRetry/countdown) is a hand-rolled copy of
-   exactly what `edit-pane.js`'s `createAutosaver` does (it predates it) —
-   including its own duplicate of the re-login link (`appendReloginLink` in
-   editor-core vs `appendRelogin` in edit-pane). Port the doc save onto
-   `createAutosaver` and delete both duplicates. (Touches the close-guard
-   path, so do it with the save-race + session-guard tests open.)
+   (✓ partial 2026-08-17: the pad subsystem's four CSRF getters — editor-core,
+   modal.mjs ×2, import-scratchpad — route through auth.js `getCSRFToken()`,
+   and `variationApi` is single-wrapper on `apiCall`.)
+3. **The doc-save retry ladder in `createScratchpadEditor`.** ✓ DONE
+   (2026-08-17, Area-1 fix branch): the doc autosave is a `createAutosaver`
+   instance (`setStatus` override maps the pane's ''/'saving…' onto the
+   pad's Saved/Saving…/Unsaved vocabulary); the hand-rolled
+   saveNow/scheduleRetry/countdown machine and `appendReloginLink` are
+   deleted — the shared saver's own 401 link serves the doc too. This also
+   fixed the in-flight-typing data-loss bug (the shared chase).
 
 ## Medium value
 4. **Search-and-pick popover pattern ×3.** The manuscript picker
@@ -46,6 +49,9 @@ started as a user-visible inconsistency. This file lists what's left, ranked.
    (editor-core), and global-search all hand-roll "input + debounced filter +
    button list + outside-click close + Enter/Escape". A `buildPickerPop()`
    would leave each with only its data source and row renderer.
+   (✓ partial 2026-08-17: the two editor-core pickers share one
+   `buildPickerPop` — with Escape scoped to the popover; manuscript-chip and
+   global-search still hand-rolled.)
 5. **Modal shells ×4.** spm-overlay (pad), #suggestion-modal, session-guard,
    note float: each re-implements overlay + Escape + outside-click +
    close-guard wiring. The guard semantics are subtly different on purpose

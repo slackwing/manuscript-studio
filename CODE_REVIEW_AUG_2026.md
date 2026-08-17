@@ -54,39 +54,50 @@ telemetry (362–427), a scroll-physics engine (`holdScroll` 429–489), an
 (1332–1764), toolbar construction (2164–2250), two popover menus (1889–2070),
 and the doc autosave/close-guard machine (2079–2431).
 
-**The autosaver is duplicated and the copy has a data-loss bug.**
-editor-core:2100–2162 re-implements `edit-pane.js`'s `createAutosaver`
+**The autosaver is duplicated and the copy has a data-loss bug.** ✓ FIXED
+(2C-1): the doc autosave is now a `createAutosaver` instance (shared chase,
+ladder, 401 link); the hand-rolled machine is gone. Original finding:
+editor-core:2100–2162 re-implemented `edit-pane.js`'s `createAutosaver`
 (edit-pane:53–116) — same backoff formula, same countdown quirk — but WITHOUT
 the in-flight-change "chase" (edit-pane:98). Consequence (**live bug**):
-`saveNow` (2129–2155) snapshots the doc at fetch time; keystrokes typed while
-the PUT is in flight set `saveState='unsaved'`, then line 2147
-**unconditionally** sets `'saved'` when the PUT resolves — masking them. For
-up to the 1.2s debounce window `isDirty()` is false while the doc holds
-unsaved text; `modal.close()` skips the guard and `destroy()` (2415, 2420)
-discards the pending save. This is DRY.md item 3's strongest argument.
+`saveNow` (2129–2155) snapshotted the doc at fetch time; keystrokes typed while
+the PUT was in flight set `saveState='unsaved'`, then line 2147
+**unconditionally** set `'saved'` when the PUT resolved — masking them. For
+up to the 1.2s debounce window `isDirty()` was false while the doc held
+unsaved text; `modal.close()` skipped the guard and `destroy()` (2415, 2420)
+discarded the pending save. This was DRY.md item 3's strongest argument.
 
-**Other duplication:** `appendReloginLink` (editor-core:30–42) ≡
-edit-pane:64–76 verbatim; CSRF getter ×4 (editor-core:24, modal.mjs:100, :132,
-import-scratchpad:14); HTML escaper ×4 with drift (scratch-render:74 escapes
-fewer entities); two fetch wrappers with different error shapes used by the
-SAME endpoint family (`variationApi` 253–278 mixes them); trailing-paragraph
-rule implemented twice (plugin 2296–2315 vs open-pass 2340–2358); rail-button
-wiring, copy-ref handler, state-toggle, and search-picker popover each
-duplicated internally; canonize write-path exists twice with different plans
-(import-scratchpad:244–290 vs `placeVariation` 1113–1155).
+**Other duplication:** mostly ✓ FIXED (2C-1): `appendReloginLink` deleted
+(the shared autosaver's own re-login link serves the doc saver); the CSRF
+getter ×4 now routes through auth.js `getCSRFToken()`; scratch-render:74 uses
+the app escaper (`escapeHTML`, text-markers.js); `variationApi` is single-
+wrapper (`apiCall`, `.status`-preserving) — `bookData` stays on the global
+`fetchJSON` deliberately (unit tests swap it); trailing-paragraph rule is one
+`breathingRoomInserts()`; rail-button wiring (`bindCompareButtons`), copy-ref
+(`wireCopyRef`), state-toggle (`applyState`) and the two sketch-menu pickers
+(`buildPickerPop`) are single implementations. STILL OPEN: the canonize
+write-path exists twice with different plans (import-scratchpad:244–290 vs
+`placeVariation`) — deliberate for now (different composition semantics);
+remaining escaper copies (editor-core `esc`, import-scratchpad `esc`) await
+the file split.
 
 **State:** 14 mutable module globals (250, 330, 331, 336, 367, 440, 447, 1336,
 1423, 1426, 1537, 1540, 1647, 1744); reset discipline is partial —
-**`noteCache` (1423) is never invalidated across modal opens**, so a note
-recolored between pad opens renders stale (1572–1574). Icons are dereferenced
-at module-evaluation time (302–303, 1548) — an invisible load-order bomb. A
-bare global `fetchJSON` is used from an ES module with no import.
+**`noteCache` (1423) is never invalidated across modal opens** ✓ FIXED
+(2C-1: cleared per `createScratchpadEditor`, like `noteColorGroups`). Icons
+are dereferenced at module-evaluation time (302–303, 1548) — an invisible
+load-order bomb. A bare global `fetchJSON` is used from an ES module with no
+import (still true for `bookData` + the pad GET — the units swap it).
 
-**Smaller defects:** `buildNoteColorBar` called with 3 args, takes 2 (2218 vs
-1745) and its doc comment describes registration that doesn't exist;
-import-scratchpad's button says "Place" (147) but error-path resets it to
-"Canonize" (313); cache-bust versions hand-pinned in two places
-(scratchpad-modal:13, modal.mjs:7).
+**Smaller defects:** ✓ FIXED (2C-1): `buildNoteColorBar` call/signature/
+comment agree (2 args, registers in `noteColorGroups`); import-scratchpad's
+go-button label is one constant (`GO_LABEL`, "Place") on create and
+error-reset. Still hand-pinned: cache-bust versions in two places
+(scratchpad-modal:13, modal.mjs:7). Also fixed upstream findings: the loader
+caches the import() PROMISE (double-first-open race), Escape inside the ⧉
+pickers no longer closes the whole pad (stopPropagation), and the
+re-place/from-placed region resolution retries once force-fresh like
+renderCanon (missing-anchor race under load).
 
 ## 1.2 Invariants a rewrite must preserve
 
@@ -866,7 +877,12 @@ the N12 canary), z-index `elementFromPoint` ladder, tag-suggest drift check
    place-plan (variations.go handlers :401).
 2. Fix `changes_count` (processor.go:197–217) — one-line fix + test #127.
 3. Fix the doc-save in-flight data loss (editor-core:2147) — ideally by the
-   DRY.md item-3 port onto `createAutosaver`.
+   DRY.md item-3 port onto `createAutosaver`. ✓ done (Area-1 fix branch,
+   2C-1): the doc autosave now IS a `createAutosaver` instance (the shared
+   in-flight "chase" keeps dirty honest); the hand-rolled
+   saveTimer/scheduleRetry/countdown machine and `appendReloginLink` are
+   deleted. `test-editor-pending-fixes.js` flipped to failing-is-fatal and
+   passes.
 4. Delete dead code: suggestions.js:35–108 ✓ done (Area-3 fix branch, commit
    pending); notes.js:391–421 and the ~260 dead book.css lines still open;
    fix the four lying comments — suggestions.js:1–11 ✓, pagedjs-config.js:1 ✓,

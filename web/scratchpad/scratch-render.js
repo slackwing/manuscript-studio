@@ -70,8 +70,10 @@ const WriteSysScratchRender = {
 
   renderMessage(host, message) {
     const container = this.ensure(host);
+    // escapeHTML: the app-wide escaper (text-markers.js, loaded before this
+    // file on every page) — this had a private 2-entity copy that drifted.
     container.innerHTML = `<p style="font-family: Helvetica, sans-serif; font-size: 12px; color: #8a8378; text-align: center;">${
-      String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`;
+      escapeHTML(message)}</p>`;
     return container;
   },
 

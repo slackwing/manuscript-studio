@@ -4,7 +4,7 @@
 // now user-wide, so a scratchpad note can be tagged and the tag round-trips.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -21,7 +21,7 @@ function psql(sql) {
 
   await cleanupTestNotes();
   // A user-wide 'idea' tag from a prior run must not leak in; clean it.
-  psql(`DELETE FROM tag WHERE user_id='test' AND tag_name='sctag'`);
+  psql(`DELETE FROM tag WHERE user_id='${TEST_USERNAME}' AND tag_name='sctag'`);
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
   await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
@@ -62,7 +62,7 @@ function psql(sql) {
   // reloading (autosave is debounced; reloading early loses the ref). Poll DB.
   let persisted = false;
   for (let i = 0; i < 20 && !persisted; i++) {
-    const has = psql(`SELECT (doc::text LIKE '%noteRef%') FROM scratchpad WHERE user_id='test' ORDER BY scratchpad_id DESC LIMIT 1`).trim();
+    const has = psql(`SELECT (doc::text LIKE '%noteRef%') FROM scratchpad WHERE user_id='${TEST_USERNAME}' ORDER BY scratchpad_id DESC LIMIT 1`).trim();
     persisted = has === 't';
     if (!persisted) await page.waitForTimeout(300);
   }
@@ -88,7 +88,7 @@ function psql(sql) {
   const afterRm = psql(`SELECT count(*) FROM note_tag WHERE note_id=${noteId}`).trim();
   check('tag removed from note', afterRm === '0', `note_tag count=${afterRm}`);
 
-  psql(`DELETE FROM tag WHERE user_id='test' AND tag_name='sctag'`);
+  psql(`DELETE FROM tag WHERE user_id='${TEST_USERNAME}' AND tag_name='sctag'`);
   await browser.close();
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   process.exit(failed ? 1 : 0);

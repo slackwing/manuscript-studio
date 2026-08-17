@@ -5,7 +5,7 @@
 // width) instead of measurement. layoutMarginGlyphs() now pins by measuring
 // the sheet edge; this test is the tripwire.
 const { chromium, firefox } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const {TEST_USERNAME, TEST_URL, loginAsTestUser} = require('./test-utils');
 const { execSync } = require('child_process');
 
 const psql = (sql) => execSync(
@@ -81,13 +81,13 @@ async function runIn(browserType, name, width) {
 
 (async () => {
   console.log('=== gutter glyph invariant (chromium + firefox, multi-width) ===');
-  psql(`DELETE FROM suggested_change WHERE user_id='test'`);
+  psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   try {
     await runIn(chromium, 'chromium', 1400);
     await runIn(firefox, 'firefox', 1400);
     await runIn(firefox, 'firefox', 1000);
   } finally {
-    psql(`DELETE FROM suggested_change WHERE user_id='test'`);
+    psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   }
   if (failures) { console.log(`\n❌ ${failures} check(s) failed`); process.exit(1); }
   console.log('\n✅ Test passed');

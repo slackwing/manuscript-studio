@@ -36,7 +36,7 @@ function psql(sql) {
 
   // Wipe leftover suggestions FIRST — cleanupTestAnnotations deletes
   // sentence rows and a lingering FK would block it.
-  psql(`DELETE FROM suggested_change WHERE user_id = 'test'`);
+  psql(`DELETE FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
   await cleanupTestAnnotations();
 
   const browser = await chromium.launch({ headless: true });
@@ -164,7 +164,7 @@ function psql(sql) {
     failed = true;
   } finally {
     await browser.close();
-    psql(`DELETE FROM suggested_change WHERE user_id = 'test'`);
+    psql(`DELETE FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
     await cleanupTestAnnotations();
   }
 

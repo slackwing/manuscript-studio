@@ -5,7 +5,7 @@
 // prod: local tests only made NEW docs, never opened an existing legacy one.)
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
@@ -37,9 +37,9 @@ const LEGACY_DOC = JSON.stringify({
   await loginAsTestUser(page);
 
   // Seed a note + a legacy-format doc referencing it.
-  const noteId = psql(`INSERT INTO note (user_id, color, body, priority, position) VALUES ('test','green','the noted phrase','none','a0') RETURNING note_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
+  const noteId = psql(`INSERT INTO note (user_id, color, body, priority, position) VALUES ('${TEST_USERNAME}','green','the noted phrase','none','a0') RETURNING note_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
   const docWithId = LEGACY_DOC.replace(/"noteId": ?0/g, `"noteId": ${noteId}`);
-  const padId = psql(`INSERT INTO scratchpad (user_id, title, doc, schema_version) VALUES ('test','Legacy', '${docWithId.replace(/'/g, "''")}'::jsonb, 1) RETURNING scratchpad_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
+  const padId = psql(`INSERT INTO scratchpad (user_id, title, doc, schema_version) VALUES ('${TEST_USERNAME}','Legacy', '${docWithId.replace(/'/g, "''")}'::jsonb, 1) RETURNING scratchpad_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
   psql(`UPDATE note SET scratchpad_id=${padId} WHERE note_id=${noteId}`);
 
   let consoleErr = '';

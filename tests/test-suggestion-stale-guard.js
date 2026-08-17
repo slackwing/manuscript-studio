@@ -38,7 +38,7 @@ function psql(sql) {
 (async () => {
   console.log('=== Stale-migration guard on PUT /suggestion ===\n');
 
-  psql(`DELETE FROM suggested_change WHERE user_id = 'test'`);
+  psql(`DELETE FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
   await cleanupTestAnnotations();
 
   const browser = await chromium.launch({ headless: true });
@@ -122,7 +122,7 @@ function psql(sql) {
       psql(`DELETE FROM migration WHERE segmenter = 'stale-guard-fake-1'`);
     }
     await browser.close();
-    psql(`DELETE FROM suggested_change WHERE user_id = 'test'`);
+    psql(`DELETE FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
     await cleanupTestAnnotations();
   }
 

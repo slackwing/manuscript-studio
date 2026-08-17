@@ -1,21 +1,18 @@
-// PENDING-FIX ledger (CODE_REVIEW_AUG_2026 Area 1 — the three ⚠ E rows).
-// These assert the INTENDED semantics of behavior that is KNOWN-BUGGY today:
+// FORMER pending-fix ledger (CODE_REVIEW_AUG_2026 Area 1 — the three ⚠ E
+// rows), FLIPPED TO FATAL in the 2C-1 fix phase. All three bugs are fixed:
 //
-//   doc-save-inflight-typing  — editor-core.mjs:2129–2161: keystrokes typed
-//     while the doc PUT is in flight are masked by the unconditional
-//     setSaveState('saved') on resolve; isDirty() lies and an immediate
-//     close discards them.
-//   notecache-staleness       — editor-core.mjs:1423–1451, :1572–1574: the
-//     module-level noteCache is never invalidated across modal opens, so a
-//     note recolored between pad opens renders its STALE color on reopen.
-//   canonize-two-step-failure — import-scratchpad.js:282–290, :310–314,
-//     :147 vs :313: suggestion ok + canonize 500 → the error must mention
-//     the saved suggestion (holds today) AND the button must revert to its
-//     original "Place" label (drifts to "Canonize" today).
+//   doc-save-inflight-typing  — the doc autosave now rides the shared
+//     createAutosaver (edit-pane.js), whose in-flight "chase" keeps the
+//     saver dirty when keystrokes land during a PUT; status/isDirty stay
+//     honest and close flushes the tail.
+//   notecache-staleness       — createScratchpadEditor clears the module
+//     noteCache per open, so a note recolored between pad opens renders
+//     fresh on reopen.
+//   canonize-two-step-failure — import-scratchpad's go-button label is one
+//     constant (GO_LABEL 'Place'); the error path restores it, and the
+//     error mentions the already-saved suggestion.
 //
-// Failing intended-semantics checks print "PENDING-FIX:" lines and the run
-// EXITS 0 — the fix phase flips this file to a normal failing-is-fatal test
-// (make every `intended` a `check`). Setup failures still exit 1.
+// Every former `intended` check is now failing-is-fatal.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
 const { TEST_URL, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser, waitForPagination } = require('./test-utils');
@@ -27,23 +24,15 @@ function psql(sql) {
 }
 
 (async () => {
-  console.log('=== editor pending-fixes (intended semantics; exit 0 with ledger) ===\n');
+  console.log('=== editor pending-fixes (FLIPPED: every check is fatal) ===\n');
   const browser = await chromium.launch({ headless: true });
   let fatal = 0;
-  const pendingLedger = [];
-  // Setup / plumbing that must hold NOW.
   const check = (n, ok, extra) => {
-    console.log(`${ok ? '✅' : '❌'} [setup] ${n}${extra ? ' — ' + extra : ''}`);
+    console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`);
     if (!ok) fatal++;
   };
-  // Intended semantics — a failure is EXPECTED until the fix lands.
-  const intended = (n, ok, extra) => {
-    if (ok) console.log(`✅ [intended, already holds] ${n}${extra ? ' — ' + extra : ''}`);
-    else {
-      console.log(`⏳ PENDING-FIX: ${n}${extra ? ' — ' + extra : ''}`);
-      pendingLedger.push(`${n}${extra ? ' — ' + extra : ''}`);
-    }
-  };
+  // Formerly non-fatal "intended semantics" — now identical to check.
+  const intended = check;
 
   await cleanupTestNotes();
 
@@ -191,19 +180,6 @@ function psql(sql) {
   await cleanupTestNotes();
   await browser.close();
 
-  console.log('\n================ PENDING-FIX LEDGER ================');
-  if (pendingLedger.length === 0) {
-    console.log('No pending fixes — every intended-semantics check passes.');
-    console.log('>>> Flip this file to failing-is-fatal (intended → check) and fold it into the roster.');
-  } else {
-    pendingLedger.forEach((l, i) => console.log(`${i + 1}. PENDING-FIX: ${l}`));
-    console.log(`${pendingLedger.length} intended-semantics check(s) awaiting the fix phase.`);
-  }
-  console.log('====================================================');
-  if (fatal > 0) {
-    console.log(`\n❌ ${fatal} SETUP check(s) failed — the harness itself is broken.`);
-    process.exit(1);
-  }
-  console.log('\n✅ Ledger run complete (exit 0 by design).');
-  process.exit(0);
+  console.log(fatal === 0 ? '\n✅ Test passed' : `\n❌ ${fatal} check(s) failed`);
+  process.exit(fatal === 0 ? 0 : 1);
 })().catch(e => { console.error('Test crashed:', e); process.exit(1); });

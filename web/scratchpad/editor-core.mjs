@@ -21,25 +21,9 @@ import {
   addRowAfter, deleteRow, addColumnAfter, deleteColumn, deleteTable,
 } from './vendor/prosemirror.mjs';
 
-const csrf = () => (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
-
-// Save-failure status lines get a "log in" affordance when the failure is an
-// expired session (401): clicking opens the app-wide re-login modal
-// (session-guard.js) in place — no reload, pending saves then succeed on
-// their normal retry tick.
-function appendReloginLink(el) {
-  if (!window.WriteSysSessionGuard) return;
-  el.append(' · ');
-  const a = document.createElement('a');
-  a.href = '#';
-  a.textContent = 'Session expired — log in';
-  a.style.cssText = 'color:#a33;text-decoration:underline;cursor:pointer;';
-  a.addEventListener('click', (e) => {
-    e.preventDefault();
-    window.WriteSysSessionGuard.requireLogin();
-  });
-  el.appendChild(a);
-}
+// THE CSRF getter is auth.js's getCSRFToken (classic script, loads before
+// everything) — call-time lookup so module-eval order doesn't matter.
+const csrf = () => window.getCSRFToken() || '';
 
 // ---------------------------------------------------------------- schema
 
@@ -216,10 +200,21 @@ export const bookData = {
       const mig = await fetchJSON(`api/migrations/latest?manuscript_id=${manuscriptId}`, {}, false);
       const data = await fetchJSON(`api/migrations/${mig.migration_id}/manuscript`, {}, false);
       let sugMap = {};
-      try {
-        const sug = await fetchJSON(`api/migrations/${mig.migration_id}/suggestions`, {}, false);
-        (sug.suggestions || []).forEach(s => { sugMap[s.sentence_id] = s.text; });
-      } catch (e) { /* suggestions are enhancement, not requirement */ }
+      // Suggestions are "tolerated-but-required": a region placed as a
+      // suggestion exists ONLY here, so a silently-empty map turns into a
+      // missing-anchor error downstream. Transient failures (rate limiting,
+      // parallel-suite contention) were the cause of exactly that race —
+      // retry with backoff before falling back to empty.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const sug = await fetchJSON(`api/migrations/${mig.migration_id}/suggestions`, {}, false);
+          (sug.suggestions || []).forEach(s => { sugMap[s.sentence_id] = s.text; });
+          break;
+        } catch (e) {
+          if (attempt === 2) break; // give up: enhancement degrades, callers may force-fresh retry
+          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+        }
+      }
       return { migration: mig, sentences: data.sentences || [], sugMap };
     })();
     this.cache[manuscriptId] = p;
@@ -250,9 +245,13 @@ async function apiCall(method, url, body) {
 let currentScratchpadId = 0;
 export function setCurrentScratchpadId(id) { currentScratchpadId = id | 0; }
 
+// ONE transport for the variation/sketch API — apiCall (above) — so every
+// error carries `.status` (the 409-freeze pin and the 401 re-login affordance
+// both switch on it). Don't mix the global fetchJSON back in here: its error
+// message shape differs ("HTTP nnn: body" vs the trimmed body).
 export const variationApi = {
-  context: (id) => fetchJSON(`api/variations/${id}`, {}, false),
-  list: (q) => fetchJSON(`api/variations?q=${encodeURIComponent(q || '')}`, {}, false),
+  context: (id) => apiCall('GET', `api/variations/${id}`),
+  list: (q) => apiCall('GET', `api/variations?q=${encodeURIComponent(q || '')}`),
   createNew: () => apiCall('POST', 'api/sketches', { mode: 'new', scratchpad_id: currentScratchpadId }),
   // Based on a source variation → a new sibling variation (next letter, text copied).
   // No source freezing; the source is left as-is.
@@ -273,8 +272,8 @@ export const variationApi = {
   canonize: (id, manuscriptId) => apiCall('POST', `api/variations/${id}/canonize`, { manuscript_id: manuscriptId }),
   softDelete: (id) => apiCall('DELETE', `api/variations/${id}`),
   restore: (id) => apiCall('POST', `api/variations/${id}/restore`),
-  listDeleted: (q) => fetchJSON(`api/variations/deleted?q=${encodeURIComponent(q || '')}`, {}, false),
-  home: (id) => fetchJSON(`api/variations/${id}/home`, {}, false),
+  listDeleted: (q) => apiCall('GET', `api/variations/deleted?q=${encodeURIComponent(q || '')}`),
+  home: (id) => apiCall('GET', `api/variations/${id}/home`),
 };
 
 // fmtDeleted renders a deleted_at ISO timestamp as a short local date for the
@@ -286,9 +285,10 @@ function fmtDeleted(iso) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-// letterOf(1) = 'A'. The ordinal is an integer so a future cap lift can
-// render AA/AB — for now the server refuses past Z.
-export const letterOf = (ordinal) => ordinal ? String.fromCharCode(64 + ordinal) : '·';
+// letterOf(1) = 'A' — the SHARED formatter (edit-pane.js), re-exported for
+// this module's importers. import-scratchpad.js (classic script) uses the
+// same one, so widget rails and the book-side picker can never drift.
+export const letterOf = (ordinal) => window.WriteSysEditPane.letterOf(ordinal);
 
 // ----------------------------------------------------------- sketch view
 
@@ -321,6 +321,20 @@ const parseVariationRef = (text) => {
   const m = /^\s*ms-variation:(\d+)\s*$/.exec(text || '');
   return m ? parseInt(m[1], 10) : null;
 };
+// THE copy-reference wiring (self header + compare-pane header). The app's
+// own record of the copy comes FIRST: some browsers (Firefox in particular)
+// later refuse the programmatic clipboard READ in the ⧉ menu even though
+// this WRITE succeeds — the menu falls back to this record, so the flow
+// works regardless; the copied tick shows either way.
+function wireCopyRef(btn, variationId) {
+  btn.addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    try { localStorage.setItem('ms_last_variation_ref', String(variationId)); } catch (_) { /* private mode */ }
+    try { await navigator.clipboard.writeText(VARIATION_REF_PREFIX + variationId); } catch (_) { /* in-app record suffices */ }
+    b.classList.add('sn-copied');
+    setTimeout(() => b.classList.remove('sn-copied'), 900);
+  });
+}
 const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
 
 
@@ -541,7 +555,7 @@ class SketchView {
   // The scrollable host for this widget (the modal body). Rebuilding the widget's
   // DOM, or focusing an element inside it, makes the browser re-anchor scroll and
   // jump — usually to the top of the widget. Everything that tears down and
-  // rebuilds the widget (build/renderBody/setCompare/setVariationState) runs through
+  // rebuilds the widget (build/renderBody/setCompare/applyState) runs through
   // preserveScroll so the reader stays put. This is the single, root-cause fix
   // for "clicking a sketch scrolls me to the top."
   scrollHost() {
@@ -633,36 +647,16 @@ class SketchView {
     this.body = this.dom.querySelector('.sn-body');
     this.saveEl = this.dom.querySelector('.sn-save');
 
-    this.dom.querySelectorAll('[data-compare]').forEach(btn => {
-      btn.addEventListener('click', () => this.setCompare(
-        btn.dataset.compare === 'canon' ? 'canon' : parseInt(btn.dataset.compare, 10)));
-    });
+    this.bindCompareButtons(this.dom);
     this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(false));
     this.dom.querySelector('[data-act="freeze"]').addEventListener('click', () =>
-      this.setVariationState(this.frozen() ? 'draft' : 'frozen'));
+      this.applyState(this.variationId, this.frozen() ? 'draft' : 'frozen'));
     this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
-      this.setVariationState(this.superseded() ? 'draft' : 'superseded'));
+      this.applyState(this.variationId, this.superseded() ? 'draft' : 'superseded'));
     this.dom.querySelector('[data-act="branch"]').addEventListener('click', () => this.branchVariation(this.variationId));
     const placeBtn = this.dom.querySelector('[data-act="place"]');
     if (placeBtn) placeBtn.addEventListener('click', () => this.placeVariation(this.variationId));
-    this.dom.querySelector('[data-act="copyref"]').addEventListener('click', async (e) => {
-      const b = e.currentTarget;
-      // The app's own record of the copy comes FIRST: some browsers
-      // (Firefox in particular) later refuse the programmatic clipboard
-      // READ in the ⧉ menu even though this WRITE succeeds — the menu
-      // falls back to this record, so the flow works regardless.
-      try { localStorage.setItem('ms_last_variation_ref', String(this.variationId)); } catch (_) { /* private mode */ }
-      try {
-        await navigator.clipboard.writeText(VARIATION_REF_PREFIX + this.variationId);
-        b.classList.add('sn-copied');
-        setTimeout(() => b.classList.remove('sn-copied'), 900);
-      } catch (err) {
-        // System clipboard refused — the in-app record above still makes
-        // "From clipboard" work, so show the copied tick anyway.
-        b.classList.add('sn-copied');
-        setTimeout(() => b.classList.remove('sn-copied'), 900);
-      }
-    });
+    wireCopyRef(this.dom.querySelector('[data-act="copyref"]'), this.variationId);
     // The sketch's NOTE square (026) — the exact component that fronts
     // highlighted text in the doc, minus the text — top-left, left of the
     // status word. Click opens the same note float. Green check once the
@@ -734,16 +728,22 @@ class SketchView {
     this.renderBody();
   }
 
+  // THE one compare-button binder — build() (whole widget) and renderRail()
+  // (rail only) both route through it.
+  bindCompareButtons(scope) {
+    scope.querySelectorAll('[data-compare]').forEach(btn => {
+      btn.addEventListener('click', () => this.setCompare(
+        btn.dataset.compare === 'canon' ? 'canon' : parseInt(btn.dataset.compare, 10)));
+    });
+  }
+
   // (Re)build the rail and bind its compare buttons — needed whenever the
   // rail's composition changes (split open/close moves the self letter).
   renderRail() {
     const rail = this.dom.querySelector('.sn-rail');
     if (!rail) return;
     rail.innerHTML = this.railHTML();
-    rail.querySelectorAll('[data-compare]').forEach(btn => {
-      btn.addEventListener('click', () => this.setCompare(
-        btn.dataset.compare === 'canon' ? 'canon' : parseInt(btn.dataset.compare, 10)));
-    });
+    this.bindCompareButtons(rail);
   }
 
   renderBody() {
@@ -836,9 +836,39 @@ class SketchView {
         this._editAnchor = { y: e.clientY, f: null, needle: null, plen: 0, pf: 0 };
         const bodyR = host.getBoundingClientRect();
         this._editAnchor.f = (e.clientY - bodyR.top) / Math.max(1, bodyR.height);
+        // If the whole widget is on screen, entering edit needs NO scroll
+        // compensation at all — everything stays visible, and any adjustment
+        // reads as a jump. The anchor mapping below exists for LONG sketches
+        // where the serif→mono height change would drift the clicked word
+        // hundreds of px.
+        const scroller = this.scrollHost();
+        if (scroller) {
+          const wr = this.dom.getBoundingClientRect();
+          const hr = scroller.getBoundingClientRect();
+          this._editAnchor.fullyVisible = wr.top >= hr.top - 1 && wr.bottom <= hr.bottom + 1;
+        }
         const path = e.composedPath ? e.composedPath() : [];
-        const el = path.find((n) => n && n.nodeType === 1
+        let el = path.find((n) => n && n.nodeType === 1
           && ((n.classList && n.classList.contains('sentence')) || n.tagName === 'P'));
+        if (!el && host.shadowRoot) {
+          // The click landed on serif padding — typically the GAP between two
+          // paragraphs — so composedPath holds no text element. The old
+          // behavior fell through to the proportional fallback, which scrolls
+          // by f × (mono − serif height delta) even for tiny sketches (the
+          // 22px "click between paragraphs nudges the pad" regression). Snap
+          // to the nearest paragraph instead so the mapping stays exact; ties
+          // (dead center in a gap) go to the FOLLOWING paragraph — a click in
+          // a gap reads as "the start of the next paragraph".
+          let bestD = Infinity;
+          host.shadowRoot.querySelectorAll('.scratch-book p').forEach((b) => {
+            if (!(b.textContent || '').trim()) return;
+            const br = b.getBoundingClientRect();
+            if (!br.height) return;
+            const d = e.clientY < br.top ? (br.top - e.clientY)
+              : e.clientY > br.bottom ? (e.clientY - br.bottom) + 0.75 : 0;
+            if (d < bestD) { bestD = d; el = b; }
+          });
+        }
         if (el) {
           // Needle = the text AROUND the clicked line (fraction into the
           // element × its length), so the restored offset needs no
@@ -982,7 +1012,10 @@ class SketchView {
         const r = pane.wrap.getBoundingClientRect();
         targetY = r.top + a.f * r.height;
       }
-      if (host && targetY != null && Number.isFinite(targetY)) {
+      // fullyVisible: the whole widget was on screen at click time — the
+      // caret mapping above still applies, but the scroll must NOT move
+      // (nothing can drift out of view, and any adjustment reads as a jump).
+      if (host && targetY != null && Number.isFinite(targetY) && !a.fullyVisible) {
         host.scrollTop += targetY - a.y;
         // Re-arm the shared pin so it defends the ADJUSTED position (a fresh
         // or re-armed hold adopts the current scrollTop).
@@ -1036,24 +1069,11 @@ class SketchView {
       headRight.querySelector('[data-act="peer-branch"]').addEventListener('click', () => this.branchVariation(variationId));
       const peerPlace = headRight.querySelector('[data-act="peer-place"]');
       if (peerPlace) peerPlace.addEventListener('click', () => this.placeVariation(variationId));
-      const applyPeerState = async (state) => {
-        try {
-          await variationApi.setState(variationId, state);
-          await this.refresh(); // clears peerCache; keeps the compare open
-          await refreshSketchSiblings(sketchId, this.variationId);
-        } catch (e) { alert('Could not update variation state: ' + e.message); }
-      };
       headRight.querySelector('[data-act="peer-supersede"]').addEventListener('click', () =>
-        applyPeerState(st === 'superseded' ? 'draft' : 'superseded'));
+        this.applyState(variationId, st === 'superseded' ? 'draft' : 'superseded'));
       headRight.querySelector('[data-act="peer-freeze"]').addEventListener('click', () =>
-        applyPeerState(st === 'frozen' ? 'draft' : 'frozen'));
-      headRight.querySelector('[data-act="peer-copyref"]').addEventListener('click', async (e) => {
-        const b = e.currentTarget;
-        try { localStorage.setItem('ms_last_variation_ref', String(variationId)); } catch (_) { /* private mode */ }
-        try { await navigator.clipboard.writeText(VARIATION_REF_PREFIX + variationId); } catch (_) { /* in-app record suffices */ }
-        b.classList.add('sn-copied');
-        setTimeout(() => b.classList.remove('sn-copied'), 900);
-      });
+        this.applyState(variationId, st === 'frozen' ? 'draft' : 'frozen'));
+      wireCopyRef(headRight.querySelector('[data-act="peer-copyref"]'), variationId);
     }
     const host = pane.querySelector('.sn-render');
     // Stop mousedown from REACHING ProseMirror (which would move the PM
@@ -1135,9 +1155,18 @@ class SketchView {
         }
       } catch (e) { /* legacy fallback below */ }
       if (!planEdits) {
-        const data = await bookData.load(sn.linked_manuscript_id, true);
-        const plan = window.WriteSysRegion.replacePlan(
-          data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, text);
+        // Same one-forced-retry discipline as renderCanon: a transient
+        // book-data failure (the suggestions fetch is tolerated-but-required
+        // here — the region often exists only as a suggestion) resolves the
+        // region against incomplete data and reports missing-anchor. Retry
+        // once fully fresh before declaring the region gone.
+        let plan = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const data = await bookData.load(sn.linked_manuscript_id, true);
+          plan = window.WriteSysRegion.replacePlan(
+            data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, text);
+          if (plan.status === 'ok') break;
+        }
         if (plan.status !== 'ok') {
           alert(`Could not find the placed region #${sn.sketch_id} in the manuscript (${plan.status}).`);
           return;
@@ -1181,9 +1210,14 @@ class SketchView {
       headRight.innerHTML = `<span class="sn-actions">${openBookLink(sn)}<button type="button" data-act="from-placed" class="sn-branch sn-from-placed" title="New variation from the placed text — start editing what's in the book">${SPARK_SVG}</button></span><span class="sn-act-label sn-act-label-gilt" title="The placed text.">\u2766</span>`;
       headRight.querySelector('[data-act="from-placed"]').addEventListener('click', async () => {
         try {
-          const data = await bookData.load(sn.linked_manuscript_id, true);
-          const seed = window.WriteSysRegion.regionRawText(
-            data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, null);
+          // One forced retry, like renderCanon/placeVariation — a transient
+          // fetch failure must not read as "region gone".
+          let seed = null;
+          for (let attempt = 0; attempt < 2 && seed == null; attempt++) {
+            const data = await bookData.load(sn.linked_manuscript_id, true);
+            seed = window.WriteSysRegion.regionRawText(
+              data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, null);
+          }
           if (seed == null) { alert('Could not resolve the placed region.'); return; }
           const ctx = await variationApi.createFromText(sn.sketch_id, seed);
           const pos = this.getPos();
@@ -1230,11 +1264,13 @@ class SketchView {
     }
   }
 
-  async setVariationState(state) {
+  // THE state toggle (self buttons + compare-pane buttons): set the state,
+  // refresh this widget (clears peerCache; keeps an open compare), then the
+  // siblings — their rails color-code every variation's state live.
+  async applyState(variationId, state) {
     try {
-      await variationApi.setState(this.variationId, state);
+      await variationApi.setState(variationId, state);
       await this.refresh();
-      // Sibling rails color-code THIS variation's state — update them live.
       await refreshSketchSiblings(this.ctx.sketch.sketch_id, this.variationId);
     } catch (e) {
       alert('Could not update variation state: ' + e.message);
@@ -1310,6 +1346,26 @@ async function uploadImage(file) {
 }
 
 // ---------------------------------------------------------------- helpers
+
+// Breathing-room rule (ONE implementation — the edit-time plugin and the
+// open-time pass both use it): every WIDGET (sketch) must be followed by a
+// non-widget block. Two consecutive widgets left nowhere to click a caret
+// between them (the gap cursor is undiscoverable). With `atOpen`, ALSO
+// require the doc to end with a paragraph (docs saved before the plugin
+// existed can end in a table/image — the plugin only runs on edits).
+// Returns the positions (ascending) where an empty paragraph must go.
+function breathingRoomInserts(doc, sc, atOpen) {
+  const inserts = [];
+  doc.forEach((node, offset, index) => {
+    if (node.type !== sc.nodes.snippet) return;
+    const next = doc.maybeChild(index + 1);
+    if (!next || next.type === sc.nodes.snippet) inserts.push(offset + node.nodeSize);
+  });
+  if (atOpen && (!doc.lastChild || doc.lastChild.type !== sc.nodes.paragraph)) {
+    if (!inserts.includes(doc.content.size)) inserts.push(doc.content.size);
+  }
+  return inserts;
+}
 
 // Insert a block node WITHOUT destroying a node-selected atom.
 function insertBlockSafely(state, dispatch, node) {
@@ -1737,10 +1793,9 @@ async function openNoteFloatFor(noteId, anchorEl) {
 }
 
 // The right-aligned 6-color note bar. Each square creates a note from the
-// current selection; all are disabled when nothing is selected. Registers the
-// group in `dyn` so updateToolbar() can toggle the disabled state per state.
-// Module list of note-color groups; updateToolbar() toggles their disabled look
-// (empty selection → can't create a note).
+// current selection. Registers the group in the module-level noteColorGroups
+// list (reset per editor instance), which updateToolbar() walks to toggle the
+// disabled look (empty selection → can't create a note).
 const noteColorGroups = [];
 function buildNoteColorBar(toolbarEl, getView) {
   const group = document.createElement('span');
@@ -1979,11 +2034,13 @@ function buildSketchMenu(toolbarEl, getView) {
     })();
   };
 
-  // Restore… picker: soft-deleted variations, newest deletion first. Selecting
-  // one un-deletes it and inserts its widget.
-  const renderRestore = async () => {
+  // THE search-and-pick popover (DRY.md item 4, scoped to this menu's two
+  // pickers): input + debounced load + button list; Escape closes the
+  // POPOVER ONLY — stopPropagation so the modal's document-level Escape
+  // handler doesn't also close the whole pad.
+  const buildPickerPop = async ({ placeholder, fetchRows, rowHTML, emptyText, errorText, onPick }) => {
     pop.innerHTML = `
-      <input type="text" class="sn-ins-q" placeholder="Search deleted variations…" autocomplete="off">
+      <input type="text" class="sn-ins-q" placeholder="${placeholder}" autocomplete="off">
       <div class="sn-ins-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
     const q = pop.querySelector('.sn-ins-q');
     const list = pop.querySelector('.sn-ins-list');
@@ -1991,70 +2048,64 @@ function buildSketchMenu(toolbarEl, getView) {
     const load = async () => {
       let rows;
       try {
-        rows = (await variationApi.listDeleted(q.value.trim())).variations || [];
+        rows = await fetchRows(q.value.trim());
       } catch (e) {
-        list.innerHTML = '<span class="sn-linkpop-empty">Could not load deleted variations</span>';
+        list.innerHTML = `<span class="sn-linkpop-empty">${errorText}</span>`;
         return;
       }
       list.innerHTML = rows.length
-        ? rows.map(r => `
-          <button type="button" data-vid="${r.variation_id}">
-            <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
-            <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
-            <span class="sn-ins-deleted">${esc(fmtDeleted(r.deleted_at))}</span>
-          </button>`).join('')
-        : '<span class="sn-linkpop-empty">No deleted variations</span>';
+        ? rows.map(rowHTML).join('')
+        : `<span class="sn-linkpop-empty">${emptyText}</span>`;
     };
     let t;
     q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
-    q.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-    list.addEventListener('click', async (e) => {
+    q.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    });
+    list.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-vid]');
-      if (!b) return;
-      try {
-        const ctx = await variationApi.restore(parseInt(b.dataset.vid, 10));
-        insertVariation(ctx);
-      } catch (err) { alert('Could not restore variation: ' + err.message); }
+      if (b) onPick(parseInt(b.dataset.vid, 10));
     });
     await load();
   };
 
-  const renderPicker = async () => {
-    pop.innerHTML = `
-      <input type="text" class="sn-ins-q" placeholder="Search variations…" autocomplete="off">
-      <div class="sn-ins-list"><span class="sn-linkpop-empty">Loading…</span></div>`;
-    const q = pop.querySelector('.sn-ins-q');
-    const list = pop.querySelector('.sn-ins-list');
-    q.focus();
-    const load = async () => {
-      let rows;
-      try {
-        rows = (await variationApi.list(q.value.trim())).variations || [];
-      } catch (e) {
-        list.innerHTML = '<span class="sn-linkpop-empty">Could not load variations</span>';
-        return;
-      }
-      list.innerHTML = rows.length
-        ? rows.map(r => `
+  // Restore… picker: soft-deleted variations, newest deletion first. Selecting
+  // one un-deletes it and inserts its widget.
+  const renderRestore = () => buildPickerPop({
+    placeholder: 'Search deleted variations…',
+    fetchRows: async (q) => (await variationApi.listDeleted(q)).variations || [],
+    rowHTML: (r) => `
           <button type="button" data-vid="${r.variation_id}">
             <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
             <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
-          </button>`).join('')
-        : '<span class="sn-linkpop-empty">No variations yet</span>';
-    };
-    let t;
-    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
-    q.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-    // Picking a source variation mints a NEW sibling variation directly (next letter,
-    // text copied). No freeze dialog — the source is left as-is.
-    list.addEventListener('click', async (e) => {
-      const b = e.target.closest('button[data-vid]');
-      if (!b) return;
-      try { insertVariation(await variationApi.createFrom(parseInt(b.dataset.vid, 10))); }
+            <span class="sn-ins-deleted">${esc(fmtDeleted(r.deleted_at))}</span>
+          </button>`,
+    emptyText: 'No deleted variations',
+    errorText: 'Could not load deleted variations',
+    onPick: async (vid) => {
+      try { insertVariation(await variationApi.restore(vid)); }
+      catch (err) { alert('Could not restore variation: ' + err.message); }
+    },
+  });
+
+  // Related to… picker. Picking a source variation mints a NEW sibling
+  // variation directly (next letter, text copied). No freeze dialog — the
+  // source is left as-is.
+  const renderPicker = () => buildPickerPop({
+    placeholder: 'Search variations…',
+    fetchRows: async (q) => (await variationApi.list(q)).variations || [],
+    rowHTML: (r) => `
+          <button type="button" data-vid="${r.variation_id}">
+            <span class="sn-ins-letter">${esc(letterOf(r.ordinal))}</span>
+            <span class="sn-ins-preview">${esc(r.preview || '(empty)')}</span>
+          </button>`,
+    emptyText: 'No variations yet',
+    errorText: 'Could not load variations',
+    onPick: async (vid) => {
+      try { insertVariation(await variationApi.createFrom(vid)); }
       catch (err) { alert('Could not create variation: ' + err.message); }
-    });
-    await load();
-  };
+    },
+  });
 
   btn.addEventListener('mousedown', (e) => {
     e.preventDefault();
@@ -2082,42 +2133,35 @@ export async function createScratchpadEditor(els, scratchpadId) {
   els.titleInput.value = pad.title;
   // Fresh per editor instance (the modal can open/close repeatedly).
   noteColorGroups.length = 0;
+  // The note cache too: a note recolored BETWEEN pad opens (landing grid,
+  // another surface) must render its fresh color on reopen — a stale cache
+  // survived modal cycles and pinned the old color (notecache-staleness).
+  noteCache.clear();
   closeNoteFloat();
 
   let view = null;
-  let saveTimer = null;
-  let saveState = 'saved';
   let destroyed = false;
 
-  // Failed saves retry on exponential backoff (2s → 60s cap) with a live
-  // countdown in the status slot; any success resets the ladder. The modal
-  // refuses to close while unsaved (saveNow returns false), so a dead
-  // server never eats work.
-  let retryTimer = null;
-  let countdownTimer = null;
-  let retryAttempt = 0;
-
-  const clearRetry = () => {
-    clearTimeout(retryTimer); retryTimer = null;
-    clearInterval(countdownTimer); countdownTimer = null;
-  };
-
-  const setSaveState = (s) => {
-    saveState = s;
-    els.statusEl.textContent = s === 'saved' ? 'Saved' : (s === 'saving' ? 'Saving…' : 'Unsaved');
-  };
-
-  const scheduleRetry = (authFail) => {
-    clearRetry();
-    retryAttempt = Math.min(retryAttempt + 1, 6);
-    let secs = Math.min(60, Math.pow(2, retryAttempt)); // 2, 4, 8, …, 60
-    const show = () => {
-      els.statusEl.textContent = `Failed to save. Trying again in ${secs}s`;
-      if (authFail) appendReloginLink(els.statusEl);
-    };
-    show();
-    countdownTimer = setInterval(() => { secs -= 1; if (secs > 0) show(); }, 1000);
-    retryTimer = setTimeout(() => { clearRetry(); saveNow(); }, secs * 1000);
+  // ---- doc autosave: the SHARED autosaver (edit-pane.js createAutosaver;
+  // DRY.md item 3). ONE save machine for the doc and every variation
+  // textarea: same debounce/flush/dirty discipline, same retry ladder
+  // (2s → 60s cap, attempt cap 6, live countdown), same 401 re-login link —
+  // and, crucially, the in-flight CHASE: keystrokes typed while a PUT is in
+  // flight leave the saver dirty and trigger a follow-up save, instead of
+  // being masked by the stale PUT resolving (the old hand-rolled copy's
+  // data-loss bug). The saved "value" is the exact PUT body (title + doc
+  // JSON), so title edits and doc edits share one dirty comparison.
+  let docSaver = null; // created below, after the open-time normalization
+  const docValue = () => JSON.stringify({ title: els.titleInput.value, doc: view.state.doc.toJSON() });
+  // Status vocabulary: this surface says Saved / Saving… / Unsaved where the
+  // shared pane says '' / 'saving…'. Failure lines ("Failed to save. Trying
+  // again in Ns", plus the 401 re-login link appended to statusEl) pass
+  // through verbatim — the two machines already agreed on those.
+  const docStatus = (text) => {
+    els.statusEl.textContent =
+      text === '' ? (docSaver && docSaver.isDirty() ? 'Unsaved' : 'Saved')
+        : text === 'saving…' ? 'Saving…'
+          : text;
   };
 
   // Flush any widget textareas with unsaved variation text.
@@ -2126,39 +2170,14 @@ export async function createScratchpadEditor(els, scratchpadId) {
     return results.every(Boolean);
   };
 
+  // The close-guard flush: variations flush FIRST, then the doc PUT; false if
+  // ANY widget flush failed OR the doc save failed — the modal refuses to
+  // close on false, so a dead server never eats work.
   const saveNow = async () => {
     if (!view) return false;
-    clearTimeout(saveTimer);
-    clearRetry();
-    setSaveState('saving');
     const variationsOk = await flushVariations();
-    try {
-      const r = await fetch(`api/scratchpads/${scratchpadId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-        body: JSON.stringify({ title: els.titleInput.value, doc: view.state.doc.toJSON() }),
-      });
-      if (!r.ok) {
-        const err = new Error(String(r.status));
-        err.status = r.status;
-        throw err;
-      }
-      retryAttempt = 0;
-      setSaveState('saved');
-      return variationsOk;
-    } catch (e) {
-      console.error('autosave failed', e);
-      saveState = 'unsaved';
-      if (!destroyed) scheduleRetry(e.status === 401);
-      return false;
-    }
-  };
-
-  const scheduleSave = () => {
-    clearRetry();
-    setSaveState('unsaved');
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, 1200);
+    const docOk = docSaver ? await docSaver.flush() : true;
+    return variationsOk && docOk;
   };
 
   // ---- toolbar ----
@@ -2215,7 +2234,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       continue;
     }
     if (it.noteColors) {
-      buildNoteColorBar(els.toolbarEl, () => view, dyn);
+      buildNoteColorBar(els.toolbarEl, () => view);
       continue;
     }
     if (it.sep) {
@@ -2287,24 +2306,13 @@ export async function createScratchpadEditor(els, scratchpadId) {
       gapCursor(),
       columnResizing(),
       tableEditing(),
-      // Breathing-room guarantee: every WIDGET (sketch) is followed by a
-      // TEXTBLOCK, and the doc ends with a paragraph. Two consecutive
-      // widgets left nowhere to click a caret between them (the gap cursor
-      // is undiscoverable) — so any edit that leaves a widget butted against
-      // another widget (or the doc edge) gets an empty paragraph inserted
-      // after it. Same rule the doc bottom always had, generalized.
+      // Breathing-room guarantee on every edit — shared rule, see
+      // breathingRoomInserts above.
       new Plugin({
         appendTransaction(trs, _old, newState) {
           if (!trs.some(tr => tr.docChanged)) return null;
           const { doc, schema: sc } = newState;
-          const inserts = [];
-          doc.forEach((node, offset, index) => {
-            if (node.type !== sc.nodes.snippet) return;
-            const next = doc.maybeChild(index + 1);
-            if (!next || next.type === sc.nodes.snippet) {
-              inserts.push(offset + node.nodeSize);
-            }
-          });
+          const inserts = breathingRoomInserts(doc, sc, false);
           if (!inserts.length) return null;
           let tr = newState.tr;
           for (let i = inserts.length - 1; i >= 0; i--) {
@@ -2328,7 +2336,9 @@ export async function createScratchpadEditor(els, scratchpadId) {
       if (destroyed) return;
       const newState = view.state.apply(tr);
       view.updateState(newState);
-      if (tr.docChanged) scheduleSave();
+      // docSaver is null only during the open-time normalization dispatch —
+      // that change is not an edit (it's re-derived on every open).
+      if (tr.docChanged && docSaver) docSaver.poke();
       updateToolbar();
     },
   });
@@ -2336,18 +2346,10 @@ export async function createScratchpadEditor(els, scratchpadId) {
   const diagHost = view.dom.closest('.spm-editor');
   if (diagHost) scrollDiag.install(diagHost);
   // Docs SAVED with a trailing sketch/table/image predate the trailing-node
-  // plugin (which only runs on edits) — normalize once at open.
+  // plugin (which only runs on edits) — normalize once at open (shared rule,
+  // see breathingRoomInserts).
   {
-    const doc0 = view.state.doc;
-    const inserts0 = [];
-    doc0.forEach((node, offset, index) => {
-      if (node.type !== schema.nodes.snippet) return;
-      const next = doc0.maybeChild(index + 1);
-      if (!next || next.type === schema.nodes.snippet) inserts0.push(offset + node.nodeSize);
-    });
-    if (!doc0.lastChild || doc0.lastChild.type !== schema.nodes.paragraph) {
-      if (!inserts0.includes(doc0.content.size)) inserts0.push(doc0.content.size);
-    }
+    const inserts0 = breathingRoomInserts(view.state.doc, schema, true);
     if (inserts0.length) {
       let tr0 = view.state.tr;
       inserts0.sort((a, b) => b - a).forEach((pos) => {
@@ -2357,14 +2359,37 @@ export async function createScratchpadEditor(els, scratchpadId) {
     }
   }
   updateToolbar();
-  setSaveState('saved');
 
-  const onTitleInput = () => scheduleSave();
+  // The saver is created AFTER the normalization pass so its baseline is the
+  // as-opened (normalized) doc: opening a pad never counts as an edit.
+  docSaver = window.WriteSysEditPane.createAutosaver({
+    initialValue: docValue(),
+    debounceMs: 1200,
+    getValue: docValue,
+    save: async (body) => {
+      const r = await fetch(`api/scratchpads/${scratchpadId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        body,
+      });
+      if (!r.ok) {
+        const err = new Error(String(r.status));
+        err.status = r.status;
+        throw err;
+      }
+    },
+    statusEl: els.statusEl, // the 401 re-login link appends here
+    setStatus: docStatus,
+    onDirty: (d) => { if (d) els.statusEl.textContent = 'Unsaved'; },
+  });
+  els.statusEl.textContent = 'Saved';
+
+  const onTitleInput = () => docSaver.poke();
   els.titleInput.addEventListener('input', onTitleInput);
   // After an in-place re-login (session-guard.js), don't sit out the rest of
   // the retry backoff — flush everything unsaved right away.
   const onSessionRestored = () => {
-    if (saveState !== 'saved' || dirtyVariations.size > 0) saveNow();
+    if (docSaver.isDirty() || dirtyVariations.size > 0) saveNow();
   };
   document.addEventListener('ms:session-restored', onSessionRestored);
   const onImage = async (e) => {
@@ -2408,16 +2433,18 @@ export async function createScratchpadEditor(els, scratchpadId) {
       return ctx;
     },
     pm: { Selection, TextSelection, NodeSelection },
-    isDirty: () => saveState !== 'saved' || dirtyVariations.size > 0,
+    isDirty: () => docSaver.isDirty() || dirtyVariations.size > 0,
     async destroy() {
       await flushVariations(); // best effort; the modal's guard already ran
       destroyed = true;
-      clearTimeout(saveTimer);
-      clearRetry();
       els.titleInput.removeEventListener('input', onTitleInput);
       els.imageInput.removeEventListener('change', onImage);
       document.removeEventListener('ms:session-restored', onSessionRestored);
-      if (saveState !== 'saved') await saveNow();
+      // Conditional final save, then tear the saver down: a failure here
+      // schedules a retry, and destroy() cancels it — at most ONE final
+      // attempt, never a post-teardown retry.
+      if (docSaver.isDirty()) await docSaver.flush();
+      docSaver.destroy();
       closeNoteFloat();
       // Anchor NodeViews destroy() during view.destroy(); don't let that
       // soft-delete the notes (the doc persists them).

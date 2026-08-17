@@ -6,13 +6,31 @@
  * (#scratchpad=N) on load.
  */
 const WriteSysScratchpadModal = {
-  _mod: null,
+  _mod: null,   // resolved module (sync checks: close(), restoreFromHash)
+  _modP: null,  // the ONE import() promise — concurrent first opens must
+                // share it, not race two imports (the loser's open could
+                // land last and steal the "second open wins" contract).
 
   async _load() {
-    if (!this._mod) {
-      this._mod = await import(new URL('scratchpad/modal.mjs?v=69', document.baseURI).href);
+    if (!this._modP) {
+      this._modP = import(new URL('scratchpad/modal.mjs?v=70', document.baseURI).href)
+        .then((m) => { this._mod = m; return m; });
     }
-    return this._mod;
+    return this._modP;
+  },
+
+  // ONE grammar for the pad deep-link hash — modal.mjs (writer) and
+  // restoreFromHash (reader) both parse through here.
+  parseHash(h) {
+    h = h || '';
+    const sp = h.match(/[#&]scratchpad=(\d+)/);
+    const sk = h.match(/[#&]sketch=([a-z0-9]+)/i);
+    const ord = h.match(/[#&]variation=(\d+)/);
+    return {
+      scratchpadId: sp ? parseInt(sp[1], 10) : 0,
+      sketchId: sk ? sk[1] : null,
+      ordinal: ord ? parseInt(ord[1], 10) : 0,
+    };
   },
 
   async open(scratchpadId, opts) {
@@ -29,17 +47,13 @@ const WriteSysScratchpadModal = {
   // #scratchpad=N&variation=ID (navigate-to-source). If a pad is already open,
   // just scroll to the variation; otherwise open the pad (which then scrolls).
   restoreFromHash() {
-    const h = window.location.hash || '';
-    const sp = h.match(/[#&]scratchpad=(\d+)/);
-    if (!sp) return;
-    const snM = h.match(/[#&]sketch=([a-z0-9]+)/i);
-    const ordM = h.match(/[#&]variation=(\d+)/);
-    const spid = parseInt(sp[1], 10);
-    if (this._mod && this._mod.ScratchpadModal.currentId() === spid) {
+    const dl = this.parseHash(window.location.hash);
+    if (!dl.scratchpadId) return;
+    if (this._mod && this._mod.ScratchpadModal.currentId() === dl.scratchpadId) {
       // Same pad already open — just scroll to the variation, if any.
-      if (snM && ordM) this._mod.ScratchpadModal.scrollToVariationWidget(snM[1], parseInt(ordM[1], 10));
+      if (dl.sketchId && dl.ordinal) this._mod.ScratchpadModal.scrollToVariationWidget(dl.sketchId, dl.ordinal);
     } else {
-      this.open(spid);
+      this.open(dl.scratchpadId);
     }
   },
 };

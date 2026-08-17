@@ -249,9 +249,10 @@ const PNG_1PX = Buffer.from(
       return !p || p.hidden;
     });
     check('Escape closes the picker popover', true);
-    // NOTE (behavior finding, not asserted as a failure): the picker's Escape
-    // handler does not stopPropagation, so the modal's document-level Escape
-    // ALSO fires and closes the whole pad along with the popover.
+    // Fixed 2C-1: the picker's Escape now stopPropagation()s, so the modal's
+    // document-level Escape no longer closes the whole pad with the popover.
+    check('Escape in the picker leaves the pad OPEN (popover only)',
+      (await page.locator('.spm-overlay').count()) === 1);
 
     // ---- open-time-trailing-normalize ------------------------------------
     if (await page.locator('.spm-overlay').count()) {

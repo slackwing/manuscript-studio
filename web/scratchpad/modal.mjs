@@ -4,7 +4,7 @@
  * open at a time — by construction. The open pad rides the URL
  * (#scratchpad=N) so a reload restores it. Close flushes autosave.
  */
-import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=70';
+import { createScratchpadEditor, setCurrentScratchpadId, suspendScrollHolds } from './editor-core.mjs?v=72';
 
 function ensureCSS() {
   if (document.getElementById('scratchpad-css')) return;
@@ -88,16 +88,16 @@ export const ScratchpadModal = {
     // The open pad rides the URL so reload restores it (replaceState — a
     // modal is not a navigation). Preserve a &sketch=&variation= deep-link if
     // present so it isn't clobbered before scrollToVariationWidget reads it.
+    // (ONE hash grammar — the loader's parseHash; scratchpad-modal.js.)
     const url = new URL(window.location.href);
-    const snM = (url.hash || '').match(/[#&]sketch=([a-z0-9]+)/i);
-    const ordM = (url.hash || '').match(/[#&]variation=(\d+)/);
+    const dl = window.WriteSysScratchpadModal.parseHash(url.hash);
     url.hash = `scratchpad=${scratchpadId}` +
-      (snM && ordM ? `&sketch=${snM[1]}&variation=${ordM[1]}` : '');
+      (dl.sketchId && dl.ordinal ? `&sketch=${dl.sketchId}&variation=${dl.ordinal}` : '');
     history.replaceState(null, '', url);
     // Landing-page recency stamp (fire-and-forget; cards sort by this).
     fetch(`api/scratchpads/${scratchpadId}/opened`, {
       method: 'POST',
-      headers: { 'X-CSRF-Token': (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '' },
+      headers: { 'X-CSRF-Token': window.getCSRFToken() || '' },
     }).catch(() => {});
     window.WriteSysScratchpad = this.editor; // test / power-user hook
     this.setupManuscriptLink(scratchpadId);
@@ -106,7 +106,7 @@ export const ScratchpadModal = {
     // Deep link: #scratchpad=N&sketch=ID&variation=ORDINAL scrolls to that
     // variation's widget (the peer preview's "navigate to source"). Identity is
     // (sketch, ordinal). Retry briefly while widgets mount.
-    if (snM && ordM) this.scrollToVariationWidget(snM[1], parseInt(ordM[1], 10));
+    if (dl.sketchId && dl.ordinal) this.scrollToVariationWidget(dl.sketchId, dl.ordinal);
 
     // Deep link from the landing Notes grid: scroll to the note's inline anchor.
     if (opts.noteId) this.scrollToNoteAnchor(opts.noteId);
@@ -129,11 +129,10 @@ export const ScratchpadModal = {
     } catch (e) { /* leave unlinked */ }
 
     const HINT = 'Link scratchpad to manuscript. Causes all NEW elements (sketches, notes, etc.) in the scratchpad to be linked to the manuscript by default.';
-    const csrf = () => (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
     const put = async (mid) => {
       const r = await fetch(`api/scratchpads/${scratchpadId}/link`, {
         method: 'PUT', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.getCSRFToken() || '' },
         body: JSON.stringify({ manuscript_id: mid }),
       });
       return r.ok ? r.json() : Promise.reject(new Error('link ' + r.status));
