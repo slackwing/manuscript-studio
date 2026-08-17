@@ -33,7 +33,11 @@ const TEST_MANUSCRIPT_NAME = WORKER === 1 ? 'test-manuscripts' : `test-manuscrip
 const TEST_USERNAME = WORKER === 1 ? 'test' : `test${WORKER}`;
 const TEST_PASSWORD = 'test';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+// Server port — MS_TEST_PORT points a run at a second dev server (e.g. a
+// worktree build on 5002) without touching the main `make dev` on 5001.
+const PORT = parseInt(process.env.MS_TEST_PORT || '5001', 10);
+const BASE_URL = `http://localhost:${PORT}`;
+const API_BASE_URL = `${BASE_URL}/api`;
 
 const DB_HOST = 'localhost';
 const DB_PORT = 5433;
@@ -75,7 +79,7 @@ function resolveManuscriptId() {
 }
 
 let TEST_MANUSCRIPT_ID = resolveManuscriptId();
-let TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
+let TEST_URL = `${BASE_URL}/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
 
 /**
  * FAST cleanup: wipes the per-user data layers for THIS worker's fixture —
@@ -199,7 +203,7 @@ async function resetTestManuscript() {
       }
       await new Promise(r => setTimeout(r, 250));
     }
-    TEST_URL = `http://localhost:5001/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
+    TEST_URL = `${BASE_URL}/?manuscript_id=${TEST_MANUSCRIPT_ID}`;
     console.log(`[RESET] manuscript re-bootstrapped (worker ${WORKER}, manuscript_id=${TEST_MANUSCRIPT_ID})`);
   } catch (error) {
     console.warn('[RESET] Warning:', error.message);
@@ -212,7 +216,7 @@ async function resetTestManuscript() {
  * test-login-form.js, which uses loginViaForm below).
  */
 async function loginAsTestUser(page) {
-  const resp = await page.request.post('http://localhost:5001/api/login', {
+  const resp = await page.request.post(`${API_BASE_URL}/login`, {
     data: { username: TEST_USERNAME, password: TEST_PASSWORD },
   });
   if (!resp.ok()) {
@@ -224,12 +228,12 @@ async function loginAsTestUser(page) {
  * Login by driving the login page UI — the e2e coverage of the form itself.
  */
 async function loginViaForm(page) {
-  await page.goto('http://localhost:5001/login.html', { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/login.html`, { waitUntil: 'domcontentloaded' });
   await page.fill('#username', TEST_USERNAME);
   await page.fill('#password', TEST_PASSWORD);
   await page.click('#login-btn');
   // Post-login lands on home.html (HOME_PLAN.md).
-  await page.waitForURL(/localhost:5001\/home\.html.*$/, { timeout: 5000, waitUntil: 'commit' });
+  await page.waitForURL(new RegExp(`localhost:${PORT}/home\\.html.*$`), { timeout: 5000, waitUntil: 'commit' });
 }
 
 /**

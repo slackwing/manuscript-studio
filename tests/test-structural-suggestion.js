@@ -11,7 +11,7 @@ const {
   waitForPagination,
 } = require('./test-utils');
 
-const API = 'http://localhost:5001/api';
+const API = `http://localhost:${process.env.MS_TEST_PORT || 5001}/api`;
 
 async function syncManuscript() {
   // Re-point manuscript_id=1 at content containing &-commands + a # header we
