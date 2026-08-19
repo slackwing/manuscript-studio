@@ -24,8 +24,8 @@
         document.body.dataset.paginated =
           String((parseInt(document.body.dataset.paginated || '0', 10) || 0) + 1);
 
-        if (typeof smartquotes !== 'undefined') {
-          smartquotes();
+        if (window.WriteSysTextMarkers && window.WriteSysTextMarkers.curlQuotes) {
+          window.WriteSysTextMarkers.curlQuotes(document.body);
         }
 
         if (window.WriteSysRenderer) {

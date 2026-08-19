@@ -51,6 +51,20 @@ check('ampersand escaped first (no double-escape)',
   tm.escapeHTML('&lt;') === '&amp;lt;');
 check('non-string coerced', tm.escapeHTML(5) === '5');
 
+
+// ---- T4: fixEllipsisText — quote direction before an ellipsis -----------
+console.log('=== T4 fixEllipsisText ===');
+check('T4: ”… at string start re-curls open', tm.fixEllipsisText('”…then he said') === '“…then he said');
+check('T4: ”... after space re-curls open', tm.fixEllipsisText('said ”...then') === 'said “...then');
+check('T4: ’… single-quote variant re-curls open', tm.fixEllipsisText(' ’…whisper') === ' ‘…whisper');
+check('T4: closing quote after a word stays closed', tm.fixEllipsisText('he said.”… and then') === 'he said.”… and then');
+check('T4: mid-word apostrophe untouched', tm.fixEllipsisText('rock’n’roll…') === 'rock’n’roll…');
+check('T4: after open bracket re-curls', tm.fixEllipsisText('(”…aside)') === '(“…aside)');
+check('T4: no ellipsis → untouched', tm.fixEllipsisText('”then') === '”then');
+check('T4: double-prime before dots re-curls open', tm.fixEllipsisText('″...then') === '“...then');
+check('T4: single-prime before ellipsis re-curls open', tm.fixEllipsisText(' ′…then') === ' ‘…then');
+check('T4: genuine prime after number untouched', tm.fixEllipsisText('5′10″ tall…') === '5′10″ tall…');
+
 console.log('');
 if (failed === 0) {
   console.log('✅ text-markers.js units: all checks pass');

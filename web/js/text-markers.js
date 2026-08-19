@@ -50,6 +50,41 @@ function escapeHTML(s) {
     .replace(/'/g, '&#39;');
 }
 
+// Smartquotes post-pass. The library curls direction from the NEXT character,
+// so a quote that opens with an ellipsis — dialogue like `"...then` — falls
+// through to its closing-quote fallback and renders `”…then`. Re-curl a
+// close-quote to an open-quote when it sits at a word start (string start or
+// after whitespace/open-bracket) immediately before an ellipsis. Runs on
+// TEXT NODES after smartquotes so storage and diffs stay untouched.
+var ELLIPSIS_DQ = /(^|[\s([‘“])[”″](?=…|\.\.\.)/g; // ”/″ before …
+var ELLIPSIS_SQ = /(^|[\s([“])[’′](?=…|\.\.\.)/g; // ’/′ before …
+function fixEllipsisText(t) {
+  return t.replace(ELLIPSIS_DQ, '$1“').replace(ELLIPSIS_SQ, '$1‘');
+}
+function fixEllipsisQuotes(root) {
+  const walker = (root.ownerDocument || document).createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    const t = n.textContent;
+    if (!/[”’″′]/.test(t)) continue;
+    const fixed = fixEllipsisText(t);
+    if (fixed !== t) n.textContent = fixed;
+  }
+}
+
+// One entry point for "curl this container": smartquotes + the post-pass.
+// All render-pipeline call sites go through here so the correction can never
+// be applied to one pass and forgotten on another.
+function curlQuotes(el) {
+  if (typeof smartquotes !== 'undefined') smartquotes.element(el);
+  fixEllipsisQuotes(el);
+}
+
+if (typeof window !== 'undefined') {
+  window.WriteSysTextMarkers.fixEllipsisQuotes = fixEllipsisQuotes;
+  window.WriteSysTextMarkers.curlQuotes = curlQuotes;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { toGlyphs, fromGlyphs, escapeHTML, SECTION_GLYPH, PARAGRAPH_GLYPH };
+  module.exports = { toGlyphs, fromGlyphs, escapeHTML, SECTION_GLYPH, PARAGRAPH_GLYPH, fixEllipsisText, fixEllipsisQuotes };
 }

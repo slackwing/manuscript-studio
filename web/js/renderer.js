@@ -279,9 +279,7 @@ const WriteSysRenderer = {
     // fragment model — SUGGESTION_RENDER_PLAN.md); no post-render overlay
     // pass exists.
 
-    if (typeof smartquotes !== 'undefined') {
-      smartquotes.element(tempContainer);
-    }
+    window.WriteSysTextMarkers.curlQuotes(tempContainer);
 
     const wrappedHtml = tempContainer.innerHTML;
 
@@ -398,9 +396,9 @@ const WriteSysRenderer = {
         || p.tagName !== 'P' || p.children.length !== 1 || p.children[0] !== fresh[0]) {
       return false;
     }
-    // Same smartquotes pass the full render applies pre-pagination — without
-    // it the patch would flash straight quotes that the real render re-curls.
-    if (typeof smartquotes !== 'undefined') smartquotes.element(tmp);
+    // Same curl pass the full render applies pre-pagination — without it the
+    // patch would flash straight quotes that the real render re-curls.
+    window.WriteSysTextMarkers.curlQuotes(tmp);
     spans[0].innerHTML = fresh[0].innerHTML;
     spans[0].className = fresh[0].className;
     return true;
