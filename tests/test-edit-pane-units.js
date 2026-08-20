@@ -292,19 +292,22 @@ const deferred = () => { let res, rej; const p = new Promise((a, b) => { res = a
     check('insertAtCaret: each insert fires exactly one input', inputs === 2, String(inputs));
   }
 
-  // ---- tabmarkup (:199–202) -----------------------------------------------
+  // ---- tabmarkup (:199–202; 2026-08-20: newlines get ↵ spans too) ---------
   {
     check('tabMarkup: tab wrapped in sn-tab span keeping the REAL \\t',
       EP.tabMarkupHTML('a\tb') === 'a<span class="sn-tab">\t</span>b',
       JSON.stringify(EP.tabMarkupHTML('a\tb')));
-    check('tabMarkup: trailing newline gets a ZWSP so the last line keeps height',
-      EP.tabMarkupHTML('x\n') === 'x\n​',
+    check('tabMarkup: newline wrapped in sn-nl span keeping the REAL \\n',
+      EP.tabMarkupHTML('a\nb') === 'a<span class="sn-nl">\n</span>b',
+      JSON.stringify(EP.tabMarkupHTML('a\nb')));
+    check('tabMarkup: trailing newline wrapped AND followed by ZWSP',
+      EP.tabMarkupHTML('x\n') === 'x<span class="sn-nl">\n</span>​',
       JSON.stringify(EP.tabMarkupHTML('x\n')));
     check('tabMarkup: HTML-escapes before wrapping',
       EP.tabMarkupHTML('<a & "q">\t') === '&lt;a &amp; &quot;q&quot;&gt;<span class="sn-tab">\t</span>',
       JSON.stringify(EP.tabMarkupHTML('<a & "q">\t')));
-    check('tabMarkup: escape + tabs + trailing newline together',
-      EP.tabMarkupHTML('\ta<b\n') === '<span class="sn-tab">\t</span>a&lt;b\n​',
+    check('tabMarkup: escape + tabs + newline spans together',
+      EP.tabMarkupHTML('\ta<b\n') === '<span class="sn-tab">\t</span>a&lt;b<span class="sn-nl">\n</span>​',
       JSON.stringify(EP.tabMarkupHTML('\ta<b\n')));
   }
 

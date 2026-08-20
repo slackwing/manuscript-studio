@@ -198,16 +198,19 @@
   }
 
   // tabMarkupHTML mirrors a textarea's raw value into overlay HTML, rendering
-  // each literal tab as a faint grey → glyph so \t whitespace is visible. The
-  // span keeps the REAL tab character (identical width to the textarea's own
-  // tab, given the shared tab-size); the → paints via CSS ::before with zero
-  // advance width. A trailing newline gets a zero-width space so the overlay's
-  // last line keeps height.
+  // each literal tab as a faint grey → glyph and each newline as a faint ↵,
+  // so \t and \n whitespace are both visible. The spans keep the REAL
+  // characters (identical layout to the textarea's own); the glyphs paint via
+  // CSS ::before with zero advance width — the ↵ occupies the empty space
+  // after a line's last character, so alignment is untouched. A trailing
+  // newline gets a zero-width space so the overlay's last line keeps height.
   const escHTML = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   function tabMarkupHTML(value) {
     const withNL = value.endsWith('\n') ? value + '\u200b' : value;
-    return escHTML(withNL).replace(/\t/g, '<span class="sn-tab">\t</span>');
+    return escHTML(withNL)
+      .replace(/\t/g, '<span class="sn-tab">\t</span>')
+      .replace(/\n/g, '<span class="sn-nl">\n</span>');
   }
 
   // readDraft(key): the crash-recovery counterpart of the autosaver's draft

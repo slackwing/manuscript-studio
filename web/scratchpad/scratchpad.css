@@ -620,6 +620,19 @@
   color: #c4c0b8;
   pointer-events: none;
 }
+/* A newline: same treatment — keep the real \n (it breaks the line), paint a
+   faint ↵ in the empty space after the line's last character. */
+.sn-text-overlay .sn-nl {
+  position: relative;
+}
+.sn-text-overlay .sn-nl::before {
+  content: "\21B5";          /* ↵ */
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #c4c0b8;
+  pointer-events: none;
+}
 .sn-note {
   font: 11px "Helvetica", sans-serif;
   color: #8a8378;
