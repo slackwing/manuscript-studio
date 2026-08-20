@@ -1,8 +1,8 @@
 // Points grid (landing page, above Manuscripts): GitHub-style squares —
-// columns = days, 14 rows = 14 points, gold bottom-up stacks, today ~80%
+// columns = days, 10 rows = 10 points, gold bottom-up stacks, today ~80%
 // across with future columns to its right. THE QUIRK: a day shows at most
-// 14 points; the excess is "bulldozed" rightward into following days
-// (17,6,13 → 14,9,13), cascading even into the future (green squares).
+// 10 points; the excess is "bulldozed" rightward into following days
+// (17,6,13 → 10,10,10,6), cascading even into the future (green squares).
 // Bulldozed-in blocks ride on TOP of a day's own points in darker gold.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
@@ -24,7 +24,7 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
 
   await cleanupTestNotes();
   // One host note; the user's example sequence 17, 6, 13 across
-  // day-2, day-1, today → must display 14, 9, 13.
+  // day-2, day-1, today → must display 10, 10, 10 with 6 spilling ahead.
   const noteId = psql(`INSERT INTO note (user_id, color, body, priority, task_type, position)
     VALUES ('${TEST_USERNAME}', 'yellow', 'points host', 'can', 'write', 'pg0') RETURNING note_id`).split('\n')[0];
   psql(`INSERT INTO point_event (note_id, points, scored_at) VALUES
@@ -43,8 +43,8 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   }));
   const colCount = await page.locator('.points-col').count();
   check('columns fill the width', colCount >= 30, `cols=${colCount}`);
-  check('every column has 14 cells', await page.evaluate(() =>
-    [...document.querySelectorAll('.points-col')].every(c => c.children.length === 14)));
+  check('every column has 10 cells', await page.evaluate(() =>
+    [...document.querySelectorAll('.points-col')].every(c => c.children.length === 10)));
   const todayIdx = await page.evaluate(() =>
     [...document.querySelectorAll('.points-col')].findIndex(c => c.classList.contains('today')));
   check('today sits ~80% across', todayIdx / colCount > 0.7 && todayIdx / colCount < 0.9,
@@ -80,7 +80,7 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   check('grid shares the cards’ left edge', gridEdges.dl <= 1, `Δ=${gridEdges.dl}`);
   check('grid right edge within one cell of the cards’', gridEdges.dr <= 12, `Δ=${gridEdges.dr}`);
 
-  // --- The 17, 6, 13 → 14, 9, 13 example ---
+  // --- The 17, 6, 13 → 10, 10, 10, 6 example ---
   const today = (await page.evaluate(() => fetch('api/points-daily', { credentials: 'same-origin' }).then(r => r.json()))).today;
   const colStats = async (date) => page.evaluate((d) => {
     const col = document.querySelector(`.points-col[data-date="${d}"]`);
@@ -97,16 +97,15 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   const d2 = await colStats(shift(today, -2));
   const d1 = await colStats(shift(today, -1));
   const d0 = await colStats(today);
-  check('17 → 14 (capped, all natural gold)', d2 && d2.lit === 14 && d2.bulldozed === 0, JSON.stringify(d2));
-  check('6 + 3 bulldozed-in → 9', d1 && d1.lit === 9 && d1.bulldozed === 3, JSON.stringify(d1));
-  check('bulldozed blocks ride on top (rows 6-8)', d1 && d1.dozedRows.join(',') === '6,7,8', d1 && d1.dozedRows.join(','));
-  check('stacks grow bottom-up (contiguous from row 0)', d1 && d1.litRows.join(',') === '0,1,2,3,4,5,6,7,8');
-  check('13 today, untouched', d0 && d0.lit === 13 && d0.bulldozed === 0, JSON.stringify(d0));
-  check('future columns empty so far', await page.evaluate((t) =>
-    [...document.querySelectorAll('.points-col')].filter(c => c.dataset.date > t)
-      .every(c => ![...c.children].some(x => x.classList.contains('lit'))), today));
+  check('17 → 10 (capped, all natural gold)', d2 && d2.lit === 10 && d2.bulldozed === 0, JSON.stringify(d2));
+  check('6 + 4 surviving bulldozed-in → 10', d1 && d1.lit === 10 && d1.bulldozed === 4, JSON.stringify(d1));
+  check('bulldozed blocks ride on top (rows 6-9)', d1 && d1.dozedRows.join(',') === '6,7,8,9', d1 && d1.dozedRows.join(','));
+  check('stacks grow bottom-up (contiguous from row 0)', d1 && d1.litRows.join(',') === '0,1,2,3,4,5,6,7,8,9');
+  check('today: 13 natural + 3 carried sheds to 10 natural', d0 && d0.lit === 10 && d0.bulldozed === 0, JSON.stringify(d0));
+  const fSpill = await colStats(shift(today, 1));
+  check('6 spill into tomorrow — green', fSpill && fSpill.lit === 6 && fSpill.future === 6, JSON.stringify(fSpill));
 
-  // --- Overflow into the FUTURE: +20 today (33 total) → 14 | 14 | 5,
+  // --- Overflow into the FUTURE: +20 today (33+3 carried) → 10 | 10 | 10 | 6,
   //     with everything past today green ---
   psql(`INSERT INTO point_event (note_id, points, scored_at) VALUES (${noteId}, 20, now())`);
   await page.reload();
@@ -114,9 +113,11 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   const n0 = await colStats(today);
   const f1 = await colStats(shift(today, 1));
   const f2 = await colStats(shift(today, 2));
-  check('today caps at 14', n0 && n0.lit === 14, JSON.stringify(n0));
-  check('tomorrow catches 14 — all green', f1 && f1.lit === 14 && f1.future === 14, JSON.stringify(f1));
-  check('day after catches the last 5 — green', f2 && f2.lit === 5 && f2.future === 5, JSON.stringify(f2));
+  check('today caps at 10', n0 && n0.lit === 10, JSON.stringify(n0));
+  check('tomorrow catches 10 — all green', f1 && f1.lit === 10 && f1.future === 10, JSON.stringify(f1));
+  check('day after catches 10 — green', f2 && f2.lit === 10 && f2.future === 10, JSON.stringify(f2));
+  const f3 = await colStats(shift(today, 3));
+  check('third day catches the last 6 — green', f3 && f3.lit === 6 && f3.future === 6, JSON.stringify(f3));
 
   psql(`DELETE FROM point_event WHERE note_id = ${noteId}`);
   await cleanupTestNotes();
