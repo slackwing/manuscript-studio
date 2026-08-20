@@ -2257,6 +2257,24 @@ p.section-break {
   z-index: 200;
 }
 
+/* Suggest-edit modal title-bar REJECT (red, spaced) and the left pane's
+   quieter revert link. The bar is CSS-uppercased, so "Reject" renders
+   REJECT. */
+#suggestion-modal .sgm-reject {
+  color: #b33b3a;
+  margin-left: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+#suggestion-modal .sgm-reject:hover { text-decoration: underline; }
+#suggestion-modal .sgm-revert {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 #suggestion-modal {
   /* A snippet widget, floated: the chrome (sn-header / sn-cols / sn-rail /
      sn-split) is scratchpad.css verbatim — this block only positions the

@@ -125,7 +125,9 @@ async function syncToHead() {
     check('left pane is the SHARED monospace component', layout.paneIsShared);
     check('right read-only pane present', layout.rightPane);
     check('monospace font in edit pane', /monaco|menlo|mono/i.test(layout.mono), layout.mono);
-    check('rail: * then 0..3', layout.rail.map(r => r.t).join(',') === '*,0,1,2,3', JSON.stringify(layout.rail.map(r => r.t)));
+    // 2026-08-20: the corner * button is gone (meaning was opaque); the rail
+    // is version numbers only.
+    check('rail: 0..3 (no corner asterisk)', layout.rail.map(r => r.t).join(',') === '0,1,2,3', JSON.stringify(layout.rail.map(r => r.t)));
     const r = Object.fromEntries(layout.rail.map(x => [x.t, x]));
     check('version 1 enabled (changed: v3→v1-content... hop differs)', r['1'].dis === false, JSON.stringify(r['1']));
     check('version 2 disabled (unchanged commit)', r['2'].dis === true, JSON.stringify(r['2']));
@@ -139,7 +141,7 @@ async function syncToHead() {
     const v1 = await page.locator('.suggestion-modal-original').inputValue();
     check('version 1 shows the prior commit text', v1.includes('Version one'), JSON.stringify(v1.slice(0, 40)));
     const label = await page.locator('.sgm-version-label').textContent();
-    check('version label updates', /1 1 commit ago/.test(label), label);
+    check('version label updates (single caption, no leading number)', /^1 commit ago$/.test(label.trim()), label);
 
     // AUTOSAVE AS YOU TYPE: no close, no button — just wait out the debounce.
     await page.locator('.suggestion-modal-textarea').click();

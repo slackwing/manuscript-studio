@@ -159,6 +159,50 @@ function psql(sql) {
     assert(putRequests.length === putsBefore,
       `Unchanged text issues no PUT (got ${putRequests.length - putsBefore} extra)`);
 
+    const assert2 = (n, ok, extra) => assert(ok, n + (extra ? ' — ' + extra : ''));
+    // --- Title-bar state machine + revert/reject (2026-08-20 labels) ---
+    await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
+    await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
+    const title = () => page.evaluate(() => document.querySelector('#suggestion-modal .sn-status').textContent.trim());
+    assert2('clean modal titles "Suggest edit"', /^Suggest edit$/i.test(await title()), await title());
+    assert2('no corner asterisk button in the rail',
+      await page.evaluate(() => !document.querySelector('#suggestion-modal .sn-rail-self')));
+    assert2('left pane label has revert link, no asterisk', await page.evaluate(() => {
+      const n = document.querySelector('#suggestion-modal .sn-split-left .sn-note');
+      return n && !n.textContent.includes('*') && !!n.querySelector('.sgm-revert');
+    }));
+    assert2('version caption single-numbered', await page.evaluate(() =>
+      /^currently committed$/.test(document.querySelector('.sgm-version-label').textContent.trim())));
+    await page.locator('.suggestion-modal-textarea').fill(first.text + ' TITLETEST.');
+    await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
+    await page.waitForTimeout(100);
+    assert2('changed modal titles "Suggested edit" + Reject', await page.evaluate(() => {
+      const el = document.querySelector('#suggestion-modal .sn-status');
+      return /Suggested edit/i.test(el.textContent) && !!el.querySelector('.sgm-reject');
+    }));
+    // left-pane revert copies committed back in, modal stays open
+    await page.locator('#suggestion-modal .sgm-revert').click();
+    await page.waitForTimeout(150);
+    assert2('revert restores committed text in the editor',
+      (await page.locator('.suggestion-modal-textarea').inputValue()) === first.text);
+    assert2('title returns to "Suggest edit" after revert', /^Suggest edit$/i.test(await title()), await title());
+    assert2('modal still open after revert',
+      (await page.locator('#suggestion-modal').count()) === 1);
+    // REJECT: change again, then reject → reverts AND closes
+    await page.locator('.suggestion-modal-textarea').fill(first.text + ' REJECTME.');
+    await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
+    await page.waitForTimeout(600);
+    await page.locator('#suggestion-modal .sgm-reject').click();
+    await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
+    let rejRows = '1';
+    for (let i = 0; i < 20; i++) {
+      rejRows = psql(`SELECT count(*) FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
+      if (rejRows === '0') break;
+      await page.waitForTimeout(250);
+    }
+    assert2('reject leaves no suggestion row', rejRows === '0', `rows=${rejRows}`);
+
+
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}`);
     failed = true;

@@ -111,7 +111,7 @@ const WriteSysSuggestions = {
           <div class="sn-body">
             <div class="sn-split">
               <div class="sn-split-left">
-                <div class="sn-note"><strong>*</strong> suggested edit</div>
+                <div class="sn-note">suggested edit &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a></div>
                 <div class="sgm-left"></div>
               </div>
               <div class="sn-split-right">
@@ -122,7 +122,6 @@ const WriteSysSuggestions = {
           </div>
         </div>
         <div class="sn-rail">
-          <button type="button" class="sn-rail-btn sn-rail-self" title="Your edit — auto-saved as you type.">*</button>
           ${railBtns}
         </div>
       </div>`;
@@ -152,9 +151,9 @@ const WriteSysSuggestions = {
     const verLabel = modal.querySelector('.sgm-version-label');
     const showVersion = (k) => {
       originalArea.value = versions[k].text || '';
-      verLabel.innerHTML = k === 0
-        ? '<strong>0</strong> committed (current)'
-        : `<strong>${k}</strong> ${k} commit${k > 1 ? 's' : ''} ago`;
+      verLabel.textContent = k === 0
+        ? 'currently committed'
+        : `${k} commit${k > 1 ? 's' : ''} ago`;
       modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) =>
         b.classList.toggle('active', parseInt(b.dataset.ver, 10) === k));
     };
@@ -204,6 +203,41 @@ const WriteSysSuggestions = {
     modal.querySelector('.sgm-left').appendChild(pane.wrap);
     const textarea = pane.textarea;
     showVersion(0);
+
+    // Title state: "Suggest edit" while the editor matches the committed
+    // text; "Suggested edit · REJECT" once it differs. REJECT (red) reverts
+    // to committed AND closes; the left pane's quieter "revert" link only
+    // copies the committed text in, leaving the modal open. (CSS uppercases
+    // the bar.) The old corner * carried this meaning invisibly — it's gone.
+    const titleEl = modal.querySelector('.sn-status');
+    const applyRevert = () => {
+      textarea.value = original;
+      pane.autoGrow();
+      saver.poke();
+      updateTitle();
+    };
+    const updateTitle = () => {
+      const changed = textarea.value !== original;
+      if (changed === (titleEl.dataset.mode === 'changed')) return;
+      titleEl.dataset.mode = changed ? 'changed' : 'clean';
+      if (changed) {
+        titleEl.innerHTML = 'Suggested edit<a href="#" class="sgm-reject" title="Discard this suggestion and close">Reject</a>';
+        titleEl.querySelector('.sgm-reject').addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          applyRevert();
+          close();
+        });
+      } else {
+        titleEl.textContent = 'Suggest edit';
+      }
+    };
+    modal.querySelector('.sgm-revert').addEventListener('click', (e) => {
+      e.preventDefault();
+      applyRevert();
+    });
+    textarea.addEventListener('input', updateTitle);
+    updateTitle();
 
     // Closing ALWAYS flushes first; a failing save keeps the modal open with
     // the retry/stale status showing — an accidental overlay click or Escape
