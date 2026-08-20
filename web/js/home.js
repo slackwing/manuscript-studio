@@ -54,22 +54,22 @@ const WriteSysHome = {
 
   // ---- Points grid (GitHub-contribution style, with a bulldozer) ----
   //
-  // One COLUMN per day, 10 ROWS, one row = 1 point; a day's points light
+  // One COLUMN per day, 14 ROWS, one row = 1 point; a day's points light
   // squares bottom-up in gold. Today sits ~80% of the way across; the ~20%
   // to its right is the future. As many columns as fit the content width
   // (same left/right edges as the card grids). Empty cells stay gray.
   //
-  // QUIRK (deliberate — keep it): a day displays at most 10 points, but
+  // QUIRK (deliberate — keep it): a day displays at most 14 points, but
   // points 15+ do NOT vanish. Picture a bulldozer shoving the excess blocks
   // off the top of the stack RIGHTWARD into the next day's column,
   // cascading as far as needed — even into days that haven't happened yet.
-  //   17, 6, 13  →  10, 10, 10, 6  (the trailing 6 lands in the future)
-  //   17, 12, 14 →  10, 10, 10, 10, 3
+  //   17, 6, 13  →  14, 9, 13
+  //   17, 12, 14 →  14, 14, 14, 1   (the trailing 1 lands in the future)
   // Per spec the implementation is the LITERAL simulation — build the
   // matrix, then bulldoze; simple beats efficient:
   //   1. Stack every day's actual points as 'natural' blocks (stacks may
-  //      be taller than 10 at this stage).
-  //   2. Scan columns left→right; while a column is taller than 10, pop
+  //      be taller than 14 at this stage).
+  //   2. Scan columns left→right; while a column is taller than 14, pop
   //      its TOP block and drop it on TOP of the next column, marked
   //      'bulldozed'. Carried-in blocks therefore sit ABOVE the day's own
   //      points, and an overfull day sheds those carried blocks first —
@@ -83,7 +83,7 @@ const WriteSysHome = {
   renderPointsGrid() {
     const grid = document.getElementById('points-grid');
     if (!grid || !this.points) return;
-    const CELL = 10, GAP = 2, ROWS = 10;
+    const CELL = 10, GAP = 2, ROWS = 14;
     const cols = Math.max(10, Math.floor((grid.clientWidth + GAP) / (CELL + GAP)));
     const future = Math.max(1, Math.round(cols * 0.2)); // today ≈ 80% across
     // All date math in UTC on the tz-resolved YYYY-MM-DD labels the server
