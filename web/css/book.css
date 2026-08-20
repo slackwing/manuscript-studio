@@ -2223,6 +2223,16 @@ p.section-break {
   font-weight: 600;
 }
 
+/* A del/ins whose content is ONLY emphasis markers (a moved `*` or `_`) —
+   real change, but noise at full weight. Keep the red/green so it's still
+   reviewable, drop it to whisper volume so the prose reads through. */
+.sentence del.md-marker,
+.sentence strong.md-marker {
+  opacity: 0.45;
+  font-size: 0.85em;
+  font-weight: normal;
+}
+
 /* Pending structural markers in a suggested edit. The visible glyph is
    muted; the visual line break + indent mimic what a real paragraph
    break would look like after commit + resegmentation. Inside <del>

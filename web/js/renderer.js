@@ -818,6 +818,15 @@ const WriteSysRenderer = {
   // HTML escaping uses the shared escapeHTML from text-markers.js (loaded
   // before this file on every page that uses the renderer) — no private copy.
 
+  // *text* and _text_ both italicize (markdown's two spellings). Underscore
+  // emphasis never applies INTRAWORD (snake_case stays literal) — the
+  // lookarounds require a non-word (or edge) character on the outside.
+  emphasize(escaped) {
+    return escaped
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/(^|[^\w])_([^_]+)_(?=[^\w]|$)/g, '$1<em>$2</em>');
+  },
+
   applyInlineFormatting(text) {
     // Inline &-commands (&reference / &anchor) are rendered specially; the
     // rest of the text gets escape + *italics*. We find command ranges on the
@@ -826,18 +835,18 @@ const WriteSysRenderer = {
       ? window.WriteSysCommand.findInline(text)
       : [];
     if (cmds.length === 0) {
-      return escapeHTML(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      return this.emphasize(escapeHTML(text));
     }
     const chars = Array.from(text);
     let out = '';
     let pos = 0;
     for (const c of cmds) {
       const before = chars.slice(pos, c.start).join('');
-      out += escapeHTML(before).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      out += this.emphasize(escapeHTML(before));
       out += this.renderInlineCommand(c);
       pos = c.end;
     }
-    out += escapeHTML(chars.slice(pos).join('')).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    out += this.emphasize(escapeHTML(chars.slice(pos).join('')));
     return out;
   },
 

@@ -183,6 +183,30 @@ console.log('=== S9 italics-pairing-across-inserts ===');
     three === '<em>a</em> b *c', three);
 }
 
+
+// ---- S10-md: markdown-aware diffs (moved markers, underscores) ----------
+console.log('=== S10-md markdown-aware diffs ===');
+{
+  const h = renderDiffHTML('*So it was*—the epidemic of silence.', '*So it was—the epidemic of silence.*', dmp());
+  check('moved star: no whole word struck', !/<del[^>]*>[^<]*[a-zA-Z]{2}/.test(h), h);
+  check('moved star: old marker is a subdued del', /<del class="md-marker">\*<\/del>/.test(h), h);
+  check('moved star: whole new range italicized, no husk',
+    /<em>So it was<del class="md-marker">\*<\/del>—the epidemic of silence\.<\/em>/.test(h), h);
+  const h2 = renderDiffHTML('the red cat', 'the blue cat', dmp());
+  check('word change has no md-marker class', !/md-marker/.test(h2), h2);
+  const h3 = renderDiffHTML('the *red* cat', 'the blue cat', dmp());
+  check('word+marker change keeps full-weight diff', /<del>\*red\*<\/del>/.test(h3) && /<strong>blue<\/strong>/.test(h3), h3);
+}
+{
+  const h = renderDiffHTML('plain words here.', '_plain words here._', dmp());
+  check('underscore pair renders <em>', /<em>/.test(h) && !/md-marker">\s*<\//.test(h), h);
+  const h2 = renderDiffHTML('use snake_case here', 'use snake_case there', dmp());
+  check('snake_case never italicizes', !/<em>/.test(h2), h2);
+  const h3 = renderDiffHTML('a b c', '*a _b* c_', dmp());
+  check('crossing pairs leave well-formed HTML',
+    !/<[a-z]*</.test(h3) && (h3.match(/<em>/g) || []).length === (h3.match(/<\/em>/g) || []).length, h3);
+}
+
 console.log('');
 if (failed === 0) {
   console.log('✅ suggestions.js diff units: all checks pass');

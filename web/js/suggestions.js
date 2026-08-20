@@ -374,8 +374,29 @@ function renderDiffHTML(oldText, newText, dmp) {
       else if (segs[i][0] === 1) inses += segs[i][1];
       i++;
     }
-    if (dels) parts.push(`<del>${escapeHTML(dels)}</del>`);
-    if (inses) parts.push(`<strong>${escapeHTML(inses)}</strong>`);
+    // A change that is ONLY emphasis markers (e.g. a moved `*`) reads as
+    // noise at full weight — tag it so CSS can render it subdued.
+    const mdOnly = (t) => /^[\s*_]+$/.test(t) && /[*_]/.test(t);
+    // REFINEMENT: when a cluster's del and ins differ ONLY by emphasis
+    // markers ("was*—the" → "was—the"), the words themselves didn't change —
+    // don't strike them. Char-diff the cluster so the words emit as plain
+    // text and only the markers carry (subdued) del/ins styling.
+    if (dels && inses && dels !== inses
+        && dels.replace(/[*_]/g, '') === inses.replace(/[*_]/g, '')) {
+      const sub = dmp.diff_main(dels, inses);
+      let ok = true, out = '';
+      for (let k = 0; k < sub.length; k++) {
+        const op = sub[k][0], t = sub[k][1];
+        if (op === 0) out += escapeHTML(t);
+        else if (!/^[\s*_]+$/.test(t)) { ok = false; break; }
+        else out += op === -1
+          ? `<del class="md-marker">${escapeHTML(t)}</del>`
+          : `<strong class="md-marker">${escapeHTML(t)}</strong>`;
+      }
+      if (ok) { parts.push(out); continue; }
+    }
+    if (dels) parts.push(`<del${mdOnly(dels) ? ' class="md-marker"' : ''}>${escapeHTML(dels)}</del>`);
+    if (inses) parts.push(`<strong${mdOnly(inses) ? ' class="md-marker"' : ''}>${escapeHTML(inses)}</strong>`);
   }
   return renderStructuralMarkers(pairItalicsAcrossInserts(parts.join('')));
 }
@@ -462,6 +483,7 @@ function renderStructuralMarkers(html) {
 function pairItalicsAcrossInserts(html) {
   // Find positions of `*` outside <del>...</del> and outside any tag.
   const stars = [];
+  const scores = []; // underscore positions — pair only with underscores
   let inDel = false;
   let inTag = false;
   for (let i = 0; i < html.length; i++) {
@@ -478,6 +500,13 @@ function pairItalicsAcrossInserts(html) {
       continue;
     }
     if (c === '*' && !inDel) stars.push(i);
+    if (c === '_' && !inDel) {
+      // Underscore emphasis is never intraword: require a non-word char (or
+      // edge/tag boundary) on at least the OUTER side of the would-be pair.
+      const prev = html[i - 1], next = html[i + 1];
+      const w = (ch) => ch !== undefined && /\w/.test(ch) && ch !== '_';
+      if (!(w(prev) && w(next))) scores.push(i);
+    }
   }
   // Pair greedily: 0+1, 2+3, etc. Replace from the right so earlier
   // indices stay valid.
@@ -485,10 +514,27 @@ function pairItalicsAcrossInserts(html) {
   for (let i = 0; i + 1 < stars.length; i += 2) {
     pairs.push([stars[i], stars[i + 1]]);
   }
+  for (let i = 0; i + 1 < scores.length; i += 2) {
+    pairs.push([scores[i], scores[i + 1]]);
+  }
+  // Crossing/nested star-vs-underscore pairs would corrupt the index math
+  // of the right-to-left replacement below — keep only non-overlapping
+  // pairs, earliest-start wins.
+  pairs.sort((a, b) => a[0] - b[0]);
+  let lastEnd = -1;
+  for (let i = 0; i < pairs.length; i++) {
+    if (pairs[i][0] <= lastEnd) { pairs.splice(i, 1); i--; continue; }
+    lastEnd = pairs[i][1];
+  }
   for (let p = pairs.length - 1; p >= 0; p--) {
     const [a, b] = pairs[p];
     html = html.slice(0, a) + '<em>' + html.slice(a + 1, b) + '</em>' + html.slice(b + 1);
   }
+  // A pairing that consumed a marker living alone inside an md-marker
+  // wrapper leaves the wrapper holding only the inserted <em>/</em> tag —
+  // hoist the tag out and drop the husk.
+  html = html.replace(/<(del|strong) class="md-marker">\s*(<\/?em>)\s*<\/\1>/g, '$2');
+  html = html.replace(/<(del|strong) class="md-marker">\s*<\/\1>/g, '');
   return html;
 }
 
@@ -499,7 +545,9 @@ function pairItalicsAcrossInserts(html) {
 // pairItalicsAcrossInserts on the joined HTML to handle cross-insert
 // italic pairs.
 function formatFallbackHTML(text) {
-  return escapeHTML(text).replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  return escapeHTML(text)
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/(^|[^\w])_([^_]+)_(?=[^\w]|$)/g, '$1<em>$2</em>');
 }
 
 // Word-level tokeniser shim: d-m-p ships diff_linesToChars_ for line diffs;
