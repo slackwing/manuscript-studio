@@ -93,10 +93,14 @@ a#brand:hover { color: #000; }
 .gs-item .gs-meta { font-size: 11px; color: #999; flex: none; }
 .gs-empty { padding: 10px; font: 12px "Helvetica", sans-serif; color: #999; }
 
-/* Links in the bar are chrome, not prose: no underlines, no :visited tint. */
-#home-link, #home-link:visited, #home-link:hover { text-decoration: none; }
-#home-link:visited { color: #666; }
-a#brand, a#brand:visited { text-decoration: none; color: inherit; }
+/* ALL bar links are chrome, not prose: no underlines, no :visited tint —
+   ONE blanket rule, because per-link rules drifted (the settings gear was
+   added without them and turned purple once visited). */
+#controls a, #controls a:visited, #controls a:hover {
+  text-decoration: none;
+  color: #666;
+}
+a#brand, a#brand:visited { color: inherit; }
 
 
 /* Quiet logout (book.css's #controls button is a loud legacy blue). */

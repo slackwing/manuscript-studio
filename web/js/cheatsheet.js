@@ -47,55 +47,47 @@ const WriteSysCheatsheet = {
 
   // Each row: { code, desc }. A section groups rows under a heading with an
   // optional note. code is shown verbatim (monospace), desc as prose.
+  // Each row: { code, desc }. Terse by design (2026-08-20): one example,
+  // one line of description — try it in the editor to learn the rest.
   SECTIONS: [
     {
       title: 'Block commands',
-      note: 'Each stands ALONE on its own line — a blank line (paragraph) before and after. These populate the left-margin outline.',
+      note: 'Alone on their own line. These build the left-margin outline.',
       rows: [
-        { code: '&title{The Wildfire}', desc: 'Book title — its own page.' },
-        { code: '&part#p1{I.}{The Gathering}', desc: 'Part — its own page. {label} shows in the book; {description} shows only in the outline.' },
-        { code: '&chapter#p1c1{1.}{Smoke on the ridge}', desc: 'Chapter heading. {label} in book, {description} in outline.' },
-        { code: '&anchor#origin{Where it begins}', desc: 'A named waypoint. {label} shows in the outline (no book text).' },
-        { code: '&placeholder#reunion{paragraphs}{m}{Reunion}{What happens here}', desc: 'Hatched space for unwritten prose. {unit} sentences|paragraphs; sizes xs–xxxl (default m); {label} in outline; {details} on hover/overlay. Lists like an anchor.' },
-        { code: '&end#reunion', desc: 'Ends the region opened by the slug’s anchor/placeholder (Canonize writes these). Renders as nothing.' },
-        { code: '&meta{chapter-align}{center}', desc: 'A setting. Renders as nothing. See settings below.' },
+        { code: '&title{The Wildfire}', desc: 'Book title page.' },
+        { code: '&part#p1{I.}{The Gathering}', desc: 'Part page — {description} shows in the outline only.' },
+        { code: '&chapter#p1c1{1.}{Smoke on the ridge}', desc: 'Chapter heading.' },
+        { code: '&anchor#origin{Where it begins}', desc: 'Outline waypoint — renders nothing.' },
+        { code: '&placeholder#reunion{paragraphs}{m}{Reunion}{notes}', desc: 'Hatched space for unwritten prose — sizes xs–xxxl.' },
+        { code: '&end#reunion', desc: 'Closes a placed region (Canonize writes these).' },
       ],
     },
     {
       title: 'Inline commands',
-      note: 'These live INSIDE a sentence, surrounded by prose. They do NOT appear in the outline.',
+      note: 'Mid-sentence, inside prose.',
       rows: [
-        { code: 'See &reference#origin{the opening}.', desc: 'A cross-reference link to a #slug defined elsewhere.' },
-        { code: 'The fire &anchor#firemark{} spread.', desc: 'An inline anchor — a marker mid-sentence, not an outline entry.' },
-        { code: 'She waited. &placeholder{sentences}{l}', desc: 'An inline placeholder — hatched space flowing with the paragraph.' },
+        { code: 'See &reference#origin{the opening}.', desc: 'Link to a #slug.' },
+        { code: 'The fire &anchor#mark{} spread.', desc: 'Inline marker.' },
+        { code: 'She waited. &placeholder{sentences}{l}', desc: 'Inline hatched space.' },
       ],
     },
     {
-      title: 'Slugs  (#slug)',
-      note: 'Optional stable id after the keyword. Lowercase letters, digits, and dashes only: [a-z0-9-]. Slugs let references survive editing.',
+      title: 'Formatting',
+      note: '',
       rows: [
-        { code: '#p1c1   #act-one   #origin', desc: 'Valid slugs.' },
-        { code: '#P1  #with_space  #café', desc: 'Invalid — rejected.' },
+        { code: '*emphasis*  or  _emphasis_', desc: 'Italics.' },
+        { code: '#my-slug-2', desc: 'Slugs: lowercase letters, digits, dashes.' },
       ],
     },
     {
       title: '&meta settings',
-      note: 'Fixed vocabulary. Last-wins. Renders as nothing.',
+      note: 'Its own line; renders nothing; last one wins.',
       rows: [
         { code: '&meta{title-align}{left|center}', desc: 'Title alignment.' },
         { code: '&meta{part-align}{left|center}', desc: 'Part-page alignment.' },
         { code: '&meta{chapter-align}{left|center}', desc: 'Chapter-heading alignment.' },
-        { code: '&meta{divider-folios}{on|off}', desc: 'Page numbers on part/divider pages.' },
-        { code: '&meta{font}{Georgia}', desc: 'Body font (any name).' },
-      ],
-    },
-    {
-      title: 'Gotchas',
-      note: '',
-      rows: [
-        { code: '&anchor{X} then prose…', desc: 'On one line WITH trailing prose it becomes INLINE — it will NOT show in the outline. Put it on its own line (blank line after) to make it a block anchor.' },
-        { code: 'Smith & Sons · R&D', desc: 'A bare "&" not followed by a keyword+{ is ordinary text.' },
-        { code: '# Old markdown header', desc: 'Deprecated — now renders as literal prose. Use &chapter / &part instead.' },
+        { code: '&meta{divider-folios}{on|off}', desc: 'Page numbers on divider pages.' },
+        { code: '&meta{font}{Georgia}', desc: 'Body font.' },
       ],
     },
   ],
