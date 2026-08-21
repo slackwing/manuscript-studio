@@ -7,12 +7,9 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // ErrLastAdmin guards the invariant "every manuscript keeps ≥1 admin".
@@ -170,40 +167,4 @@ func (db *DB) GetManuscriptRolesForUser(ctx context.Context, username string) ([
 		out = append(out, m)
 	}
 	return out, rows.Err()
-}
-
-// GetPeopleOrder returns the viewer's saved ordering (usernames) or nil.
-func (db *DB) GetPeopleOrder(ctx context.Context, username string, manuscriptID int) ([]string, error) {
-	var raw []byte
-	err := db.Pool.QueryRow(ctx,
-		`SELECT ordering FROM people_order WHERE username = $1 AND manuscript_id = $2`,
-		username, manuscriptID).Scan(&raw)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get people order: %w", err)
-	}
-	var order []string
-	if err := json.Unmarshal(raw, &order); err != nil {
-		return nil, fmt.Errorf("get people order: corrupt ordering: %w", err)
-	}
-	return order, nil
-}
-
-func (db *DB) SetPeopleOrder(ctx context.Context, username string, manuscriptID int, order []string) error {
-	raw, err := json.Marshal(order)
-	if err != nil {
-		return fmt.Errorf("set people order: %w", err)
-	}
-	_, err = db.Pool.Exec(ctx, `
-		INSERT INTO people_order (username, manuscript_id, ordering, updated_at)
-		VALUES ($1, $2, $3, now())
-		ON CONFLICT (username, manuscript_id)
-			DO UPDATE SET ordering = EXCLUDED.ordering, updated_at = now()`,
-		username, manuscriptID, raw)
-	if err != nil {
-		return fmt.Errorf("set people order: %w", err)
-	}
-	return nil
 }

@@ -57,24 +57,17 @@ function cleanup() {
     ]);
     check('create navigates into the new book', true, page.url());
 
-    // v3 (PERMISSIONS_PLAN §1): the creator lands as ADMIN only. Assign
-    // working roles the way a real user would (the settings UI drives the
-    // same roles API), then reload so the session picks up the actions.
-    const mid = parseInt(new URL(page.url()).searchParams.get('manuscript_id'), 10);
-    for (const role of ['author', 'editor', 'pointer']) {
-      const st = await page.evaluate(async ({ mid, role, username }) => {
-        const csrf = sessionStorage.getItem('csrf_token') || localStorage.getItem('csrf_token') || '';
-        const r = await fetch(`api/manuscripts/${mid}/roles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-          body: JSON.stringify({ username, role }),
-        });
-        return r.status;
-      }, { mid, role, username: TEST_USERNAME });
-      check(`self-grant ${role} as admin`, st === 201, `status ${st}`);
-    }
-    await page.reload();
+    // v3.2: the creator lands as ADMIN + AUTHOR — no self-granting needed
+    // before working on the book.
     await waitForPagination(page);
+    await page.waitForFunction(() => !!window.currentSession);
+    const mid = parseInt(new URL(page.url()).searchParams.get('manuscript_id'), 10);
+    const roles = await page.evaluate((mid) => {
+      const m = (window.currentSession.accessible_manuscripts || []).find(x => x.manuscript_id === mid);
+      return m ? m.roles : [];
+    }, mid);
+    check('creator holds admin + author out of the box',
+      roles.includes('admin') && roles.includes('author'), roles.join(','));
     const title = await page.textContent('#mc-name');
     check('title strip shows the display name', title === TITLE, title);
     const seedText = await page.textContent('.pagedjs_page h1, .pagedjs_page .sentence');

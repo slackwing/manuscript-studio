@@ -1,6 +1,10 @@
 # Spec: Roles & permissions (v3) + multi-user suggestions/notes
 
-Status: **v3.1 IMPLEMENTED 2026-08-21** (v3 + Slackwing's review of
+Status: **v3.2 IMPLEMENTED 2026-08-21** (v3.1 + review round 3: creator
+gets admin+author; accepting is EXCLUSIVE per sentence — the 409 at
+accept time replaces any push-time conflict resolution; People order is a
+localStorage display preference, not server state).
+Previous: **v3.1** (v3 + Slackwing's review of
 OPEN_QUESTIONS). v3.1 delta: `manage-others-suggestions` became
 **`manage-suggestions`** and covers one's OWN suggestions too — accepting
 changes the manuscript, so readers/beta-readers file suggestions but
@@ -21,8 +25,9 @@ but their machinery survives here).
 - **Ownership rule** stands: your own notes/suggestions are always fully
   yours (create/edit/delete/see); the "-others" in an action name is
   literal. Actions that mutate the book (push/commit) are explicit.
-- **Creator of a manuscript gets `admin`** — nothing else. Assign
-  content roles in settings (including to yourself).
+- **Creator of a manuscript gets `admin` + `author`** (v3.2) — whoever
+  mints a book is presumed to be writing it; reassign in settings when
+  not (e.g. creating a book you'll only edit).
 - **Last-admin protection**: the final admin role row on a manuscript
   cannot be removed (409); the system-token ops path is the escape hatch.
 - Enforcement: `Can(username, manuscriptID, action)` (Go) computed from
@@ -89,10 +94,10 @@ public page: you're logged in to DO something on your own layer).
   a live suggestion on that sentence.
 - **Rendering**: the manuscript's red/green diff per sentence shows the
   top-ordered user's FRESH non-rejected suggestion (your People-tab drag
-  order; you always outrank by default your own initial order = role
-  desc, then account age). Reviewed suggestions render a superscript
-  ✓ / ✗ after the diff. Sentences carrying only STALE suggestions get the
-  dotted-underline affordance instead of a diff.
+  order — a per-browser localStorage display preference over the
+  role-seniority default; v3.2). Reviewed suggestions render a
+  superscript ✓ / ✗ after the diff. Sentences carrying only STALE
+  suggestions get the dotted-underline affordance instead of a diff.
 - **Modal**: the left pane grows a rail — "0" = the live view (your own
   editable suggestion, as today), then a letter button per OTHER user
   with a suggestion here (read-only view), then entries for STALE
@@ -102,10 +107,12 @@ public page: you're logged in to DO something on your own layer).
   confidence), never dropped: text-identical → still fresh; text changed
   → `stale = true`. (No-successor sentences keep their old attachment —
   OPEN_QUESTIONS #2.) Review status rides along.
-- **Push/Commit** (`commit-and-push-suggestions`) applies **accepted**
-  suggestions only. Scopes: `all-accepted` (People-order winner on
-  conflicts) and `own-accepted`. Same semantics local and github; local
-  still commits + migrates in one request.
+- **Push/Commit** (`commit-and-push-suggestions`) applies **exactly the
+  accepted set** — accepting is exclusive per sentence (a second accept
+  409s until the first is rejected/cleared; v3.2), so pushes never
+  resolve conflicts. Scopes: `all-accepted` and `own-accepted`. Same
+  semantics local and github; local still commits + migrates in one
+  request.
 
 ## 5. Multi-user notes
 
@@ -122,5 +129,6 @@ public page: you're logged in to DO something on your own layer).
 
 Third pane tab (with Outline/Statistics, gated `see-others-edits`): every
 user with a role on the manuscript, sorted by highest role then account
-age, drag-to-reorder (persisted per viewer). The order is the suggestion-
-display priority in §4.
+age, drag-to-reorder (persisted per viewer per manuscript in
+localStorage; v3.2). The order is only the suggestion-DISPLAY priority in
+§4 — never a push input.

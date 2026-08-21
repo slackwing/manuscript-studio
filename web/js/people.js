@@ -2,9 +2,10 @@
  * People pane (PERMISSIONS_PLAN.md v3 §6): the third tab beside
  * Outline/Statistics. Lists everyone with a role on the manuscript —
  * default order: role seniority, then account age — and lets the VIEWER
- * drag-reorder. That order is the suggestion-display priority: the top
- * person's fresh suggestion wins the red/green diff on any contested
- * sentence, so reordering re-renders the manuscript.
+ * drag-reorder. v3.2: the order is a pure DISPLAY preference (per
+ * browser, in localStorage — pushes apply exactly the accepted set, so
+ * the server never needs it): the top person's fresh suggestion wins the
+ * red/green diff on any contested sentence, so reordering re-renders.
  */
 const WriteSysPeople = {
   apiBaseUrl: 'api',
@@ -16,6 +17,26 @@ const WriteSysPeople = {
     this.el = document.getElementById('people-margin');
     const idStr = new URLSearchParams(window.location.search).get('manuscript_id');
     this.manuscriptId = idStr ? parseInt(idStr, 10) : 0;
+  },
+
+  storageKey() { return `ms-people-order-${this.manuscriptId}`; },
+
+  savedOrder() {
+    try { return JSON.parse(localStorage.getItem(this.storageKey()) || 'null'); }
+    catch (e) { return null; }
+  },
+
+  // effectiveOrder merges the saved localStorage order (members that still
+  // exist) with the server's role-seniority default (new grants appear in
+  // default position rather than vanishing).
+  effectiveOrder() {
+    const def = (this.data && this.data.order) || [];
+    const saved = this.savedOrder();
+    if (!saved || !saved.length) return def;
+    const valid = new Set(def);
+    const merged = saved.filter(u => valid.has(u));
+    def.forEach(u => { if (!merged.includes(u)) merged.push(u); });
+    return merged;
   },
 
   async load() {
@@ -41,7 +62,7 @@ const WriteSysPeople = {
     }
     const byName = {};
     (this.data.members || []).forEach(m => { byName[m.username] = m; });
-    const rows = (this.data.order || []).map(u => {
+    const rows = this.effectiveOrder().map(u => {
       const m = byName[u];
       if (!m) return '';
       return `<div class="people-row" draggable="true" data-user="${this.esc(u)}">
@@ -88,30 +109,20 @@ const WriteSysPeople = {
   async saveOrder() {
     const order = [...this.el.querySelectorAll('.people-row')].map(r => r.dataset.user);
     if (!order.length) return;
-    try {
-      const resp = await authenticatedFetch(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/people-order`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order }),
-      });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      this.data.order = order;
-      // The order IS the diff priority — refresh the suggestion maps and
-      // re-render so the winning suggestions swap live.
-      const S = window.WriteSysSuggestions;
-      const r = window.WriteSysRenderer;
-      if (S) {
-        const rank = {};
-        order.forEach((u, i) => { rank[u] = i; });
-        S.peopleRank = rank;
-        S.rebuildMaps();
-      }
-      if (r && r.currentMigrationID) await r.renderManuscript({});
-      if (window.WriteSysPush) window.WriteSysPush.refresh();
-    } catch (e) {
-      alert('Failed to save order: ' + (e.message || e));
-      this.load();
+    try { localStorage.setItem(this.storageKey(), JSON.stringify(order)); }
+    catch (e) { /* private mode etc. — the drag still applies this session */ }
+    // The order IS the display priority — refresh the suggestion maps and
+    // re-render so the winning suggestions swap live.
+    const S = window.WriteSysSuggestions;
+    const r = window.WriteSysRenderer;
+    if (S) {
+      const rank = {};
+      order.forEach((u, i) => { rank[u] = i; });
+      S.peopleRank = rank;
+      S.rebuildMaps();
     }
+    if (r && r.currentMigrationID) await r.renderManuscript({});
+    if (window.WriteSysPush) window.WriteSysPush.refresh();
   },
 };
 

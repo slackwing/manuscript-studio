@@ -64,8 +64,20 @@ const WriteSysSuggestions = {
     if (!this.rows.some(s => s.user_id !== this.viewer)) return; // own-only view — no order needed
     try {
       const data = await fetchJSON(`${this.apiBaseUrl}/manuscripts/${r.manuscriptId}/people`, {}, true);
+      // v3.2: the viewer's saved order is a localStorage display preference
+      // overlaid on the server's role-seniority default.
+      let order = data.order || [];
+      try {
+        const saved = JSON.parse(localStorage.getItem(`ms-people-order-${r.manuscriptId}`) || 'null');
+        if (saved && saved.length) {
+          const valid = new Set(order);
+          const merged = saved.filter(u => valid.has(u));
+          order.forEach(u => { if (!merged.includes(u)) merged.push(u); });
+          order = merged;
+        }
+      } catch (e) { /* corrupt saved order — default wins */ }
       const rank = {};
-      (data.order || []).forEach((u, i) => { rank[u] = i; });
+      order.forEach((u, i) => { rank[u] = i; });
       this.peopleRank = rank;
     } catch (e) {
       this.peopleRank = null;

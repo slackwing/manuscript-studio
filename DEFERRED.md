@@ -28,6 +28,7 @@ away. Prune when shipped.
 - **Points × roles follow-ups** — pointer role shipped; whether pointers
   see others' received-points views, and any per-manuscript vs global
   pointer nuances. Origin: PERMISSIONS_PLAN v1 §6 (points TODO).
-- **Drop `manuscript_access` + `user.role`** — both unread since v3;
-  remove in a later changeset once a deploy cycle has proven the role
-  table. Origin: PERMISSIONS_PLAN v3 §1.
+- **Drop `manuscript_access`, `user.role`, and `people_order`** — all
+  unread (people_order since v3.2 moved the display order to
+  localStorage); remove in a later changeset once a deploy cycle has
+  proven the role table. Origin: PERMISSIONS_PLAN v3 §1 / v3.2.

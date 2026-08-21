@@ -140,12 +140,15 @@ func (h *ManuscriptCreateHandlers) HandleCreateManuscript(w http.ResponseWriter,
 		}
 	}
 
-	// The creator gets ADMIN — and only admin (PERMISSIONS_PLAN v3 §1):
-	// content roles (author/editor/…) are assigned deliberately in
-	// settings, including to yourself.
-	if err := h.DB.GrantRole(ctx, session.Username, row.ManuscriptID, "admin"); err != nil {
-		fail("grant", err)
-		return
+	// The creator gets ADMIN + AUTHOR (v3.2): admin to manage the book,
+	// author because whoever mints a manuscript is presumed to be writing
+	// it — reassign in settings when that's not the case (e.g. creating a
+	// book you'll only edit).
+	for _, role := range []string{"admin", "author"} {
+		if err := h.DB.GrantRole(ctx, session.Username, row.ManuscriptID, role); err != nil {
+			fail("grant "+role, err)
+			return
+		}
 	}
 
 	migrationID, err := h.Admin.enqueueMigration(ctx, row, seedSHA)

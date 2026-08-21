@@ -82,33 +82,10 @@ func (h *RoleHandlers) HandleGetPeople(w http.ResponseWriter, r *http.Request) {
 		defaultOrder[i] = m.Username
 	}
 
-	saved, err := h.DB.GetPeopleOrder(r.Context(), session.Username, manuscriptID)
-	if err != nil {
-		log.Printf("people: saved order: %v", err)
-	}
-	// Merge: saved entries first (that still exist), then any new members
-	// in default position — a fresh grant shouldn't vanish from the tab.
+	// v3.2: the People order is a pure DISPLAY preference — the client
+	// keeps it in localStorage (push no longer resolves conflicts, so the
+	// server has no use for it). We return only the role-seniority default.
 	order := defaultOrder
-	if len(saved) > 0 {
-		seen := make(map[string]bool)
-		merged := make([]string, 0, len(defaultOrder))
-		valid := make(map[string]bool, len(defaultOrder))
-		for _, u := range defaultOrder {
-			valid[u] = true
-		}
-		for _, u := range saved {
-			if valid[u] && !seen[u] {
-				merged = append(merged, u)
-				seen[u] = true
-			}
-		}
-		for _, u := range defaultOrder {
-			if !seen[u] {
-				merged = append(merged, u)
-			}
-		}
-		order = merged
-	}
 
 	viewerRoles, err := h.DB.GetRolesForUser(r.Context(), session.Username, manuscriptID)
 	if err != nil {
@@ -129,36 +106,6 @@ func (h *RoleHandlers) HandleGetPeople(w http.ResponseWriter, r *http.Request) {
 		"manageable_roles": manageable,
 		"all_roles":        perm.AllRoles(),
 	})
-}
-
-// HandlePutPeopleOrder saves the viewer's drag order.
-func (h *RoleHandlers) HandlePutPeopleOrder(w http.ResponseWriter, r *http.Request) {
-	manuscriptID, err := strconv.Atoi(chi.URLParam(r, "manuscript_id"))
-	if err != nil {
-		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
-		return
-	}
-	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
-		return
-	}
-	session, _ := auth.GetSession(r)
-	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
-		return
-	}
-	var body struct {
-		Order []string `json:"order"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Order) == 0 {
-		http.Error(w, "order is required", http.StatusBadRequest)
-		return
-	}
-	if err := h.DB.SetPeopleOrder(r.Context(), session.Username, manuscriptID, body.Order); err != nil {
-		log.Printf("people: save order: %v", err)
-		http.Error(w, "Failed to save order", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 type roleChangeRequest struct {

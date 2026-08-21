@@ -6,6 +6,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,10 +46,38 @@ func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text str
 	return &s, nil
 }
 
+// ErrCompetingAccepted: only ONE suggestion per sentence may be accepted
+// (v3.2) — the reviewer must reject/clear the other first. Callers map to 409.
+var ErrCompetingAccepted = errors.New("another suggestion on this sentence is already accepted")
+
 // SetSuggestionReview sets/clears the review verdict. status nil clears.
-// Returns false when no such suggestion exists.
+// Accepting is exclusive per sentence: if a DIFFERENT user's suggestion is
+// already accepted there, ErrCompetingAccepted (the push applies exactly
+// the accepted set — no conflict resolution downstream). Returns false
+// when no such suggestion exists.
 func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser string, status *string, reviewer string) (bool, error) {
-	tag, err := db.Pool.Exec(ctx, `
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("set suggestion review: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if status != nil && *status == models.ReviewAccepted {
+		var competing bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM suggested_change
+				WHERE sentence_id = $1 AND user_id <> $2
+				  AND review_status = 'accepted' FOR UPDATE
+			)`, sentenceID, targetUser).Scan(&competing); err != nil {
+			return false, fmt.Errorf("set suggestion review: competing check: %w", err)
+		}
+		if competing {
+			return false, ErrCompetingAccepted
+		}
+	}
+
+	tag, err := tx.Exec(ctx, `
 		UPDATE suggested_change
 		SET review_status = $3::varchar,
 		    reviewed_by = CASE WHEN $3::varchar IS NULL THEN NULL ELSE $4 END,
@@ -57,6 +86,9 @@ func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser st
 		sentenceID, targetUser, status, reviewer)
 	if err != nil {
 		return false, fmt.Errorf("set suggestion review: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("set suggestion review: commit: %w", err)
 	}
 	return tag.RowsAffected() > 0, nil
 }

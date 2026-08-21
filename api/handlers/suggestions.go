@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -153,6 +152,10 @@ func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *ht
 		return
 	}
 	found, err := h.DB.SetSuggestionReview(ctx, sentenceID, req.Username, req.Status, session.Username)
+	if errors.Is(err, database.ErrCompetingAccepted) {
+		http.Error(w, "Another suggestion on this sentence is already accepted — reject or clear it first.", http.StatusConflict)
+		return
+	}
 	if err != nil {
 		log.Printf("suggestions: review %s/%s: %v", sentenceID, req.Username, err)
 		http.Error(w, "Failed to set review", http.StatusInternalServerError)
@@ -562,15 +565,24 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
 		return
 	}
-	// Accepted + fresh only; per-sentence conflicts (two users' accepted
-	// suggestions) resolve by the CALLER's People order — top person wins.
+	// Accepted + fresh only — the push applies EXACTLY the accepted set
+	// (v3.2): accepting is exclusive per sentence, so there is nothing to
+	// resolve here. Defensive dedupe for pre-v3.2 data: earliest review
+	// wins, and we log the anomaly.
 	accepted := suggestions[:0]
+	seenSentence := map[string]bool{}
 	for _, s := range suggestions {
-		if !s.Stale && s.ReviewStatus != nil && *s.ReviewStatus == models.ReviewAccepted {
-			accepted = append(accepted, s)
+		if s.Stale || s.ReviewStatus == nil || *s.ReviewStatus != models.ReviewAccepted {
+			continue
 		}
+		if seenSentence[s.SentenceID] {
+			log.Printf("suggestions: push %d: multiple accepted on %s (pre-v3.2 data?) — keeping the first", migrationID, s.SentenceID)
+			continue
+		}
+		seenSentence[s.SentenceID] = true
+		accepted = append(accepted, s)
 	}
-	suggestions = resolveSuggestionWinners(accepted, h.peopleOrderFor(ctx, session.Username, manuscriptID))
+	suggestions = accepted
 	if len(suggestions) == 0 {
 		http.Error(w, "No accepted suggestions to push (accept your edits first)", http.StatusBadRequest)
 		return
@@ -751,64 +763,6 @@ func (h *SuggestionHandlers) commitLocalSuggestions(
 		Results:     results,
 		MigrationID: migrationID,
 	})
-}
-
-// peopleOrderFor: the caller's People order (saved, else role-seniority
-// default) as a username → rank map. Errors degrade to the default order.
-func (h *SuggestionHandlers) peopleOrderFor(ctx context.Context, username string, manuscriptID int) map[string]int {
-	rank := make(map[string]int)
-	members, err := h.DB.ListRoleMembers(ctx, manuscriptID)
-	if err != nil {
-		return rank
-	}
-	sort.SliceStable(members, func(i, j int) bool {
-		ri, rj := bestRoleRank(members[i].Roles), bestRoleRank(members[j].Roles)
-		if ri != rj {
-			return ri < rj
-		}
-		return members[i].UserCreatedAt.Before(members[j].UserCreatedAt)
-	})
-	next := 0
-	if saved, err := h.DB.GetPeopleOrder(ctx, username, manuscriptID); err == nil {
-		for _, u := range saved {
-			if _, dup := rank[u]; !dup {
-				rank[u] = next
-				next++
-			}
-		}
-	}
-	for _, m := range members {
-		if _, dup := rank[m.Username]; !dup {
-			rank[m.Username] = next
-			next++
-		}
-	}
-	return rank
-}
-
-// resolveSuggestionWinners keeps one suggestion per sentence: the one whose
-// author ranks highest in the caller's People order (unknown authors sink).
-func resolveSuggestionWinners(suggs []models.SuggestedChange, rank map[string]int) []models.SuggestedChange {
-	winner := make(map[string]models.SuggestedChange)
-	rankOf := func(u string) int {
-		if r, ok := rank[u]; ok {
-			return r
-		}
-		return 1 << 30
-	}
-	for _, s := range suggs {
-		cur, exists := winner[s.SentenceID]
-		if !exists || rankOf(s.UserID) < rankOf(cur.UserID) {
-			winner[s.SentenceID] = s
-		}
-	}
-	out := make([]models.SuggestedChange, 0, len(winner))
-	for _, s := range suggs {
-		if winner[s.SentenceID].SuggestionID == s.SuggestionID {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 // canonicalSuggestionsBranch is the one-and-only branch name that push and

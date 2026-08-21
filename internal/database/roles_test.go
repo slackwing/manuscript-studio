@@ -63,27 +63,3 @@ func TestRoles_GrantRevokeLastAdmin(t *testing.T) {
 		t.Fatalf("members = %+v, %v", members, err)
 	}
 }
-
-func TestPeopleOrder_RoundTrip(t *testing.T) {
-	f := newITFixture(t)
-	if got, err := f.db.GetPeopleOrder(f.ctx, f.username, f.manuscriptID); err != nil || got != nil {
-		t.Fatalf("unset order = %v, %v (want nil, nil)", got, err)
-	}
-	want := []string{"b", "a", "c"}
-	if err := f.db.SetPeopleOrder(f.ctx, f.username, f.manuscriptID, want); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-	got, err := f.db.GetPeopleOrder(f.ctx, f.username, f.manuscriptID)
-	if err != nil || len(got) != 3 || got[0] != "b" || got[2] != "c" {
-		t.Fatalf("get = %v, %v", got, err)
-	}
-	// Upsert replaces.
-	if err := f.db.SetPeopleOrder(f.ctx, f.username, f.manuscriptID, []string{"c"}); err != nil {
-		t.Fatalf("re-set: %v", err)
-	}
-	if got, _ := f.db.GetPeopleOrder(f.ctx, f.username, f.manuscriptID); len(got) != 1 || got[0] != "c" {
-		t.Fatalf("re-get = %v", got)
-	}
-	// Cleanup so the fixture nuke doesn't trip the FK.
-	f.pool.Exec(f.ctx, `DELETE FROM people_order WHERE manuscript_id = $1`, f.manuscriptID)
-}

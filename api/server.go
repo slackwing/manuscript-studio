@@ -268,7 +268,6 @@ func (s *Server) setupRouter() {
 			r.Patch("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleUpdateManuscriptMeta)
 			r.Get("/roles", s.roleHandlers.HandleGetRolesJSON)
 			r.Get("/manuscripts/{manuscript_id}/people", s.roleHandlers.HandleGetPeople)
-			r.Put("/manuscripts/{manuscript_id}/people-order", s.roleHandlers.HandlePutPeopleOrder)
 			r.Post("/manuscripts/{manuscript_id}/roles", s.roleHandlers.HandleGrantRole)
 			r.Delete("/manuscripts/{manuscript_id}/roles", s.roleHandlers.HandleRevokeRole)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)

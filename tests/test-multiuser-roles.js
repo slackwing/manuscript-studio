@@ -83,7 +83,10 @@ async function loginAs(browser, username, password) {
     check('owner creates local manuscript', r.status === 201, `status ${r.status}`);
     const mid = r.json.manuscript.manuscript_id;
 
-    for (const [user, role] of [[TEST_USERNAME, 'author'], [TEST_USERNAME, 'editor'],
+    // v3.2: the creator arrives as admin+author already — grants below are
+    // for the collaborators (self-author is an idempotent no-op kept to
+    // prove idempotency).
+    for (const [user, role] of [[TEST_USERNAME, 'author'],
                                 [EDITOR2, 'editor'], [READER3, 'reader']]) {
       r = await api(ownerPage, 'POST', `api/manuscripts/${mid}/roles`, { username: user, role });
       check(`grant ${role} to ${user === TEST_USERNAME ? 'self' : user}`, r.status === 201, `status ${r.status}`);
@@ -121,10 +124,15 @@ async function loginAs(browser, username, password) {
     r = await api(e2Page, 'POST', `api/sentences/${encodeURIComponent(titleSid)}/suggestion/review`,
       { username: TEST_USERNAME, status: 'rejected' });
     check('editor2 rejects owner suggestion', r.status === 204, `status ${r.status}`);
-    // ...and accepts their own (free).
+    // ...and accepts their own (editor holds manage-suggestions).
     r = await api(e2Page, 'POST', `api/sentences/${encodeURIComponent(titleSid)}/suggestion/review`,
       { username: EDITOR2, status: 'accepted' });
     check('editor2 accepts own suggestion', r.status === 204, `status ${r.status}`);
+    // v3.2: accepting is EXCLUSIVE per sentence — a second accept on the
+    // same sentence (owner trying to accept their own) must 409.
+    r = await api(ownerPage, 'POST', `api/sentences/${encodeURIComponent(titleSid)}/suggestion/review`,
+      { username: TEST_USERNAME, status: 'accepted' });
+    check('second accept on the same sentence is 409', r.status === 409, `status ${r.status}`);
 
     // Owner edits their rejected suggestion → review resets to unreviewed.
     r = await api(ownerPage, 'PUT', `api/sentences/${encodeURIComponent(titleSid)}/suggestion`,
