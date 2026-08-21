@@ -101,10 +101,26 @@ func (db *DB) GrantManuscriptAccess(ctx context.Context, username, manuscriptNam
 }
 
 // ReconcileManuscriptFromConfig upserts a legacy config manuscript into the
-// registry columns, keyed by the historical (git_repo_path, file_path)
-// identity. name is only set when NULL so a row can't be silently renamed
-// out from under manuscript_access grants. Returns the reconciled row.
+// registry columns. NAME is the stable identity: a row already carrying the
+// name gets its registry columns refreshed (dev configs flip URL spellings
+// between host and container runs, so (git_repo_path, file_path) can churn
+// while the manuscript stays the same). Rows that predate 037 (name NULL)
+// are matched by their historical (git_repo_path, file_path) identity.
 func (db *DB) ReconcileManuscriptFromConfig(ctx context.Context, name, gitRepoPath, filePath, gitRepoName, gitBranch string) (*models.Manuscript, error) {
+	byName := `
+		UPDATE manuscript
+		SET git_repo_path = $2, file_path = $3, storage = 'github',
+		    git_repo_name = $4, git_branch = $5
+		WHERE name = $1
+		RETURNING ` + manuscriptCols
+	m, err := scanManuscript(db.Pool.QueryRow(ctx, byName, name, gitRepoPath, filePath, gitRepoName, gitBranch))
+	if err == nil && m != nil {
+		return m, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reconcile manuscript %q: %w", name, err)
+	}
+
 	query := `
 		INSERT INTO manuscript (name, git_repo_path, file_path, storage, git_repo_name, git_branch)
 		VALUES ($1, $2, $3, 'github', $4, $5)
@@ -114,7 +130,7 @@ func (db *DB) ReconcileManuscriptFromConfig(ctx context.Context, name, gitRepoPa
 			    git_repo_name = EXCLUDED.git_repo_name,
 			    git_branch    = EXCLUDED.git_branch
 		RETURNING ` + manuscriptCols
-	m, err := scanManuscript(db.Pool.QueryRow(ctx, query, name, gitRepoPath, filePath, gitRepoName, gitBranch))
+	m, err = scanManuscript(db.Pool.QueryRow(ctx, query, name, gitRepoPath, filePath, gitRepoName, gitBranch))
 	if err != nil {
 		return nil, fmt.Errorf("reconcile manuscript %q: %w", name, err)
 	}

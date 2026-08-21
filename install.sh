@@ -5,7 +5,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-07-24.2"
+SCRIPT_VERSION="2026-08-21.1"
 
 set -euo pipefail
 
@@ -401,6 +401,7 @@ if [[ "$DEV_MODE" == "1" ]]; then
         -v "$CONFIG_FILE:/config/config.yaml:ro" \
         -v "$CONFIG_DIR/logs:/logs" \
         -v "$MANUSCRIPT_REPOS_DIR:/repos" \
+        -e MANUSCRIPT_STUDIO_REPOS_DIR=/repos \
         manuscript-studio:latest || {
         rollback_old_container
         log_error "Failed to start server"
@@ -420,6 +421,7 @@ else
         -v "$CONFIG_DIR/logs:/logs" \
         -v "$MANUSCRIPT_REPOS_DIR:/repos" \
         -v "$SSH_MOUNT_DIR:/home/manuscript/.ssh:ro" \
+        -e MANUSCRIPT_STUDIO_REPOS_DIR=/repos \
         manuscript-studio:latest || {
         rollback_old_container
         log_error "Failed to start server"

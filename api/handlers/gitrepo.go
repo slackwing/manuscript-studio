@@ -126,4 +126,52 @@ func (h *AdminHandlers) ReconcileRegistry(ctx context.Context) {
 				m.Name, row.Name, row.ManuscriptID)
 		}
 	}
+
+	// Warm missing checkouts: since the git/remote split, clones live apart
+	// from their config-listed origins and would otherwise only materialize
+	// at the first migration — leaving readyz "degraded" forever on a fresh
+	// install. Failures are logged; the next sync retries.
+	for i := range h.Config.GitRepos {
+		g := &h.Config.GitRepos[i]
+		url := g.CloneURL()
+		if url == "" {
+			continue
+		}
+		// Branch comes from a bound manuscript row (clone -b fails on a
+		// nonexistent branch); a repo with no manuscripts yet can wait for
+		// its first sync.
+		rows, err := h.DB.GetManuscriptsByGitRepoName(ctx, g.Name)
+		if err != nil || len(rows) == 0 {
+			continue
+		}
+		repo := &migrations.GitRepository{
+			Path:      h.Config.GitRemoteDir(g.Name),
+			Branch:    rows[0].Branch(),
+			RemoteURL: url,
+			AuthToken: g.AuthToken,
+		}
+		if _, err := os.Stat(repo.Path); err == nil {
+			continue
+		}
+		unlock := lockMigrationPath(repo.Path)
+		cloneErr := repo.Clone(ctx)
+		unlock()
+		if cloneErr != nil {
+			log.Printf("reconcile: warm clone %q: %v", g.Name, cloneErr)
+		}
+	}
+
+	// Expand any legacy manuscript_access grants into role rows (same
+	// power-set expansion as changeset 038). Idempotent; covers grants that
+	// landed AFTER 038 ran — e.g. admin-upsert during an install whose
+	// manuscript rows only appear at this startup's reconcile.
+	if _, err := h.DB.Pool.Exec(ctx, `
+		INSERT INTO role (username, manuscript_id, role)
+		SELECT ma.username, m.manuscript_id, r.role
+		FROM manuscript_access ma
+		JOIN manuscript m ON m.name = ma.manuscript_name
+		CROSS JOIN (VALUES ('admin'), ('author'), ('editor'), ('pointer')) AS r(role)
+		ON CONFLICT DO NOTHING`); err != nil {
+		log.Printf("reconcile: expand legacy grants: %v", err)
+	}
 }

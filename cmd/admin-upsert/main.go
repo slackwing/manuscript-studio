@@ -47,15 +47,29 @@ func main() {
 	}
 	log.Printf("Upserted admin user: %s", cfg.Auth.AdminUsername)
 
+	// Legacy grant kept for pre-038 installs mid-upgrade (liquibase runs
+	// right before us, but belt-and-suspenders costs one idempotent insert).
 	grantAccess := `
 		INSERT INTO manuscript_access (username, manuscript_name)
 		VALUES ($1, $2)
 		ON CONFLICT (username, manuscript_name) DO NOTHING
 	`
+	// v3 (PERMISSIONS_PLAN): access = role rows. The install admin gets the
+	// full power set on every config manuscript — it's the operator.
+	grantRole := `
+		INSERT INTO role (username, manuscript_id, role)
+		SELECT $1, manuscript_id, $3 FROM manuscript WHERE name = $2
+		ON CONFLICT DO NOTHING
+	`
 	for _, m := range cfg.Manuscripts {
 		if _, err := pool.Exec(ctx, grantAccess, cfg.Auth.AdminUsername, m.Name); err != nil {
 			log.Fatalf("Failed to grant admin access to %s: %v", m.Name, err)
 		}
-		log.Printf("Granted %s access to manuscript: %s", cfg.Auth.AdminUsername, m.Name)
+		for _, role := range []string{"admin", "author", "editor", "pointer"} {
+			if _, err := pool.Exec(ctx, grantRole, cfg.Auth.AdminUsername, m.Name, role); err != nil {
+				log.Fatalf("Failed to grant admin role %s on %s: %v", role, m.Name, err)
+			}
+		}
+		log.Printf("Granted %s access to manuscript: %s (admin/author/editor/pointer)", cfg.Auth.AdminUsername, m.Name)
 	}
 }

@@ -275,6 +275,27 @@ func Load() (*Config, error) {
 	}
 	config.synthesizeLegacyGitRepos()
 
+	// Container remap: when MANUSCRIPT_STUDIO_REPOS_DIR overrides
+	// paths.repos_dir (the Docker /repos mount), any repo URL that points
+	// inside the CONFIG's repos dir must follow the override — dev configs
+	// use fixture repos living in that very directory, and the host path
+	// doesn't exist inside the container.
+	if env := os.Getenv("MANUSCRIPT_STUDIO_REPOS_DIR"); env != "" && config.Paths.ReposDir != "" {
+		from := filepath.Clean(expandPath(config.Paths.ReposDir))
+		remap := func(u string) string {
+			if u != "" && strings.HasPrefix(filepath.Clean(u), from+string(os.PathSeparator)) {
+				return filepath.Join(expandPath(env), strings.TrimPrefix(filepath.Clean(u), from))
+			}
+			return u
+		}
+		for i := range config.Manuscripts {
+			config.Manuscripts[i].Repository.URL = remap(config.Manuscripts[i].Repository.URL)
+		}
+		for i := range config.GitRepos {
+			config.GitRepos[i].URL = remap(config.GitRepos[i].URL)
+		}
+	}
+
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config in %s: %w", configPath, err)
 	}
