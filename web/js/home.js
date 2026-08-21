@@ -13,6 +13,8 @@ const WriteSysHome = {
     this._inited = true;
     // Re-render cards whenever the modal closes (titles/sketches change).
     window.addEventListener('scratchpad-modal-closed', () => this.reload());
+    // Manuscript created/settings-saved → refresh cards.
+    window.addEventListener('manuscript-modal-saved', () => this.reload());
     // The points grid sizes itself to the content width — refit on resize.
     window.addEventListener('resize', () => {
       clearTimeout(this._pgResize);
@@ -163,6 +165,8 @@ const WriteSysHome = {
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   },
 
+  GEAR_SVG: `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.5 8a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/><path fill="currentColor" d="M9.4 1l.35 1.8c.4.14.78.33 1.13.55l1.73-.63 1.4 2.42-1.38 1.17a5.6 5.6 0 010 1.38l1.38 1.17-1.4 2.42-1.73-.63c-.35.22-.73.41-1.13.55L9.4 13H6.6l-.35-1.8a5.6 5.6 0 01-1.13-.55l-1.73.63L2 8.86l1.38-1.17a5.6 5.6 0 010-1.38L2 5.14l1.4-2.42 1.73.63c.35-.22.73-.41 1.13-.55L6.6 1h2.8z" fill-rule="evenodd" opacity="0.85"/></svg>`,
+
   manuscriptCard(m) {
     const updated = m.processed_at ? `updated ${this.when(m.processed_at)}` : 'not synced yet';
     const created = m.created_at ? `created ${this.when(m.created_at)}` : '';
@@ -171,9 +175,21 @@ const WriteSysHome = {
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.display_name || m.name)}</p>
       <p class="card-sketch">${words}</p>
-      <p class="ms-daily-row"><span class="ms-daily-link" data-daily="${m.manuscript_id}">daily tasks</span></p>
+      <p class="ms-daily-row"><span class="ms-daily-link" data-daily="${m.manuscript_id}">daily tasks</span>
+        <span class="ms-gear" data-settings="${m.manuscript_id}" title="Manuscript settings" role="button" tabindex="0">${this.GEAR_SVG}</span></p>
       <p class="card-meta"><span>${this.esc(updated)}</span>${created ? `<span>${this.esc(created)}</span>` : ''}</p>
     </a>`;
+  },
+
+  // Ghost card (MANUSCRIPT_LIFECYCLE_PLAN §1): the creation affordance that
+  // sits after the last card — faint outline, centered +, label on hover.
+  // Both grids use the same component; only kind/label differ.
+  ghostCard(kind) {
+    const label = kind === 'manuscript' ? 'Create new manuscript' : 'Create new scratchpad';
+    return `<button type="button" class="card card-ghost" data-ghost="${kind}" title="${label}">
+      <span class="ghost-plus">+</span>
+      <span class="ghost-label">${label}</span>
+    </button>`;
   },
 
   scratchpadCard(s) {
@@ -281,17 +297,19 @@ const WriteSysHome = {
     return card;
   },
 
+  // opts.ghost ('manuscript'|'scratchpad') appends the ghost creation card
+  // after the last real card — this replaced the old header "+" button.
   section(title, count, cardsHTML, opts = {}) {
+    const ghost = opts.ghost ? this.ghostCard(opts.ghost) : '';
     return `<section class="home-section">
       <div class="home-section-head">
         <h2>${title}</h2><span class="home-count">${count}</span>
-        ${opts.newBtn ? '<button type="button" class="home-new" id="home-new-pad" title="New scratchpad">+</button>' : ''}
         <span class="home-spacer"></span>
         ${opts.seeAll ? `<a class="home-seeall" href="home.html?view=${opts.seeAll}" data-view="${opts.seeAll}">See all →</a>` : ''}
       </div>
       ${opts.notes
         ? '<div class="card-grid" data-note-grid></div>'
-        : (cardsHTML ? `<div class="card-grid">${cardsHTML}</div>` : '<div class="home-empty">Nothing here yet.</div>')}
+        : ((cardsHTML || ghost) ? `<div class="card-grid">${cardsHTML}${ghost}</div>` : '<div class="home-empty">Nothing here yet.</div>')}
     </section>`;
   },
 
@@ -308,10 +326,10 @@ const WriteSysHome = {
     let noteList = null;
     if (view === 'manuscripts') {
       html = `<a class="home-back" href="home.html">← Home</a>` +
-        this.section('All manuscripts', ms.length, ms.map(m => this.manuscriptCard(m)).join(''));
+        this.section('All manuscripts', ms.length, ms.map(m => this.manuscriptCard(m)).join(''), { ghost: 'manuscript' });
     } else if (view === 'scratchpads') {
       html = `<a class="home-back" href="home.html">← Home</a>` +
-        this.section('All scratchpads', sp.length, sp.map(s => this.scratchpadCard(s)).join(''), { newBtn: true });
+        this.section('All scratchpads', sp.length, sp.map(s => this.scratchpadCard(s)).join(''), { ghost: 'scratchpad' });
     } else if (view === 'notes') {
       noteList = nt;
       html = `<a class="home-back" href="home.html">← Home</a>` +
@@ -336,10 +354,10 @@ const WriteSysHome = {
         </section>` : '')
         + this.section('Manuscripts', ms.length,
         ms.slice(0, this.RECENT).map(m => this.manuscriptCard(m)).join(''),
-        ms.length > this.RECENT ? { seeAll: 'manuscripts' } : {})
+        { ghost: 'manuscript', ...(ms.length > this.RECENT ? { seeAll: 'manuscripts' } : {}) })
         + this.section('Scratchpads', sp.length,
           sp.slice(0, this.RECENT).map(s => this.scratchpadCard(s)).join(''),
-          { newBtn: true, ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
+          { ghost: 'scratchpad', ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
         + this.section('Notes', nt.length, '',
           { notes: true, ...(nt.length > this.RECENT ? { seeAll: 'notes' } : {}) });
     }
@@ -397,6 +415,19 @@ const WriteSysHome = {
       });
     });
 
+    // Card gear → settings modal (same stop-the-anchor dance).
+    root.querySelectorAll('.ms-gear').forEach(el => {
+      const open = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.WriteSysManuscriptModal) {
+          window.WriteSysManuscriptModal.openSettings(parseInt(el.dataset.settings, 10));
+        }
+      };
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(e); });
+    });
+
     // Note card → open in context. Scratchpad note: open the pad (later: scroll
     // to the anchor). Manuscript note: go to the book.
     root.querySelectorAll('.card-note').forEach(card => {
@@ -424,8 +455,14 @@ const WriteSysHome = {
         this.render();
       });
     });
-    const newBtn = document.getElementById('home-new-pad');
-    if (newBtn) newBtn.addEventListener('click', () => this.createPad());
+    // Ghost cards: scratchpad → create immediately (as the old + did);
+    // manuscript → the creation modal.
+    root.querySelectorAll('.card-ghost').forEach(g => {
+      g.addEventListener('click', () => {
+        if (g.dataset.ghost === 'scratchpad') this.createPad();
+        else if (window.WriteSysManuscriptModal) window.WriteSysManuscriptModal.openCreate();
+      });
+    });
     root.querySelectorAll('.card-scratchpad').forEach(card => {
       const id = parseInt(card.dataset.scratchpadId, 10);
       card.addEventListener('click', (e) => {

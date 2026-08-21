@@ -24,7 +24,8 @@ const WriteSysImportScratchpad = {
   // hook family as the rainbow bars.
   refresh() {
     this.bindProximity();
-    document.querySelectorAll('.import-zone, .ph-fill-btn').forEach(el => el.remove());
+    document.querySelectorAll('.import-zone, .import-endzone, .ph-fill-btn').forEach(el => el.remove());
+    this.closeInsertMenu();
     const r = window.WriteSysRenderer;
     if (!r || !r.currentMigrationID) return;
     const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
@@ -58,14 +59,21 @@ const WriteSysImportScratchpad = {
         // -5px: vertically centred in the GAP — -9 hugged the descenders
         // (g/y) of the line above and floated far from the next line's caps.
         zone.style.top = '-5px';
-        zone.innerHTML = '<button type="button" class="import-tab" title="Place a sketch here (from a scratchpad)">+</button><span class="import-rule"></span>';
+        zone.innerHTML = '<button type="button" class="import-tab" title="Insert here (sketch or .docx)">+</button><span class="import-rule"></span>';
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
-          this.openModal({ mode: 'append', sentenceId: boundaryId });
+          this.openInsertMenu(e.currentTarget, boundaryId);
         });
         if (getComputedStyle(p).position === 'static') p.style.position = 'relative';
         p.appendChild(zone);
       });
+
+      // End-of-manuscript zone (MANUSCRIPT_LIFECYCLE_PLAN §6): the LAST page
+      // always carries a centered + with the same insert menu, anchored to
+      // the final committed sentence — covers "append after the end" and the
+      // near-blank (title-only) manuscript, which the between-paragraph
+      // zones structurally can't.
+      this.buildEndZone(page, pageArea, sug);
 
       // Placeholder fill: replace a committed &placeholder (block or own-line
       // sentences form) with the region, inheriting its slug.
@@ -126,6 +134,85 @@ const WriteSysImportScratchpad = {
       });
       if (best && bestD <= this.HOT_BAND_PX) best.classList.add('import-hot');
     }, true);
+  },
+
+  // ------------------------------------------------------- insert menu
+
+  // The + affordance offers two inserts (LIFECYCLE §6): place a sketch
+  // (canonize, this file) or import a .docx (import-docx.js). One tiny
+  // anchored menu; outside click / Escape dismisses.
+  openInsertMenu(anchorEl, boundaryId) {
+    this.closeInsertMenu();
+    const menu = document.createElement('div');
+    menu.id = 'insert-menu';
+    menu.innerHTML = `
+      <button type="button" data-act="sketch">Place sketch…</button>
+      <button type="button" data-act="docx">Import .docx…</button>`;
+    document.body.appendChild(menu);
+    const r = anchorEl.getBoundingClientRect();
+    menu.style.left = `${Math.round(r.left + window.scrollX + r.width + 6)}px`;
+    menu.style.top = `${Math.round(r.top + window.scrollY - 4)}px`;
+    menu.querySelector('[data-act="sketch"]').addEventListener('click', () => {
+      this.closeInsertMenu();
+      this.openModal({ mode: 'append', sentenceId: boundaryId });
+    });
+    menu.querySelector('[data-act="docx"]').addEventListener('click', () => {
+      this.closeInsertMenu();
+      if (window.WriteSysImportDocx) window.WriteSysImportDocx.open({ sentenceId: boundaryId });
+    });
+    this._menuDismiss = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'mousedown' && menu.contains(e.target)) return;
+      this.closeInsertMenu();
+    };
+    // Deferred so the opening click doesn't immediately dismiss.
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._menuDismiss);
+      document.addEventListener('keydown', this._menuDismiss);
+    }, 0);
+  },
+
+  closeInsertMenu() {
+    const el = document.getElementById('insert-menu');
+    if (el) el.remove();
+    if (this._menuDismiss) {
+      document.removeEventListener('mousedown', this._menuDismiss);
+      document.removeEventListener('keydown', this._menuDismiss);
+      this._menuDismiss = null;
+    }
+  },
+
+  // ------------------------------------------------------ end-of-book zone
+
+  buildEndZone(page, pageArea, sug) {
+    const pages = document.querySelectorAll('.pagedjs_page');
+    if (page !== pages[pages.length - 1]) return; // last page only
+    const r = window.WriteSysRenderer;
+    // Anchor: the final committed sentence on the page run. A pending
+    // suggestion is fine (composition), same rule as the gap zones.
+    const spans = document.querySelectorAll('.pagedjs_page .sentence[data-sentence-id]');
+    let anchorSpan = null;
+    for (let i = spans.length - 1; i >= 0; i--) {
+      const id = spans[i].dataset.sentenceId;
+      if (r.sentenceMap[id]) { anchorSpan = spans[i]; break; }
+    }
+    if (!anchorSpan) return;
+    const anchorId = anchorSpan.dataset.sentenceId;
+    // ANCHORED INSIDE the final text block (position:relative host), same as
+    // the gap zones — appending to the page area put the zone into paged.js
+    // flow, where the mobile transform math blew out the body scroll width.
+    const host = anchorSpan.closest('p, h1, h2, h3, h4, h5, h6') || anchorSpan.parentElement;
+    if (!host) return;
+
+    const zone = document.createElement('div');
+    zone.className = 'import-endzone';
+    zone.innerHTML = '<button type="button" class="import-end-tab" title="Insert at the end (sketch or .docx)">+</button>';
+    zone.querySelector('.import-end-tab').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openInsertMenu(e.currentTarget, anchorId);
+    });
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(zone);
   },
 
   // --------------------------------------------------------------- modal

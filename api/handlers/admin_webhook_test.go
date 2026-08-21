@@ -2,58 +2,23 @@ package handlers
 
 // Webhook commit-path filter tests (CODE_REVIEW_AUG_2026.md AREA 2 row #106):
 // a push triggers a migration only when some commit MODIFIED or ADDED the
-// configured manuscript path; Removed-only (and unrelated-path) pushes are
+// manuscript's file path; Removed-only (and unrelated-path) pushes are
 // ignored. Complements admin_test.go's signature/branch-filter coverage.
 //
-// The "would trigger" arm is observed WITHOUT a DB: the payload carries an
-// invalid head_commit.id, so a request that passes the modified/added gate
-// dies at ValidateCommitRef (400 "Invalid head_commit id") — one step before
-// startMigration — while a filtered request returns 200 "ignored".
+// Since the registry-to-DB refactor (037) the gate is the pure pipeline
+// payload.modifiedPaths() → webhookTargets(), so it's tested without a DB
+// by feeding the same JSON payloads GitHub would send.
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
-	"github.com/slackwing/manuscript-studio/internal/config"
+	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
-func webhookTestHandlers(secret string) *AdminHandlers {
-	return &AdminHandlers{
-		Config: &config.Config{
-			Auth: config.AuthConfig{WebhookSecret: secret},
-			Manuscripts: []config.ManuscriptConfig{{
-				Name: "wf",
-				Repository: config.RepositoryConfig{
-					Slug:   "owner/wf",
-					Branch: "main",
-					Path:   "manuscript.md",
-				},
-			}},
-		},
-	}
-}
+func TestWebhook_ModifiedAddedPaths(t *testing.T) {
+	rows := []*models.Manuscript{{ManuscriptID: 1, Name: "wf", GitBranch: "main", FilePath: "manuscript.md"}}
 
-func signedWebhookRequest(t *testing.T, secret string, payload map[string]any) *http.Request {
-	t.Helper()
-	body, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("marshal payload: %v", err)
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/webhook", strings.NewReader(string(body)))
-	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-	return req
-}
-
-func TestHandleWebhook_ModifiedAddedPaths(t *testing.T) {
-	const secret = "test-secret"
 	base := func(commits []map[string]any) map[string]any {
 		return map[string]any{
 			"ref": "refs/heads/main",
@@ -61,11 +26,8 @@ func TestHandleWebhook_ModifiedAddedPaths(t *testing.T) {
 				"name": "wf", "full_name": "owner/wf",
 				"clone_url": "https://github.com/owner/wf.git",
 			},
-			"commits": commits,
-			// Deliberately invalid: passing the modified/added gate must
-			// surface as the 400 from ValidateCommitRef, not reach
-			// startMigration.
-			"head_commit": map[string]any{"id": "not a valid ref !!"},
+			"commits":     commits,
+			"head_commit": map[string]any{"id": "deadbeef"},
 		}
 	}
 
@@ -93,20 +55,21 @@ func TestHandleWebhook_ModifiedAddedPaths(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := webhookTestHandlers(secret)
-			rec := httptest.NewRecorder()
-			h.HandleWebhook(rec, signedWebhookRequest(t, secret, base(tc.commits)))
+			raw, err := json.Marshal(base(tc.commits))
+			if err != nil {
+				t.Fatalf("marshal payload: %v", err)
+			}
+			var payload GitHubWebhookPayload
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				t.Fatalf("unmarshal payload: %v", err)
+			}
 
-			if tc.wantTrigger {
-				if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Invalid head_commit") {
-					t.Fatalf("expected to pass the modified/added gate (400 Invalid head_commit), got %d %q",
-						rec.Code, rec.Body.String())
-				}
-			} else {
-				if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "manuscript not modified") {
-					t.Fatalf("expected 200 ignored/manuscript-not-modified, got %d %q",
-						rec.Code, rec.Body.String())
-				}
+			targets := webhookTargets(rows, payload.Ref, payload.modifiedPaths())
+			if tc.wantTrigger && len(targets) != 1 {
+				t.Fatalf("expected the manuscript to be targeted, got %d targets", len(targets))
+			}
+			if !tc.wantTrigger && len(targets) != 0 {
+				t.Fatalf("expected no targets, got %d", len(targets))
 			}
 		})
 	}

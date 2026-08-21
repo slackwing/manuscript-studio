@@ -3391,3 +3391,148 @@ body.range-delete-mode .pagedjs_pages {
 .tag-suggest-row:hover, .tag-suggest-row.active { background: #eef4fb; }
 .tag-suggest-n { color: #a39d90; }
 
+
+/* Manuscript create/settings modal (MANUSCRIPT_LIFECYCLE_PLAN §2, §4) —
+   the sketch-sel-modal look, shared by home page and book page. New unique
+   selectors only; no interaction with the responsive blocks above. */
+#msm-overlay {
+  position: fixed; inset: 0; z-index: 4000;
+  background: rgba(30, 26, 18, 0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+#msm-overlay .msm-box {
+  background: #fdfcf8; border-radius: 10px; padding: 20px 22px;
+  width: 420px; max-width: calc(100vw - 40px);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.45);
+}
+#msm-overlay h3 { margin: 0 0 14px; font: 17px Georgia, serif; }
+#msm-overlay .msm-row { display: block; margin: 10px 0; }
+#msm-overlay .msm-label {
+  display: block; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #8a8378; margin-bottom: 3px;
+}
+#msm-overlay input[type="text"], #msm-overlay input[type="date"], #msm-overlay input[type="number"] {
+  width: 100%; box-sizing: border-box; padding: 6px 8px;
+  border: 1px solid #ccc; border-radius: 6px; background: #fff;
+  font: 14px Georgia, serif;
+}
+#msm-overlay .msm-hint { display: block; font-size: 11px; color: #a29a8b; margin-top: 2px; }
+#msm-overlay .msm-hint-inline { display: block; font-size: 11px; color: #a29a8b; margin-left: 20px; }
+#msm-overlay .msm-radio-row { display: block; }
+#msm-overlay .msm-radio { display: block; font-size: 13px; margin: 4px 0; }
+#msm-overlay .msm-radio.msm-disabled { color: #b3ac9c; }
+#msm-overlay .msm-ro .msm-ro-value { font: 14px Georgia, serif; color: #57503f; }
+#msm-overlay .msm-error { color: #b03030; font-size: 12px; margin: 8px 0 0; white-space: pre-wrap; }
+#msm-overlay .msm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+#msm-overlay .msm-actions button {
+  padding: 6px 14px; border-radius: 6px; border: 1px solid #ccc;
+  background: #fff; cursor: pointer;
+}
+#msm-overlay #msm-go { background: #2a6fb0; border-color: #2a6fb0; color: #fff; }
+#msm-overlay #msm-go:disabled { opacity: 0.6; }
+
+/* Title-strip gear: "The Wildfire ⚙" (MANUSCRIPT_LIFECYCLE_PLAN §4).
+   pointer-events: the chrome strip is none (clicks pass through to the
+   page); interactive children opt back in, same as the push button. */
+.mc-settings {
+  border: none; background: none; padding: 0 2px; cursor: pointer;
+  color: #b3ac9c; display: inline-flex; align-self: center;
+  pointer-events: auto;
+}
+.mc-settings:hover { color: #2a6fb0; }
+
+/* Insert menu on the + affordance (LIFECYCLE §6): tiny anchored dropdown
+   with the two insert actions. */
+#insert-menu {
+  position: absolute;
+  z-index: 1200;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  box-shadow: 0 8px 24px -10px rgba(20, 16, 8, 0.5);
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+#insert-menu button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 7px 12px;
+  font: 12px "Helvetica", sans-serif;
+  cursor: pointer;
+  color: #333;
+}
+#insert-menu button:hover { background: #eef4fa; color: #2a6fb0; }
+
+/* End-of-manuscript zone: a centered + below the final text block —
+   absolutely anchored inside it (position:relative host) so it stays out
+   of paged.js layout flow entirely. The zone itself never eats clicks. */
+.import-endzone {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  padding-top: 22px;
+  pointer-events: none;
+}
+.import-endzone .import-end-tab { pointer-events: auto; }
+.import-end-tab {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px dashed #b3ac9c;
+  background: #fff;
+  color: #b3ac9c;
+  font: 300 19px/26px "Helvetica", sans-serif;
+  text-align: center;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.import-end-tab:hover { border: 1px solid #2a6fb0; color: #2a6fb0; }
+
+/* Docx import modal — the import-modal look. */
+#import-docx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(30, 26, 18, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#import-docx-modal {
+  width: 560px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  box-shadow: 0 12px 40px -12px rgba(20, 16, 8, 0.5);
+  padding: 16px 18px;
+  font-family: "Helvetica", sans-serif;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+}
+#import-docx-modal h3 { margin: 0 0 6px; font-size: 15px; }
+#import-docx-modal .idx-hint { color: #777; font-size: 11px; line-height: 1.5; margin: 0 0 12px; }
+#import-docx-modal .idx-messages { color: #8a6d1a; font-size: 11px; margin: 8px 0 0; }
+#import-docx-modal .idx-preview {
+  margin-top: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 320px;
+  font: 11px/1.5 "Monaco", monospace;
+  border: 1px solid #ccc;
+  padding: 8px;
+  resize: vertical;
+  white-space: pre;
+}
+#import-docx-modal .idx-error { color: #b03030; font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
+#import-docx-modal .idx-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+#import-docx-modal .idx-actions button { padding: 6px 14px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+#import-docx-modal #idx-go { background: #2a6fb0; border-color: #2a6fb0; color: #fff; }
+#import-docx-modal #idx-go:disabled { opacity: 0.6; }

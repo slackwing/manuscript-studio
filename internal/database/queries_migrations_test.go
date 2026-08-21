@@ -82,7 +82,7 @@ func TestUpdateManuscriptMeta_PartialNilKeeps(t *testing.T) {
 	birthday := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
 	goal := 90000
 
-	m, err := f.db.UpdateManuscriptMeta(f.ctx, f.manuscriptID, &birthday, &goal)
+	m, err := f.db.UpdateManuscriptMeta(f.ctx, f.manuscriptID, &birthday, &goal, nil)
 	if err != nil {
 		t.Fatalf("set both: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestUpdateManuscriptMeta_PartialNilKeeps(t *testing.T) {
 	}
 
 	newGoal := 120000
-	m, err = f.db.UpdateManuscriptMeta(f.ctx, f.manuscriptID, nil, &newGoal)
+	m, err = f.db.UpdateManuscriptMeta(f.ctx, f.manuscriptID, nil, &newGoal, nil)
 	if err != nil {
 		t.Fatalf("set goal only: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestUpdateManuscriptMeta_PartialNilKeeps(t *testing.T) {
 		t.Errorf("word_goal = %d, want %d", m.WordGoal, newGoal)
 	}
 
-	m, err = f.db.UpdateManuscriptMeta(f.ctx, f.manuscriptID, nil, nil)
+	m, err = f.db.UpdateManuscriptMeta(f.ctx, f.manuscriptID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("nil,nil: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestUpdateManuscriptMeta_PartialNilKeeps(t *testing.T) {
 		t.Errorf("nil,nil changed the row: birthday %v goal %d", m.Birthday, m.WordGoal)
 	}
 
-	missing, err := f.db.UpdateManuscriptMeta(f.ctx, -1, nil, &goal)
+	missing, err := f.db.UpdateManuscriptMeta(f.ctx, -1, nil, &goal, nil)
 	if err != nil {
 		t.Fatalf("missing id err = %v, want nil", err)
 	}

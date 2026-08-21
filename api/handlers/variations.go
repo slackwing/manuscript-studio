@@ -541,11 +541,8 @@ func manuscriptDisplayName(ctx context.Context, db *database.DB, cfg *config.Con
 	if m.DisplayName != "" {
 		return m.DisplayName
 	}
-	for i := range cfg.Manuscripts {
-		mc := &cfg.Manuscripts[i]
-		if mc.Repository.CloneURL() == m.RepoPath && mc.Repository.Path == m.FilePath {
-			return displayNameFor("", mc.Name)
-		}
+	if m.Name != "" {
+		return displayNameFor("", m.Name)
 	}
 	return displayNameFor("", filepath.Base(m.FilePath))
 }

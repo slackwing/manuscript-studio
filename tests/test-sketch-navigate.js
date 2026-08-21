@@ -13,7 +13,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await cleanupTestAnnotations();
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
   const ctxA = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   const varA = ctxA.variation.variation_id;

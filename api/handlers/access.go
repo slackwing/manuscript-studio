@@ -9,14 +9,13 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/database"
 )
 
-// resolveManuscriptName looks up the configured manuscript name for a given
-// manuscript_id. The manuscript table stores (repo_path, file_path), which is
-// what the migration processor created the row with — so we match those back
-// against the live config to recover the friendly name used by
-// `manuscript_access`. Returns ("", nil) when the id exists but isn't in the
-// running config (admin removed it from yaml without dropping the row), and
-// ("", err) on DB error.
-func resolveManuscriptName(ctx context.Context, db *database.DB, cfg *config.Config, manuscriptID int) (string, error) {
+// resolveManuscriptName returns the manuscript's name for a given
+// manuscript_id — since 037 the row carries it directly (startup
+// reconciliation backfills legacy rows from config). Returns ("", nil) when
+// the id doesn't exist or the row was never reconciled (name NULL), and
+// ("", err) on DB error. cfg is unused but kept in the signature so the
+// callers' uniform (db, cfg) plumbing stays untouched.
+func resolveManuscriptName(ctx context.Context, db *database.DB, _ *config.Config, manuscriptID int) (string, error) {
 	m, err := db.GetManuscriptByID(ctx, manuscriptID)
 	if err != nil {
 		return "", err
@@ -24,12 +23,7 @@ func resolveManuscriptName(ctx context.Context, db *database.DB, cfg *config.Con
 	if m == nil {
 		return "", nil
 	}
-	for _, mc := range cfg.Manuscripts {
-		if mc.Repository.CloneURL() == m.RepoPath && mc.Repository.Path == m.FilePath {
-			return mc.Name, nil
-		}
-	}
-	return "", nil
+	return m.Name, nil
 }
 
 // requireManuscriptAccess is the standard guard for any per-manuscript

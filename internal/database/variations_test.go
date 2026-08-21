@@ -97,8 +97,8 @@ func (f *varFixture) cleanup(t *testing.T) {
 		`DELETE FROM scratchpad_revision WHERE scratchpad_id IN (
 			SELECT scratchpad_id FROM scratchpad WHERE user_id = $1 OR user_id = $2)`,
 		`DELETE FROM scratchpad WHERE user_id = $1 OR user_id = $2`,
-		`DELETE FROM manuscript WHERE repo_path LIKE 'test://variations/' || $1 || '/%'
-			OR repo_path LIKE 'test://variations/' || $2 || '/%'`,
+		`DELETE FROM manuscript WHERE git_repo_path LIKE 'test://variations/' || $1 || '/%'
+			OR git_repo_path LIKE 'test://variations/' || $2 || '/%'`,
 		`DELETE FROM "user" WHERE username = $1 OR username = $2`,
 	}
 	for _, sql := range stmts {

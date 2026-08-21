@@ -50,11 +50,13 @@ const homeNoteSelect = `
 		            ORDER BY sk.variation_id LIMIT 1)),
 		       COALESCE(n.sentence_id, ''),
 		       -- Fallback manuscript label (used only when the note has a
-		       -- manuscript_id but the handler can't resolve a config name):
-		       -- display_name, else the repo folder name (minus a trailing .git).
+		       -- manuscript_id but the handler can't resolve a name):
+		       -- display_name, else the row's name (037), else the repo folder
+		       -- name (minus a trailing .git) for pre-reconcile legacy rows.
 		       COALESCE(
 		           NULLIF(m.display_name, ''),
-		           NULLIF(regexp_replace(regexp_replace(m.repo_path, '\.git/?$', ''), '^.*/', ''), ''),
+		           NULLIF(m.name, ''),
+		           NULLIF(regexp_replace(regexp_replace(m.git_repo_path, '\.git/?$', ''), '^.*/', ''), ''),
 		           ''
 		       ) AS context,
 		       COALESCE(sp.title, '') AS scratchpad_title,

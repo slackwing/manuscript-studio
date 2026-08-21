@@ -22,7 +22,7 @@ const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98
   await cleanupTestNotes();
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
   // Type a line, then select the whole line.

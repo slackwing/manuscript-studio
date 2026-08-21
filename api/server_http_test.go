@@ -382,7 +382,7 @@ func TestReadyz_DegradedVsUnhealthy(t *testing.T) {
 	// (the first sync will create it; the pod must not be killed for this).
 	cfg := testConfig()
 	cfg.Paths.ReposDir = t.TempDir()
-	cfg.Manuscripts = []config.ManuscriptConfig{{Name: "never-cloned"}}
+	cfg.GitRepos = []config.GitRepoConfig{{Name: "never-cloned"}}
 	s = newTestServer(t, cfg, pool)
 	rec = serve(s, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"degraded"`) {

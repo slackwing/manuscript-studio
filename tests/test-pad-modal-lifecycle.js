@@ -36,7 +36,7 @@ function psql(sql) {
   await cleanupTestNotes();
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
 
   try {
     // padA: seeded with one sketch widget (for escape-scoping + deep links);

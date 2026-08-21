@@ -47,13 +47,44 @@ func ValidateCommitRef(ref string) error {
 type GitRepository struct {
 	Path      string // local on-disk path
 	Branch    string // branch to track
-	RemoteURL string // what git clone/pull/fetch use
+	RemoteURL string // what git clone/pull/fetch use; empty for Local repos
 	FilePath  string // path of the manuscript file inside the repo
 	AuthToken string // optional; supplied via GIT_ASKPASS, never via URL
+	// Local marks a server-owned repo (storage='local'): no origin, so
+	// Clone only verifies existence, Pull is a no-op, and
+	// WriteCommitPushBranch commits without pushing.
+	Local bool
+}
+
+// InitLocal creates the directory and `git init -b branch`s it. Fails if a
+// repo already exists at Path (creation is not idempotent by design — the
+// caller treats "exists" as a name conflict).
+func (g *GitRepository) InitLocal(ctx context.Context) error {
+	if g.isGitRepo() {
+		return fmt.Errorf("repo already exists at %s", g.Path)
+	}
+	if err := os.MkdirAll(g.Path, 0755); err != nil {
+		return fmt.Errorf("create local repo dir: %w", err)
+	}
+	branch := g.Branch
+	if branch == "" {
+		branch = "main"
+	}
+	out, err := exec.CommandContext(ctx, "git", "init", "-b", branch, g.Path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git init %s: %w\nOutput: %s", g.Path, err, out)
+	}
+	return nil
 }
 
 // Clone is a no-op if Path is already a git repo.
 func (g *GitRepository) Clone(ctx context.Context) error {
+	if g.Local {
+		if g.isGitRepo() {
+			return nil
+		}
+		return fmt.Errorf("local repo missing at %s (was it deleted?)", g.Path)
+	}
 	if g.RemoteURL == "" {
 		return fmt.Errorf("RemoteURL is empty: set repository.url in your manuscript config")
 	}
@@ -122,6 +153,9 @@ func (g *GitRepository) Prepare(ctx context.Context, ref string, warnf func(form
 }
 
 func (g *GitRepository) Pull(ctx context.Context) error {
+	if g.Local {
+		return nil // no origin to pull from; refs are advanced by commits
+	}
 	if g.RemoteURL == "" {
 		return fmt.Errorf("RemoteURL is empty: set repository.url in your manuscript config")
 	}
@@ -349,7 +383,17 @@ func (g *GitRepository) WriteCommitPushBranch(
 		return "", fmt.Errorf("git update-ref refs/heads/%s: %w (%s)", branch, err, out)
 	}
 
-	// 5. Push.
+	// 5. Push — skipped for Local repos (no origin; update-ref above already
+	// advanced the branch, which is all a local commit needs). The working
+	// tree is synced to the new commit so the on-disk repo stays readable
+	// by humans and backup jobs — safe because local repos have exactly one
+	// writer (this server) and all reads go through `git show <sha>`.
+	if g.Local {
+		if out, rErr := exec.CommandContext(ctx, "git", "-C", g.Path, "reset", "--hard", commitSHA).CombinedOutput(); rErr != nil {
+			return "", fmt.Errorf("git reset --hard %s: %w (%s)", commitSHA, rErr, out)
+		}
+		return commitSHA, nil
+	}
 	args := []string{"-C", g.Path, "push", "origin", "refs/heads/" + branch}
 	if force {
 		args = append(args[:3], append([]string{"--force"}, args[3:]...)...)
@@ -364,6 +408,37 @@ func (g *GitRepository) WriteCommitPushBranch(
 	}
 
 	return commitSHA, nil
+}
+
+// CommitSeedFile writes the initial file into a fresh (InitLocal'd) repo via
+// the working tree and makes the root commit. Only used at creation time,
+// before any concurrent access exists.
+func (g *GitRepository) CommitSeedFile(ctx context.Context, content []byte, message, authorName, authorEmail string) (string, error) {
+	full := filepath.Join(g.Path, g.FilePath)
+	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+		return "", fmt.Errorf("seed dir: %w", err)
+	}
+	if err := os.WriteFile(full, content, 0644); err != nil {
+		return "", fmt.Errorf("seed write: %w", err)
+	}
+	if out, err := exec.CommandContext(ctx, "git", "-C", g.Path, "add", "--", g.FilePath).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git add %s: %w (%s)", g.FilePath, err, out)
+	}
+	commit := exec.CommandContext(ctx, "git", "-C", g.Path, "commit", "-m", message)
+	commit.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME="+authorName,
+		"GIT_AUTHOR_EMAIL="+authorEmail,
+		"GIT_COMMITTER_NAME="+authorName,
+		"GIT_COMMITTER_EMAIL="+authorEmail,
+	)
+	if out, err := commit.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git commit (seed): %w (%s)", err, out)
+	}
+	out, err := exec.CommandContext(ctx, "git", "-C", g.Path, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("rev-parse HEAD after seed: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // LocalBranchExists reports whether refs/heads/<branch> exists in the local

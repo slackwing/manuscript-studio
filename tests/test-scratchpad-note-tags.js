@@ -24,7 +24,7 @@ function psql(sql) {
   psql(`DELETE FROM tag WHERE user_id='${TEST_USERNAME}' AND tag_name='sctag'`);
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
   // Make a scratchpad note.

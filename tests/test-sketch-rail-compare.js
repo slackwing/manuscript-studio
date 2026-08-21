@@ -21,7 +21,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   await cleanupTestNotes(); // stray linked sketches skew the wordcount check
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
 

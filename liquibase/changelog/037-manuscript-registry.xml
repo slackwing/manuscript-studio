@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Registry-to-DB (MANUSCRIPT_LIFECYCLE_PLAN Phase 0): the manuscript
+         row becomes the source of truth for what a manuscript IS; config
+         keeps only the git_repos credential registry. repo_path (which has
+         always held the clone URL, not a filesystem path) is renamed to
+         git_repo_path per the git_repo_* naming decision.
+
+         name          - unique slug (was implicit in config); nullable until
+                         startup reconciliation backfills legacy rows.
+         storage       - 'github' (synced clone) | 'local' (server-owned repo
+                         under <repos_dir>/git/local/<name>).
+         git_repo_name - key into config's git_repos registry (github mode).
+         git_branch    - tracked branch (was config repository.branch). -->
+    <changeSet id="037-manuscript-registry" author="claude">
+        <renameColumn tableName="manuscript"
+                      oldColumnName="repo_path"
+                      newColumnName="git_repo_path"/>
+        <addColumn tableName="manuscript">
+            <column name="name" type="TEXT"/>
+            <column name="storage" type="TEXT" defaultValue="github">
+                <constraints nullable="false"/>
+            </column>
+            <column name="git_repo_name" type="TEXT"/>
+            <column name="git_branch" type="TEXT"/>
+        </addColumn>
+        <addUniqueConstraint tableName="manuscript"
+                             columnNames="name"
+                             constraintName="uq_manuscript_name"/>
+    </changeSet>
+
+</databaseChangeLog>

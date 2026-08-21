@@ -68,7 +68,7 @@ fi
 REPO="test://undo-mig-test-$$"
 
 cleanup_data() {
-    # Nukes everything tied to manuscripts whose repo_path starts with
+    # Nukes everything tied to manuscripts whose git_repo_path starts with
     # 'test://' OR is empty. This catches leftovers from prior failed
     # runs (with a different $$-derived $REPO) and the orphan-row scenario
     # from Test 3.
@@ -78,24 +78,24 @@ cleanup_data() {
             JOIN sentence s ON a.sentence_id = s.sentence_id
             JOIN migration m ON s.migration_id = m.migration_id
             JOIN manuscript man ON m.manuscript_id = man.manuscript_id
-            WHERE man.repo_path LIKE 'test://%' OR man.repo_path = ''
+            WHERE man.git_repo_path LIKE 'test://%' OR man.git_repo_path = ''
         );
         DELETE FROM annotation WHERE sentence_id IN (
             SELECT s.sentence_id FROM sentence s
             JOIN migration m ON s.migration_id = m.migration_id
             JOIN manuscript man ON m.manuscript_id = man.manuscript_id
-            WHERE man.repo_path LIKE 'test://%' OR man.repo_path = ''
+            WHERE man.git_repo_path LIKE 'test://%' OR man.git_repo_path = ''
         );
         DELETE FROM sentence WHERE migration_id IN (
             SELECT m.migration_id FROM migration m
             JOIN manuscript man ON m.manuscript_id = man.manuscript_id
-            WHERE man.repo_path LIKE 'test://%' OR man.repo_path = ''
+            WHERE man.git_repo_path LIKE 'test://%' OR man.git_repo_path = ''
         );
         DELETE FROM migration WHERE manuscript_id IN (
             SELECT manuscript_id FROM manuscript
-            WHERE repo_path LIKE 'test://%' OR repo_path = ''
+            WHERE git_repo_path LIKE 'test://%' OR git_repo_path = ''
         );
-        DELETE FROM manuscript WHERE repo_path LIKE 'test://%' OR repo_path = '';
+        DELETE FROM manuscript WHERE git_repo_path LIKE 'test://%' OR git_repo_path = '';
         DELETE FROM \"user\" WHERE username = 'undo_test_user';
     "
 }
@@ -103,10 +103,10 @@ cleanup_data() {
 setup_scenario() {
     cleanup_data
     x "INSERT INTO \"user\" (username, password_hash, role) VALUES ('undo_test_user', 'x', 'author') ON CONFLICT DO NOTHING;"
-    x "INSERT INTO manuscript (repo_path, file_path) VALUES ('$REPO', 'm.md');"
+    x "INSERT INTO manuscript (git_repo_path, file_path) VALUES ('$REPO', 'm.md');"
 
     local mid
-    mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'")
+    mid=$(q "SELECT manuscript_id FROM manuscript WHERE git_repo_path = '$REPO'")
 
     # Migration 1: bootstrap, two sentences, status='done'.
     local m1_sent_ids='["S1A","S1B"]'
@@ -223,8 +223,8 @@ echo ""
 echo "=== Test 2: rollback past error rows ==="
 cleanup_data
 x "INSERT INTO \"user\" (username, password_hash, role) VALUES ('undo_test_user', 'x', 'author') ON CONFLICT DO NOTHING;"
-x "INSERT INTO manuscript (repo_path, file_path) VALUES ('$REPO', 'm.md');"
-mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'")
+x "INSERT INTO manuscript (git_repo_path, file_path) VALUES ('$REPO', 'm.md');"
+mid=$(q "SELECT manuscript_id FROM manuscript WHERE git_repo_path = '$REPO'")
 
 # M1: done, with one annotation.
 m1=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($mid, 'commitA', 'segman-1.0.0', 'main', 1, 1, 0, 0, '[\"S1\"]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
@@ -259,22 +259,22 @@ assert_eq "annotation versions = 1" "1" "$(q "SELECT COUNT(*) FROM annotation_ve
 cleanup_data
 
 # ============================================================
-# Test 3: orphan manuscript (empty repo_path) is hidden from the menu
+# Test 3: orphan manuscript (empty git_repo_path) is hidden from the menu
 # Simulates the prod bug where startMigration created a manuscript row
-# with empty repo_path before the empty-URL guard was added. The script's
+# with empty git_repo_path before the empty-URL guard was added. The script's
 # manuscript-list query should filter it out.
 # ============================================================
 echo ""
-echo "=== Test 3: orphan manuscript with empty repo_path is hidden ==="
+echo "=== Test 3: orphan manuscript with empty git_repo_path is hidden ==="
 cleanup_data
 x "INSERT INTO \"user\" (username, password_hash, role) VALUES ('undo_test_user', 'x', 'author') ON CONFLICT DO NOTHING;"
 # Real manuscript:
-x "INSERT INTO manuscript (repo_path, file_path) VALUES ('$REPO', 'm.md');"
-real_mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = '$REPO'")
+x "INSERT INTO manuscript (git_repo_path, file_path) VALUES ('$REPO', 'm.md');"
+real_mid=$(q "SELECT manuscript_id FROM manuscript WHERE git_repo_path = '$REPO'")
 real_m1=$(q "INSERT INTO migration (manuscript_id, commit_hash, segmenter, branch_name, sentence_count, additions_count, deletions_count, changes_count, sentence_id_array, status, started_at, finished_at) VALUES ($real_mid, 'commitA', 'segman-1.0.0', 'main', 0, 0, 0, 0, '[]'::jsonb, 'done', NOW(), NOW()) RETURNING migration_id")
-# Orphan: empty repo_path with a stuck migration row.
-x "INSERT INTO manuscript (repo_path, file_path) VALUES ('', 'orphan.md');"
-orphan_mid=$(q "SELECT manuscript_id FROM manuscript WHERE repo_path = ''")
+# Orphan: empty git_repo_path with a stuck migration row.
+x "INSERT INTO manuscript (git_repo_path, file_path) VALUES ('', 'orphan.md');"
+orphan_mid=$(q "SELECT manuscript_id FROM manuscript WHERE git_repo_path = ''")
 x "INSERT INTO migration (manuscript_id, commit_hash, segmenter, status, started_at, finished_at, error) VALUES ($orphan_mid, 'commitX', 'segman-1.0.0', 'error', NOW(), NOW(), 'broken url');"
 
 # Quit immediately by sending invalid menu input — we just want to see

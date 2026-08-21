@@ -121,18 +121,21 @@ function resetMeta() {
   const outlineOff = await page.locator('#outline-margin').evaluate(el => getComputedStyle(el).display === 'none');
   check('outline hides while stats shown', outlineOff);
 
-  // Birthday unset → prompt; set it through the inline date editor.
+  // Birthday unset → "not set" (read-only since the settings modal took
+  // over editing, MANUSCRIPT_LIFECYCLE_PLAN §4); set it via the ⚙ modal.
   await page.waitForSelector('#stats-birthday');
   let bdayText = await page.locator('#stats-birthday').innerText();
-  check('birthday shows set-me prompt when null', /set birthday/i.test(bdayText), bdayText);
-  await page.locator('#stats-birthday').click();
-  await page.fill('#stats-margin .stats-edit-input', '2025-12-02');
-  await page.keyboard.press('Enter');
+  check('birthday shows "not set" when null', /not set/i.test(bdayText), bdayText);
+  await page.click('#mc-settings');
+  await page.waitForSelector('#msm-overlay #msm-form');
+  await page.fill('#msm-overlay [name="birthday"]', '2025-12-02');
+  await page.click('#msm-overlay #msm-go');
+  await page.waitForSelector('#msm-overlay', { state: 'detached' });
   await page.waitForFunction(() => {
     const el = document.querySelector('#stats-birthday');
     return el && /December 2, 2025/.test(el.textContent);
   });
-  check('inline editor sets birthday to Dec 2, 2025', true);
+  check('settings modal sets birthday to Dec 2, 2025', true);
 
   // Graph: actual polyline + 3 extrapolation hover targets (trend/avg/need).
   await page.waitForSelector('#stats-margin .stats-graph svg');
@@ -170,15 +173,18 @@ function resetMeta() {
   check('average words/day shown', /AVERAGE/.test(avgText) && /words\/day/.test(avgText));
   check('PAST 30D and 1Y RATE rows shown', /PAST 30D/.test(avgText) && /1Y RATE/.test(avgText), avgText.replace(/\n/g, ' | '));
 
-  // Edit the goal inline to 80,000 — the number the user actually plans.
-  await page.locator('#stats-goal').click();
-  await page.fill('#stats-margin .stats-edit-input', '80000');
-  await page.keyboard.press('Enter');
+  // Set the goal to 80,000 via the settings modal; the pane just displays.
+  await page.click('#mc-settings');
+  await page.waitForSelector('#msm-overlay #msm-form');
+  await page.fill('#msm-overlay [name="word_goal"]', '80000');
+  await page.click('#msm-overlay #msm-go');
+  await page.waitForSelector('#msm-overlay', { state: 'detached' });
   await page.waitForFunction(() => {
     const el = document.querySelector('#stats-goal');
     return el && /80,000/.test(el.textContent);
   });
-  check('inline editor sets word goal to 80,000', true);
+  check('settings modal sets word goal to 80,000', true);
+  check('stats pane offers no inline editors', (await page.locator('#stats-margin .stats-editable').count()) === 0);
   resp = await authed(`/manuscripts/${TEST_MANUSCRIPT_ID}/wordcount-history`);
   data = await resp.json();
   check('goal edit persisted', data.word_goal === 80000, `got ${data.word_goal}`);

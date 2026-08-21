@@ -26,8 +26,10 @@ func TestValidateManuscriptPaths_NameWithTraversalEscapes(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected escape rejection")
 	}
-	if !strings.Contains(err.Error(), "escapes repos_dir") {
-		t.Fatalf("expected 'escapes repos_dir' in error, got: %v", err)
+	// Since 037 the rejection happens at the name level (single clean
+	// segment) rather than by path-prefix comparison.
+	if !strings.Contains(err.Error(), "plain directory name") {
+		t.Fatalf("expected plain-directory-name rejection, got: %v", err)
 	}
 }
 
@@ -189,5 +191,63 @@ func TestExpandPath(t *testing.T) {
 		if got := expandPath(in); got != want {
 			t.Errorf("expandPath(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Legacy manuscripts: entries synthesize git_repos registry entries of the
+// same name; an explicit git_repos entry with that name wins (037).
+func TestSynthesizeLegacyGitRepos(t *testing.T) {
+	c := &Config{
+		GitRepos: []GitRepoConfig{{Name: "explicit", Slug: "me/explicit", AuthToken: "keep"}},
+		Manuscripts: []ManuscriptConfig{
+			{Name: "legacy", Repository: RepositoryConfig{Slug: "me/legacy", UseSSH: true, AuthToken: "tok"}, WebhookSecret: "sec"},
+			{Name: "explicit", Repository: RepositoryConfig{Slug: "me/OVERRIDDEN"}},
+		},
+	}
+	c.synthesizeLegacyGitRepos()
+
+	if g := c.GetGitRepo("legacy"); g == nil || g.Slug != "me/legacy" || !g.UseSSH || g.AuthToken != "tok" || g.WebhookSecret != "sec" {
+		t.Fatalf("legacy synthesis = %+v", c.GetGitRepo("legacy"))
+	}
+	if g := c.GetGitRepo("explicit"); g == nil || g.Slug != "me/explicit" || g.AuthToken != "keep" {
+		t.Fatalf("explicit entry should win, got %+v", c.GetGitRepo("explicit"))
+	}
+	if got := c.GetGitRepo("legacy").CloneURL(); got != "git@github.com:me/legacy.git" {
+		t.Fatalf("CloneURL = %q", got)
+	}
+}
+
+// The git/[local,remote] layout helpers and the local-name path-escape guard.
+func TestGitDirLayoutAndLocalNameValidation(t *testing.T) {
+	c := &Config{Paths: PathsConfig{ReposDir: "/data/repos"}}
+	if got := c.GitRemoteDir("wf"); got != "/data/repos/git/remote/wf" {
+		t.Fatalf("GitRemoteDir = %q", got)
+	}
+	if got := c.GitLocalDir("book"); got != "/data/repos/git/local/book" {
+		t.Fatalf("GitLocalDir = %q", got)
+	}
+	if err := c.ValidateLocalName("fine-name"); err != nil {
+		t.Fatalf("ValidateLocalName(fine-name): %v", err)
+	}
+	if err := c.ValidateLocalName("../../../etc"); err == nil {
+		t.Fatal("path-escaping local name must be rejected")
+	}
+	if err := c.ValidateLocalName(""); err == nil {
+		t.Fatal("empty local name must be rejected")
+	}
+}
+
+// git_repos entries are path-validated like manuscripts.
+func TestValidateManuscriptPaths_GitRepos(t *testing.T) {
+	c := &Config{
+		Paths:    PathsConfig{ReposDir: "/data/repos"},
+		GitRepos: []GitRepoConfig{{Name: "../../evil"}},
+	}
+	if err := c.ValidateManuscriptPaths(); err == nil {
+		t.Fatal("escaping git_repos name must be rejected")
+	}
+	c.GitRepos = []GitRepoConfig{{Name: ""}}
+	if err := c.ValidateManuscriptPaths(); err == nil {
+		t.Fatal("empty git_repos name must be rejected")
 	}
 }

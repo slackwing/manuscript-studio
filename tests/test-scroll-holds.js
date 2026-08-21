@@ -35,7 +35,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await cleanupTestNotes();
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
 
   try {
     // Build the tall pad via the API: widget A at the TOP, ~40 paragraphs,

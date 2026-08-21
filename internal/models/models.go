@@ -18,12 +18,30 @@ type ManuscriptAccess struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// Manuscript storage modes (037-manuscript-registry).
+const (
+	StorageGitHub = "github" // synced clone of an external repo
+	StorageLocal  = "local"  // server-owned repo under <repos_dir>/git/local/
+)
+
 type Manuscript struct {
-	ManuscriptID int       `json:"manuscript_id"`
-	RepoPath     string    `json:"repo_path"`
-	FilePath     string    `json:"file_path"`
+	ManuscriptID int `json:"manuscript_id"`
+	// Name is the unique slug (was implicit in config pre-037). Empty only
+	// on legacy rows that predate startup reconciliation.
+	Name string `json:"name"`
+	// GitRepoPath is the clone URL for github mode; the sentinel
+	// "local:<name>" for local mode (part of the row's unique identity —
+	// it has never been a filesystem path despite the old repo_path name).
+	GitRepoPath string `json:"git_repo_path"`
+	FilePath    string `json:"file_path"`
+	// Storage: StorageGitHub | StorageLocal.
+	Storage string `json:"storage"`
+	// GitRepoName keys into config's git_repos registry (github mode only).
+	GitRepoName string `json:"git_repo_name,omitempty"`
+	// GitBranch is the tracked branch; empty means "main".
+	GitBranch string `json:"git_branch,omitempty"`
 	// Human display name ("The Wildfire"); empty falls back to a prettified
-	// config slug (handlers.displayNameFor).
+	// slug (handlers.displayNameFor).
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
 	// Birthday is the day writing began — distinct from CreatedAt because a
@@ -31,6 +49,14 @@ type Manuscript struct {
 	Birthday *time.Time `json:"birthday"`
 	// WordGoal is the target length driving the stats-pane extrapolations.
 	WordGoal int `json:"word_goal"`
+}
+
+// Branch returns the tracked branch, defaulting to "main".
+func (m *Manuscript) Branch() string {
+	if m.GitBranch == "" {
+		return "main"
+	}
+	return m.GitBranch
 }
 
 // Lifecycle: pending → running → done | error (.Error set on error).

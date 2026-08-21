@@ -111,7 +111,8 @@ const WriteSysSuggestions = {
           <div class="sn-body">
             <div class="sn-split">
               <div class="sn-split-left">
-                <div class="sn-note">suggested edit &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a></div>
+                <div class="sn-note">suggested edit &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a>
+                  &middot; <a href="#" class="sgm-insert-after" title="Insert a new sentence after this one — positions the caret; just type the sentence (Tab first for a new paragraph)">+ sentence after</a></div>
                 <div class="sgm-left"></div>
               </div>
               <div class="sn-split-right">
@@ -235,6 +236,19 @@ const WriteSysSuggestions = {
     modal.querySelector('.sgm-revert').addEventListener('click', (e) => {
       e.preventDefault();
       applyRevert();
+    });
+    // Insert-a-sentence-after (LIFECYCLE §6.5): UX sugar over the same
+    // suggestion — seed "effective text + space", caret at the end, so the
+    // user types ONLY the new sentence (leading Tab for a new paragraph
+    // instead). The diff then renders as a pure insertion.
+    modal.querySelector('.sgm-insert-after').addEventListener('click', (e) => {
+      e.preventDefault();
+      textarea.value = textarea.value.replace(/\s+$/, '') + ' ';
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      pane.autoGrow();
+      saver.poke();
+      updateTitle();
     });
     textarea.addEventListener('input', updateTitle);
     updateTitle();

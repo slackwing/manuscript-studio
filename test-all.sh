@@ -19,6 +19,7 @@ set -u
 # slow = >15s, typically because of multi-stage browser flows or layouts that
 #        require waiting on hover-out timeouts and animation settles.
 FAST_TESTS=(
+  test-manuscript-normalize
   test-sketch-from-selection
   test-points-grid
   test-daily-tasks
@@ -76,6 +77,7 @@ FAST_TESTS=(
 )
 
 SLOW_TESTS=(
+  test-manuscript-lifecycle
   test-anchor-gutter
   test-canonize-compose
   test-editor-shortcuts

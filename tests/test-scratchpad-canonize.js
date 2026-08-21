@@ -91,8 +91,8 @@ function noisyPng(w, h) {
 
     // --- home page: create a pad (opens THE modal), insert variation A ---
     await page.goto(HOME_URL);
-    await page.waitForSelector('#home-new-pad', { timeout: 20000 });
-    await page.click('#home-new-pad');
+    await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]', { timeout: 20000 });
+    await page.click('.card-ghost[data-ghost="scratchpad"]');
     await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
     const hash = await page.evaluate(() => window.location.hash);
     padId = parseInt((hash.match(/scratchpad=(\d+)/) || [])[1], 10);

@@ -17,7 +17,7 @@ const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
   await cleanupTestNotes();
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
   const pm = page.locator('.spm-editor .ProseMirror');

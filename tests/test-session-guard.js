@@ -24,7 +24,7 @@ const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1
 
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
   const pm = page.locator('.spm-editor .ProseMirror');
@@ -79,7 +79,7 @@ const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1
 
   // Dismissing the modal ("not now") must also work: expire again, trip it,
   // dismiss, and confirm the link can re-open it.
-  await page.click('#home-new-pad');
+  await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
   await page.keyboard.type('second pad ');

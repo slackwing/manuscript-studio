@@ -64,7 +64,7 @@ func main() {
 		log.Fatalf("manuscript row not found for %s (%s, %s)", mc.Name, cloneURL, mc.Repository.Path)
 	}
 
-	repoDir := cfg.RepoPath(mc.Name)
+	repoDir := cfg.GitRemoteDir(mc.Name)
 
 	// Newest-first; reverse so we log in chronological order (cosmetic).
 	migs, err := db.GetMigrations(ctx, manuscript.ManuscriptID)

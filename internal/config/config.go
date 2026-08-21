@@ -21,12 +21,19 @@ import (
 const placeholderToken = "REPLACE_ME"
 
 type Config struct {
-	Version     string             `yaml:"version"`
-	Database    DatabaseConfig     `yaml:"database"`
-	Auth        AuthConfig         `yaml:"auth"`
-	Server      ServerConfig       `yaml:"server"`
-	Paths       PathsConfig        `yaml:"paths"`
-	Logging     LoggingConfig      `yaml:"logging"`
+	Version  string         `yaml:"version"`
+	Database DatabaseConfig `yaml:"database"`
+	Auth     AuthConfig     `yaml:"auth"`
+	Server   ServerConfig   `yaml:"server"`
+	Paths    PathsConfig    `yaml:"paths"`
+	Logging  LoggingConfig  `yaml:"logging"`
+	// GitRepos is the credential/topology registry (Phase 0,
+	// MANUSCRIPT_LIFECYCLE_PLAN). WHAT a manuscript is lives in the DB;
+	// config holds only what the operator must supply: how to reach repos.
+	GitRepos []GitRepoConfig `yaml:"git_repos"`
+	// Manuscripts is the LEGACY per-manuscript config. Still honored:
+	// Load() synthesizes a GitRepos entry per legacy manuscript, and
+	// startup reconciliation upserts the manuscript rows into the DB.
 	Manuscripts []ManuscriptConfig `yaml:"manuscripts"`
 	Migrations  MigrationConfig    `yaml:"migrations"`
 	RateLimits  RateLimitsConfig   `yaml:"rate_limits"`
@@ -108,6 +115,52 @@ type ManuscriptConfig struct {
 	Name          string           `yaml:"name"`
 	Repository    RepositoryConfig `yaml:"repository"`
 	WebhookSecret string           `yaml:"webhook_secret,omitempty"`
+}
+
+// GitRepoConfig is one entry in the git_repos registry: everything needed
+// to clone/fetch/push a repository, keyed by Name. Manuscript rows in the
+// DB reference entries via manuscript.git_repo_name.
+type GitRepoConfig struct {
+	Name          string `yaml:"name"`
+	Slug          string `yaml:"slug"`
+	UseSSH        bool   `yaml:"use_ssh"`
+	URL           string `yaml:"url"` // optional override; wins over slug+use_ssh
+	AuthToken     string `yaml:"auth_token"`
+	WebhookSecret string `yaml:"webhook_secret,omitempty"`
+}
+
+// CloneURL precedence: explicit URL > slug+use_ssh > empty (config error).
+func (g GitRepoConfig) CloneURL() string {
+	return RepositoryConfig{Slug: g.Slug, UseSSH: g.UseSSH, URL: g.URL}.CloneURL()
+}
+
+// GetGitRepo returns the registry entry by name, nil when absent.
+func (c *Config) GetGitRepo(name string) *GitRepoConfig {
+	for i := range c.GitRepos {
+		if c.GitRepos[i].Name == name {
+			return &c.GitRepos[i]
+		}
+	}
+	return nil
+}
+
+// synthesizeLegacyGitRepos maps each legacy manuscripts: entry to a
+// git_repos entry of the same name (skipping names the registry already
+// defines, so an explicit git_repos entry wins). Called from Load().
+func (c *Config) synthesizeLegacyGitRepos() {
+	for _, m := range c.Manuscripts {
+		if c.GetGitRepo(m.Name) != nil {
+			continue
+		}
+		c.GitRepos = append(c.GitRepos, GitRepoConfig{
+			Name:          m.Name,
+			Slug:          m.Repository.Slug,
+			UseSSH:        m.Repository.UseSSH,
+			URL:           m.Repository.URL,
+			AuthToken:     m.Repository.AuthToken,
+			WebhookSecret: m.WebhookSecret,
+		})
+	}
 }
 
 // RepositoryConfig: clone URL is derived from slug+use_ssh unless `url` is
@@ -217,6 +270,10 @@ func Load() (*Config, error) {
 	for i := range config.Manuscripts {
 		config.Manuscripts[i].Repository.URL = expandPath(config.Manuscripts[i].Repository.URL)
 	}
+	for i := range config.GitRepos {
+		config.GitRepos[i].URL = expandPath(config.GitRepos[i].URL)
+	}
+	config.synthesizeLegacyGitRepos()
 
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config in %s: %w", configPath, err)
@@ -269,6 +326,11 @@ func (c *Config) Validate() error {
 	for i, m := range c.Manuscripts {
 		if strings.Contains(m.Repository.AuthToken, placeholderToken) {
 			return fmt.Errorf("manuscripts[%d].repository.auth_token still contains the placeholder token %q", i, placeholderToken)
+		}
+	}
+	for i, g := range c.GitRepos {
+		if strings.Contains(g.AuthToken, placeholderToken) {
+			return fmt.Errorf("git_repos[%d].auth_token still contains the placeholder token %q", i, placeholderToken)
 		}
 	}
 
@@ -328,32 +390,85 @@ func (c *Config) ReposDir() string {
 	return "/repos"
 }
 
-// RepoPath is ReposDir/<name>, guaranteed inside ReposDir (see ValidateManuscriptPaths).
-func (c *Config) RepoPath(manuscriptName string) string {
-	return filepath.Join(c.ReposDir(), manuscriptName)
+// Checkout layout under ReposDir (git_repo layout decision, LIFECYCLE plan):
+//   git/remote/<git_repo_name>  clones of external repos
+//   git/local/<manuscript name> server-owned local-mode repos
+// The flat legacy layout (ReposDir/<name>) is migrated at startup by
+// MigrateReposLayout.
+
+// GitRemoteDir is where the clone of registry entry `gitRepoName` lives.
+func (c *Config) GitRemoteDir(gitRepoName string) string {
+	return filepath.Join(c.ReposDir(), "git", "remote", gitRepoName)
 }
 
-// ValidateManuscriptPaths defends against a manuscript name like "../../etc"
-// that would let MkdirAll escape ReposDir.
-func (c *Config) ValidateManuscriptPaths() error {
+// GitLocalDir is where a local-mode manuscript's repo lives.
+func (c *Config) GitLocalDir(manuscriptName string) string {
+	return filepath.Join(c.ReposDir(), "git", "local", manuscriptName)
+}
+
+// validateRepoDirName requires a repo/manuscript name to be a single clean
+// path segment — the defense against "../..", "a/b", or absolute paths
+// escaping the git/ layout via MkdirAll. (The nested git/remote|local layout
+// means a partial ../ traversal could stay inside ReposDir yet land outside
+// its own subtree, so prefix checks alone aren't enough.)
+func validateRepoDirName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name is empty")
+	}
+	if strings.ContainsAny(name, `/\`) || name == "." || name == ".." || filepath.Clean(name) != name {
+		return fmt.Errorf("name %q must be a plain directory name (no separators or traversal)", name)
+	}
+	return nil
+}
+
+// insideReposDir reports whether path resolves inside ReposDir — the
+// defense against names like "../../etc" escaping via MkdirAll.
+func (c *Config) insideReposDir(path string) error {
 	root, err := filepath.Abs(c.ReposDir())
 	if err != nil {
 		return fmt.Errorf("cannot resolve repos_dir %q: %w", c.ReposDir(), err)
 	}
 	rootSlash := filepath.Clean(root) + string(os.PathSeparator)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("cannot resolve repo path %q: %w", path, err)
+	}
+	clean := filepath.Clean(abs) + string(os.PathSeparator)
+	if !strings.HasPrefix(clean, rootSlash) {
+		return fmt.Errorf("repo path %q escapes repos_dir %q", abs, root)
+	}
+	return nil
+}
 
+// ValidateManuscriptPaths checks every configured repo name against
+// path-escape. (Manuscript names created via the API are validated at the
+// API boundary with the same helper.)
+func (c *Config) ValidateManuscriptPaths() error {
 	for i, m := range c.Manuscripts {
 		if m.Name == "" {
 			return fmt.Errorf("manuscripts[%d].name is empty", i)
 		}
-		abs, err := filepath.Abs(c.RepoPath(m.Name))
-		if err != nil {
-			return fmt.Errorf("manuscripts[%d] (%s): cannot resolve repo path: %w", i, m.Name, err)
+		if err := validateRepoDirName(m.Name); err != nil {
+			return fmt.Errorf("manuscripts[%d]: %w", i, err)
 		}
-		clean := filepath.Clean(abs) + string(os.PathSeparator)
-		if !strings.HasPrefix(clean, rootSlash) {
-			return fmt.Errorf("manuscripts[%d] (%s): repo path %q escapes repos_dir %q", i, m.Name, abs, root)
+	}
+	for i, g := range c.GitRepos {
+		if g.Name == "" {
+			return fmt.Errorf("git_repos[%d].name is empty", i)
+		}
+		if err := validateRepoDirName(g.Name); err != nil {
+			return fmt.Errorf("git_repos[%d]: %w", i, err)
 		}
 	}
 	return nil
+}
+
+// ValidateLocalName is the API-boundary check for a manuscript name that
+// will become a git/local directory: a plain segment that resolves inside
+// ReposDir.
+func (c *Config) ValidateLocalName(name string) error {
+	if err := validateRepoDirName(name); err != nil {
+		return err
+	}
+	return c.insideReposDir(c.GitLocalDir(name))
 }

@@ -44,21 +44,6 @@ body.home-page {
   text-decoration: none;
 }
 .home-seeall:hover { text-decoration: underline; }
-/* Minimal circular + (sits right of the count). */
-.home-new {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1px solid #2a6fb0;
-  background: #fff;
-  color: #2a6fb0;
-  font: 600 15px/19px "Helvetica", sans-serif;
-  text-align: center;
-  padding: 0;
-  cursor: pointer;
-  align-self: center;
-}
-.home-new:hover { background: #2a6fb0; color: #fff; }
 
 .card-grid {
   display: grid;
@@ -488,3 +473,40 @@ body.home-page {
 .tag-suggest-row:hover, .tag-suggest-row.active { background: #eef4fb; }
 .tag-suggest-n { color: #a39d90; }
 
+
+/* Ghost creation card (MANUSCRIPT_LIFECYCLE_PLAN §1): faint outline + big
+   centered plus; hover "lights it up" and reveals the label. Shared by the
+   manuscript and scratchpad grids (data-ghost distinguishes handlers). */
+.card-ghost {
+  background: transparent;
+  border: 2px dashed #d5d1c4;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #b3ac9c;
+  font: inherit;
+}
+.card-ghost .ghost-plus {
+  font: 300 44px/1 "Helvetica", sans-serif;
+  transition: color 120ms ease;
+}
+.card-ghost .ghost-label {
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.card-ghost:hover, .card-ghost:focus-visible {
+  border-color: #2a6fb0;
+  color: #2a6fb0;
+  background: rgba(42, 111, 176, 0.04);
+}
+.card-ghost:hover .ghost-label, .card-ghost:focus-visible .ghost-label { opacity: 1; }
+
+/* Card gear (beside "daily tasks"): quiet until hovered. */
+.ms-gear {
+  display: inline-flex;
+  color: #b3ac9c;
+  vertical-align: -1px;
+  margin-left: 8px;
+}
+.ms-gear:hover { color: #2a6fb0; }

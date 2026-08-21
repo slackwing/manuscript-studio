@@ -1,7 +1,8 @@
 /**
  * Statistics pane (STATS_PLAN) — the outline's tab-switched sibling in the
- * left band. Shows birthday (editable), word goal (editable), average
- * words/day since birthday, and a mini progress graph:
+ * left band. Shows birthday, word goal (both read-only here — edited via
+ * the manuscript settings modal), average words/day since birthday, and a
+ * mini progress graph:
  *
  *   black dotted — assumed ramp from (birthday, 0) to the first cron row
  *   black solid  — actual daily totals (wordcount_history: effective+sketches)
@@ -43,6 +44,10 @@ const WriteSysStats = {
       clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => { if (this.pane === 'stats') this.render(); }, 150);
     }, { passive: true });
+
+    // Birthday/word-goal edits now happen in the settings modal
+    // (MANUSCRIPT_LIFECYCLE_PLAN §4) — refresh when it saves.
+    window.addEventListener('manuscript-modal-saved', () => this.load());
 
     this.setPane(localStorage.getItem('ms_pane') === 'stats' ? 'stats' : 'outline');
     this.load();
@@ -129,9 +134,11 @@ const WriteSysStats = {
       this.el.innerHTML = '<div class="stats-pane"><div class="stats-empty">Statistics unavailable.</div></div>';
       return;
     }
+    // Read-only since the settings modal took over editing
+    // (MANUSCRIPT_LIFECYCLE_PLAN §4) — values still display here.
     const birthdayVal = m.birthT != null
-      ? `<span class="stats-row-value stats-editable" id="stats-birthday" title="Click to edit">${this.fmtDayLong(m.birthT)}</span>`
-      : `<span class="stats-row-value stats-editable stats-unset" id="stats-birthday" title="Click to set">set birthday</span>`;
+      ? `<span class="stats-row-value" id="stats-birthday">${this.fmtDayLong(m.birthT)}</span>`
+      : `<span class="stats-row-value stats-unset" id="stats-birthday" title="Set it via the ⚙ settings">not set</span>`;
     const haveRates = m.birthT != null && m.current != null;
     const rate = (r) => haveRates
       ? `${this.fmtNum(r)} <span class="stats-row-unit">words/day</span>`
@@ -139,7 +146,7 @@ const WriteSysStats = {
     const rowsHTML =
       `<div class="stats-row"><span class="stats-row-label">BIRTHDAY</span>${birthdayVal}</div>` +
       `<div class="stats-row"><span class="stats-row-label">WORD GOAL</span>` +
-        `<span class="stats-row-value stats-editable" id="stats-goal" title="Click to edit">${this.fmtNum(m.goal)}</span></div>` +
+        `<span class="stats-row-value" id="stats-goal">${this.fmtNum(m.goal)}</span></div>` +
       `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value">${rate(m.avgRate)}</span></div>` +
       `<div class="stats-row"><span class="stats-row-label">PAST 30D</span><span class="stats-row-value">${rate(m.trendRate)}</span></div>` +
       // The pace that finishes the goal one year from now.
@@ -158,7 +165,6 @@ const WriteSysStats = {
     }
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}</div>`;
-    this.wireEditors(m);
     this.wireHover();
   },
 
@@ -284,78 +290,6 @@ const WriteSysStats = {
       hit.addEventListener('click', (e) => { e.stopPropagation(); show(hit.dataset.series); });
     });
     svg.addEventListener('click', hideAll);
-  },
-
-  // ---- inline editors -------------------------------------------------
-  wireEditors(m) {
-    const goalEl = this.el.querySelector('#stats-goal');
-    if (goalEl) goalEl.addEventListener('click', () => this.editField(goalEl, {
-      type: 'number',
-      value: m.goal,
-      attrs: 'min="1" step="1000"',
-      parse: (v) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? { word_goal: n } : null; },
-    }));
-    const bdayEl = this.el.querySelector('#stats-birthday');
-    if (bdayEl) bdayEl.addEventListener('click', () => this.editField(bdayEl, {
-      type: 'date',
-      value: m.birthT != null ? new Date(m.birthT).toISOString().slice(0, 10) : '',
-      attrs: '',
-      parse: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) ? { birthday: v } : null,
-    }));
-  },
-
-  editField(span, spec) {
-    if (span._editing) return;
-    span._editing = true;
-    const input = document.createElement('input');
-    input.className = 'stats-edit-input';
-    input.type = spec.type;
-    input.value = spec.value;
-    (spec.attrs.match(/(\w+)="([^"]*)"/g) || []).forEach(a => {
-      const [, k, v] = a.match(/(\w+)="([^"]*)"/);
-      input.setAttribute(k, v);
-    });
-    span.replaceWith(input);
-    input.focus();
-    if (spec.type === 'number') input.select();
-    let done = false;
-    const finish = async (commit) => {
-      if (done) return;
-      done = true;
-      const patch = commit ? spec.parse(input.value) : null;
-      if (patch && String(input.value) !== String(spec.value)) {
-        await this.patchMeta(patch);
-      } else {
-        this.render(); // restore the span
-      }
-    };
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') finish(true);
-      else if (e.key === 'Escape') finish(false);
-    });
-    input.addEventListener('blur', () => finish(true));
-  },
-
-  async patchMeta(patch) {
-    try {
-      const res = await authenticatedFetch(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/meta`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': sessionStorage.getItem('csrf_token') || localStorage.getItem('csrf_token') || '',
-        },
-        body: JSON.stringify(patch),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const meta = await res.json();
-      if (this.data) {
-        this.data.birthday = meta.birthday;
-        this.data.word_goal = meta.word_goal;
-      }
-    } catch (e) {
-      console.error('stats: failed to update manuscript meta', e);
-    }
-    this.render();
   },
 };
 

@@ -31,9 +31,33 @@ paths:
   repos_dir: "/repos"
 
 # ============================================================
-# Manuscript Definitions
+# Git Repository Registry (registry-to-DB, changeset 037)
 # ============================================================
-# You can define multiple manuscripts here.
+# Since the registry-to-DB refactor, WHAT a manuscript is lives in the
+# database (created via the UI or reconciled from the legacy manuscripts:
+# section below). Config keeps only what the operator must supply: how to
+# reach external repos (credentials/topology).
+#
+#   git_repos:
+#     - name: "my-book-repo"        # key referenced by manuscript rows
+#       slug: "yourusername/repo"   # canonical owner/repo (webhook matching)
+#       use_ssh: false
+#       auth_token: ""              # PAT for private HTTPS repos
+#       # url: ""                   # escape hatch: non-GitHub / local path
+#       # webhook_secret: ""        # per-repo override of auth.webhook_secret
+#
+# LOCAL-mode manuscripts (created from the UI) need no entry here at all —
+# their repos live under <repos_dir>/git/local/<name>, owned by the server.
+# ⚠ BACK UP <repos_dir>/git/local/ — those repos exist nowhere else.
+git_repos: []
+
+# ============================================================
+# Manuscript Definitions (LEGACY — still honored)
+# ============================================================
+# Each entry is upserted into the manuscript table at startup and a
+# git_repos entry of the same name is synthesized from its repository:
+# block. New setups can define git_repos above and create manuscripts from
+# the UI instead.
 manuscripts:
   - name: "example-book"  # Internal identifier (URL-safe)
 

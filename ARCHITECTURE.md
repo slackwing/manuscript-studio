@@ -98,7 +98,17 @@ test-all.sh          Test runner with fast/slow/all/js-only modes
 - **`manuscript_access`** — many-to-many grant of which users see which
   manuscripts. Login requires both valid password AND a row here.
 - **`manuscript`** — one row per tracked repo+file. `manuscript_id` is the
-  stable handle the UI passes around.
+  stable handle the UI passes around. Since changeset 037 the row IS the
+  manuscript registry (MANUSCRIPT_LIFECYCLE_PLAN Phase 0): `name` (unique
+  slug), `storage` (`github` = synced clone of an external repo; `local` =
+  server-owned repo under `<repos_dir>/git/local/<name>`, committed to
+  directly by the Commit button), `git_repo_name` (key into config's
+  `git_repos` credential registry), `git_branch`, and `git_repo_path`
+  (the clone URL — renamed from `repo_path`, which never held a filesystem
+  path despite the name; `local:<name>` sentinel for local rows). Config's
+  legacy `manuscripts:` entries are reconciled into rows at startup;
+  checkouts live under `<repos_dir>/git/remote/<git_repo_name>`.
+  ⚠ `git/local/` repos exist nowhere else — back them up.
 - **`migration`** — one row per (`manuscript_id`, `commit_hash`,
   `segmenter`). Captures the state of segmentation at that commit: count of
   sentences and a JSONB `sentence_id_array` listing their ordering. A

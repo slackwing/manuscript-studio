@@ -68,10 +68,10 @@ function psql(sql) {
 }
 
 // The manuscript_id is per-worker and assigned by the DB at bootstrap, so
-// it's resolved from repo_path (unique per fixture) instead of hardcoded.
+// it's resolved from git_repo_path (unique per fixture) instead of hardcoded.
 function resolveManuscriptId() {
   try {
-    const out = psql(`SELECT manuscript_id FROM manuscript WHERE repo_path LIKE '%repos/${TEST_MANUSCRIPT_NAME}' ORDER BY manuscript_id LIMIT 1;`);
+    const out = psql(`SELECT manuscript_id FROM manuscript WHERE git_repo_path LIKE '%repos/${TEST_MANUSCRIPT_NAME}' ORDER BY manuscript_id LIMIT 1;`);
     const m = out.match(/^\s*(\d+)\s*$/m);
     if (m) return parseInt(m[1], 10);
   } catch (e) { /* fresh DB — resetTestManuscript will create it */ }
@@ -284,6 +284,7 @@ module.exports = {
   SYSTEM_TOKEN,
   WORKER,
   cleanupTestNotes,
+  psql,
   // Back-compat alias while individual test files migrate to cleanupTestNotes.
   cleanupTestAnnotations: cleanupTestNotes,
   resetTestManuscript,

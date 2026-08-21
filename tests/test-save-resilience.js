@@ -24,7 +24,7 @@ const psql = (sql) => execSync(
 
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
   await page.locator('.spm-editor .ProseMirror').click();
   const variationId = await page.evaluate(async () => {
@@ -73,7 +73,7 @@ const psql = (sql) => execSync(
   await page.unroute('**/api/variations/*');
   const padId = await page.evaluate(() => window.WriteSysScratchpad.scratchpadId);
   await page.reload();
-  await page.waitForSelector('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
   await page.evaluate((id) => window.WriteSysScratchpadModal.open(id), padId);
   await page.waitForSelector('.sn-widget .sn-render', { timeout: 15000 });
   await page.waitForTimeout(500);

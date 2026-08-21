@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -36,6 +38,9 @@ type SuggestionHandlers struct {
 	DB           *database.DB
 	SessionStore *auth.SessionStore
 	Config       *config.Config
+	// Admin provides enqueueMigration for the local-mode commit path
+	// (commit + migrate in one request — no webhook exists locally).
+	Admin *AdminHandlers
 }
 
 type upsertSuggestionRequest struct {
@@ -223,6 +228,9 @@ type pushSuggestionsResponse struct {
 	Applied    int                              `json:"applied"`
 	Skipped    int                              `json:"skipped"`
 	Results    []sentence.SuggestionApplyResult `json:"results"`
+	// MigrationID is set on local-mode commits (the migration enqueued in
+	// the same request); zero for github-mode pushes.
+	MigrationID int `json:"migration_id,omitempty"`
 }
 
 // Branch component sanitizer: the username appears in a ref name, so anything
@@ -274,21 +282,25 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 		http.Error(w, "Manuscript not found", http.StatusNotFound)
 		return
 	}
-	mc := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
-	if mc == nil {
+	gitRepo, err := gitRepoForManuscript(h.Config, manuscript)
+	if err != nil {
 		http.Error(w, "Manuscript not configured on this server", http.StatusNotImplemented)
 		return
 	}
 
-	branch := canonicalSuggestionsBranch(migration.CommitHash, session.Username)
-
-	gitRepo := &migrations.GitRepository{
-		Path:      h.Config.RepoPath(mc.Name),
-		Branch:    mc.Repository.Branch,
-		RemoteURL: mc.Repository.CloneURL(),
-		FilePath:  mc.Repository.Path,
-		AuthToken: mc.Repository.AuthToken,
+	// Local mode has no PR branches: the button is always plain "Commit".
+	if manuscript.Storage == models.StorageLocal {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"storage":       models.StorageLocal,
+			"branch":        manuscript.Branch(),
+			"branch_exists": true,
+			"compare_url":   "",
+		})
+		return
 	}
+
+	branch := canonicalSuggestionsBranch(migration.CommitHash, session.Username)
 	exists, err := gitRepo.LocalBranchExists(ctx, branch)
 	if err != nil {
 		log.Printf("suggestions: check branch %s: %v", branch, err)
@@ -296,17 +308,26 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	compareURL := ""
-	if mc.Repository.Slug != "" {
-		compareURL = fmt.Sprintf("https://github.com/%s/compare/%s", mc.Repository.Slug, branch)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"storage":       models.StorageGitHub,
 		"branch":        branch,
 		"branch_exists": exists,
-		"compare_url":   compareURL,
+		"compare_url":   h.compareURLFor(manuscript, branch),
 	})
+}
+
+// compareURLFor builds the GitHub compare link for a pushed branch; empty
+// when the manuscript's registry entry has no slug (or is local).
+func (h *SuggestionHandlers) compareURLFor(m *models.Manuscript, branch string) string {
+	if m.Storage == models.StorageLocal {
+		return ""
+	}
+	rc := h.Config.GetGitRepo(m.GitRepoName)
+	if rc == nil || rc.Slug == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://github.com/%s/compare/%s", rc.Slug, branch)
 }
 
 // HandlePushSuggestions pushes the calling user's unmerged suggestions for the
@@ -375,8 +396,8 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		http.Error(w, "Manuscript not found", http.StatusNotFound)
 		return
 	}
-	mc := h.findManuscriptConfig(manuscript.RepoPath, manuscript.FilePath)
-	if mc == nil {
+	gitRepo, err := gitRepoForManuscript(h.Config, manuscript)
+	if err != nil {
 		http.Error(w, "Manuscript not configured on this server", http.StatusNotImplemented)
 		return
 	}
@@ -437,16 +458,16 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 
 	newContent := []byte(sentence.RebuildManuscript(orderedIDs, committedByID, suggestionByID))
 
-	gitRepo := &migrations.GitRepository{
-		Path:      h.Config.RepoPath(mc.Name),
-		Branch:    mc.Repository.Branch,
-		RemoteURL: mc.Repository.CloneURL(),
-		FilePath:  mc.Repository.Path,
-		AuthToken: mc.Repository.AuthToken,
+	files := map[string][]byte{
+		manuscript.FilePath: newContent,
 	}
 
-	files := map[string][]byte{
-		mc.Repository.Path: newContent,
+	// Local mode: commit straight onto the tracked branch and migrate —
+	// there is no origin, no PR, no .segman sibling (its only purpose is
+	// sentence-granular PR diffs). See MANUSCRIPT_LIFECYCLE_PLAN §3.
+	if manuscript.Storage == models.StorageLocal {
+		h.commitLocalSuggestions(ctx, w, manuscript, gitRepo, latest, files, applied, skipped, results, session.Username)
+		return
 	}
 
 	// Sentence-per-line companion file (see github.com/slackwing/segman
@@ -454,7 +475,7 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	// their repo at the base commit — that's the "they opted in to this
 	// format" signal. We don't presume to create it for repos that don't
 	// already use it.
-	segmanPath := segmanSiblingPath(mc.Repository.Path)
+	segmanPath := segmanSiblingPath(manuscript.FilePath)
 	hasSegman, err := gitRepo.PathExistsAtCommit(ctx, latest.CommitHash, segmanPath)
 	if err != nil {
 		log.Printf("suggestions: probe segman sibling %s: %v", segmanPath, err)
@@ -488,19 +509,74 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	compareURL := ""
-	if mc.Repository.Slug != "" {
-		compareURL = fmt.Sprintf("https://github.com/%s/compare/%s", mc.Repository.Slug, branch)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pushSuggestionsResponse{
 		Branch:     branch,
-		CompareURL: compareURL,
+		CompareURL: h.compareURLFor(manuscript, branch),
 		CommitSHA:  commitSHA,
 		Applied:    applied,
 		Skipped:    skipped,
 		Results:    results,
+	})
+}
+
+// commitLocalSuggestions is the local-mode tail of HandlePushSuggestions:
+// commit the rebuilt manuscript onto the tracked branch, then enqueue the
+// migration that would normally arrive via webhook. Holds the same lock as
+// the migration goroutines so a base-vs-HEAD race can't drop a commit.
+func (h *SuggestionHandlers) commitLocalSuggestions(
+	ctx context.Context, w http.ResponseWriter,
+	manuscript *models.Manuscript, gitRepo *migrations.GitRepository,
+	latest *models.Migration, files map[string][]byte,
+	applied, skipped int, results []sentence.SuggestionApplyResult, username string,
+) {
+	unlock := lockMigrationPath(gitRepo.Path)
+	head, err := gitRepo.GetLatestCommitHash(ctx)
+	if err != nil {
+		unlock()
+		log.Printf("suggestions: local HEAD %s: %v", manuscript.Name, err)
+		http.Error(w, "Failed to read local repo", http.StatusInternalServerError)
+		return
+	}
+	// The stale-migration guard already ran, but a commit whose migration
+	// hasn't completed yet wouldn't trip it — compare against the actual
+	// branch head so a second commit can't base on a superseded state.
+	if head != latest.CommitHash {
+		unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "stale",
+			"hint":  "a commit is still migrating — please refresh",
+		})
+		return
+	}
+
+	message := fmt.Sprintf("Apply %d suggested edit(s) from %s", applied, username)
+	authorEmail := fmt.Sprintf("%s@manuscript-studio.local", sanitizeBranchComponent(username))
+	commitSHA, err := gitRepo.WriteCommitPushBranch(ctx, latest.CommitHash, manuscript.Branch(), files, message, false, username, authorEmail)
+	unlock()
+	if err != nil {
+		log.Printf("suggestions: local commit %s: %v", manuscript.Name, err)
+		http.Error(w, "Failed to commit", http.StatusInternalServerError)
+		return
+	}
+
+	migrationID, err := h.Admin.enqueueMigration(ctx, manuscript, commitSHA)
+	if err != nil && !errors.Is(err, database.ErrMigrationInProgress) {
+		// The commit landed; the migration can be retried via sync. Surface
+		// the partial state honestly.
+		log.Printf("suggestions: local commit %s migrated=false: %v", manuscript.Name, err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pushSuggestionsResponse{
+		Branch:      manuscript.Branch(),
+		CommitSHA:   commitSHA,
+		Applied:     applied,
+		Skipped:     skipped,
+		Results:     results,
+		MigrationID: migrationID,
 	})
 }
 
@@ -515,11 +591,3 @@ func canonicalSuggestionsBranch(commitHash, username string) string {
 	return fmt.Sprintf("suggestions-%s-%s", commitShort, sanitizeBranchComponent(username))
 }
 
-func (h *SuggestionHandlers) findManuscriptConfig(repoURL, filePath string) *config.ManuscriptConfig {
-	for i, m := range h.Config.Manuscripts {
-		if m.Repository.CloneURL() == repoURL && m.Repository.Path == filePath {
-			return &h.Config.Manuscripts[i]
-		}
-	}
-	return nil
-}

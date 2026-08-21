@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/slackwing/manuscript-studio/internal/config"
+	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
 // An empty configured token must never authorize, even when the request also
@@ -76,20 +77,16 @@ func TestValidateGitHubSignature_RejectsEmptySignature(t *testing.T) {
 
 // Motivating case: config has SSH `url`, GitHub sends HTTPS `clone_url` —
 // slug-based matching is the only thing that makes that work.
-func TestMatchManuscriptForWebhook(t *testing.T) {
-	manuscripts := []config.ManuscriptConfig{
+func TestMatchGitRepoForWebhook(t *testing.T) {
+	repos := []config.GitRepoConfig{
 		{
 			Name: "ssh-repo",
-			Repository: config.RepositoryConfig{
-				Slug: "alice/ssh-repo",
-				URL:  "git@github.com:alice/ssh-repo.git",
-			},
+			Slug: "alice/ssh-repo",
+			URL:  "git@github.com:alice/ssh-repo.git",
 		},
 		{
 			Name: "https-only",
-			Repository: config.RepositoryConfig{
-				URL: "https://github.com/bob/https-only.git",
-			},
+			URL:  "https://github.com/bob/https-only.git",
 		},
 	}
 
@@ -133,7 +130,7 @@ func TestMatchManuscriptForWebhook(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := matchManuscriptForWebhook(manuscripts, tc.fullName, tc.cloneURL)
+			got := matchGitRepoForWebhook(repos, tc.fullName, tc.cloneURL)
 			if tc.wantName == "" {
 				if got != nil {
 					t.Fatalf("expected no match, got %q", got.Name)
@@ -150,68 +147,76 @@ func TestMatchManuscriptForWebhook(t *testing.T) {
 	}
 }
 
-// Webhook ignores pushes to any branch other than the configured one.
-// Critical because the upcoming push-to-PR feature creates suggestions-*
-// branches that GitHub will fire push webhooks for; without the filter,
-// every PR branch would trigger a migration of the wrong commit as if
-// it were the canonical history.
-func TestHandleWebhook_IgnoresNonTrackedBranch(t *testing.T) {
-	const secret = "test-secret"
-	h := &AdminHandlers{
-		Config: &config.Config{
-			Auth: config.AuthConfig{WebhookSecret: secret},
-			Manuscripts: []config.ManuscriptConfig{{
-				Name: "wf",
-				Repository: config.RepositoryConfig{
-					Slug:   "owner/wf",
-					Branch: "main",
-					Path:   "manuscript.md",
-				},
-			}},
-		},
+// Webhook pushes to any branch other than a manuscript's tracked branch are
+// filtered out. Critical because the push-to-PR feature creates
+// suggestions-* branches that GitHub fires push webhooks for; without the
+// filter, every PR branch would trigger a migration of the wrong commit as
+// if it were the canonical history. (Pure-filter test since the handler's
+// DB fan-out is covered by the integration suite.)
+func TestWebhookTargets(t *testing.T) {
+	rows := []*models.Manuscript{
+		{ManuscriptID: 1, Name: "wf", GitBranch: "main", FilePath: "manuscript.md"},
+		{ManuscriptID: 2, Name: "defaulted", FilePath: "other.manuscript"}, // empty branch → "main"
 	}
+	modified := map[string]bool{"manuscript.md": true, "other.manuscript": true}
 
 	cases := []struct {
-		name       string
-		ref        string
-		wantStatus int
-		wantBody   string
+		name    string
+		ref     string
+		mod     map[string]bool
+		wantIDs []int
 	}{
-		{"push to main matches → not ignored on branch grounds",
-			"refs/heads/main", http.StatusOK, "non-tracked"},
-		{"push to feature branch is ignored",
-			"refs/heads/suggestions-abc-test", http.StatusOK, "non-tracked"},
+		{"push to main matches both (empty git_branch defaults to main)",
+			"refs/heads/main", modified, []int{1, 2}},
+		{"push to suggestions PR branch is ignored",
+			"refs/heads/suggestions-abc-test", modified, nil},
 		{"push to a tag is ignored",
-			"refs/tags/v1.0", http.StatusOK, "non-tracked"},
+			"refs/tags/v1.0", modified, nil},
+		{"tracked branch but file untouched is ignored",
+			"refs/heads/main", map[string]bool{"unrelated.txt": true}, nil},
+		{"only the touched manuscript migrates",
+			"refs/heads/main", map[string]bool{"other.manuscript": true}, []int{2}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := `{"ref":"` + tc.ref + `","repository":{"name":"wf","full_name":"owner/wf","clone_url":"https://github.com/owner/wf.git"},"commits":[],"head_commit":{"id":"deadbeef"}}`
-			mac := hmac.New(sha256.New, []byte(secret))
-			mac.Write([]byte(body))
-			sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-
-			req := httptest.NewRequest(http.MethodPost, "/api/admin/webhook", strings.NewReader(body))
-			req.Header.Set("X-Hub-Signature-256", sig)
-			rec := httptest.NewRecorder()
-
-			h.HandleWebhook(rec, req)
-
-			if rec.Code != tc.wantStatus {
-				t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+			got := webhookTargets(rows, tc.ref, tc.mod)
+			var ids []int
+			for _, m := range got {
+				ids = append(ids, m.ManuscriptID)
 			}
-			// "main" case should pass the branch check; the fact that no commits
-			// modify the manuscript path means the next gate ignores it as
-			// "manuscript not modified" — but NOT as "non-tracked branch".
-			isMainCase := tc.ref == "refs/heads/main"
-			gotNonTracked := strings.Contains(rec.Body.String(), "non-tracked")
-			if isMainCase && gotNonTracked {
-				t.Fatalf("main branch should not be filtered as non-tracked: %s", rec.Body.String())
+			if len(ids) != len(tc.wantIDs) {
+				t.Fatalf("got %v want %v", ids, tc.wantIDs)
 			}
-			if !isMainCase && !gotNonTracked {
-				t.Fatalf("non-main branch should be filtered as non-tracked: %s", rec.Body.String())
+			for i := range ids {
+				if ids[i] != tc.wantIDs[i] {
+					t.Fatalf("got %v want %v", ids, tc.wantIDs)
+				}
 			}
 		})
+	}
+}
+
+// HTTP-level: a signed webhook for a repo not in the git_repos registry is
+// acknowledged-but-ignored before any DB access.
+func TestHandleWebhook_UnknownRepositoryIgnored(t *testing.T) {
+	const secret = "test-secret"
+	h := &AdminHandlers{Config: &config.Config{
+		Auth:     config.AuthConfig{WebhookSecret: secret},
+		GitRepos: []config.GitRepoConfig{{Name: "wf", Slug: "owner/wf"}},
+	}}
+
+	body := `{"ref":"refs/heads/main","repository":{"name":"nope","full_name":"stranger/nope","clone_url":"https://github.com/stranger/nope.git"},"commits":[],"head_commit":{"id":"deadbeef"}}`
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(body))
+	sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/webhook", strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", sig)
+	rec := httptest.NewRecorder()
+	h.HandleWebhook(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "not configured") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }

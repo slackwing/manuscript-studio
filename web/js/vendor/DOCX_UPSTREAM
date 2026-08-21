@@ -1,0 +1,15 @@
+Vendored browser libs for docx import (MANUSCRIPT_LIFECYCLE_PLAN §6).
+
+mammoth.browser.min.js
+  source: https://unpkg.com/mammoth@1.11.0/mammoth.browser.min.js
+  version: 1.11.0
+  vendored: 2026-08-21
+  purpose: .docx → semantic HTML, in-browser (no server docx handling)
+
+turndown.js
+  source: https://unpkg.com/turndown@7.2.1/dist/turndown.js
+  version: 7.2.1
+  vendored: 2026-08-21
+  purpose: HTML → markdown, feeding the .manuscript normalizer
+
+DO NOT EDIT — re-vendor from the URLs above (AGENTS.md N8 applies).

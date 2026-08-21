@@ -55,11 +55,11 @@ echo ""
 # ---------- Step 1: Pick a manuscript ----------
 
 manuscripts=$(psql_q "
-    SELECT m.manuscript_id, m.repo_path, m.file_path, COUNT(mig.migration_id)
+    SELECT m.manuscript_id, m.git_repo_path, m.file_path, COUNT(mig.migration_id)
     FROM manuscript m
     LEFT JOIN migration mig ON mig.manuscript_id = m.manuscript_id
-    WHERE m.repo_path <> ''
-    GROUP BY m.manuscript_id, m.repo_path, m.file_path
+    WHERE m.git_repo_path <> ''
+    GROUP BY m.manuscript_id, m.git_repo_path, m.file_path
     HAVING COUNT(mig.migration_id) > 0
     ORDER BY m.manuscript_id
 ")
@@ -67,9 +67,9 @@ manuscripts=$(psql_q "
 if [[ -z "$manuscripts" ]]; then
     echo "No manuscripts with migrations found. Nothing to do."
     echo ""
-    echo "(Manuscript rows with empty repo_path are filtered out — those are"
+    echo "(Manuscript rows with empty git_repo_path are filtered out — those are"
     echo " orphans from past bugs. Use psql to clean them up if needed:"
-    echo "   DELETE FROM manuscript WHERE repo_path = '';)"
+    echo "   DELETE FROM manuscript WHERE git_repo_path = '';)"
     exit 0
 fi
 
@@ -238,7 +238,7 @@ echo ""
 echo "  This CANNOT be undone."
 echo ""
 
-# Confirm by typing the manuscript repo_path basename — easy to copy/paste,
+# Confirm by typing the manuscript git_repo_path basename — easy to copy/paste,
 # hard to type by accident.
 expected_token=$(basename "${m_repos[$pick]}")
 read -rp "Type '$expected_token' to confirm: " typed

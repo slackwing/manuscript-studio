@@ -43,5 +43,6 @@
     <include file="changelog/034-placement.xml"/>
     <include file="changelog/035-daily-rules.xml"/>
     <include file="changelog/036-no-snapshot.xml"/>
+    <include file="changelog/037-manuscript-registry.xml"/>
 
 </databaseChangeLog>

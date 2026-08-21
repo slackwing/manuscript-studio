@@ -20,6 +20,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/migrations"
+	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
 // migrationTimeout caps a single migration goroutine before it's aborted
@@ -51,6 +52,22 @@ type GitHubWebhookPayload struct {
 	} `json:"head_commit"`
 }
 
+// modifiedPaths collects every path some commit Modified or Added. Removed
+// paths deliberately don't count — deleting the manuscript file must not
+// trigger a migration of its absence.
+func (p *GitHubWebhookPayload) modifiedPaths() map[string]bool {
+	modified := make(map[string]bool)
+	for _, commit := range p.Commits {
+		for _, file := range commit.Modified {
+			modified[file] = true
+		}
+		for _, file := range commit.Added {
+			modified[file] = true
+		}
+	}
+	return modified
+}
+
 // HandleWebhook processes GitHub push webhook events.
 func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -75,51 +92,12 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manuscriptConfig := matchManuscriptForWebhook(h.Config.Manuscripts, payload.Repository.FullName, payload.Repository.CloneURL)
-	if manuscriptConfig == nil {
+	repo := matchGitRepoForWebhook(h.Config.GitRepos, payload.Repository.FullName, payload.Repository.CloneURL)
+	if repo == nil {
 		log.Printf("Webhook received for unknown repository: full_name=%s clone_url=%s",
 			payload.Repository.FullName, payload.Repository.CloneURL)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ignored","reason":"repository not configured"}`))
-		return
-	}
-
-	// Pushes to non-canonical branches (e.g. suggestions-*) must be ignored
-	// or the server would migrate every PR branch as if it were main. See
-	// TestHandleWebhook_IgnoresNonTrackedBranch.
-	wantBranch := manuscriptConfig.Repository.Branch
-	if wantBranch == "" {
-		wantBranch = "main"
-	}
-	expectedRef := "refs/heads/" + wantBranch
-	if payload.Ref != expectedRef {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"ignored","reason":"non-tracked branch","got_ref":%q,"want_ref":%q}`,
-			payload.Ref, expectedRef)
-		return
-	}
-
-	manuscriptModified := false
-	for _, commit := range payload.Commits {
-		for _, file := range commit.Modified {
-			if file == manuscriptConfig.Repository.Path {
-				manuscriptModified = true
-				break
-			}
-		}
-		if !manuscriptModified {
-			for _, file := range commit.Added {
-				if file == manuscriptConfig.Repository.Path {
-					manuscriptModified = true
-					break
-				}
-			}
-		}
-	}
-
-	if !manuscriptModified {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ignored","reason":"manuscript not modified"}`))
 		return
 	}
 
@@ -131,9 +109,49 @@ func (h *AdminHandlers) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Webhook carries a real SHA, so dedupe on (manuscript_id, commit_hash,
-	// segmenter) is safe here.
-	h.startMigration(r.Context(), w, manuscriptConfig, payload.HeadCommit.ID)
+	// One repo can back several manuscripts (registry-to-DB, Phase 0): fan
+	// out over the DB rows bound to it.
+	rows, err := h.DB.GetManuscriptsByGitRepoName(r.Context(), repo.Name)
+	if err != nil {
+		http.Error(w, "failed to look up manuscripts", http.StatusInternalServerError)
+		log.Printf("webhook: manuscripts for repo %q: %v", repo.Name, err)
+		return
+	}
+	if len(rows) == 0 {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ignored","reason":"no manuscripts bound to repository"}`))
+		return
+	}
+
+	started := []map[string]interface{}{}
+	for _, m := range webhookTargets(rows, payload.Ref, payload.modifiedPaths()) {
+		// Webhook carries a real SHA, so dedupe on (manuscript_id,
+		// commit_hash, segmenter) is safe here.
+		migrationID, err := h.enqueueMigration(r.Context(), m, payload.HeadCommit.ID)
+		if errors.Is(err, database.ErrMigrationInProgress) {
+			started = append(started, map[string]interface{}{"manuscript": m.Name, "status": "duplicate"})
+			continue
+		}
+		if err != nil {
+			log.Printf("webhook: enqueue %q: %v", m.Name, err)
+			started = append(started, map[string]interface{}{"manuscript": m.Name, "status": "error"})
+			continue
+		}
+		started = append(started, map[string]interface{}{"manuscript": m.Name, "status": "accepted", "migration_id": migrationID})
+	}
+
+	if len(started) == 0 {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ignored","reason":"no tracked manuscript modified on tracked branch"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "accepted",
+		"started_at": time.Now().UTC(),
+		"migrations": started,
+	})
 }
 
 // HandleSync manually triggers a sync for a manuscript.
@@ -152,8 +170,13 @@ func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manuscriptConfig, err := h.Config.GetManuscript(req.ManuscriptName)
+	m, err := h.DB.GetManuscriptByName(r.Context(), req.ManuscriptName)
 	if err != nil {
+		http.Error(w, "failed to look up manuscript", http.StatusInternalServerError)
+		log.Printf("sync: %v", err)
+		return
+	}
+	if m == nil {
 		http.Error(w, "Manuscript not found", http.StatusNotFound)
 		return
 	}
@@ -168,7 +191,7 @@ func (h *AdminHandlers) HandleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.startMigration(r.Context(), w, manuscriptConfig, commitHash)
+	h.startMigration(r.Context(), w, m, commitHash)
 }
 
 // HandleStatus returns migrations currently at status='pending' or 'running'.
@@ -304,17 +327,36 @@ func (h *AdminHandlers) checkSystemToken(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(authHeader), []byte(expected)) == 1
 }
 
-// matchManuscriptForWebhook picks the manuscript for a webhook payload:
-// first by repository.slug == full_name (the canonical "owner/repo" GitHub
-// always sends), then as a fallback by literal repository.url == clone_url
-// for slug-less configs. Returns nil if none match.
-func matchManuscriptForWebhook(manuscripts []config.ManuscriptConfig, fullName, cloneURL string) *config.ManuscriptConfig {
-	for i, m := range manuscripts {
-		if m.Repository.Slug != "" && m.Repository.Slug == fullName {
-			return &manuscripts[i]
+// webhookTargets filters a repo's manuscripts to the ones a push actually
+// affects: the pushed ref must be the manuscript's tracked branch (pushes to
+// non-canonical branches — e.g. suggestions-* PR branches — must be ignored
+// or the server would migrate every PR branch as if it were main), and some
+// commit must have touched the manuscript file.
+func webhookTargets(rows []*models.Manuscript, ref string, modified map[string]bool) []*models.Manuscript {
+	var out []*models.Manuscript
+	for _, m := range rows {
+		if ref != "refs/heads/"+m.Branch() {
+			continue
 		}
-		if m.Repository.Slug == "" && m.Repository.URL != "" && m.Repository.URL == cloneURL {
-			return &manuscripts[i]
+		if !modified[m.FilePath] {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// matchGitRepoForWebhook picks the registry entry for a webhook payload:
+// first by slug == full_name (the canonical "owner/repo" GitHub always
+// sends), then as a fallback by literal url == clone_url for slug-less
+// configs. Returns nil if none match.
+func matchGitRepoForWebhook(repos []config.GitRepoConfig, fullName, cloneURL string) *config.GitRepoConfig {
+	for i, g := range repos {
+		if g.Slug != "" && g.Slug == fullName {
+			return &repos[i]
+		}
+		if g.Slug == "" && g.URL != "" && g.URL == cloneURL {
+			return &repos[i]
 		}
 	}
 	return nil
@@ -338,7 +380,7 @@ func (h *AdminHandlers) validateGitHubSignature(payload []byte, signature string
 // Dedup is by literal commitHash, so two concurrent "HEAD" requests collide
 // (second gets 409). That's intentional — it prevents accidental double-enqueue.
 // For dedupe by resolved SHA, callers must pass an explicit hash.
-func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWriter, m *config.ManuscriptConfig, commitHash string) {
+func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWriter, m *models.Manuscript, commitHash string) {
 	migrationID, err := h.enqueueMigration(ctx, m, commitHash)
 	if err != nil {
 		if errors.Is(err, database.ErrMigrationInProgress) {
@@ -359,27 +401,17 @@ func (h *AdminHandlers) startMigration(ctx context.Context, w http.ResponseWrite
 	})
 }
 
-// enqueueMigration upserts the manuscript row, reserves a pending migration
-// keyed by (manuscript_id, commit_hash, segmenter), and launches the worker
-// goroutine. Returns database.ErrMigrationInProgress when an identical
-// migration already exists.
-func (h *AdminHandlers) enqueueMigration(ctx context.Context, m *config.ManuscriptConfig, commitHash string) (int, error) {
-	cloneURL := m.Repository.CloneURL()
-	if cloneURL == "" {
-		return 0, fmt.Errorf("manuscript %q has neither slug nor url configured", m.Name)
-	}
-	manuscript, err := h.DB.GetManuscript(ctx, cloneURL, m.Repository.Path)
-	if err != nil {
-		return 0, fmt.Errorf("GetManuscript: %w", err)
-	}
-	if manuscript == nil {
-		manuscript, err = h.DB.CreateManuscript(ctx, cloneURL, m.Repository.Path)
-		if err != nil {
-			return 0, fmt.Errorf("CreateManuscript: %w", err)
-		}
+// enqueueMigration reserves a pending migration keyed by (manuscript_id,
+// commit_hash, segmenter) and launches the worker goroutine. Returns
+// database.ErrMigrationInProgress when an identical migration already exists.
+func (h *AdminHandlers) enqueueMigration(ctx context.Context, m *models.Manuscript, commitHash string) (int, error) {
+	// Resolve now so a broken registry reference fails the request, not the
+	// goroutine.
+	if _, err := gitRepoForManuscript(h.Config, m); err != nil {
+		return 0, err
 	}
 
-	migrationID, err := h.DB.CreatePendingMigration(ctx, manuscript.ManuscriptID, commitHash, h.Processor.SegmenterVersion())
+	migrationID, err := h.DB.CreatePendingMigration(ctx, m.ManuscriptID, commitHash, h.Processor.SegmenterVersion())
 	if err != nil {
 		if errors.Is(err, database.ErrMigrationInProgress) {
 			return 0, err
@@ -387,33 +419,25 @@ func (h *AdminHandlers) enqueueMigration(ctx context.Context, m *config.Manuscri
 		return 0, fmt.Errorf("CreatePendingMigration: %w", err)
 	}
 
-	go h.runMigration(migrationID, manuscript.ManuscriptID, m, commitHash)
+	go h.runMigration(migrationID, m, commitHash)
 	return migrationID, nil
 }
 
 // ResegmentOnSegmenterChange re-enqueues each manuscript's latest done
 // commit when its migration was produced by a different segmenter version
-// than the one this binary carries. Called once at startup so a deploy that
-// bumps the vendored segman re-hashes sentences without waiting for the
-// next push or a manual sync. Errors are logged, never fatal — the server
-// must come up regardless.
+// than the one this binary carries. Called once at startup (after
+// ReconcileRegistry) so a deploy that bumps the vendored segman re-hashes
+// sentences without waiting for the next push or a manual sync. Errors are
+// logged, never fatal — the server must come up regardless.
 func (h *AdminHandlers) ResegmentOnSegmenterChange(ctx context.Context) {
 	current := h.Processor.SegmenterVersion()
-	for i := range h.Config.Manuscripts {
-		m := &h.Config.Manuscripts[i]
-		cloneURL := m.Repository.CloneURL()
-		if cloneURL == "" {
-			continue
-		}
-		manuscript, err := h.DB.GetManuscript(ctx, cloneURL, m.Repository.Path)
-		if err != nil {
-			log.Printf("resegment check: GetManuscript %q: %v", m.Name, err)
-			continue
-		}
-		if manuscript == nil {
-			continue // never bootstrapped; nothing to re-segment
-		}
-		latest, err := h.DB.GetLatestMigration(ctx, manuscript.ManuscriptID)
+	rows, err := h.DB.ListManuscripts(ctx)
+	if err != nil {
+		log.Printf("resegment check: list manuscripts: %v", err)
+		return
+	}
+	for _, m := range rows {
+		latest, err := h.DB.GetLatestMigration(ctx, m.ManuscriptID)
 		if err != nil {
 			log.Printf("resegment check: GetLatestMigration %q: %v", m.Name, err)
 			continue
@@ -435,14 +459,16 @@ func (h *AdminHandlers) ResegmentOnSegmenterChange(ctx context.Context) {
 	}
 }
 
-// manuscriptMigrationLocks serializes migration goroutines per manuscript.
-// Concurrent runs (webhook push + manual sync for different commits) would
-// otherwise race on the shared git clone (index.lock) and both carry
-// notes forward from the same parent migration.
-var manuscriptMigrationLocks sync.Map // manuscriptID → *sync.Mutex
+// migrationLocks serializes migration goroutines per git checkout path.
+// Concurrent runs (webhook push + manual sync for different commits, or two
+// manuscripts sharing one clone) would otherwise race on the checkout
+// (index.lock) and both carry notes forward from the same parent migration.
+// A manuscript always resolves to exactly one path, so this subsumes the
+// old per-manuscript-ID lock.
+var migrationLocks sync.Map // checkout path → *sync.Mutex
 
-func lockManuscriptMigrations(manuscriptID int) (unlock func()) {
-	v, _ := manuscriptMigrationLocks.LoadOrStore(manuscriptID, &sync.Mutex{})
+func lockMigrationPath(path string) (unlock func()) {
+	v, _ := migrationLocks.LoadOrStore(path, &sync.Mutex{})
 	mu := v.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
@@ -450,30 +476,33 @@ func lockManuscriptMigrations(manuscriptID int) (unlock func()) {
 
 // runMigration is the goroutine body. Must always leave the pending row at
 // 'done' or 'error', whatever happens.
-func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.ManuscriptConfig, commitHash string) {
+func (h *AdminHandlers) runMigration(migrationID int, m *models.Manuscript, commitHash string) {
+	mlog := slog.Default().With(
+		slog.Int("migration_id", migrationID),
+		slog.Int("manuscript_id", m.ManuscriptID),
+		slog.String("manuscript", m.Name),
+		slog.String("requested_commit", commitHash),
+	)
+
+	gitRepo, err := gitRepoForManuscript(h.Config, m)
+	if err != nil {
+		// enqueueMigration pre-resolved, so this is config drift mid-flight.
+		mlog.Warn("git repo resolution failed", slog.Any("err", err))
+		if mErr := h.DB.MarkMigrationError(context.Background(), migrationID, err.Error()); mErr != nil {
+			mlog.Warn("also failed to record error on row", slog.Any("err", mErr))
+		}
+		return
+	}
+
 	// Acquire before starting the timeout clock so a queued migration gets
 	// its full budget once it actually starts.
-	unlock := lockManuscriptMigrations(manuscriptID)
+	unlock := lockMigrationPath(gitRepo.Path)
 	defer unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), migrationTimeout)
 	defer cancel()
 
-	mlog := slog.Default().With(
-		slog.Int("migration_id", migrationID),
-		slog.Int("manuscript_id", manuscriptID),
-		slog.String("manuscript", m.Name),
-		slog.String("requested_commit", commitHash),
-	)
 	mlog.Info("migration started")
-
-	gitRepo := &migrations.GitRepository{
-		Path:      h.Config.RepoPath(m.Name),
-		Branch:    m.Repository.Branch,
-		RemoteURL: m.Repository.CloneURL(),
-		FilePath:  m.Repository.Path,
-		AuthToken: m.Repository.AuthToken,
-	}
 
 	prepared, err := gitRepo.Prepare(ctx, commitHash, func(format string, args ...any) {
 		mlog.Warn(fmt.Sprintf(format, args...))
@@ -491,7 +520,7 @@ func (h *AdminHandlers) runMigration(migrationID, manuscriptID int, m *config.Ma
 		slog.Int("bytes", len(prepared.Content)),
 	)
 
-	result, err := h.Processor.Run(ctx, mlog, migrationID, manuscriptID, prepared.CommitHash, prepared.BranchName, prepared.Content)
+	result, err := h.Processor.Run(ctx, mlog, migrationID, m.ManuscriptID, prepared.CommitHash, prepared.BranchName, prepared.Content)
 	if err != nil {
 		// Processor.Run has already marked the row as error.
 		mlog.Warn("processor failed", slog.Any("err", err))

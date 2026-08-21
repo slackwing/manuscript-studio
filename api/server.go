@@ -40,6 +40,8 @@ type Server struct {
 	dailyRuleHandlers    *handlers.DailyRuleHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
+
+	manuscriptCreateHandlers *handlers.ManuscriptCreateHandlers
 }
 
 func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
@@ -105,6 +107,16 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Processor: migrations.NewProcessor(db),
 		},
 	}
+	// The local-mode commit path (suggestions → commit → migrate) reuses the
+	// admin handlers' migration queue, as does manuscript creation's
+	// bootstrap.
+	s.suggestionHandlers.Admin = s.adminHandlers
+	s.manuscriptCreateHandlers = &handlers.ManuscriptCreateHandlers{
+		DB:           dbWrapper,
+		SessionStore: sessionStore,
+		Config:       cfg,
+		Admin:        s.adminHandlers,
+	}
 	s.setupRouter()
 	return s
 }
@@ -115,8 +127,12 @@ func (s *Server) Router() http.Handler {
 
 // ResegmentOnSegmenterChange re-migrates manuscripts whose latest migration
 // was produced by an older segmenter. Run once at startup, after the DB is
-// reachable.
+// reachable. Since 037 it is preceded by the registry reconciliation: the
+// repos-dir layout migration (flat → git/remote|local) and the upsert of
+// legacy config manuscripts into the manuscript table — both idempotent.
 func (s *Server) ResegmentOnSegmenterChange(ctx context.Context) {
+	handlers.MigrateReposLayout(s.config)
+	s.adminHandlers.ReconcileRegistry(ctx)
 	s.adminHandlers.ResegmentOnSegmenterChange(ctx)
 }
 
@@ -241,6 +257,8 @@ func (s *Server) setupRouter() {
 			r.Get("/migrations/{migration_id}/suggestions", s.suggestionHandlers.HandleGetSuggestionsForMigration)
 			r.Get("/migrations/{migration_id}/outline", s.migrationHandlers.HandleGetOutline)
 			r.Get("/manuscripts/{manuscript_id}/wordcount-history", s.migrationHandlers.HandleGetWordcountHistory)
+			r.Post("/manuscripts", s.manuscriptCreateHandlers.HandleCreateManuscript)
+			r.Get("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleGetManuscriptMeta)
 			r.Patch("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleUpdateManuscriptMeta)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
@@ -434,8 +452,8 @@ func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, m := range s.config.Manuscripts {
-		path := s.config.RepoPath(m.Name)
+	for _, g := range s.config.GitRepos {
+		path := s.config.GitRemoteDir(g.Name)
 		if _, err := os.Stat(path); err != nil {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"status":"degraded","database":"connected","repos":"some manuscript repos not yet cloned"}`))

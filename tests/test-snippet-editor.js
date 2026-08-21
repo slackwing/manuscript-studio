@@ -17,8 +17,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
   // Create a pad (opens the modal), insert a sketch, flip into the editor.
-  await page.waitForSelector('#home-new-pad', { timeout: 20000 });
-  await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]', { timeout: 20000 });
+  await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
   await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
   await page.waitForSelector('.sn-widget .sn-render', { timeout: 10000 });

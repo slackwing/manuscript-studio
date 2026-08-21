@@ -50,7 +50,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       cards.homeLink === 'home.html' && cards.brandLink === 'home.html');
 
     // --- create pad via + New (opens the modal) ---
-    await page.click('#home-new-pad');
+    await page.click('.card-ghost[data-ghost="scratchpad"]');
     await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
     const pad1 = parseInt(((await page.evaluate(() => location.hash)).match(/=(\d+)/) || [])[1], 10);
     pads.push(pad1);

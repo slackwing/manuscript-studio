@@ -147,21 +147,19 @@ func (h *AuthHandlers) userManuscriptOptions(ctx context.Context, username strin
 }
 
 // userManuscriptOptions is shared with the home page handler (HOME_PLAN.md).
-func userManuscriptOptions(ctx context.Context, db *database.DB, cfg *config.Config, username string) ([]ManuscriptOption, error) {
+// Since 037 the DB row is the registry, so grants resolve by name alone —
+// config no longer gates visibility (UI-created manuscripts have no config).
+func userManuscriptOptions(ctx context.Context, db *database.DB, _ *config.Config, username string) ([]ManuscriptOption, error) {
 	access, err := db.GetManuscriptAccessForUser(ctx, username)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ManuscriptOption, 0, len(access))
 	for _, ma := range access {
-		mc, err := cfg.GetManuscript(ma.ManuscriptName)
-		if err != nil {
-			// Config entry was removed; skip silently.
-			continue
-		}
-		m, err := db.GetManuscript(ctx, mc.Repository.CloneURL(), mc.Repository.Path)
+		m, err := db.GetManuscriptByName(ctx, ma.ManuscriptName)
 		if err != nil || m == nil {
-			// Not bootstrapped yet — skip.
+			// Grant references a name with no row (stale grant, or a legacy
+			// config manuscript not reconciled yet) — skip, as before.
 			continue
 		}
 		out = append(out, ManuscriptOption{

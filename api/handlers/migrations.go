@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -348,6 +349,26 @@ func dateString(t *time.Time) *string {
 	return &s
 }
 
+// HandleGetManuscriptMeta returns the manuscript row (settings modal:
+// display name, storage mode, birthday, word goal, name).
+func (h *MigrationHandlers) HandleGetManuscriptMeta(w http.ResponseWriter, r *http.Request) {
+	manuscriptID, err := strconv.Atoi(chi.URLParam(r, "manuscript_id"))
+	if err != nil {
+		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
+		return
+	}
+	m, err := h.DB.GetManuscriptByID(r.Context(), manuscriptID)
+	if err != nil || m == nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(m)
+}
+
 // HandleUpdateManuscriptMeta partially updates stats-pane metadata:
 // {"birthday": "YYYY-MM-DD"} and/or {"word_goal": N}. Omitted fields are
 // left unchanged. Responds with the updated metadata.
@@ -361,16 +382,25 @@ func (h *MigrationHandlers) HandleUpdateManuscriptMeta(w http.ResponseWriter, r 
 		return
 	}
 	var body struct {
-		Birthday *string `json:"birthday"`
-		WordGoal *int    `json:"word_goal"`
+		Birthday    *string `json:"birthday"`
+		WordGoal    *int    `json:"word_goal"`
+		DisplayName *string `json:"display_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if body.Birthday == nil && body.WordGoal == nil {
+	if body.Birthday == nil && body.WordGoal == nil && body.DisplayName == nil {
 		http.Error(w, "Nothing to update", http.StatusBadRequest)
 		return
+	}
+	if body.DisplayName != nil {
+		trimmed := strings.TrimSpace(*body.DisplayName)
+		if trimmed == "" {
+			http.Error(w, "display_name cannot be empty", http.StatusBadRequest)
+			return
+		}
+		body.DisplayName = &trimmed
 	}
 	var birthday *time.Time
 	if body.Birthday != nil {
@@ -385,7 +415,7 @@ func (h *MigrationHandlers) HandleUpdateManuscriptMeta(w http.ResponseWriter, r 
 		http.Error(w, "word_goal must be positive", http.StatusBadRequest)
 		return
 	}
-	m, err := h.DB.UpdateManuscriptMeta(r.Context(), manuscriptID, birthday, body.WordGoal)
+	m, err := h.DB.UpdateManuscriptMeta(r.Context(), manuscriptID, birthday, body.WordGoal, body.DisplayName)
 	if err != nil {
 		log.Printf("update manuscript meta %d: %v", manuscriptID, err)
 		http.Error(w, "Failed to update manuscript", http.StatusInternalServerError)

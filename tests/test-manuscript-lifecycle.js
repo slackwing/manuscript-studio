@@ -1,0 +1,133 @@
+// Manuscript lifecycle e2e (MANUSCRIPT_LIFECYCLE_PLAN Phases 1/2/5):
+// ghost-card creation → local-mode book → insert menu → docx-import modal
+// filing a composed suggestion → local Commit (commit + migrate + reload) →
+// settings modal via the title gear. Worker-scoped names; cleans up after
+// itself (row, grant, suggestion rows, on-disk repo).
+const { chromium } = require('playwright');
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+const {
+  BASE_URL, TEST_USERNAME, loginAsTestUser, waitForPagination, psql,
+} = require('./test-utils');
+
+const SLUG = `lifecycle-${TEST_USERNAME}-${Date.now()}`;
+const TITLE = `Lifecycle Book ${TEST_USERNAME}`;
+const LOCAL_REPO_DIR = path.join(os.homedir(), '.config', 'manuscript-studio-dev', 'repos', 'git', 'local', SLUG);
+
+function cleanup() {
+  try { psql(`DELETE FROM suggested_change WHERE sentence_id LIKE '${SLUG}-%';`); } catch (e) { /* none */ }
+  try { psql(`DELETE FROM manuscript_access WHERE manuscript_name = '${SLUG}';`); } catch (e) { /* none */ }
+  try { psql(`DELETE FROM manuscript WHERE name = '${SLUG}';`); } catch (e) { /* none */ }
+  try { fs.rmSync(LOCAL_REPO_DIR, { recursive: true, force: true }); } catch (e) { /* none */ }
+}
+
+(async () => {
+  console.log('=== manuscript lifecycle e2e ===\n');
+  let failed = 0;
+  const check = (name, ok, detail = '') => {
+    console.log(`${ok ? '✓' : '✗'} ${name}${detail ? ` (${detail})` : ''}`);
+    if (!ok) failed++;
+  };
+
+  cleanup(); // stale leftovers from a crashed run must not 409 the create
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await loginAsTestUser(page);
+
+    // ---- Phase 1: ghost cards + creation modal --------------------------
+    await page.goto(`${BASE_URL}/home.html`);
+    await page.waitForSelector('.home-section');
+    check('manuscript ghost card renders', !!(await page.$('.card-ghost[data-ghost="manuscript"]')));
+    check('scratchpad ghost card renders', !!(await page.$('.card-ghost[data-ghost="scratchpad"]')));
+
+    await page.click('.card-ghost[data-ghost="manuscript"]');
+    await page.waitForSelector('#msm-overlay #msm-form');
+    check('creation modal opens', true);
+    await page.fill('#msm-overlay [name="display_name"]', TITLE);
+    const derived = await page.$eval('#msm-overlay [name="name"]', el => el.value);
+    check('slug derives from title', derived === `lifecycle-book-${TEST_USERNAME}`, derived);
+    await page.fill('#msm-overlay [name="name"]', SLUG); // worker-scoped override
+    await page.fill('#msm-overlay [name="word_goal"]', '50000');
+    await Promise.all([
+      page.waitForURL(/manuscript_id=\d+/, { timeout: 30000 }),
+      page.click('#msm-overlay #msm-go'),
+    ]);
+    check('create navigates into the new book', true, page.url());
+
+    await waitForPagination(page);
+    const title = await page.textContent('#mc-name');
+    check('title strip shows the display name', title === TITLE, title);
+    const seedText = await page.textContent('.pagedjs_page h1, .pagedjs_page .sentence');
+    check('seeded title line renders', (seedText || '').includes('Smoke') === false && (seedText || '').length > 0, seedText);
+
+    // ---- Phase 5: end-zone + insert menu + docx modal -------------------
+    await page.waitForSelector('.import-endzone .import-end-tab', { timeout: 15000 });
+    check('end-of-book + renders on the last page', true);
+    await page.click('.import-endzone .import-end-tab');
+    await page.waitForSelector('#insert-menu');
+    const menuItems = await page.$$eval('#insert-menu button', bs => bs.map(b => b.textContent));
+    check('insert menu offers sketch and docx', menuItems.length === 2 && /docx/i.test(menuItems[1]), menuItems.join(' | '));
+    await page.click('#insert-menu [data-act="docx"]');
+    await page.waitForSelector('#import-docx-modal');
+    check('docx import modal opens', true);
+
+    // File conversion is covered by unit + vendored libs; here the preview
+    // is filled directly (it is editable by design) to exercise the
+    // compose-as-one-suggestion path.
+    await page.fill('#idx-preview', '## Chapter 1: The Test\n\nFirst imported paragraph.\n\tSecond imported paragraph.');
+    await page.click('#idx-go');
+    await page.waitForSelector('#import-docx-overlay', { state: 'detached', timeout: 20000 });
+    await waitForPagination(page);
+    const sugCount = await page.evaluate(() => Object.keys((window.WriteSysSuggestions || {}).bySentenceId || {}).length);
+    check('import filed exactly one composed suggestion', sugCount === 1, `count ${sugCount}`);
+
+    // ---- Phase 1: local Commit button ----------------------------------
+    await page.waitForSelector('.push-btn-primary');
+    const label = await page.textContent('.push-btn-primary .push-btn-label');
+    check('button reads Commit (1) for local storage', label === 'Commit (1)', label);
+    const hasOctocat = await page.$('.push-btn-primary .push-btn-gh');
+    check('git commit icon replaces the octocat', !hasOctocat);
+
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }), // commit → migrate → reload
+      page.click('.push-btn-primary'),
+    ]);
+    await waitForPagination(page);
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    check('imported chapter is committed prose', bodyText.includes('First imported paragraph.'), '');
+    const sugAfter = await page.evaluate(() => Object.keys((window.WriteSysSuggestions || {}).bySentenceId || {}).length);
+    check('suggestion consumed by the commit', sugAfter === 0, `count ${sugAfter}`);
+    const commits = psql(`SELECT count(*) FROM migration m JOIN manuscript man ON man.manuscript_id = m.manuscript_id WHERE man.name = '${SLUG}' AND m.status = 'done';`);
+    check('two done migrations (seed + commit)', /^\s*2\s*$/m.test(commits), commits.trim().split('\n')[2]);
+
+    // ---- Phase 2: settings gear + modal --------------------------------
+    await page.click('#mc-settings');
+    await page.waitForSelector('#msm-overlay #msm-form');
+    const roValues = await page.$$eval('#msm-overlay .msm-ro-value', els => els.map(e => e.textContent));
+    check('settings shows read-only slug + storage', roValues.includes(SLUG) && roValues.some(v => /local/.test(v)), roValues.join(' | '));
+    await page.fill('#msm-overlay [name="display_name"]', TITLE + ' II');
+    await page.click('#msm-overlay #msm-go');
+    await page.waitForSelector('#msm-overlay', { state: 'detached' });
+    await page.waitForFunction(
+      (want) => document.getElementById('mc-name') && document.getElementById('mc-name').textContent === want,
+      TITLE + ' II', { timeout: 10000 }
+    );
+    check('title strip updates after settings save', true);
+
+    // Stats pane shows the values but no longer offers inline editing.
+    await page.click('.pane-tab[data-pane="stats"]');
+    await page.waitForSelector('#stats-goal');
+    const editable = await page.$('.stats-editable');
+    check('stats pane has no inline editors', !editable);
+    const goalText = await page.textContent('#stats-goal');
+    check('word goal still displays', goalText === '50,000', goalText);
+  } finally {
+    await browser.close();
+    cleanup();
+  }
+  console.log(failed === 0 ? '\n✅ Test passed' : `\n❌ ${failed} check(s) failed`);
+  process.exit(failed === 0 ? 0 : 1);
+})().catch(err => { console.error('Test crashed:', err); cleanup(); process.exit(1); });

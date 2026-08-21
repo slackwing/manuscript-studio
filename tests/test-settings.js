@@ -144,7 +144,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
 
   // --- Pad: new note is UNTYPED ('n/a'): no priority/star; dropdown plain ---
   await page.goto(HOME_URL);
-  await page.waitForSelector('#home-new-pad'); await page.click('#home-new-pad');
+  await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
   const pm = page.locator('.spm-editor .ProseMirror');
   await pm.click();
@@ -197,7 +197,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   try {
     await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 4000 });
   } catch (e) {
-    await page.waitForSelector('#home-new-pad');
+    await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
     await page.locator('.card-scratchpad').first().click();
     await page.waitForSelector('.spm-overlay .ProseMirror');
   }
@@ -250,7 +250,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   try {
     await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 4000 });
   } catch (e) {
-    await page.waitForSelector('#home-new-pad');
+    await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
     await page.locator('.card-scratchpad').first().click();
     await page.waitForSelector('.spm-overlay .ProseMirror');
   }
@@ -335,7 +335,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   try {
     await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 4000 });
   } catch (e) {
-    await page.waitForSelector('#home-new-pad');
+    await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
     await page.locator('.card-scratchpad').first().click();
     await page.waitForSelector('.spm-overlay .ProseMirror');
   }
