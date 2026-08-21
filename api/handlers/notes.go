@@ -95,6 +95,47 @@ func (h *NoteHandlers) requireOwnedNote(w http.ResponseWriter, r *http.Request,
 	return existing
 }
 
+// requireNoteWithAction is the multi-user variant (v3): the OWNER always
+// passes (ownership rule); a non-owner passes when they hold `action` on
+// the note's manuscript. Non-owners can never touch scratchpad/free notes
+// (no manuscript scope to hold a role on).
+func (h *NoteHandlers) requireNoteWithAction(w http.ResponseWriter, r *http.Request,
+	noteID int, username, action string,
+) *models.Note {
+	existing, err := h.DB.GetNoteByID(r.Context(), noteID)
+	if err != nil {
+		log.Printf("notes: load %d: %v", noteID, err)
+		http.Error(w, "Failed to get note", http.StatusInternalServerError)
+		return nil
+	}
+	if existing == nil {
+		http.Error(w, "Note not found", http.StatusNotFound)
+		return nil
+	}
+	if existing.UserID == username {
+		if existing.SentenceID != "" {
+			if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, existing.SentenceID) {
+				return nil
+			}
+		}
+		return existing
+	}
+	mid := 0
+	if existing.SentenceID != "" {
+		mid, _ = manuscriptIDForSentence(r.Context(), h.DB, existing.SentenceID)
+	} else if existing.ManuscriptID != nil {
+		mid = *existing.ManuscriptID
+	}
+	if mid == 0 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return nil
+	}
+	if !requireAction(w, r, h.DB, mid, action) {
+		return nil
+	}
+	return existing
+}
+
 func (h *NoteHandlers) HandleGetNotesByCommit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	commitHash := chi.URLParam(r, "commit_hash")
@@ -109,7 +150,8 @@ func (h *NoteHandlers) HandleGetNotesByCommit(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	notes, err := h.DB.GetNotesByCommit(ctx, commitHash, session.Username)
+	// v3 multi-user notes: everyone's notes when the caller may see them.
+	notes, err := h.notesByCommitForViewer(ctx, commitHash, session.Username)
 	if err != nil {
 		log.Printf("notes: list by commit %s: %v", commitHash, err)
 		http.Error(w, "Failed to get notes", http.StatusInternalServerError)
@@ -121,6 +163,31 @@ func (h *NoteHandlers) HandleGetNotesByCommit(w http.ResponseWriter, r *http.Req
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"notes": notes,
 	})
+}
+
+// manuscriptIDForSentence: sentence → migration → manuscript (0 = unknown).
+func manuscriptIDForSentence(ctx context.Context, db *database.DB, sentenceID string) (int, error) {
+	migrationID, err := db.GetMigrationIDForSentence(ctx, sentenceID)
+	if err != nil || migrationID == 0 {
+		return 0, err
+	}
+	mig, err := db.GetMigrationByID(ctx, migrationID)
+	if err != nil || mig == nil {
+		return 0, err
+	}
+	return mig.ManuscriptID, nil
+}
+
+// notesByCommitForViewer: all users' notes when the viewer holds
+// see-others-notes on the commit's manuscript, own-only otherwise.
+func (h *NoteHandlers) notesByCommitForViewer(ctx context.Context, commitHash, viewer string) ([]models.Note, error) {
+	mid, err := h.DB.GetManuscriptIDForCommit(ctx, commitHash)
+	if err == nil && mid != 0 {
+		if seeOthers, err := userHasAction(ctx, h.DB, viewer, mid, "see-others-notes"); err == nil && seeOthers {
+			return h.DB.GetAllNotesByCommit(ctx, commitHash, viewer)
+		}
+	}
+	return h.DB.GetNotesByCommit(ctx, commitHash, viewer)
 }
 
 func (h *NoteHandlers) fillManuscriptNames(ctx context.Context, notes []models.Note) {
@@ -160,7 +227,18 @@ func (h *NoteHandlers) HandleGetNotesBySentence(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	notes, err := h.DB.GetNotesBySentence(ctx, sentenceID, session.Username)
+	// v3 multi-user notes: everyone's notes when the caller may see them.
+	var notes []models.Note
+	mid, merr := manuscriptIDForSentence(ctx, h.DB, sentenceID)
+	seeOthers := false
+	if merr == nil && mid != 0 {
+		seeOthers, _ = userHasAction(ctx, h.DB, session.Username, mid, "see-others-notes")
+	}
+	if seeOthers {
+		notes, err = h.DB.GetAllNotesBySentence(ctx, sentenceID, session.Username)
+	} else {
+		notes, err = h.DB.GetNotesBySentence(ctx, sentenceID, session.Username)
+	}
 	if err != nil {
 		log.Printf("notes: list by sentence %s: %v", sentenceID, err)
 		http.Error(w, "Failed to get notes", http.StatusInternalServerError)
@@ -406,7 +484,7 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	existing := h.requireOwnedNote(w, r, noteID, session.Username)
+	existing := h.requireNoteWithAction(w, r, noteID, session.Username, "manage-others-notes")
 	if existing == nil {
 		return
 	}
@@ -414,6 +492,13 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 	var req UpdateNoteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// v3: managers may retag/retask/reprioritize others' notes, but the
+	// note's WORDS belong to its owner (PERMISSIONS_PLAN §5).
+	if existing.UserID != session.Username && req.Body != nil {
+		http.Error(w, "only the note's owner can edit its text", http.StatusForbidden)
 		return
 	}
 
@@ -572,7 +657,7 @@ func (h *NoteHandlers) HandleCompleteNote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
+	if h.requireNoteWithAction(w, r, noteID, session.Username, "manage-others-notes") == nil {
 		return
 	}
 
@@ -604,9 +689,29 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
-	note := h.requireOwnedNote(w, r, noteID, session.Username)
-	if note == nil {
+	// v3: scoring is the POINTER surface (award-points) — ownership does
+	// not bypass. Scratchpad/free notes fall back to pointer-anywhere.
+	note, err := h.DB.GetNoteByID(ctx, noteID)
+	if err != nil || note == nil {
+		http.Error(w, "Note not found", http.StatusNotFound)
 		return
+	}
+	mid := 0
+	if note.SentenceID != "" {
+		mid, _ = manuscriptIDForSentence(ctx, h.DB, note.SentenceID)
+	} else if note.ManuscriptID != nil {
+		mid = *note.ManuscriptID
+	}
+	if mid != 0 {
+		if !requireAction(w, r, h.DB, mid, "award-points") {
+			return
+		}
+	} else {
+		isPointer, perr := h.DB.HasRoleAnywhere(ctx, session.Username, "pointer")
+		if perr != nil || !isPointer {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
 	}
 	isTask, err := h.DB.TaskTypeIsTask(ctx, note.TaskType)
 	if err != nil {
@@ -665,7 +770,7 @@ func (h *NoteHandlers) HandleGetTagsForNote(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
+	if h.requireNoteWithAction(w, r, noteID, session.Username, "see-others-notes") == nil {
 		return
 	}
 
@@ -716,7 +821,7 @@ func (h *NoteHandlers) HandleAddTagToNote(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
+	if h.requireNoteWithAction(w, r, noteID, session.Username, "manage-others-notes") == nil {
 		return
 	}
 
@@ -770,7 +875,7 @@ func (h *NoteHandlers) HandleRemoveTagFromNote(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
+	if h.requireNoteWithAction(w, r, noteID, session.Username, "manage-others-notes") == nil {
 		return
 	}
 
@@ -780,5 +885,48 @@ func (h *NoteHandlers) HandleRemoveTagFromNote(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleHideNote / HandleUnhideNote: per-viewer, reversible, owner-invisible
+// (v3, PERMISSIONS_PLAN §5). Anyone who can SEE the note may hide it from
+// their own view — the note itself is untouched and the owner never knows.
+func (h *NoteHandlers) HandleHideNote(w http.ResponseWriter, r *http.Request) {
+	h.handleHideUnhide(w, r, true)
+}
+
+func (h *NoteHandlers) HandleUnhideNote(w http.ResponseWriter, r *http.Request) {
+	h.handleHideUnhide(w, r, false)
+}
+
+func (h *NoteHandlers) handleHideUnhide(w http.ResponseWriter, r *http.Request, hide bool) {
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	// Visibility gate doubles as the hide gate.
+	if h.requireNoteWithAction(w, r, noteID, session.Username, "see-others-notes") == nil {
+		return
+	}
+	if hide {
+		err = h.DB.HideNote(r.Context(), session.Username, noteID)
+	} else {
+		err = h.DB.UnhideNote(r.Context(), session.Username, noteID)
+	}
+	if err != nil {
+		log.Printf("notes: hide=%t %d: %v", hide, noteID, err)
+		http.Error(w, "Failed to update visibility", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -13,24 +13,104 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
+// suggestionCols is the canonical SELECT list for suggested_change (v3);
+// suggestionColsSC is the sc.-qualified twin for JOINed queries.
+const suggestionCols = `suggestion_id, sentence_id, user_id, text, created_at, updated_at,
+	review_status, COALESCE(reviewed_by, ''), reviewed_at, stale`
+const suggestionColsSC = `sc.suggestion_id, sc.sentence_id, sc.user_id, sc.text, sc.created_at, sc.updated_at,
+	sc.review_status, COALESCE(sc.reviewed_by, ''), sc.reviewed_at, sc.stale`
+
+func scanSuggestion(row interface{ Scan(...any) error }, s *models.SuggestedChange) error {
+	return row.Scan(&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt,
+		&s.ReviewStatus, &s.ReviewedBy, &s.ReviewedAt, &s.Stale)
+}
+
 // UpsertSuggestion stores text as-given; collapsing empty / original-equals-text
-// into deletes is the caller's responsibility.
+// into deletes is the caller's responsibility. Editing RESETS the review
+// state and staleness — a changed suggestion is a new proposal against the
+// current sentence (PERMISSIONS_PLAN §4).
 func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text string) (*models.SuggestedChange, error) {
 	query := `
 		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
 		VALUES ($1, $2, $3, NOW(), NOW())
 		ON CONFLICT (sentence_id, user_id) DO UPDATE
-			SET text = EXCLUDED.text, updated_at = NOW()
-		RETURNING suggestion_id, sentence_id, user_id, text, created_at, updated_at
-	`
+			SET text = EXCLUDED.text, updated_at = NOW(),
+			    review_status = NULL, reviewed_by = NULL, reviewed_at = NULL,
+			    stale = FALSE
+		RETURNING ` + suggestionCols
 	var s models.SuggestedChange
-	err := db.Pool.QueryRow(ctx, query, sentenceID, userID, text).Scan(
-		&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt,
-	)
-	if err != nil {
+	if err := scanSuggestion(db.Pool.QueryRow(ctx, query, sentenceID, userID, text), &s); err != nil {
 		return nil, fmt.Errorf("upsert suggestion: %w", err)
 	}
 	return &s, nil
+}
+
+// SetSuggestionReview sets/clears the review verdict. status nil clears.
+// Returns false when no such suggestion exists.
+func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser string, status *string, reviewer string) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE suggested_change
+		SET review_status = $3,
+		    reviewed_by = CASE WHEN $3 IS NULL THEN NULL ELSE $4 END,
+		    reviewed_at = CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END
+		WHERE sentence_id = $1 AND user_id = $2`,
+		sentenceID, targetUser, status, reviewer)
+	if err != nil {
+		return false, fmt.Errorf("set suggestion review: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// AcceptOwnUncontested marks every FRESH, unreviewed suggestion by the user
+// in this migration accepted — where no OTHER user has a live (fresh,
+// non-rejected) suggestion on the same sentence ("uncontested"). Returns
+// the number accepted.
+func (db *DB) AcceptOwnUncontested(ctx context.Context, migrationID int, username string) (int, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE suggested_change sc
+		SET review_status = 'accepted', reviewed_by = $2, reviewed_at = NOW()
+		FROM sentence s
+		WHERE s.sentence_id = sc.sentence_id
+		  AND s.migration_id = $1
+		  AND sc.user_id = $2
+		  AND sc.stale = FALSE
+		  AND sc.review_status IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM suggested_change other
+			WHERE other.sentence_id = sc.sentence_id
+			  AND other.user_id <> $2
+			  AND other.stale = FALSE
+			  AND (other.review_status IS NULL OR other.review_status = 'accepted')
+		  )`, migrationID, username)
+	if err != nil {
+		return 0, fmt.Errorf("accept own uncontested: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// GetAllSuggestionsForMigration: EVERY user's suggestions on the
+// migration's sentences (multi-user view; the handler filters to own-only
+// for callers without see-others-edits).
+func (db *DB) GetAllSuggestionsForMigration(ctx context.Context, migrationID int) ([]models.SuggestedChange, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT `+suggestionColsSC+`
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		WHERE s.migration_id = $1
+		ORDER BY sc.sentence_id, sc.user_id`, migrationID)
+	if err != nil {
+		return nil, fmt.Errorf("get all suggestions for migration: %w", err)
+	}
+	defer rows.Close()
+	var out []models.SuggestedChange
+	for rows.Next() {
+		var s models.SuggestedChange
+		if err := scanSuggestion(rows, &s); err != nil {
+			return nil, fmt.Errorf("scan suggestion: %w", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // DeleteSuggestion returns true if a row was deleted.
@@ -49,7 +129,7 @@ func (db *DB) DeleteSuggestion(ctx context.Context, sentenceID, userID string) (
 // the migration, single round-trip via JOIN.
 func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, userID string) ([]models.SuggestedChange, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT sc.suggestion_id, sc.sentence_id, sc.user_id, sc.text, sc.created_at, sc.updated_at
+		SELECT `+suggestionColsSC+`
 		FROM suggested_change sc
 		JOIN sentence s ON s.sentence_id = sc.sentence_id
 		WHERE s.migration_id = $1 AND sc.user_id = $2
@@ -61,7 +141,7 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 	var out []models.SuggestedChange
 	for rows.Next() {
 		var s models.SuggestedChange
-		if err := rows.Scan(&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := scanSuggestion(rows, &s); err != nil {
 			return nil, fmt.Errorf("scan suggestion: %w", err)
 		}
 		out = append(out, s)
@@ -215,23 +295,26 @@ func (db *DB) CopySuggestionsForward(ctx context.Context, fromSentenceID, toSent
 	return int(tag.RowsAffected()), nil
 }
 
-// CopySuggestionsForwardBulk: CopySuggestionsForward over every (from, to)
-// pair in ONE statement — the migration processor carries suggestions for
-// every exact-match pairing, and a round-trip per sentence made this scale
-// with manuscript size. Pairs are parallel slices; returns rows inserted.
-func (db *DB) CopySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []string) (int, error) {
+// CarrySuggestionsForwardBulk copies every (from, to) pair's suggestions in
+// ONE statement. v3 (PERMISSIONS_PLAN §4): the processor carries on EVERY
+// pairing — fuzzy[i] marks pairings whose text changed, which arrive STALE
+// (an already-stale suggestion stays stale even across an exact pairing).
+// Review status rides along. Parallel slices; returns rows inserted.
+func (db *DB) CarrySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []string, fuzzy []bool) (int, error) {
 	if len(fromIDs) == 0 {
 		return 0, nil
 	}
 	tag, err := db.Pool.Exec(ctx, `
-		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at)
-		SELECT m.to_id, sc.user_id, sc.text, NOW(), NOW()
-		FROM unnest($1::text[], $2::text[]) AS m(from_id, to_id)
+		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at,
+		                              review_status, reviewed_by, reviewed_at, stale)
+		SELECT m.to_id, sc.user_id, sc.text, NOW(), NOW(),
+		       sc.review_status, sc.reviewed_by, sc.reviewed_at, (sc.stale OR m.fuzzy)
+		FROM unnest($1::text[], $2::text[], $3::boolean[]) AS m(from_id, to_id, fuzzy)
 		JOIN suggested_change sc ON sc.sentence_id = m.from_id
 		ON CONFLICT (sentence_id, user_id) DO NOTHING
-	`, fromIDs, toIDs)
+	`, fromIDs, toIDs, fuzzy)
 	if err != nil {
-		return 0, fmt.Errorf("copy suggestions forward: %w", err)
+		return 0, fmt.Errorf("carry suggestions forward: %w", err)
 	}
 	return int(tag.RowsAffected()), nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
+	"github.com/slackwing/manuscript-studio/internal/perm"
 )
 
 type AuthHandlers struct {
@@ -32,6 +33,11 @@ type ManuscriptOption struct {
 	DisplayName  string    `json:"display_name"`
 	ManuscriptID int       `json:"manuscript_id"`
 	CreatedAt    time.Time `json:"created_at"`
+	// v3 (PERMISSIONS_PLAN.md): the caller's roles on this manuscript and
+	// the effective action set — the frontend's ONE gating source.
+	Roles   []string `json:"roles"`
+	Actions []string `json:"actions"`
+	Storage string   `json:"storage"`
 }
 
 // displayNameFor prefers the manuscript row's display_name; empty falls back
@@ -147,26 +153,28 @@ func (h *AuthHandlers) userManuscriptOptions(ctx context.Context, username strin
 }
 
 // userManuscriptOptions is shared with the home page handler (HOME_PLAN.md).
-// Since 037 the DB row is the registry, so grants resolve by name alone —
-// config no longer gates visibility (UI-created manuscripts have no config).
+// v3: visibility = role rows; each option carries the user's roles and the
+// effective action set so the frontend gates every affordance from ONE
+// place (perm/roles.json is the authority; this is its projection).
 func userManuscriptOptions(ctx context.Context, db *database.DB, _ *config.Config, username string) ([]ManuscriptOption, error) {
-	access, err := db.GetManuscriptAccessForUser(ctx, username)
+	grants, err := db.GetManuscriptRolesForUser(ctx, username)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ManuscriptOption, 0, len(access))
-	for _, ma := range access {
-		m, err := db.GetManuscriptByName(ctx, ma.ManuscriptName)
+	out := make([]ManuscriptOption, 0, len(grants))
+	for _, g := range grants {
+		m, err := db.GetManuscriptByID(ctx, g.ManuscriptID)
 		if err != nil || m == nil {
-			// Grant references a name with no row (stale grant, or a legacy
-			// config manuscript not reconciled yet) — skip, as before.
-			continue
+			continue // role row referencing a deleted manuscript — skip
 		}
 		out = append(out, ManuscriptOption{
-			Name:         ma.ManuscriptName,
-			DisplayName:  displayNameFor(m.DisplayName, ma.ManuscriptName),
+			Name:         m.Name,
+			DisplayName:  displayNameFor(m.DisplayName, m.Name),
 			ManuscriptID: m.ManuscriptID,
 			CreatedAt:    m.CreatedAt,
+			Roles:        g.Roles,
+			Actions:      perm.ActionList(g.Roles),
+			Storage:      m.Storage,
 		})
 	}
 	return out, nil

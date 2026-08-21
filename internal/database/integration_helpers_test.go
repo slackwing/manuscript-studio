@@ -155,6 +155,9 @@ func (f *itFixture) nuke(t *testing.T) {
 			`DELETE FROM sketch WHERE user_id = $1`,
 			`DELETE FROM scratchpad WHERE user_id = $1`,
 			`DELETE FROM manuscript_access WHERE username = $1`,
+			`DELETE FROM role WHERE username = $1`,
+			`DELETE FROM people_order WHERE username = $1`,
+			`DELETE FROM note_hide WHERE username = $1`,
 		}
 		for _, sql := range userStmts {
 			if _, err := f.pool.Exec(f.ctx, sql, u); err != nil {
@@ -164,6 +167,8 @@ func (f *itFixture) nuke(t *testing.T) {
 	}
 	for _, m := range manuscripts {
 		mStmts := []string{
+			`DELETE FROM role WHERE manuscript_id = $1`,
+			`DELETE FROM people_order WHERE manuscript_id = $1`,
 			`DELETE FROM command_slug WHERE migration_id IN (SELECT migration_id FROM migration WHERE manuscript_id = $1)`,
 			`DELETE FROM migration WHERE manuscript_id = $1`, // cascades sentence
 			`DELETE FROM manuscript WHERE manuscript_id = $1`,

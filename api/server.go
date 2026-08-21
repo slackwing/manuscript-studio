@@ -42,6 +42,7 @@ type Server struct {
 	adminHandlers      *handlers.AdminHandlers
 
 	manuscriptCreateHandlers *handlers.ManuscriptCreateHandlers
+	roleHandlers             *handlers.RoleHandlers
 }
 
 func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
@@ -116,6 +117,11 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 		SessionStore: sessionStore,
 		Config:       cfg,
 		Admin:        s.adminHandlers,
+	}
+	s.roleHandlers = &handlers.RoleHandlers{
+		DB:           dbWrapper,
+		SessionStore: sessionStore,
+		Config:       cfg,
 	}
 	s.setupRouter()
 	return s
@@ -260,8 +266,15 @@ func (s *Server) setupRouter() {
 			r.Post("/manuscripts", s.manuscriptCreateHandlers.HandleCreateManuscript)
 			r.Get("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleGetManuscriptMeta)
 			r.Patch("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleUpdateManuscriptMeta)
+			r.Get("/roles", s.roleHandlers.HandleGetRolesJSON)
+			r.Get("/manuscripts/{manuscript_id}/people", s.roleHandlers.HandleGetPeople)
+			r.Put("/manuscripts/{manuscript_id}/people-order", s.roleHandlers.HandlePutPeopleOrder)
+			r.Post("/manuscripts/{manuscript_id}/roles", s.roleHandlers.HandleGrantRole)
+			r.Delete("/manuscripts/{manuscript_id}/roles", s.roleHandlers.HandleRevokeRole)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
+			r.Post("/sentences/{sentence_id}/suggestion/review", s.suggestionHandlers.HandleReviewSuggestion)
+			r.Post("/migrations/{migration_id}/accept-own-uncontested", s.suggestionHandlers.HandleAcceptOwnUncontested)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
 			r.Get("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state", s.suggestionHandlers.HandleGetPushState)
 
@@ -314,6 +327,8 @@ func (s *Server) setupRouter() {
 			r.Put("/notes/{note_id}/manuscript", s.noteHandlers.HandleLinkNoteManuscript)
 			r.Delete("/notes/{note_id}", s.noteHandlers.HandleDeleteNote)
 			r.Post("/notes/{note_id}/complete", s.noteHandlers.HandleCompleteNote)
+			r.Post("/notes/{note_id}/hide", s.noteHandlers.HandleHideNote)
+			r.Post("/notes/{note_id}/unhide", s.noteHandlers.HandleUnhideNote)
 			r.Post("/notes/{note_id}/points", s.noteHandlers.HandleScoreNotePoints)
 
 			// Task types (031/032): the settings page's dimension list.

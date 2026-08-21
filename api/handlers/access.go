@@ -7,6 +7,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/auth"
 	"github.com/slackwing/manuscript-studio/internal/config"
 	"github.com/slackwing/manuscript-studio/internal/database"
+	"github.com/slackwing/manuscript-studio/internal/perm"
 )
 
 // resolveManuscriptName returns the manuscript's name for a given
@@ -27,8 +28,9 @@ func resolveManuscriptName(ctx context.Context, db *database.DB, _ *config.Confi
 }
 
 // requireManuscriptAccess is the standard guard for any per-manuscript
-// endpoint. It writes the appropriate HTTP error and returns false on deny.
-// Callers should `return` immediately when it returns false.
+// endpoint: ANY role row on the manuscript (v3 — replaced the old
+// manuscript_access lookup). It writes the appropriate HTTP error and
+// returns false on deny. Callers should `return` immediately on false.
 //
 //	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) { return }
 func requireManuscriptAccess(w http.ResponseWriter, r *http.Request,
@@ -39,27 +41,56 @@ func requireManuscriptAccess(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return false
 	}
-	name, err := resolveManuscriptName(r.Context(), db, cfg, manuscriptID)
-	if err != nil {
-		http.Error(w, "Failed to resolve manuscript", http.StatusInternalServerError)
-		return false
-	}
-	if name == "" {
-		// Either the row doesn't exist or it's not in the running config.
-		// Both look the same to clients (404) so we don't leak existence.
-		http.Error(w, "Manuscript not found", http.StatusNotFound)
-		return false
-	}
-	ok, err := db.HasManuscriptAccess(r.Context(), session.Username, name)
+	ok, err := db.HasAnyRole(r.Context(), session.Username, manuscriptID)
 	if err != nil {
 		http.Error(w, "Failed to check manuscript access", http.StatusInternalServerError)
 		return false
 	}
 	if !ok {
+		// No-role and no-such-manuscript look the same to clients (404) so
+		// we don't leak existence.
 		http.Error(w, "Manuscript not found", http.StatusNotFound)
 		return false
 	}
 	return true
+}
+
+// requireAction gates a per-manuscript endpoint on a specific v3 action
+// (internal/perm). Runs the any-role visibility check implicitly: a user
+// with no role at all gets the same 404 as a missing manuscript; a user
+// with roles but without the action gets 403.
+func requireAction(w http.ResponseWriter, r *http.Request,
+	db *database.DB, manuscriptID int, action string,
+) bool {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	roles, err := db.GetRolesForUser(r.Context(), session.Username, manuscriptID)
+	if err != nil {
+		http.Error(w, "Failed to check permissions", http.StatusInternalServerError)
+		return false
+	}
+	if len(roles) == 0 {
+		http.Error(w, "Manuscript not found", http.StatusNotFound)
+		return false
+	}
+	if !perm.Can(roles, action) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+// userHasAction is the non-writing variant for branching (e.g. "include
+// others' rows only when the caller can see them").
+func userHasAction(ctx context.Context, db *database.DB, username string, manuscriptID int, action string) (bool, error) {
+	roles, err := db.GetRolesForUser(ctx, username, manuscriptID)
+	if err != nil {
+		return false, err
+	}
+	return perm.Can(roles, action), nil
 }
 
 // requireManuscriptAccessForMigration is the same check, but starts from a

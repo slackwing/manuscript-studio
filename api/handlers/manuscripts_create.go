@@ -140,9 +140,10 @@ func (h *ManuscriptCreateHandlers) HandleCreateManuscript(w http.ResponseWriter,
 		}
 	}
 
-	// The creator gets access (admin role once PERMISSIONS_PLAN Phase 3
-	// lands; a manuscript_access grant until then).
-	if err := h.DB.GrantManuscriptAccess(ctx, session.Username, name); err != nil {
+	// The creator gets ADMIN — and only admin (PERMISSIONS_PLAN v3 §1):
+	// content roles (author/editor/…) are assigned deliberately in
+	// settings, including to yourself.
+	if err := h.DB.GrantRole(ctx, session.Username, row.ManuscriptID, "admin"); err != nil {
 		fail("grant", err)
 		return
 	}

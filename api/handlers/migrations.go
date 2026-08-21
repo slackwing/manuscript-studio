@@ -143,7 +143,14 @@ func (h *MigrationHandlers) HandleGetManuscriptByMigration(w http.ResponseWriter
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	notes, err := h.DB.GetNotesByCommit(ctx, migration.CommitHash, session.Username)
+	// v3 multi-user notes: everyone's notes ride along when the caller may
+	// see them (hidden flags are viewer-relative).
+	var notes []models.Note
+	if seeOthers, aerr := userHasAction(ctx, h.DB, session.Username, migration.ManuscriptID, "see-others-notes"); aerr == nil && seeOthers {
+		notes, err = h.DB.GetAllNotesByCommit(ctx, migration.CommitHash, session.Username)
+	} else {
+		notes, err = h.DB.GetNotesByCommit(ctx, migration.CommitHash, session.Username)
+	}
 	if err != nil {
 		log.Printf("migrations: get notes for commit %s: %v", migration.CommitHash, err)
 		http.Error(w, "Failed to get notes", http.StatusInternalServerError)
@@ -378,7 +385,7 @@ func (h *MigrationHandlers) HandleUpdateManuscriptMeta(w http.ResponseWriter, r 
 		http.Error(w, "Invalid manuscript_id", http.StatusBadRequest)
 		return
 	}
-	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
+	if !requireAction(w, r, h.DB, manuscriptID, "manage-manuscript") {
 		return
 	}
 	var body struct {

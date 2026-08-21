@@ -256,17 +256,27 @@ func TestCopySuggestionsForward_ConflictLoses(t *testing.T) {
 	}
 
 	// Bulk: empty pairs → 0, no error.
-	n, err = f.db.CopySuggestionsForwardBulk(f.ctx, nil, nil)
+	n, err = f.db.CarrySuggestionsForwardBulk(f.ctx, nil, nil, nil)
 	if err != nil || n != 0 {
 		t.Errorf("empty bulk = (%d, %v), want (0, nil)", n, err)
 	}
-	// Bulk copy to a fresh sentence inserts both users' rows.
-	n, err = f.db.CopySuggestionsForwardBulk(f.ctx, []string{from}, []string{bulkTo})
+	// Bulk carry to a fresh sentence inserts both users' rows; a FUZZY
+	// pairing arrives stale (v3: carried-onto-changed-text).
+	n, err = f.db.CarrySuggestionsForwardBulk(f.ctx, []string{from}, []string{bulkTo}, []bool{true})
 	if err != nil {
 		t.Fatalf("bulk: %v", err)
 	}
 	if n != 2 {
 		t.Errorf("bulk inserted %d, want 2", n)
+	}
+	var stale bool
+	if err := f.pool.QueryRow(f.ctx,
+		`SELECT stale FROM suggested_change WHERE sentence_id = $1 AND user_id = $2`,
+		bulkTo, f.username).Scan(&stale); err != nil {
+		t.Fatalf("read stale: %v", err)
+	}
+	if !stale {
+		t.Error("fuzzy carry must arrive stale")
 	}
 }
 

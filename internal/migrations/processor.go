@@ -297,24 +297,28 @@ type plannedMove struct {
 	Confidence    float64
 }
 
-// migrateSuggestions copies suggested_change rows forward only on exact-match
-// pairings (Confidence == 1.0). Fuzzy/fallback pairings have changed text, so
-// a stale suggestion would be wrong — leave it on the old sentence. Returns
-// the total number of suggestion rows inserted across all paired sentences —
-// a useful log signal for "did we move anything?".
+// migrateSuggestions carries suggested_change rows forward on EVERY pairing
+// (v3, PERMISSIONS_PLAN §4 — suggestions are never destroyed by a
+// migration). Exact-match pairings (Confidence == 1.0) stay fresh; fuzzy/
+// fallback pairings have changed text, so those arrive STALE — kept for
+// review, excluded from live diff rendering. Sentences with no successor
+// keep their old attachment (OPEN_QUESTIONS #2). Returns the total number
+// of suggestion rows inserted — a useful "did we move anything?" signal.
 func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) (int, error) {
-	// All exact-match pairings in one statement — not a round-trip each.
+	// All pairings in one statement — not a round-trip each.
 	var fromIDs, toIDs []string
+	var fuzzy []bool
 	for oldID, move := range plan {
-		if move.NewSentenceID == "" || move.Confidence < 1.0 {
+		if move.NewSentenceID == "" {
 			continue
 		}
 		fromIDs = append(fromIDs, oldID)
 		toIDs = append(toIDs, move.NewSentenceID)
+		fuzzy = append(fuzzy, move.Confidence < 1.0)
 	}
-	moved, err := db.CopySuggestionsForwardBulk(ctx, fromIDs, toIDs)
+	moved, err := db.CarrySuggestionsForwardBulk(ctx, fromIDs, toIDs, fuzzy)
 	if err != nil {
-		return 0, fmt.Errorf("copy suggestions forward: %w", err)
+		return 0, fmt.Errorf("carry suggestions forward: %w", err)
 	}
 	return moved, nil
 }

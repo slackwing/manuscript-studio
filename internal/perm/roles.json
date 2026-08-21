@@ -1,0 +1,52 @@
+{
+  "comment": "Role → action bundles (PERMISSIONS_PLAN.md v3). The ONE source of truth: embedded into the server (internal/perm) and served verbatim at GET api/roles for the frontend. Order in `seniority` drives People-tab default sort and is highest-first.",
+  "seniority": ["admin", "author", "editor", "beta-reader", "reader", "pointer"],
+  "roles": {
+    "admin": [
+      "see-manuscript",
+      "manage-manuscript",
+      "manage-role-admin",
+      "manage-role-author",
+      "manage-role-editor",
+      "manage-role-beta-reader",
+      "manage-role-reader",
+      "manage-role-pointer"
+    ],
+    "author": [
+      "see-manuscript",
+      "see-outline",
+      "see-statistics",
+      "see-others-notes",
+      "see-others-edits",
+      "manage-others-notes",
+      "manage-others-suggestions",
+      "commit-and-push-suggestions",
+      "manage-role-author",
+      "manage-role-editor",
+      "manage-role-beta-reader",
+      "manage-role-reader"
+    ],
+    "editor": [
+      "see-manuscript",
+      "see-outline",
+      "see-statistics",
+      "see-others-notes",
+      "see-others-edits",
+      "manage-others-notes",
+      "manage-others-suggestions",
+      "commit-and-push-suggestions"
+    ],
+    "beta-reader": [
+      "see-manuscript",
+      "see-outline",
+      "see-others-notes",
+      "see-others-edits"
+    ],
+    "reader": [
+      "see-manuscript"
+    ],
+    "pointer": [
+      "award-points"
+    ]
+  }
+}

@@ -6,6 +6,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -43,6 +44,32 @@ func scanNote(row pgx.Row) (models.Note, error) {
 		&a.DeletedAt,
 		&a.CompletedAt,
 		&a.SketchID,
+	)
+	return a, err
+}
+
+// scanNoteHidden: scanNote + the trailing viewer-relative hidden column.
+func scanNoteHidden(row pgx.Row) (models.Note, error) {
+	var a models.Note
+	err := row.Scan(
+		&a.NoteID,
+		&a.SentenceID,
+		&a.ManuscriptID,
+		&a.ScratchpadID,
+		&a.UserID,
+		&a.Color,
+		&a.Body,
+		&a.Priority,
+		&a.TaskType,
+		&a.Impact,
+		&a.Blocked,
+		&a.Position,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+		&a.DeletedAt,
+		&a.CompletedAt,
+		&a.SketchID,
+		&a.Hidden,
 	)
 	return a, err
 }
@@ -91,6 +118,105 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 	}
 
 	return notes, nil
+}
+
+// GetAllNotesByCommit is the multi-user twin of GetNotesByCommit (v3):
+// EVERY user's active notes on the commit, with the viewer-relative Hidden
+// flag from note_hide. Hidden notes still ship — the frontend dims and
+// demotes them rather than losing them.
+func (db *DB) GetAllNotesByCommit(ctx context.Context, commitHash, viewer string) ([]models.Note, error) {
+	query := `
+		SELECT ` + noteColumns + `,
+		       EXISTS(SELECT 1 FROM note_hide h WHERE h.note_id = a.note_id AND h.username = $2) AS hidden
+		FROM note a
+		JOIN sentence s ON a.sentence_id = s.sentence_id
+		WHERE s.commit_hash = $1
+		  AND a.deleted_at IS NULL
+		  AND a.completed_at IS NULL
+		ORDER BY s.ordinal, a.position
+	`
+	rows, err := db.Pool.Query(ctx, query, commitHash, viewer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all notes by commit: %w", err)
+	}
+	defer rows.Close()
+	var notes []models.Note
+	for rows.Next() {
+		a, err := scanNoteHidden(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan note: %w", err)
+		}
+		notes = append(notes, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating notes: %w", err)
+	}
+	for i := range notes {
+		tags, err := db.GetTagsForNote(ctx, notes[i].NoteID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get tags for note %d: %w", notes[i].NoteID, err)
+		}
+		notes[i].Tags = tags
+	}
+	return notes, nil
+}
+
+// GetAllNotesBySentence: every user's active notes on one sentence, with
+// the viewer-relative Hidden flag.
+func (db *DB) GetAllNotesBySentence(ctx context.Context, sentenceID, viewer string) ([]models.Note, error) {
+	query := `
+		SELECT ` + noteColumns + `,
+		       EXISTS(SELECT 1 FROM note_hide h WHERE h.note_id = a.note_id AND h.username = $2) AS hidden
+		FROM note a
+		WHERE a.sentence_id = $1
+		  AND a.deleted_at IS NULL
+		  AND a.completed_at IS NULL
+		ORDER BY a.position
+	`
+	rows, err := db.Pool.Query(ctx, query, sentenceID, viewer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all notes by sentence: %w", err)
+	}
+	defer rows.Close()
+	var notes []models.Note
+	for rows.Next() {
+		a, err := scanNoteHidden(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan note: %w", err)
+		}
+		notes = append(notes, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating notes: %w", err)
+	}
+	for i := range notes {
+		tags, err := db.GetTagsForNote(ctx, notes[i].NoteID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get tags for note %d: %w", notes[i].NoteID, err)
+		}
+		notes[i].Tags = tags
+	}
+	return notes, nil
+}
+
+// HideNote / UnhideNote: per-viewer, reversible, owner-invisible (v3).
+func (db *DB) HideNote(ctx context.Context, username string, noteID int) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO note_hide (username, note_id) VALUES ($1, $2)
+		ON CONFLICT DO NOTHING`, username, noteID)
+	if err != nil {
+		return fmt.Errorf("hide note: %w", err)
+	}
+	return nil
+}
+
+func (db *DB) UnhideNote(ctx context.Context, username string, noteID int) error {
+	_, err := db.Pool.Exec(ctx,
+		`DELETE FROM note_hide WHERE username = $1 AND note_id = $2`, username, noteID)
+	if err != nil {
+		return fmt.Errorf("unhide note: %w", err)
+	}
+	return nil
 }
 
 func getNoteOriginInfo(ctx context.Context, tx pgx.Tx, noteID int) (originSentenceID, originCommitHash, createdBy string, originMigrationID *int, err error) {
@@ -810,4 +936,20 @@ func (db *DB) SetNoteManuscript(ctx context.Context, noteID int, manuscriptID *i
 		return fmt.Errorf("failed to set note manuscript: %w", err)
 	}
 	return nil
+}
+
+// GetManuscriptIDForCommit resolves the manuscript a commit's migration
+// belongs to (0 = unknown). Used by the multi-user notes read path.
+func (db *DB) GetManuscriptIDForCommit(ctx context.Context, commitHash string) (int, error) {
+	var mid int
+	err := db.Pool.QueryRow(ctx,
+		`SELECT manuscript_id FROM migration WHERE commit_hash = $1 ORDER BY migration_id DESC LIMIT 1`,
+		commitHash).Scan(&mid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("manuscript for commit: %w", err)
+	}
+	return mid, nil
 }

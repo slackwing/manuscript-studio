@@ -134,6 +134,10 @@ type Note struct {
 	// may assign points (typed on the armed checkmark).
 	Points *int  `json:"points"`
 	Tags   []Tag `json:"tags"` // populated via JOIN; always serialize, even empty
+	// Hidden is VIEWER-relative (note_hide, v3 multi-user notes): computed
+	// per query, never stored on the note itself. Hidden notes render at
+	// 50% opacity below unhidden ones; the owner never sees who hid.
+	Hidden bool `json:"hidden"`
 }
 
 type Tag struct {
@@ -149,6 +153,12 @@ type NoteTag struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Suggestion review states (v3, PERMISSIONS_PLAN §4). NULL = unreviewed.
+const (
+	ReviewAccepted = "accepted"
+	ReviewRejected = "rejected"
+)
+
 type SuggestedChange struct {
 	SuggestionID int       `json:"suggestion_id"`
 	SentenceID   string    `json:"sentence_id"`
@@ -156,6 +166,14 @@ type SuggestedChange struct {
 	Text         string    `json:"text"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	// ReviewStatus: nil = unreviewed; accepted/rejected otherwise. Editing
+	// the text resets it. ReviewedBy/At record who decided.
+	ReviewStatus *string    `json:"review_status"`
+	ReviewedBy   string     `json:"reviewed_by,omitempty"`
+	ReviewedAt   *time.Time `json:"reviewed_at,omitempty"`
+	// Stale: carried across a migration onto a sentence whose text changed
+	// — kept visible for review, but never rendered as a live diff.
+	Stale bool `json:"stale"`
 }
 
 type NoteVersion struct {

@@ -598,8 +598,9 @@ func TestMigration_ChainAcrossThreeCommits(t *testing.T) {
 }
 
 // Suggested edits attached to an unchanged (exact-match) sentence get copied
-// forward to its new sentence_id at migration time. Suggestions on edited
-// (fuzzy-pair) sentences stay frozen on the old row.
+// forward FRESH to its new sentence_id at migration time. v3
+// (PERMISSIONS_PLAN §4): suggestions on edited (fuzzy-pair) sentences are
+// carried too — arriving STALE — and the old row survives as audit data.
 func TestMigration_SuggestionsCopyOnExactMatch(t *testing.T) {
 	f := newFixture(t)
 
@@ -637,12 +638,22 @@ func TestMigration_SuggestionsCopyOnExactMatch(t *testing.T) {
 	if got[stableOneNew] != "Suggested rewrite for sentence one." {
 		t.Errorf("expected suggestion to follow exact-match pairing onto %s, got map %v", stableOneNew, got)
 	}
+	staleByID := map[string]bool{}
+	for _, r := range rows {
+		staleByID[r.SentenceID] = r.Stale
+	}
+	if staleByID[stableOneNew] {
+		t.Errorf("exact-match carry must stay FRESH, got stale on %s", stableOneNew)
+	}
 
 	// "Stable sentence two." → "Stable sentence TWO modified." is fuzzy.
-	// The new sentence should have NO suggestion.
+	// v3: the suggestion IS carried — but arrives STALE.
 	stableTwoNew := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "Stable sentence TWO modified")
-	if _, present := got[stableTwoNew]; present {
-		t.Errorf("fuzzy-paired sentence %s should not inherit a suggestion, got: %v", stableTwoNew, got[stableTwoNew])
+	if got[stableTwoNew] != "Suggested rewrite for sentence two." {
+		t.Errorf("fuzzy-paired sentence %s should inherit the suggestion (stale), got: %v", stableTwoNew, got)
+	}
+	if !staleByID[stableTwoNew] {
+		t.Errorf("fuzzy carry must arrive STALE on %s", stableTwoNew)
 	}
 
 	// The old (mID1) suggestion on stable-two should still exist (not deleted).

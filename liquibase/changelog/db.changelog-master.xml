@@ -44,5 +44,6 @@
     <include file="changelog/035-daily-rules.xml"/>
     <include file="changelog/036-no-snapshot.xml"/>
     <include file="changelog/037-manuscript-registry.xml"/>
+    <include file="changelog/038-roles-multiuser.xml"/>
 
 </databaseChangeLog>

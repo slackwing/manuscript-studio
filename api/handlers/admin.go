@@ -21,6 +21,7 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/migrations"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/perm"
 )
 
 // migrationTimeout caps a single migration goroutine before it's aborted
@@ -276,8 +277,11 @@ func (h *AdminHandlers) HandleCreateUser(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// HandleCreateGrant grants a user access to a manuscript (idempotent).
-// Body: {"username","manuscript_name"}. Requires system token.
+// HandleCreateGrant grants a user roles on a manuscript (idempotent).
+// Body: {"username","manuscript_name","roles":["editor",…]?}. When roles
+// is omitted the legacy power set (admin+author+editor+pointer) is
+// granted — matching the 038 data migration, so ops/tests that predate v3
+// keep full capability. Requires system token.
 func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request) {
 	if !h.checkSystemToken(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -285,8 +289,9 @@ func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		Username       string `json:"username"`
-		ManuscriptName string `json:"manuscript_name"`
+		Username       string   `json:"username"`
+		ManuscriptName string   `json:"manuscript_name"`
+		Roles          []string `json:"roles"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -296,23 +301,35 @@ func (h *AdminHandlers) HandleCreateGrant(w http.ResponseWriter, r *http.Request
 		http.Error(w, "username and manuscript_name are required", http.StatusBadRequest)
 		return
 	}
+	if len(req.Roles) == 0 {
+		req.Roles = []string{"admin", "author", "editor", "pointer"}
+	}
+	for _, role := range req.Roles {
+		if !perm.ValidRole(role) {
+			http.Error(w, "unknown role "+role, http.StatusBadRequest)
+			return
+		}
+	}
 
-	query := `
-		INSERT INTO manuscript_access (username, manuscript_name)
-		VALUES ($1, $2)
-		ON CONFLICT (username, manuscript_name) DO NOTHING
-	`
-	if _, err := h.DB.Pool.Exec(r.Context(), query, req.Username, req.ManuscriptName); err != nil {
-		log.Printf("Failed to grant %s access to %s: %v", req.Username, req.ManuscriptName, err)
-		http.Error(w, "Failed to grant access", http.StatusInternalServerError)
+	m, err := h.DB.GetManuscriptByName(r.Context(), req.ManuscriptName)
+	if err != nil || m == nil {
+		http.Error(w, "Manuscript not found", http.StatusNotFound)
 		return
+	}
+	for _, role := range req.Roles {
+		if err := h.DB.GrantRole(r.Context(), req.Username, m.ManuscriptID, role); err != nil {
+			log.Printf("Failed to grant %s %s on %s: %v", req.Username, role, req.ManuscriptName, err)
+			http.Error(w, "Failed to grant access", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"username":        req.Username,
 		"manuscript_name": req.ManuscriptName,
+		"roles":           req.Roles,
 	})
 }
 

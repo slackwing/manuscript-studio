@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -56,7 +57,8 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
 		return
 	}
-	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
+	manuscriptID, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID)
+	if !ok {
 		return
 	}
 
@@ -66,7 +68,19 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 		return
 	}
 
-	suggestions, err := h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
+	// v3 multi-user view: everyone's suggestions when the caller may see
+	// them; own-only otherwise (the reader experience).
+	seeOthers, err := userHasAction(ctx, h.DB, session.Username, manuscriptID, "see-others-edits")
+	if err != nil {
+		http.Error(w, "Failed to check permissions", http.StatusInternalServerError)
+		return
+	}
+	var suggestions []models.SuggestedChange
+	if seeOthers {
+		suggestions, err = h.DB.GetAllSuggestionsForMigration(ctx, migrationID)
+	} else {
+		suggestions, err = h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
+	}
 	if err != nil {
 		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
 		return
@@ -75,10 +89,113 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 		suggestions = []models.SuggestedChange{}
 	}
 
+	canReview, err := userHasAction(ctx, h.DB, session.Username, manuscriptID, "manage-others-suggestions")
+	if err != nil {
+		http.Error(w, "Failed to check permissions", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"suggestions": suggestions,
+		"viewer":      session.Username,
+		"can_review_others": canReview,
 	})
+}
+
+// HandleReviewSuggestion sets/clears a suggestion's verdict.
+// Body: {"username","status":"accepted"|"rejected"|null}. Reviewing your
+// OWN suggestion is free (the accept-all-own flow); others' needs
+// manage-others-suggestions (PERMISSIONS_PLAN §4).
+func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sentenceID := chi.URLParam(r, "sentence_id")
+	if sentenceID == "" {
+		http.Error(w, "sentence_id required", http.StatusBadRequest)
+		return
+	}
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		Username string  `json:"username"`
+		Status   *string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" {
+		http.Error(w, "username is required", http.StatusBadRequest)
+		return
+	}
+	if req.Status != nil && *req.Status != models.ReviewAccepted && *req.Status != models.ReviewRejected {
+		http.Error(w, "status must be accepted, rejected, or null", http.StatusBadRequest)
+		return
+	}
+	if req.Username != session.Username {
+		migrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
+		if err != nil || migrationID == 0 {
+			http.Error(w, "Sentence not found", http.StatusNotFound)
+			return
+		}
+		migration, err := h.DB.GetMigrationByID(ctx, migrationID)
+		if err != nil || migration == nil {
+			http.Error(w, "Migration not found", http.StatusNotFound)
+			return
+		}
+		if !requireAction(w, r, h.DB, migration.ManuscriptID, "manage-others-suggestions") {
+			return
+		}
+	}
+	found, err := h.DB.SetSuggestionReview(ctx, sentenceID, req.Username, req.Status, session.Username)
+	if err != nil {
+		log.Printf("suggestions: review %s/%s: %v", sentenceID, req.Username, err)
+		http.Error(w, "Failed to set review", http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		http.Error(w, "No such suggestion", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleAcceptOwnUncontested marks every own fresh unreviewed suggestion
+// on the migration accepted where no other user has a live suggestion on
+// the same sentence — the one-click path to today's "my edits are ready".
+func (h *SuggestionHandlers) HandleAcceptOwnUncontested(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	migrationID, err := strconv.Atoi(chi.URLParam(r, "migration_id"))
+	if err != nil {
+		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
+		return
+	}
+	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	n, err := h.DB.AcceptOwnUncontested(ctx, migrationID, session.Username)
+	if err != nil {
+		log.Printf("suggestions: accept own uncontested: %v", err)
+		http.Error(w, "Failed to accept", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"accepted": n})
 }
 
 // HandlePutSuggestion upserts a suggestion. Text identical to the original
@@ -363,7 +480,9 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
 		return
 	}
-	if !requireManuscriptAccess(w, r, h.DB, h.Config, manuscriptID) {
+	// v3: the Push/Commit button is a real permission — same action for
+	// github and local storage (PERMISSIONS_PLAN §2).
+	if !requireAction(w, r, h.DB, manuscriptID, "commit-and-push-suggestions") {
 		return
 	}
 
@@ -379,9 +498,21 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Body is intentionally ignored — this endpoint has exactly one mode
-	// (force-push the canonical branch). Older clients that send
-	// {"action":"update"} continue to work; "new" is silently dropped.
+	// v3 (PERMISSIONS_PLAN §4): pushes land ACCEPTED suggestions only.
+	// scope: "all-accepted" (default — People-order winner on per-sentence
+	// conflicts) or "own-accepted". Older clients' {"action":"update"}
+	// bodies parse harmlessly into the default scope.
+	var pushBody struct {
+		Scope string `json:"scope"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&pushBody)
+	if pushBody.Scope == "" {
+		pushBody.Scope = "all-accepted"
+	}
+	if pushBody.Scope != "all-accepted" && pushBody.Scope != "own-accepted" {
+		http.Error(w, "scope must be all-accepted or own-accepted", http.StatusBadRequest)
+		return
+	}
 
 	// Stale-migration guard: only push from the latest migration.
 	latest, err := h.DB.GetLatestMigration(ctx, manuscriptID)
@@ -416,13 +547,27 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	suggestions, err := h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
+	var suggestions []models.SuggestedChange
+	if pushBody.Scope == "own-accepted" {
+		suggestions, err = h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
+	} else {
+		suggestions, err = h.DB.GetAllSuggestionsForMigration(ctx, migrationID)
+	}
 	if err != nil {
 		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
 		return
 	}
+	// Accepted + fresh only; per-sentence conflicts (two users' accepted
+	// suggestions) resolve by the CALLER's People order — top person wins.
+	accepted := suggestions[:0]
+	for _, s := range suggestions {
+		if !s.Stale && s.ReviewStatus != nil && *s.ReviewStatus == models.ReviewAccepted {
+			accepted = append(accepted, s)
+		}
+	}
+	suggestions = resolveSuggestionWinners(accepted, h.peopleOrderFor(ctx, session.Username, manuscriptID))
 	if len(suggestions) == 0 {
-		http.Error(w, "No suggestions to push", http.StatusBadRequest)
+		http.Error(w, "No accepted suggestions to push (accept your edits first)", http.StatusBadRequest)
 		return
 	}
 	// Rebuild the WHOLE manuscript in canonical form from the migration's
@@ -601,6 +746,64 @@ func (h *SuggestionHandlers) commitLocalSuggestions(
 		Results:     results,
 		MigrationID: migrationID,
 	})
+}
+
+// peopleOrderFor: the caller's People order (saved, else role-seniority
+// default) as a username → rank map. Errors degrade to the default order.
+func (h *SuggestionHandlers) peopleOrderFor(ctx context.Context, username string, manuscriptID int) map[string]int {
+	rank := make(map[string]int)
+	members, err := h.DB.ListRoleMembers(ctx, manuscriptID)
+	if err != nil {
+		return rank
+	}
+	sort.SliceStable(members, func(i, j int) bool {
+		ri, rj := bestRoleRank(members[i].Roles), bestRoleRank(members[j].Roles)
+		if ri != rj {
+			return ri < rj
+		}
+		return members[i].UserCreatedAt.Before(members[j].UserCreatedAt)
+	})
+	next := 0
+	if saved, err := h.DB.GetPeopleOrder(ctx, username, manuscriptID); err == nil {
+		for _, u := range saved {
+			if _, dup := rank[u]; !dup {
+				rank[u] = next
+				next++
+			}
+		}
+	}
+	for _, m := range members {
+		if _, dup := rank[m.Username]; !dup {
+			rank[m.Username] = next
+			next++
+		}
+	}
+	return rank
+}
+
+// resolveSuggestionWinners keeps one suggestion per sentence: the one whose
+// author ranks highest in the caller's People order (unknown authors sink).
+func resolveSuggestionWinners(suggs []models.SuggestedChange, rank map[string]int) []models.SuggestedChange {
+	winner := make(map[string]models.SuggestedChange)
+	rankOf := func(u string) int {
+		if r, ok := rank[u]; ok {
+			return r
+		}
+		return 1 << 30
+	}
+	for _, s := range suggs {
+		cur, exists := winner[s.SentenceID]
+		if !exists || rankOf(s.UserID) < rankOf(cur.UserID) {
+			winner[s.SentenceID] = s
+		}
+	}
+	out := make([]models.SuggestedChange, 0, len(winner))
+	for _, s := range suggs {
+		if winner[s.SentenceID].SuggestionID == s.SuggestionID {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // canonicalSuggestionsBranch is the one-and-only branch name that push and
