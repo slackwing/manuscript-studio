@@ -89,7 +89,10 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 		suggestions = []models.SuggestedChange{}
 	}
 
-	canReview, err := userHasAction(ctx, h.DB, session.Username, manuscriptID, "manage-others-suggestions")
+	// v3.1 (review round 2): accept/reject CHANGES the manuscript, so it is
+	// author/editor territory even for one's own suggestion — readers and
+	// beta-readers file suggestions and wait for review.
+	canReview, err := userHasAction(ctx, h.DB, session.Username, manuscriptID, "manage-suggestions")
 	if err != nil {
 		http.Error(w, "Failed to check permissions", http.StatusInternalServerError)
 		return
@@ -99,22 +102,20 @@ func (h *SuggestionHandlers) HandleGetSuggestionsForMigration(w http.ResponseWri
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"suggestions": suggestions,
 		"viewer":      session.Username,
-		"can_review_others": canReview,
+		"can_review":  canReview,
 	})
 }
 
 // HandleReviewSuggestion sets/clears a suggestion's verdict.
-// Body: {"username","status":"accepted"|"rejected"|null}. Reviewing your
-// OWN suggestion is free (the accept-all-own flow); others' needs
-// manage-others-suggestions (PERMISSIONS_PLAN §4).
+// Body: {"username","status":"accepted"|"rejected"|null}. v3.1: reviewing
+// ANY suggestion — one's own included — needs manage-suggestions (author/
+// editor): accepting changes the manuscript, so readers and beta-readers
+// only file suggestions (PERMISSIONS_PLAN §4).
 func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sentenceID := chi.URLParam(r, "sentence_id")
 	if sentenceID == "" {
 		http.Error(w, "sentence_id required", http.StatusBadRequest)
-		return
-	}
-	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
 		return
 	}
 	session, err := auth.GetSession(r)
@@ -138,20 +139,18 @@ func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *ht
 		http.Error(w, "status must be accepted, rejected, or null", http.StatusBadRequest)
 		return
 	}
-	if req.Username != session.Username {
-		migrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
-		if err != nil || migrationID == 0 {
-			http.Error(w, "Sentence not found", http.StatusNotFound)
-			return
-		}
-		migration, err := h.DB.GetMigrationByID(ctx, migrationID)
-		if err != nil || migration == nil {
-			http.Error(w, "Migration not found", http.StatusNotFound)
-			return
-		}
-		if !requireAction(w, r, h.DB, migration.ManuscriptID, "manage-others-suggestions") {
-			return
-		}
+	migrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
+	if err != nil || migrationID == 0 {
+		http.Error(w, "Sentence not found", http.StatusNotFound)
+		return
+	}
+	migration, err := h.DB.GetMigrationByID(ctx, migrationID)
+	if err != nil || migration == nil {
+		http.Error(w, "Migration not found", http.StatusNotFound)
+		return
+	}
+	if !requireAction(w, r, h.DB, migration.ManuscriptID, "manage-suggestions") {
+		return
 	}
 	found, err := h.DB.SetSuggestionReview(ctx, sentenceID, req.Username, req.Status, session.Username)
 	if err != nil {
@@ -169,6 +168,7 @@ func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *ht
 // HandleAcceptOwnUncontested marks every own fresh unreviewed suggestion
 // on the migration accepted where no other user has a live suggestion on
 // the same sentence — the one-click path to today's "my edits are ready".
+// v3.1: gated like any accept (manage-suggestions).
 func (h *SuggestionHandlers) HandleAcceptOwnUncontested(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	migrationID, err := strconv.Atoi(chi.URLParam(r, "migration_id"))
@@ -176,7 +176,12 @@ func (h *SuggestionHandlers) HandleAcceptOwnUncontested(w http.ResponseWriter, r
 		http.Error(w, "Invalid migration_id", http.StatusBadRequest)
 		return
 	}
-	if _, ok := requireManuscriptAccessForMigration(w, r, h.DB, h.Config, migrationID); !ok {
+	mig, err := h.DB.GetMigrationByID(ctx, migrationID)
+	if err != nil || mig == nil {
+		http.Error(w, "Migration not found", http.StatusNotFound)
+		return
+	}
+	if !requireAction(w, r, h.DB, mig.ManuscriptID, "manage-suggestions") {
 		return
 	}
 	session, err := auth.GetSession(r)

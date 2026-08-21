@@ -804,3 +804,37 @@ func TestMigration_DuplicateCommitConflicts(t *testing.T) {
 		t.Errorf("expected dup-error wrapping ErrMigrationInProgress, got: %v", err)
 	}
 }
+
+// v3.1 review round 2 (#2): a DELETED sentence's suggestion is not stranded —
+// planMigration's fallback attaches it to a surviving neighbor's new
+// sentence, and the fallback pairing (confidence 0) arrives STALE.
+func TestMigration_DeletedSentenceSuggestionCarriesToNeighborStale(t *testing.T) {
+	f := newFixture(t)
+
+	v1 := "Alpha stays put here. Bravo will be deleted. Charlie stays put here."
+	v2 := "Alpha stays put here. Charlie stays put here."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", v1)
+	bravoOld := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Bravo will be deleted")
+	if _, err := f.db.UpsertSuggestion(f.ctx, bravoOld, f.username, "Bravo, rewritten."); err != nil {
+		t.Fatalf("upsert suggestion: %v", err)
+	}
+
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", v2)
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
+	var carried *models.SuggestedChange
+	for i := range rows {
+		if rows[i].Text == "Bravo, rewritten." {
+			carried = &rows[i]
+		}
+	}
+	if carried == nil {
+		t.Fatalf("deleted sentence's suggestion must carry to a neighbor, got %d rows", len(rows))
+	}
+	if !carried.Stale {
+		t.Errorf("fallback-attached suggestion must arrive STALE (landed on %s)", carried.SentenceID)
+	}
+}

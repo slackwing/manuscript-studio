@@ -337,6 +337,11 @@
    header. Its top button is THIS widget's letter (the upper-right corner);
    siblings stack below; the canon fleuron sits at the bottom of the list.
    No overflow — the widget always grows to fit every button. */
+/* .sn-rail is shared LOOK, not shared code: the sketch widget's variation
+   rail (sketch-view.mjs) and the suggest-modal's rails — history versions
+   AND the v3 user rail (suggestions.js mountUserRail) — all render through
+   these classes. Extracting one real component is on DEFERRED.md; until
+   then, style changes here restyle all three. */
 .sn-rail {
   flex: 0 0 auto;
   display: flex;

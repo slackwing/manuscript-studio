@@ -19,7 +19,7 @@
       "see-others-notes",
       "see-others-edits",
       "manage-others-notes",
-      "manage-others-suggestions",
+      "manage-suggestions",
       "commit-and-push-suggestions",
       "manage-role-author",
       "manage-role-editor",
@@ -33,7 +33,7 @@
       "see-others-notes",
       "see-others-edits",
       "manage-others-notes",
-      "manage-others-suggestions",
+      "manage-suggestions",
       "commit-and-push-suggestions"
     ],
     "beta-reader": [

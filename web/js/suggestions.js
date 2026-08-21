@@ -35,7 +35,7 @@ const WriteSysSuggestions = {
   renderBySentenceId: {}, // sid → TEXT of the winning suggestion (rendered diff)
   renderRowBySentence: {},// sid → the winning ROW (attribution, ✓/✗)
   viewer: '',
-  canReviewOthers: false,
+  canReview: false, // manage-suggestions (v3.1: covers OWN suggestions too)
   peopleRank: null,       // username → rank; null until People order loads
 
   async loadForMigration(migrationID) {
@@ -44,7 +44,7 @@ const WriteSysSuggestions = {
       const resp = await fetchJSON(`${this.apiBaseUrl}/migrations/${migrationID}/suggestions`, {}, true);
       this.rows = resp.suggestions || [];
       this.viewer = resp.viewer || (window.currentSession && window.currentSession.username) || '';
-      this.canReviewOthers = !!resp.can_review_others;
+      this.canReview = !!resp.can_review;
       await this.ensurePeopleRank();
       this.rebuildMaps();
     } catch (err) {
@@ -130,6 +130,10 @@ const WriteSysSuggestions = {
 
   // mountUserRail builds the left-edge user rail + read-only other/stale
   // views + Accept/Reject controls inside an open suggest-edit modal.
+  // STYLING NOTE: renders through the shared .sn-rail classes defined in
+  // scratchpad/scratchpad.css — same look as the sketch widget's variation
+  // rail and this modal's right history rail (see DEFERRED.md: shared rail
+  // component).
   mountUserRail(modal, sentenceId, pane, original) {
     const others = (this.rowsBySentence[sentenceId] || []).filter(s => s.user_id !== this.viewer);
     const stale = this.staleBySentence[sentenceId] || [];
@@ -170,7 +174,9 @@ const WriteSysSuggestions = {
       reviewBar.innerHTML = '';
       const row = entry.kind === 'own' ? mine : entry.row;
       if (!row) return; // own with no saved suggestion yet — nothing to review
-      const canReview = row.user_id === this.viewer || this.canReviewOthers;
+      // v3.1: accepting/rejecting ANY suggestion (own included) is
+      // author/editor territory — it changes the manuscript.
+      const canReview = this.canReview;
       const status = document.createElement('span');
       status.className = 'sgm-review-status' + (row.review_status ? ` ${row.review_status}` : '');
       status.textContent = (row.stale ? 'STALE · ' : '')

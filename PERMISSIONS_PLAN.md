@@ -1,10 +1,13 @@
 # Spec: Roles & permissions (v3) + multi-user suggestions/notes
 
-Status: **v3 IMPLEMENTED 2026-08-21** from Slackwing's second review
-(stream-of-consciousness message). v2's open questions were resolved by
-that message; new interpretation calls live in `OPEN_QUESTIONS.md` with
-the defaults chosen. History: v1 (author-only trio), v2 (ownership rule +
-static roles.json — both superseded but their machinery survives here).
+Status: **v3.1 IMPLEMENTED 2026-08-21** (v3 + Slackwing's review of
+OPEN_QUESTIONS). v3.1 delta: `manage-others-suggestions` became
+**`manage-suggestions`** and covers one's OWN suggestions too — accepting
+changes the manuscript, so readers/beta-readers file suggestions but
+never accept, not even their own. Interpretation history in
+`OPEN_QUESTIONS.md`; deferred follow-ups in `DEFERRED.md`. History: v1
+(author-only trio), v2 (ownership rule + static roles.json — superseded
+but their machinery survives here).
 
 ## 1. Model
 
@@ -37,7 +40,7 @@ static roles.json — both superseded but their machinery survives here).
 | `see-others-notes` | others' notes render (yours always do) |
 | `see-others-edits` | others' suggested edits visible (modal rail, People tab) |
 | `manage-others-notes` | complete / retag / retask others' notes (never delete — hide is the universal non-destructive out) |
-| `manage-others-suggestions` | accept / reject others' suggestions (own accept/reject is free) |
+| `manage-suggestions` | accept / reject ANY suggestion — own included (accepting changes the manuscript; v3.1) |
 | `commit-and-push-suggestions` | the Push/Commit button (github + local alike) |
 | `manage-manuscript` | settings modal fields (renamed from edit-settings) |
 | `manage-role-<role>` | grant/revoke that role (programmatic: the needed permission is derivable from the role name) |
@@ -57,7 +60,7 @@ public page: you're logged in to DO something on your own layer).
 | see-others-notes       |   | ✓ | ✓ | ✓ |   |   |
 | see-others-edits       |   | ✓ | ✓ | ✓ |   |   |
 | manage-others-notes    |   | ✓ | ✓ |   |   |   |
-| manage-others-suggestions |   | ✓ | ✓ |   |   |   |
+| manage-suggestions     |   | ✓ | ✓ |   |   |   |
 | commit-and-push-suggestions | | ✓ | ✓ |   |   |   |
 | manage-manuscript      | ✓ |   |   |   |   |   |
 | manage-role-admin      | ✓ |   |   |   |   |   |
@@ -79,10 +82,11 @@ public page: you're logged in to DO something on your own layer).
 - **Visibility**: GET suggestions returns every user's suggestions when
   the caller holds `see-others-edits`; each row carries user_id, review
   state, staleness. Otherwise own only (reader experience unchanged).
-- **Review**: accept/reject own = free; others' = `manage-others-
-  suggestions`. "Accept all own uncontested" endpoint marks every own
-  fresh unreviewed suggestion accepted where no other user has a live
-  suggestion on that sentence.
+- **Review**: accept/reject — own included — needs `manage-suggestions`
+  (v3.1: accepting changes the manuscript; a reader's suggestion waits
+  for an author/editor). "Accept all own uncontested" (same gate) marks
+  every own fresh unreviewed suggestion accepted where no other user has
+  a live suggestion on that sentence.
 - **Rendering**: the manuscript's red/green diff per sentence shows the
   top-ordered user's FRESH non-rejected suggestion (your People-tab drag
   order; you always outrank by default your own initial order = role

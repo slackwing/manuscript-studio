@@ -74,7 +74,10 @@ const WriteSysPush = {
     const S = window.WriteSysSuggestions || {};
     const accepted = S.acceptedCount ? S.acceptedCount('all') : 0;
     const ownAccepted = S.acceptedCount ? S.acceptedCount('own') : 0;
-    const ownPending = S.ownPendingCount ? S.ownPendingCount() : 0;
+    // v3.1: accepting (even one's own) needs manage-suggestions — a reader
+    // just files suggestions and the button stays hidden for them.
+    const canReview = !!S.canReview;
+    const ownPending = canReview && S.ownPendingCount ? S.ownPendingCount() : 0;
     if (accepted === 0 && ownPending === 0) {
       this._container.innerHTML = '';
       return;
