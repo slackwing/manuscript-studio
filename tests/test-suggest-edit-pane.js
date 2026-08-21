@@ -112,7 +112,8 @@ async function syncToHead() {
     // rail with * on top.
     const layout = await page.evaluate(() => {
       const m = document.querySelector('#suggestion-modal');
-      const rail = [...m.querySelectorAll('.sn-rail .sn-rail-btn')].map(b => ({
+      // v3 added a LEFT user rail — this check targets the RIGHT (history) rail.
+      const rail = [...m.querySelectorAll('.sn-rail:not(.sgm-rail-left) .sn-rail-btn')].map(b => ({
         t: b.textContent.trim(), dis: b.disabled, cls: b.className,
       }));
       return {

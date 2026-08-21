@@ -77,6 +77,7 @@ FAST_TESTS=(
 )
 
 SLOW_TESTS=(
+  test-multiuser-roles
   test-manuscript-lifecycle
   test-anchor-gutter
   test-canonize-compose
@@ -171,8 +172,9 @@ echo "Manuscript Studio Test Suite ($mode, ${WORKERS} workers)"
 echo "========================================"
 echo ""
 
-if ! curl -s http://localhost:5001/health > /dev/null 2>&1; then
-  echo "❌ ERROR: Server not running on http://localhost:5001"
+MS_PORT="${MS_TEST_PORT:-5001}"
+if ! curl -s "http://localhost:${MS_PORT}/health" > /dev/null 2>&1; then
+  echo "❌ ERROR: Server not running on http://localhost:${MS_PORT}"
   echo "   Start it with: make dev   (or: make dev-install)"
   exit 1
 fi

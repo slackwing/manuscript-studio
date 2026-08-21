@@ -147,14 +147,17 @@ function teardownBareRemote(bareDir) {
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
 
-    // Push button should now show. Label is always "Push (N)" — no Push New.
+    // v3 (PERMISSIONS_PLAN §4): pushes land accepted edits only, so the
+    // button starts as the accept step and flips to Push.
     await page.waitForSelector('.push-btn-primary', { timeout: 3000 });
     const initialLabel = (await page.locator('.push-btn-primary .push-btn-label').textContent()).trim();
-    assert(/^Push \(1\)$/.test(initialLabel),
-      `Initial label is "Push (1)" (got "${initialLabel}")`);
-    // No dropdown caret before any push (no branch yet → no View item).
-    assert(await page.locator('.push-btn-caret').count() === 0,
-      `No dropdown caret before first push`);
+    assert(/^Accept mine \(1\)$/.test(initialLabel),
+      `Initial label is "Accept mine (1)" (got "${initialLabel}")`);
+    await page.locator('.push-btn-primary').click();
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.push-btn-primary .push-btn-label');
+      return el && /^Push \(1\)$/.test(el.textContent.trim());
+    }, null, { timeout: 10000 });
 
     // Click Push — no confirm, no alert on success.
     await page.locator('.push-btn-primary').click();

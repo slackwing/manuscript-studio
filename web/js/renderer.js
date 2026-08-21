@@ -327,6 +327,7 @@ const WriteSysRenderer = {
       // scratchpad-import affordances are position-derived too.
       if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
       if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
+      if (window.WriteSysSuggestions && window.WriteSysSuggestions.markStaleSentences) window.WriteSysSuggestions.markStaleSentences();
       this.layoutMarginGlyphs();
       // Webfonts landing after pagination shift geometry — re-pin then.
       if (document.fonts && document.fonts.ready) {
@@ -489,7 +490,14 @@ const WriteSysRenderer = {
     };
 
     const cmdLib = window.WriteSysCommand;
-    const sugMap = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+    // v3 multi-user: the RENDERED suggestion per sentence is the People-order
+    // winner (renderBySentenceId), not necessarily your own; sugRows carries
+    // attribution + review status for the ✓/✗ marker, staleMap the
+    // dotted-underline affordance for suggestions from earlier commits.
+    const sugMap = (window.WriteSysSuggestions && window.WriteSysSuggestions.renderBySentenceId) || {};
+    const sugRows = (window.WriteSysSuggestions && window.WriteSysSuggestions.renderRowBySentence) || {};
+    const staleMap = (window.WriteSysSuggestions && window.WriteSysSuggestions.staleBySentence) || {};
+    const viewer = (window.WriteSysSuggestions && window.WriteSysSuggestions.viewer) || '';
 
     for (const s of sentences) {
       const id = s.id;
@@ -609,8 +617,16 @@ const WriteSysRenderer = {
         } else {
           inner = this.applyInlineFormatting(body);
         }
+        const sugRow = sugRows[id];
+        // Review marker: superscript ✓/✗ immediately after the diff (v3).
+        if (suggestion !== undefined && sugRow && sugRow.review_status && f.kind === 'prose') {
+          const mark = sugRow.review_status === 'accepted' ? '✓' : '✗';
+          inner += `<sup class="sg-review ${sugRow.review_status}" title="${escapeHTML(sugRow.user_id)}: ${sugRow.review_status}">${mark}</sup>`;
+        }
         const sugClass = (suggestion !== undefined ? ' has-suggestion' : '')
-          + (isDeleteProposal ? ' suggested-delete' : '');
+          + (isDeleteProposal ? ' suggested-delete' : '')
+          + (suggestion !== undefined && sugRow && sugRow.user_id !== viewer ? ' suggestion-others' : '')
+          + (staleMap[id] && staleMap[id].length ? ' has-stale-sugg' : '');
         let span = `<span class="sentence${sugClass}" data-sentence-id="${escapeHTML(id)}">${inner}</span>`;
         // Pending margin glyphs attach to THIS paragraph, absolutely placed
         // in the left margin aligned to its top; the carried break class wins
@@ -940,7 +956,7 @@ const WriteSysRenderer = {
   applyEffectiveSettings() {
     let settings = this.committedSettings || {};
     if (window.WriteSysCommand && this.currentSentences) {
-      const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+      const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.renderBySentenceId) || {};
       const canon = (window.WriteSysCanonicalize && window.WriteSysCanonicalize.canonicalize)
         ? window.WriteSysCanonicalize.canonicalize
         : (t) => t;

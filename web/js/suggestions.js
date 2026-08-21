@@ -23,21 +23,216 @@ const SUGGESTIONS_MOBILE_MEDIA = '(max-width: 1239px)';
 const WriteSysSuggestions = {
   apiBaseUrl: 'api',
 
-  // sentence_id → suggestion text.
+  // OWN fresh suggestions: sentence_id → text. The write-side view — modal
+  // seeding, canonize/import composition, draft keys. Multi-user rendering
+  // reads renderBySentenceId instead.
   bySentenceId: {},
+
+  // v3 multi-user state (PERMISSIONS_PLAN §4).
+  rows: [],               // every row the server let us see
+  rowsBySentence: {},     // sid → fresh rows
+  staleBySentence: {},    // sid → stale rows (dotted-underline affordance)
+  renderBySentenceId: {}, // sid → TEXT of the winning suggestion (rendered diff)
+  renderRowBySentence: {},// sid → the winning ROW (attribution, ✓/✗)
+  viewer: '',
+  canReviewOthers: false,
+  peopleRank: null,       // username → rank; null until People order loads
 
   async loadForMigration(migrationID) {
     if (!migrationID) return;
     try {
       const resp = await fetchJSON(`${this.apiBaseUrl}/migrations/${migrationID}/suggestions`, {}, true);
-      this.bySentenceId = {};
-      (resp.suggestions || []).forEach(s => {
-        this.bySentenceId[s.sentence_id] = s.text;
-      });
+      this.rows = resp.suggestions || [];
+      this.viewer = resp.viewer || (window.currentSession && window.currentSession.username) || '';
+      this.canReviewOthers = !!resp.can_review_others;
+      await this.ensurePeopleRank();
+      this.rebuildMaps();
     } catch (err) {
       console.warn('suggestions endpoint failed (ignored):', err.message || err);
-      this.bySentenceId = {};
+      this.rows = [];
+      this.rebuildMaps();
     }
+  },
+
+  // People order → rank map (the display-priority tiebreak). Loaded once
+  // per page; a saved drag order or role-seniority default, from the same
+  // endpoint the People tab uses. Failure degrades to viewer-first.
+  async ensurePeopleRank() {
+    if (this.peopleRank) return;
+    const r = window.WriteSysRenderer;
+    if (!r || !r.manuscriptId) return;
+    if (!this.rows.some(s => s.user_id !== this.viewer)) return; // own-only view — no order needed
+    try {
+      const data = await fetchJSON(`${this.apiBaseUrl}/manuscripts/${r.manuscriptId}/people`, {}, true);
+      const rank = {};
+      (data.order || []).forEach((u, i) => { rank[u] = i; });
+      this.peopleRank = rank;
+    } catch (e) {
+      this.peopleRank = null;
+    }
+  },
+
+  rebuildMaps() {
+    this.bySentenceId = {};
+    this.rowsBySentence = {};
+    this.staleBySentence = {};
+    this.renderBySentenceId = {};
+    this.renderRowBySentence = {};
+    const rankOf = (u) => {
+      if (this.peopleRank && u in this.peopleRank) return this.peopleRank[u];
+      return u === this.viewer ? 0 : 1 << 20; // fallback: my own edits first
+    };
+    for (const s of this.rows) {
+      if (s.stale) {
+        (this.staleBySentence[s.sentence_id] = this.staleBySentence[s.sentence_id] || []).push(s);
+        continue;
+      }
+      (this.rowsBySentence[s.sentence_id] = this.rowsBySentence[s.sentence_id] || []).push(s);
+      if (s.user_id === this.viewer) this.bySentenceId[s.sentence_id] = s.text;
+    }
+    // Winner per sentence: fresh, not-rejected first (a rejected suggestion
+    // stays visible to its OWNER, wearing the ✗), then People rank.
+    Object.keys(this.rowsBySentence).forEach(sid => {
+      const cands = this.rowsBySentence[sid]
+        .filter(s => s.review_status !== 'rejected' || s.user_id === this.viewer)
+        .sort((a, b) => {
+          const ra = a.review_status === 'rejected' ? 1 : 0;
+          const rb = b.review_status === 'rejected' ? 1 : 0;
+          if (ra !== rb) return ra - rb;
+          return rankOf(a.user_id) - rankOf(b.user_id);
+        });
+      if (cands.length) {
+        this.renderBySentenceId[sid] = cands[0].text;
+        this.renderRowBySentence[sid] = cands[0];
+      }
+    });
+  },
+
+  // Fresh accepted rows ('all' | 'own') — the push button's live count.
+  acceptedCount(scope) {
+    return this.rows.filter(s => !s.stale && s.review_status === 'accepted'
+      && (scope !== 'own' || s.user_id === this.viewer)).length;
+  },
+
+  ownPendingCount() {
+    return this.rows.filter(s => !s.stale && s.user_id === this.viewer && !s.review_status).length;
+  },
+
+  // Dotted-underline pass for stale suggestions — runs with the other
+  // post-pagination affordance passes.
+  markStaleSentences() {
+    document.querySelectorAll('.sentence.has-stale-sugg').forEach(el => el.classList.remove('has-stale-sugg'));
+    Object.keys(this.staleBySentence).forEach(sid => {
+      document.querySelectorAll(`.sentence[data-sentence-id="${CSS.escape(sid)}"]`)
+        .forEach(el => el.classList.add('has-stale-sugg'));
+    });
+  },
+
+  // mountUserRail builds the left-edge user rail + read-only other/stale
+  // views + Accept/Reject controls inside an open suggest-edit modal.
+  mountUserRail(modal, sentenceId, pane, original) {
+    const others = (this.rowsBySentence[sentenceId] || []).filter(s => s.user_id !== this.viewer);
+    const stale = this.staleBySentence[sentenceId] || [];
+    const mine = (this.rowsBySentence[sentenceId] || []).find(s => s.user_id === this.viewer);
+
+    const cols = modal.querySelector('.sn-cols');
+    const rail = document.createElement('div');
+    rail.className = 'sn-rail sgm-rail-left';
+    cols.insertBefore(rail, cols.firstChild);
+
+    // Read-only viewer for other/stale entries, swapped in place of the
+    // editor; the review bar sits under whichever view is active.
+    const left = modal.querySelector('.sgm-left');
+    const otherView = document.createElement('div');
+    otherView.className = 'sgm-other-view';
+    otherView.hidden = true;
+    left.appendChild(otherView);
+    const reviewBar = document.createElement('div');
+    reviewBar.className = 'sgm-review-bar';
+    left.appendChild(reviewBar);
+
+    const entries = [{ kind: 'own', label: '0', title: 'Your suggestion (editable)' }];
+    others.forEach(s => entries.push({
+      kind: 'other', row: s,
+      label: (s.user_id[0] || '?').toUpperCase(),
+      title: `${s.user_id}'s suggestion`,
+    }));
+    stale.forEach(s => entries.push({
+      kind: 'stale', row: s,
+      label: (s.user_id[0] || '?').toUpperCase(),
+      title: `${s.user_id}'s STALE suggestion (from an earlier commit — review or reject)`,
+    }));
+
+    const statusGlyph = (row) => row.review_status === 'accepted' ? ' ✓'
+      : row.review_status === 'rejected' ? ' ✗' : '';
+
+    const renderReviewBar = (entry) => {
+      reviewBar.innerHTML = '';
+      const row = entry.kind === 'own' ? mine : entry.row;
+      if (!row) return; // own with no saved suggestion yet — nothing to review
+      const canReview = row.user_id === this.viewer || this.canReviewOthers;
+      const status = document.createElement('span');
+      status.className = 'sgm-review-status' + (row.review_status ? ` ${row.review_status}` : '');
+      status.textContent = (row.stale ? 'STALE · ' : '')
+        + (row.review_status ? row.review_status + statusGlyph(row) : 'unreviewed')
+        + (row.user_id !== this.viewer ? ` · by ${row.user_id}` : '');
+      reviewBar.appendChild(status);
+      if (!canReview) return;
+      const mk = (label, status) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sgm-review-btn ' + (status || 'clear');
+        b.textContent = label;
+        b.addEventListener('click', async () => {
+          try {
+            const resp = await authenticatedFetch(
+              `${this.apiBaseUrl}/sentences/${encodeURIComponent(sentenceId)}/suggestion/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: row.user_id, status }),
+              });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            row.review_status = status;
+            this.rebuildMaps();
+            renderReviewBar(entry);
+            if (window.WriteSysPush) window.WriteSysPush.refresh();
+          } catch (e) {
+            alert('Review failed: ' + (e.message || e));
+          }
+        });
+        return b;
+      };
+      if (row.review_status !== 'accepted') reviewBar.appendChild(mk('Accept', 'accepted'));
+      if (row.review_status !== 'rejected') reviewBar.appendChild(mk('Reject', 'rejected'));
+      if (row.review_status) reviewBar.appendChild(mk('Clear', null));
+    };
+
+    const select = (i) => {
+      rail.querySelectorAll('.sn-rail-btn').forEach((b, bi) =>
+        b.classList.toggle('active', bi === i));
+      const entry = entries[i];
+      if (entry.kind === 'own') {
+        pane.wrap.hidden = false;
+        otherView.hidden = true;
+      } else {
+        pane.wrap.hidden = true;
+        otherView.hidden = false;
+        otherView.textContent = entry.row.text;
+        otherView.classList.toggle('stale', entry.kind === 'stale');
+      }
+      renderReviewBar(entry);
+    };
+
+    entries.forEach((entry, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sn-rail-btn sgm-user-btn' + (entry.kind === 'stale' ? ' stale' : '');
+      b.title = entry.title;
+      b.textContent = entry.label + (entry.kind !== 'own' ? statusGlyph(entry.row) : '');
+      b.addEventListener('click', () => select(i));
+      rail.appendChild(b);
+    });
+    select(0);
   },
 
   // putSuggestion PUTs a sentence's suggestion text — the ONE write path,
@@ -184,9 +379,13 @@ const WriteSysSuggestions = {
       getValue: () => pane.textarea.value,
       save: async (newText) => {
         await this.putSuggestion(sentenceId, newText);
-        // Server collapses "text == original" into a delete; mirror locally.
-        if (newText === original) delete this.bySentenceId[sentenceId];
-        else this.bySentenceId[sentenceId] = newText;
+        // Server collapses "text == original" into a delete; mirror locally
+        // (rows too — an edit resets review/stale server-side, v3).
+        this.rows = this.rows.filter(s => !(s.sentence_id === sentenceId && s.user_id === this.viewer));
+        if (newText !== original) {
+          this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText, review_status: null, stale: false });
+        }
+        this.rebuildMaps();
       },
       statusEl: modal.querySelector('.sn-save'),
       onFatal: (e) => {
@@ -204,6 +403,13 @@ const WriteSysSuggestions = {
     modal.querySelector('.sgm-left').appendChild(pane.wrap);
     const textarea = pane.textarea;
     showVersion(0);
+
+    // ---- v3 multi-user rail (PERMISSIONS_PLAN §4) -----------------------
+    // Left-edge rail: "0" = your live editable suggestion (today's modal),
+    // then a letter per OTHER user's fresh suggestion here (read-only),
+    // then dimmed letters for STALE suggestions. Accept/Reject act on the
+    // selected entry (own = free; others need manage-others-suggestions).
+    this.mountUserRail(modal, sentenceId, pane, original);
 
     // Title state: "Suggest edit" while the editor matches the committed
     // text; "Suggested edit · REJECT" once it differs. REJECT (red) reverts

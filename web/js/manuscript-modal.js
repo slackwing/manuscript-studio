@@ -100,6 +100,75 @@ const WriteSysManuscriptModal = {
       if (this._mode === 'create') this._create(); else this._save();
     });
     if (title) title.focus();
+
+    // Settings mode: user-access management (PERMISSIONS_PLAN v3) — list
+    // everyone's roles; add/revoke per the viewer's manage-role-* powers.
+    if (mode === 'settings') this._mountAccessSection(overlay);
+  },
+
+  async _mountAccessSection(overlay) {
+    const host = document.createElement('div');
+    host.className = 'msm-access';
+    overlay.querySelector('#msm-form').insertBefore(host, overlay.querySelector('#msm-error'));
+    const id = this._manuscript.manuscript_id;
+    let data;
+    try {
+      const r = await fetch(`api/manuscripts/${id}/people`);
+      if (!r.ok) return; // no access info — leave the section out
+      data = await r.json();
+    } catch (e) { return; }
+    const manageable = data.manageable_roles || [];
+
+    const render = () => {
+      const rows = (data.members || []).map(m => {
+        const chips = (m.roles || []).map(role => {
+          const removable = manageable.includes(role);
+          return `<span class="msm-role-chip" data-user="${this.esc(m.username)}" data-role="${this.esc(role)}">${this.esc(role)}${removable ? '<button type="button" class="msm-role-x" title="Revoke">×</button>' : ''}</span>`;
+        }).join('');
+        return `<div class="msm-access-row"><span class="msm-access-user">${this.esc(m.username)}</span>${chips}</div>`;
+      }).join('');
+      const addForm = manageable.length ? `
+        <div class="msm-access-add">
+          <input type="text" id="msm-add-user" placeholder="username">
+          <select id="msm-add-role">${manageable.map(r => `<option>${this.esc(r)}</option>`).join('')}</select>
+          <button type="button" id="msm-add-go">Add</button>
+        </div>` : '';
+      host.innerHTML = `<div class="msm-label">Users &amp; roles</div>${rows || '<div class="msm-hint">Nobody yet.</div>'}${addForm}`;
+
+      host.querySelectorAll('.msm-role-x').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const chip = btn.closest('.msm-role-chip');
+          const resp = await fetch(`api/manuscripts/${id}/roles`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+            body: JSON.stringify({ username: chip.dataset.user, role: chip.dataset.role }),
+          });
+          if (resp.status === 409) { this._error('Cannot remove the last admin.'); return; }
+          if (!resp.ok) { this._error(await resp.text()); return; }
+          const m = data.members.find(x => x.username === chip.dataset.user);
+          if (m) m.roles = m.roles.filter(r => r !== chip.dataset.role);
+          data.members = data.members.filter(x => x.roles.length);
+          render();
+        });
+      });
+      const go = host.querySelector('#msm-add-go');
+      if (go) go.addEventListener('click', async () => {
+        const username = host.querySelector('#msm-add-user').value.trim();
+        const role = host.querySelector('#msm-add-role').value;
+        if (!username) return;
+        const resp = await fetch(`api/manuscripts/${id}/roles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+          body: JSON.stringify({ username, role }),
+        });
+        if (!resp.ok) { this._error(await resp.text()); return; }
+        let m = data.members.find(x => x.username === username);
+        if (!m) { m = { username, roles: [] }; data.members.push(m); }
+        if (!m.roles.includes(role)) m.roles.push(role);
+        render();
+      });
+    };
+    render();
   },
 
   _fieldHTML(f) {

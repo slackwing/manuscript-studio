@@ -106,7 +106,7 @@ function resetMeta() {
   await waitForPagination(page);
 
   const tabCount = await page.locator('#pane-tabs .pane-tab').count();
-  check('two pane tabs render', tabCount === 2, `got ${tabCount}`);
+  check('three pane tabs render (People joined, v3)', tabCount === 3, `got ${tabCount}`);
   const outlineActive = await page.locator('#pane-tabs .pane-tab[data-pane="outline"]').evaluate(el => el.classList.contains('active'));
   check('outline tab active by default', outlineActive);
   const statsHidden = await page.locator('#stats-margin').evaluate(el => getComputedStyle(el).display === 'none');

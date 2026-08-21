@@ -120,10 +120,18 @@ function setupBareRemote() {
   // Push from the book page.
   await page.goto(TEST_URL);
   await waitForPagination(page);
+  // v3: the primary starts as "Accept mine (N)" — accept, then push.
   await page.waitForFunction(() => {
     const c = document.getElementById('push-button-container');
-    return c && /Push \(\d+\)/.test(c.textContent);
+    return c && /Accept mine \(\d+\)|Push \(\d+\)/.test(c.textContent);
   }, null, { timeout: 15000 });
+  if (/Accept mine/.test(await page.locator('#push-button-container').textContent())) {
+    await page.locator('#push-button-container button').first().click();
+    await page.waitForFunction(() => {
+      const c = document.getElementById('push-button-container');
+      return c && /Push \(\d+\)/.test(c.textContent);
+    }, null, { timeout: 15000 });
+  }
   await page.locator('#push-button-container button').first().click();
   await page.waitForFunction(() => {
     const c = document.getElementById('push-button-container');

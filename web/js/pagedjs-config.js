@@ -54,6 +54,7 @@
           window.WriteSysRenderer.addRainbowBars();
           if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
           if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
+          if (window.WriteSysSuggestions && window.WriteSysSuggestions.markStaleSentences) window.WriteSysSuggestions.markStaleSentences();
           if (window.WriteSysHistory && window.WriteSysRenderer.currentMigrationID) {
             window.WriteSysHistory.loadHistory(window.WriteSysRenderer.currentMigrationID);
           }

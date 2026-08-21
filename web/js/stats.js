@@ -49,20 +49,24 @@ const WriteSysStats = {
     // (MANUSCRIPT_LIFECYCLE_PLAN §4) — refresh when it saves.
     window.addEventListener('manuscript-modal-saved', () => this.load());
 
-    this.setPane(localStorage.getItem('ms_pane') === 'stats' ? 'stats' : 'outline');
+    const saved = localStorage.getItem('ms_pane');
+    this.setPane(saved === 'stats' || saved === 'people' ? saved : 'outline');
     this.load();
   },
 
   setPane(pane) {
-    this.pane = pane === 'stats' ? 'stats' : 'outline';
+    this.pane = (pane === 'stats' || pane === 'people') ? pane : 'outline';
     localStorage.setItem('ms_pane', this.pane);
     const outline = document.getElementById('outline-margin');
-    if (outline) outline.classList.toggle('pane-off', this.pane === 'stats');
+    if (outline) outline.classList.toggle('pane-off', this.pane !== 'outline');
     this.el.classList.toggle('pane-on', this.pane === 'stats');
+    const people = document.getElementById('people-margin');
+    if (people) people.classList.toggle('pane-on', this.pane === 'people');
     document.querySelectorAll('#pane-tabs .pane-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.pane === this.pane);
     });
     if (this.pane === 'stats') this.render();
+    if (this.pane === 'people' && window.WriteSysPeople) window.WriteSysPeople.load();
   },
 
   async load() {

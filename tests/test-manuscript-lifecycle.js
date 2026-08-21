@@ -57,6 +57,23 @@ function cleanup() {
     ]);
     check('create navigates into the new book', true, page.url());
 
+    // v3 (PERMISSIONS_PLAN §1): the creator lands as ADMIN only. Assign
+    // working roles the way a real user would (the settings UI drives the
+    // same roles API), then reload so the session picks up the actions.
+    const mid = parseInt(new URL(page.url()).searchParams.get('manuscript_id'), 10);
+    for (const role of ['author', 'editor', 'pointer']) {
+      const st = await page.evaluate(async ({ mid, role, username }) => {
+        const csrf = sessionStorage.getItem('csrf_token') || localStorage.getItem('csrf_token') || '';
+        const r = await fetch(`api/manuscripts/${mid}/roles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+          body: JSON.stringify({ username, role }),
+        });
+        return r.status;
+      }, { mid, role, username: TEST_USERNAME });
+      check(`self-grant ${role} as admin`, st === 201, `status ${st}`);
+    }
+    await page.reload();
     await waitForPagination(page);
     const title = await page.textContent('#mc-name');
     check('title strip shows the display name', title === TITLE, title);
@@ -84,12 +101,20 @@ function cleanup() {
     const sugCount = await page.evaluate(() => Object.keys((window.WriteSysSuggestions || {}).bySentenceId || {}).length);
     check('import filed exactly one composed suggestion', sugCount === 1, `count ${sugCount}`);
 
-    // ---- Phase 1: local Commit button ----------------------------------
+    // ---- Phase 1 + v3: accept-then-Commit flow -------------------------
     await page.waitForSelector('.push-btn-primary');
-    const label = await page.textContent('.push-btn-primary .push-btn-label');
-    check('button reads Commit (1) for local storage', label === 'Commit (1)', label);
+    let label = await page.textContent('.push-btn-primary .push-btn-label');
+    check('button starts as Accept mine (1) (v3: pushes land accepted only)', label === 'Accept mine (1)', label);
+    await page.click('.push-btn-primary');
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.push-btn-primary .push-btn-label');
+      return el && /^Commit \(1\)$/.test(el.textContent);
+    }, { timeout: 20000 });
+    check('accepting flips the button to Commit (1)', true);
     const hasOctocat = await page.$('.push-btn-primary .push-btn-gh');
     check('git commit icon replaces the octocat', !hasOctocat);
+    const reviewMark = await page.$('sup.sg-review.accepted');
+    check('accepted suggestion wears the ✓ superscript', !!reviewMark);
 
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }), // commit → migrate → reload

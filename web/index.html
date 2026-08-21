@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Book-style CSS -->
-  <link rel="stylesheet" href="css/book.css?v=170">
+  <link rel="stylesheet" href="css/book.css?v=171">
   <link rel="stylesheet" href="scratchpad/scratchpad.css?v=54">
   <link rel="stylesheet" href="css/chrome.css?v=4">
 
@@ -67,6 +67,7 @@
     <nav id="pane-tabs" class="pane-tabs">
       <a class="pane-tab active" data-pane="outline">Outline</a>
       <a class="pane-tab" data-pane="stats">Statistics</a>
+      <a class="pane-tab" data-pane="people">People</a>
     </nav>
   </div>
 
@@ -76,6 +77,9 @@
   <!-- Left-margin statistics pane — the outline's sibling; the pane tabs
        above pick which one shows. -->
   <div id="stats-margin" class="pagedjs_ignore"></div>
+
+  <!-- Left-margin People pane (PERMISSIONS_PLAN v3 §6) — third tab. -->
+  <div id="people-margin" class="pagedjs_ignore"></div>
 
   <!-- Container for entire app -->
   <div id="app-container">
@@ -108,7 +112,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/smartquotes/2.3.2/smartquotes.min.js"></script>
 
   <!-- Paged.js configuration (must load after Paged.js, before renderer) -->
-  <script src="js/pagedjs-config.js?v=8"></script>
+  <script src="js/pagedjs-config.js?v=9"></script>
 
   <!-- rainbow-slice: array utility (vendored from github.com/slackwing/tuft) -->
   <script src="js/rainbow-slice.js"></script>
@@ -118,19 +122,21 @@
   <script src="js/command.js?v=18"></script>
   <script src="js/canonicalize.js?v=5"></script>
   <script src="js/placeholder.js?v=3"></script>
-  <script src="js/renderer.js?v=114"></script>
+  <script src="js/renderer.js?v=115"></script>
   <!-- Shared note component — must load BEFORE notes.js (the manuscript margin
        renders through it). -->
   <script src="notes/note-api.js?v=5"></script>
-  <script src="notes/note-widget.js?v=24"></script>
-  <script src="js/notes.js?v=65"></script>
+  <script src="notes/note-widget.js?v=25"></script>
+  <script src="js/notes.js?v=66"></script>
   <script src="js/vendor/diff-match-patch.js"></script>
   <script src="js/history.js?v=9"></script>
-  <script src="js/suggestions.js?v=27"></script>
-  <script src="js/push.js?v=13"></script>
-  <script src="js/manuscript-modal.js?v=1"></script>
-  <script src="js/outline.js?v=18"></script>
-  <script src="js/stats.js?v=8"></script>
+  <script src="js/suggestions.js?v=28"></script>
+  <script src="js/push.js?v=14"></script>
+  <script src="js/manuscript-modal.js?v=2"></script>
+  <script src="js/outline.js?v=19"></script>
+  <script src="js/stats.js?v=9"></script>
+  <script src="js/people.js?v=1"></script>
+  <script src="js/actions.js?v=1"></script>
   <script src="scratchpad/region.js?v=4"></script>
   <script src="scratchpad/scratch-render.js?v=14"></script>
   <script src="js/manuscript-normalize.js?v=1"></script>

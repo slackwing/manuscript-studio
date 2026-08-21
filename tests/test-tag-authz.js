@@ -4,7 +4,7 @@
 // session/ownership/CSRF checks at all — any authenticated user could read,
 // add, or delete tags on any other user's annotations by enumerating integer
 // IDs, and could attach tags to arbitrary migrations via the request body.
-const {BASE_URL, SYSTEM_TOKEN, TEST_MANUSCRIPT_NAME, cleanupTestAnnotations} = require('./test-utils');
+const {BASE_URL, SYSTEM_TOKEN, TEST_MANUSCRIPT_NAME, cleanupTestAnnotations, psql} = require('./test-utils');
 
 const API = `${BASE_URL}/api`;
 
@@ -31,10 +31,20 @@ async function login(username, password) {
 
   await cleanupTestAnnotations();
 
+  // Earlier runs (or the 038 data migration) may have left test-other with
+  // the full power set on this manuscript — reset to nothing so the
+  // reader-only grant below is what's actually in force.
+  try {
+    psql(`DELETE FROM role WHERE username = 'test-other' AND manuscript_id IN (SELECT manuscript_id FROM manuscript WHERE name = '${TEST_MANUSCRIPT_NAME}');`);
+    psql(`DELETE FROM manuscript_access WHERE username = 'test-other';`);
+  } catch (e) { /* fresh DB */ }
+
   // Second user, granted access to the same manuscript.
   for (const [path, body] of [
     ['users', { username: 'test-other', password: 'test' }],
-    ['grants', { username: 'test-other', manuscript_name: TEST_MANUSCRIPT_NAME }],
+    // v3: the default admin grant is the full power set — scope test-other
+    // to READER so cross-user tag access stays forbidden.
+    ['grants', { username: 'test-other', manuscript_name: TEST_MANUSCRIPT_NAME, roles: ['reader'] }],
   ]) {
     const resp = await fetch(`${API}/admin/${path}`, {
       method: 'POST',

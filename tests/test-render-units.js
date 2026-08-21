@@ -31,10 +31,12 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
     const R = window.WriteSysRenderer;
     const S = window.WriteSysSuggestions;
     const prev = S.bySentenceId;
+    const prevRender = S.renderBySentenceId;
     S.bySentenceId = sug;
+    S.renderBySentenceId = sug; // v3 render map
     let html;
     try { html = R.renderSentencesToHTML(sentences); }
-    finally { S.bySentenceId = prev; }
+    finally { S.bySentenceId = prev; S.renderBySentenceId = prevRender; }
     return html;
   }, { sentences, sug });
 
@@ -313,17 +315,21 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
         R.currentSentences = [{ id: 'm1', text: '&meta{chapter-align}{left}' },
                               { id: 'm2', text: '&meta{font}{Baskerville}' }];
         S.bySentenceId = {};
+        S.renderBySentenceId = {}; // v3: settings overlay reads the render map
         R.applyEffectiveSettings();
         r.committed = read();
         S.bySentenceId = { m1: '&meta{chapter-align}{center}' };
+        S.renderBySentenceId = { m1: '&meta{chapter-align}{center}' };
         R.applyEffectiveSettings();
         r.suggested = read();
         S.bySentenceId = { m1: '', m2: '' }; // suggested removal of both metas
+        S.renderBySentenceId = { m1: '', m2: '' };
         R.applyEffectiveSettings();
         r.removed = read();
       } finally {
         R.currentSentences = prevSent;
         S.bySentenceId = prevSug;
+        S.renderBySentenceId = prevSug || {};
         R.applyEffectiveSettings(); // restore the real fixture settings
       }
       return r;
@@ -346,8 +352,9 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
         S.bySentenceId = { pre: 'x' };
         await S.loadForMigration(null);
         r.nullIdKeepsMap = JSON.stringify(S.bySentenceId);
-        window.fetchJSON = async () => ({ suggestions: [
-          { sentence_id: 's1', text: 't1' }, { sentence_id: 's2', text: '' }] });
+        window.fetchJSON = async () => ({ viewer: 'unit', suggestions: [
+          { sentence_id: 's1', user_id: 'unit', text: 't1' },
+          { sentence_id: 's2', user_id: 'unit', text: '' }] });
         await S.loadForMigration(42);
         r.map = JSON.stringify(S.bySentenceId);
         window.fetchJSON = async () => { throw new Error('boom'); };
@@ -358,6 +365,8 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
         r.noField = JSON.stringify(S.bySentenceId);
       } finally {
         window.fetchJSON = prevFetch;
+        S.rows = [];
+        S.rebuildMaps();
         S.bySentenceId = prevMap;
       }
       return r;
@@ -395,11 +404,13 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
         const base = R.sentenceMap[id];
         // Success: local suggestion → patch applies diff markup in place.
         S.bySentenceId[id] = base + ' EDITEDWORD';
+        S.renderBySentenceId[id] = base + ' EDITEDWORD'; // v3 render map
         r.patched = R.patchSentenceInPlace(id);
         r.patchedHTML = span().innerHTML;
         r.patchedClass = span().className;
         // Restore: remove the suggestion, patch again → committed markup back.
         delete S.bySentenceId[id];
+        delete S.renderBySentenceId[id];
         r.restored = R.patchSentenceInPlace(id);
         r.restoredHTML = span().innerHTML;
         r.restoredClass = span().className;
@@ -408,13 +419,16 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
         r.unknown = R.patchSentenceInPlace('no-such-sentence-id');
         // Refusal: multi-fragment suggestion → DOM untouched.
         S.bySentenceId[id] = 'Alpha.\n\nBeta.';
+        S.renderBySentenceId[id] = 'Alpha.\n\nBeta.';
         r.multi = R.patchSentenceInPlace(id);
         r.multiHTML = span().innerHTML;
         // Refusal: structural (non-<p>) suggestion → DOM untouched.
         S.bySentenceId[id] = '&title{Synthetic}';
+        S.renderBySentenceId[id] = '&title{Synthetic}';
         r.structural = R.patchSentenceInPlace(id);
         r.structuralHTML = span().innerHTML;
         delete S.bySentenceId[id];
+        delete S.renderBySentenceId[id];
         return r;
       }, { id: simple.id });
       check('R16: simple suggestion patches in place (true)',

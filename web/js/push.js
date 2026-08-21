@@ -66,55 +66,99 @@ const WriteSysPush = {
   _isLocal() { return this._storage === 'local'; },
   _icon() { return this._isLocal() ? ICON_COMMIT : ICON_GITHUB; },
 
-  // Re-renders the button to reflect current suggestion count + branch state.
-  // Called after suggestion save/delete (frontend-only, no branch refetch).
+  // Re-renders the button to reflect review state + branch state (v3:
+  // pushes land ACCEPTED suggestions only — PERMISSIONS_PLAN §4).
+  // Called after suggestion save/delete/review.
   refresh() {
     if (!this._container) return;
-    const count = this._suggestionCount();
-    if (count === 0) {
+    const S = window.WriteSysSuggestions || {};
+    const accepted = S.acceptedCount ? S.acceptedCount('all') : 0;
+    const ownAccepted = S.acceptedCount ? S.acceptedCount('own') : 0;
+    const ownPending = S.ownPendingCount ? S.ownPendingCount() : 0;
+    if (accepted === 0 && ownPending === 0) {
       this._container.innerHTML = '';
       return;
     }
 
-    const primaryLabel = this._isLocal() ? `Commit (${count})` : `Push (${count})`;
-    // Dropdown only carries the View-on-GitHub link, and only when there's a
-    // branch + compare URL to point at (never for local — no GitHub).
-    const showView = this._branchExists && !!this._compareURL;
-    const primaryCls = showView ? 'push-btn-primary push-btn-grouped' : 'push-btn-primary push-btn-solo';
+    // Primary: push/commit accepted edits; with nothing accepted yet the
+    // button becomes the one-click "accept all my uncontested" step.
+    const verb = this._isLocal() ? 'Commit' : 'Push';
+    const primaryIsAccept = accepted === 0;
+    const primaryLabel = primaryIsAccept ? `Accept mine (${ownPending})` : `${verb} (${accepted})`;
 
-    const menuHtml = showView
-      ? `<button type="button" class="push-btn-caret" aria-haspopup="true" aria-expanded="false">▼</button>
-         <div class="push-menu" hidden>
-           <a class="push-menu-item" href="${this._compareURL}" target="_blank" rel="noopener">
-             <span class="push-menu-icon">${ICON_EXTERNAL}</span>
-             <span class="push-menu-text">
-               <span class="push-menu-label">View on GitHub</span>
-               <span class="push-menu-desc">Open the compare page in a new tab.</span>
-             </span>
-           </a>
-         </div>`
-      : '';
+    const showView = !this._isLocal() && this._branchExists && !!this._compareURL;
+    const items = [];
+    if (!primaryIsAccept && ownPending > 0) {
+      items.push({ act: 'accept', label: `Accept all my uncontested (${ownPending})`, desc: 'Marks your unchallenged edits accepted.' });
+    }
+    if (ownAccepted > 0 && ownAccepted !== accepted) {
+      items.push({ act: 'push-own', label: `${verb} own accepted (${ownAccepted})`, desc: 'Leave others\' accepted edits behind.' });
+    }
+    const menuNeeded = showView || items.length > 0;
+    const primaryCls = menuNeeded ? 'push-btn-primary push-btn-grouped' : 'push-btn-primary push-btn-solo';
+
+    let menuHtml = '';
+    if (menuNeeded) {
+      const itemHtml = items.map(it => `
+        <button type="button" class="push-menu-item" data-act="${it.act}">
+          <span class="push-menu-text">
+            <span class="push-menu-label">${it.label}</span>
+            <span class="push-menu-desc">${it.desc}</span>
+          </span>
+        </button>`).join('');
+      const viewHtml = showView ? `
+        <a class="push-menu-item" data-act="view" href="${this._compareURL}" target="_blank" rel="noopener">
+          <span class="push-menu-icon">${ICON_EXTERNAL}</span>
+          <span class="push-menu-text">
+            <span class="push-menu-label">View on GitHub</span>
+            <span class="push-menu-desc">Open the compare page in a new tab.</span>
+          </span>
+        </a>` : '';
+      menuHtml = `<button type="button" class="push-btn-caret" aria-haspopup="true" aria-expanded="false">▼</button>
+        <div class="push-menu" hidden>${itemHtml}${viewHtml}</div>`;
+    }
 
     this._container.innerHTML = `<button type="button" class="${primaryCls}" data-action="update"><span class="push-btn-icon">${this._icon()}</span><span class="push-btn-label">${primaryLabel}</span></button>${menuHtml}`;
 
     const primary = this._container.querySelector('.push-btn-primary');
     const caret   = this._container.querySelector('.push-btn-caret');
     const menu    = this._container.querySelector('.push-menu');
-    primary.addEventListener('click', () => this._push());
+    primary.addEventListener('click', () => primaryIsAccept ? this._acceptOwn() : this._push('all-accepted'));
     if (caret && menu) {
       caret.addEventListener('click', (e) => {
         e.stopPropagation();
         this._toggleMenu();
       });
-      // <a target="_blank"> handles its own navigation; just close the menu.
-      menu.querySelector('.push-menu-item').addEventListener('click', () => this._closeMenu());
+      menu.querySelectorAll('.push-menu-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const act = el.dataset.act;
+          this._closeMenu();
+          if (act === 'accept') this._acceptOwn();
+          else if (act === 'push-own') this._push('own-accepted');
+          // 'view' is an <a target=_blank> — navigation handles itself.
+        });
+      });
     }
   },
 
-  _suggestionCount() {
-    const s = window.WriteSysSuggestions;
-    if (!s || !s.bySentenceId) return 0;
-    return Object.keys(s.bySentenceId).length;
+  // Accept-all-own-uncontested → refresh counts (the button flips to Push).
+  async _acceptOwn() {
+    const r = window.WriteSysRenderer;
+    if (!r || !r.currentMigrationID) return;
+    try {
+      this._setBusy(true);
+      const resp = await authenticatedFetch(
+        `${this.apiBaseUrl}/migrations/${r.currentMigrationID}/accept-own-uncontested`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (window.WriteSysSuggestions) await window.WriteSysSuggestions.loadForMigration(r.currentMigrationID);
+      await r.renderManuscript({});
+      this.refresh();
+    } catch (err) {
+      alert('Accept failed: ' + (err.message || err));
+    } finally {
+      this._setBusy(false);
+    }
   },
 
   _toggleMenu() {
@@ -138,7 +182,7 @@ const WriteSysPush = {
   // dedicated to this user + commit). On success: silent (the icon stops
   // spinning and View on GitHub appears). On failure: alert, since a silent
   // failure would leave the user thinking it worked.
-  async _push() {
+  async _push(scope) {
     const r = window.WriteSysRenderer;
     if (!r || !r.manuscriptId || !r.currentMigrationID) {
       alert('Manuscript not loaded yet.');
@@ -150,7 +194,7 @@ const WriteSysPush = {
       const resp = await authenticatedFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update' }),
+        body: JSON.stringify({ scope: scope || 'all-accepted' }),
       });
       if (!resp.ok) {
         const body = await resp.text().catch(() => '');

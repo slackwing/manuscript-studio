@@ -50,9 +50,9 @@ func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text str
 func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser string, status *string, reviewer string) (bool, error) {
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE suggested_change
-		SET review_status = $3,
-		    reviewed_by = CASE WHEN $3 IS NULL THEN NULL ELSE $4 END,
-		    reviewed_at = CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END
+		SET review_status = $3::varchar,
+		    reviewed_by = CASE WHEN $3::varchar IS NULL THEN NULL ELSE $4 END,
+		    reviewed_at = CASE WHEN $3::varchar IS NULL THEN NULL ELSE NOW() END
 		WHERE sentence_id = $1 AND user_id = $2`,
 		sentenceID, targetUser, status, reviewer)
 	if err != nil {

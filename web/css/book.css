@@ -3536,3 +3536,125 @@ body.range-delete-mode .pagedjs_pages {
 #import-docx-modal .idx-actions button { padding: 6px 14px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
 #import-docx-modal #idx-go { background: #2a6fb0; border-color: #2a6fb0; color: #fff; }
 #import-docx-modal #idx-go:disabled { opacity: 0.6; }
+
+/* ---- Permissions v3 / multi-user surfaces (PERMISSIONS_PLAN.md) ---- */
+
+/* People pane: the outline/stats sibling band. Same fixed-band geometry
+   (left/top set by notes.js positionGutters). */
+#people-margin {
+  position: fixed;
+  width: var(--gutter-band-width);
+  z-index: 100;
+  padding: 8px 12px 12px 16px;
+  display: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#people-margin::-webkit-scrollbar { width: 0; height: 0; display: none; }
+#people-margin.pane-on { display: block; }
+.people-hint { font: 10px "Helvetica", sans-serif; color: #8a8378; margin: 4px 0 10px; }
+.people-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #e4e1d8;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #fff;
+  cursor: grab;
+}
+.people-row.dragging { opacity: 0.5; }
+.people-grip { color: #c9c2b2; font-size: 11px; }
+.people-letter {
+  flex: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #57503f; color: #fff;
+  font: 700 11px/20px "Helvetica", sans-serif;
+  text-align: center;
+}
+.people-name { font: 12px "Helvetica", sans-serif; color: #333; }
+.people-roles { margin-left: auto; font: 9px "Helvetica", sans-serif; color: #a29a8b; text-align: right; }
+
+/* Review marker: superscript ✓/✗ right after a suggestion's diff. */
+sup.sg-review { font-size: 9px; margin-left: 1px; }
+sup.sg-review.accepted { color: #2e7d32; }
+sup.sg-review.rejected { color: #b03030; }
+
+/* Stale-suggestion affordance: dotted underline on the sentence. */
+.sentence.has-stale-sugg { border-bottom: 1px dotted #b3ac9c; }
+
+/* Suggest-modal user rail (left edge) + read-only other/stale views. */
+.sgm-rail-left { order: -1; }
+.sgm-user-btn.stale { opacity: 0.5; }
+.sgm-other-view {
+  font: 12px/1.6 "Monaco", monospace;
+  white-space: pre-wrap;
+  background: #faf9f5;
+  border: 1px solid #e4e1d8;
+  padding: 10px;
+  min-height: 120px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.sgm-other-view.stale { background: #f5f2ea; color: #6b6558; }
+.sgm-review-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.sgm-review-status { font: 11px "Helvetica", sans-serif; color: #8a8378; }
+.sgm-review-status.accepted { color: #2e7d32; }
+.sgm-review-status.rejected { color: #b03030; }
+.sgm-review-btn {
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  background: #fff;
+  font: 11px "Helvetica", sans-serif;
+  cursor: pointer;
+}
+.sgm-review-btn.accepted { border-color: #2e7d32; color: #2e7d32; }
+.sgm-review-btn.rejected { border-color: #b03030; color: #b03030; }
+.sgm-review-btn:hover { background: #f4f1ea; }
+
+/* Hidden notes (per-viewer): dimmed, sorted below by the margin code. */
+.sn-note.note-hidden, .card-note.note-hidden { opacity: 0.5; }
+
+/* Others' notes wear a tiny owner chip. */
+.note-owner-chip {
+  font: 9px "Helvetica", sans-serif;
+  color: #8a8378;
+  margin-left: 6px;
+}
+.note-hide-btn {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  border: none;
+  background: none;
+  font: 9px "Helvetica", sans-serif;
+  color: #8a8378;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.note-hide-btn:hover { color: #2a6fb0; }
+
+/* Settings-modal access section (v3). */
+#msm-overlay .msm-access { margin-top: 14px; border-top: 1px solid #e4e1d8; padding-top: 10px; }
+#msm-overlay .msm-access-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 5px 0; }
+#msm-overlay .msm-access-user { font: 13px Georgia, serif; margin-right: 6px; }
+#msm-overlay .msm-role-chip {
+  font: 10px "Helvetica", sans-serif; color: #57503f;
+  background: #f0ede4; border: 1px solid #dcd7c9; border-radius: 9px;
+  padding: 1px 7px; display: inline-flex; align-items: center; gap: 3px;
+}
+#msm-overlay .msm-role-x { border: none; background: none; cursor: pointer; color: #a29a8b; font-size: 11px; padding: 0; }
+#msm-overlay .msm-role-x:hover { color: #b03030; }
+#msm-overlay .msm-access-add { display: flex; gap: 6px; margin-top: 8px; }
+#msm-overlay .msm-access-add input { flex: 1; padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; font: 12px "Helvetica", sans-serif; }
+#msm-overlay .msm-access-add select { border: 1px solid #ccc; border-radius: 6px; font: 12px "Helvetica", sans-serif; }
+#msm-overlay .msm-access-add button { padding: 4px 12px; border: 1px solid #2a6fb0; color: #2a6fb0; background: #fff; border-radius: 6px; cursor: pointer; }

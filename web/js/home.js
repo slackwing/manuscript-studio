@@ -37,10 +37,14 @@ const WriteSysHome = {
         this.daily = await fetchJSON('api/daily-tasks?manuscript_id=' + encodeURIComponent(mid), {}, false);
       }
       // Points grid (default view only): the FULL per-day history — the
-      // bulldozer cascade needs every day since the first point.
-      if (this.view() === 'home') {
+      // bulldozer cascade needs every day since the first point. v3: the
+      // points surfaces belong to the POINTER role (award-points).
+      if (this.view() === 'home'
+          && window.WriteSysActions && window.WriteSysActions.hasAnywhere('award-points')) {
         try { this.points = await fetchJSON('api/points-daily', {}, false); }
         catch (e) { this.points = null; } // grid is an enhancement, not a gate
+      } else {
+        this.points = null;
       }
     } catch (e) {
       document.getElementById('home-root').innerHTML =

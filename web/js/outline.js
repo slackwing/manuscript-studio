@@ -34,7 +34,7 @@ const WriteSysOutline = {
       this.render({ parts: [], top_chapters: [], top_anchors: [] });
       return;
     }
-    const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
+    const sug = (window.WriteSysSuggestions && window.WriteSysSuggestions.renderBySentenceId) || {};
     this.render(this.buildOutline(r.currentSentences, sug, cmd));
   },
 

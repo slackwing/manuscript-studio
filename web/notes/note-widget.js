@@ -452,6 +452,10 @@
     // style" comes from `card`, not from read-only-ness). The card frame +
     // context line are added by the caller around this element.
     const readOnly = !!opts.readOnly;
+    // lockBody (v3 multi-user): the TEXT is read-only (someone else's words)
+    // but chips/complete/tags stay interactive — the manage-others-notes
+    // presentation. Orthogonal to readOnly (which kills everything).
+    const lockBody = !!opts.lockBody && !readOnly;
     const card = !!opts.card;
 
     const noteEl = document.createElement('div');
@@ -463,7 +467,7 @@
     if (note.color) noteEl.classList.add(`color-${note.color}`);
 
     // The body: an editable textarea live, a clamped preview when read-only.
-    const bodyHtml = readOnly
+    const bodyHtml = (readOnly || lockBody)
       ? `<div class="note-readonly-body"></div>`
       : `<textarea class="note-input" placeholder="Write a note..." rows="3"></textarea>`;
     // The action icons (trash/complete) and color circle are edit-only.
@@ -472,8 +476,11 @@
     // slots 1-4 (or empty space), then ⊘blocked(5) ★(6) ✓(7), and the
     // trash ALWAYS holds slot 8 (right-pinned). Blocked/star/check only
     // exist for TASKS (task_type ≠ reminder) — updateDims toggles them.
+    // The points star is the POINTER surface (award-points) — callers gate
+    // it via opts.showPoints; complete/trash have their own switches.
+    const showPoints = opts.showPoints !== false;
     const actionsHtml = readOnly ? '' : `
-          ${showComplete ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
+          ${showComplete && showPoints ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
             </svg>
@@ -505,7 +512,7 @@
         </div>
       </div>`;
 
-    if (!readOnly) noteEl.appendChild(buildColorCircle(note, handlers));
+    if (!readOnly && !opts.hideColorCircle) noteEl.appendChild(buildColorCircle(note, handlers));
     renderTags(noteEl, note, handlers, opts);
     updatePriorityFlagUI(noteEl, note);
 
@@ -521,9 +528,14 @@
       return noteEl;
     }
 
+    if (lockBody) {
+      noteEl.querySelector('.note-readonly-body').textContent = note.body || '(empty note)';
+    }
     const ta = noteEl.querySelector('.note-input');
-    ta.value = note.body || '';
-    autoResize(ta);
+    if (ta) {
+      ta.value = note.body || '';
+      autoResize(ta);
+    }
 
     // --- events wired to injected handlers ---
     // onCommit fires on any REAL interaction (blur, priority, flag, tag) — the
@@ -533,22 +545,24 @@
     // the scratchpad float simply doesn't pass them.
     const commit = () => handlers.onCommit && handlers.onCommit();
     let saveTimer;
-    ta.addEventListener('focus', () => handlers.onFocus && handlers.onFocus());
-    ta.addEventListener('blur', () => handlers.onBlur && handlers.onBlur());
-    ta.addEventListener('input', () => {
-      autoResize(ta);
-      // Let the owner intercept (never-mind may delete an emptied note); if it
-      // returns true it handled this input and we skip the debounced save.
-      if (handlers.onInput && handlers.onInput(ta.value) === true) { clearTimeout(saveTimer); return; }
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => handlers.onSaveText && handlers.onSaveText(ta.value), 1000);
-    });
-    ta.addEventListener('blur', () => {
-      commit();
-      clearTimeout(saveTimer);
-      const normalized = ta.value.trim() || null;
-      if (normalized !== (note.body || null)) handlers.onSaveText && handlers.onSaveText(ta.value);
-    });
+    if (ta) {
+      ta.addEventListener('focus', () => handlers.onFocus && handlers.onFocus());
+      ta.addEventListener('blur', () => handlers.onBlur && handlers.onBlur());
+      ta.addEventListener('input', () => {
+        autoResize(ta);
+        // Let the owner intercept (never-mind may delete an emptied note); if it
+        // returns true it handled this input and we skip the debounced save.
+        if (handlers.onInput && handlers.onInput(ta.value) === true) { clearTimeout(saveTimer); return; }
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => handlers.onSaveText && handlers.onSaveText(ta.value), 1000);
+      });
+      ta.addEventListener('blur', () => {
+        commit();
+        clearTimeout(saveTimer);
+        const normalized = ta.value.trim() || null;
+        if (normalized !== (note.body || null)) handlers.onSaveText && handlers.onSaveText(ta.value);
+      });
+    }
 
     const blockedChip = noteEl.querySelector('.blocked-chip');
     if (blockedChip) blockedChip.addEventListener('click', async () => {

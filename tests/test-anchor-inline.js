@@ -24,9 +24,12 @@ const { TEST_URL, loginAsTestUser,
   const render = (sentences, sug) => page.evaluate(({ sentences, sug }) => {
     const R = window.WriteSysRenderer;
     const prev = window.WriteSysSuggestions.bySentenceId;
+    const prevRender = window.WriteSysSuggestions.renderBySentenceId;
     window.WriteSysSuggestions.bySentenceId = sug;
+    window.WriteSysSuggestions.renderBySentenceId = sug; // v3 render map
     const html = R.renderSentencesToHTML(sentences);
     window.WriteSysSuggestions.bySentenceId = prev;
+    window.WriteSysSuggestions.renderBySentenceId = prevRender;
     return html;
   }, { sentences, sug });
 

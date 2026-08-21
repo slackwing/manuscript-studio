@@ -138,6 +138,7 @@ const WriteSysNotes = {
     // re-anchored by the @media rule.)
     const outline = document.getElementById('outline-margin');
     const stats = document.getElementById('stats-margin');
+    const people = document.getElementById('people-margin');
     const chrome = document.getElementById('manuscript-chrome');
     const positionGutters = () => {
       const gutter = (window.innerWidth - this.SPACING.PAGE_WIDTH) / 2;
@@ -150,6 +151,7 @@ const WriteSysNotes = {
       const leftBand = Math.max(0, gutter - this.SPACING.HORIZONTAL_GAP - this.SPACING.GUTTER_BAND);
       if (outline) outline.style.left = `${leftBand}px`;
       if (stats) stats.style.left = `${leftBand}px`;
+      if (people) people.style.left = `${leftBand}px`;
       if (chrome) chrome.style.left = `${leftBand}px`;
       // Panes start where the chrome ACTUALLY ends — its height varies (name
       // wraps, push button loads async, tab row), so the old fixed top:142px
@@ -158,13 +160,13 @@ const WriteSysNotes = {
       // inline top would beat it.
       if (window.innerWidth >= this.DESKTOP_MIN_WIDTH && chrome) {
         const bottom = Math.ceil(chrome.getBoundingClientRect().bottom);
-        for (const el of [outline, stats]) {
+        for (const el of [outline, stats, people]) {
           if (!el) continue;
           el.style.top = `${bottom}px`;
           el.style.maxHeight = `calc(100vh - ${bottom + 20}px)`;
         }
       } else {
-        for (const el of [outline, stats]) {
+        for (const el of [outline, stats, people]) {
           if (!el) continue;
           el.style.top = '';
           el.style.maxHeight = '';
@@ -262,7 +264,10 @@ const WriteSysNotes = {
 
     container.innerHTML = '';
 
-    this.notes.forEach(note => {
+    // v3 multi-user: hidden notes (per-viewer) sink below unhidden ones,
+    // preserving position order within each group.
+    const ordered = [...this.notes].sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
+    ordered.forEach(note => {
       const noteElement = this.createStickyNoteElement(note);
       container.appendChild(noteElement);
     });
@@ -347,6 +352,16 @@ const WriteSysNotes = {
   createStickyNoteElement(note) {
     let saveTimeout;
     const W = window.WriteSysNoteWidget;
+    // v3 multi-user (PERMISSIONS_PLAN §5): whose note is this, and what may
+    // the viewer do to it? Owner → full control (minus points, which is the
+    // pointer surface). Manager → chips/complete/tags live, TEXT locked,
+    // no delete (hide is the non-destructive out). Otherwise read-only.
+    const viewer = (window.currentSession && window.currentSession.username) || '';
+    const isOwner = !viewer || note.user_id === viewer || !note.user_id;
+    const mid = window.WriteSysActions ? window.WriteSysActions.currentManuscriptId() : 0;
+    const canManage = isOwner || (window.WriteSysActions && window.WriteSysActions.has(mid, 'manage-others-notes'));
+    const canPoint = window.WriteSysActions ? window.WriteSysActions.has(mid, 'award-points') : true;
+    if (!isOwner) return this.createForeignNoteElement(note, !!canManage, canPoint);
     const noteEl = W.buildNoteElement(note, {
       // Focus/blur tint the sentence in the note's color.
       onFocus: () => this.applyFocusHighlight(note.sentence_id, note.color),
@@ -383,8 +398,53 @@ const WriteSysNotes = {
       // A sentence note is trivially in its manuscript — the chip would be
       // noise. Flag it off here (the scratchpad float leaves it on).
       showManuscriptChip: false,
-    }, {});
+    }, { showPoints: canPoint });
     noteEl.dataset.annotationId = note.note_id;
+    return noteEl;
+  },
+
+  // createForeignNoteElement renders SOMEONE ELSE's note: text locked, an
+  // owner chip, a per-viewer hide/unhide control; chips/complete stay live
+  // only for manage-others-notes holders.
+  createForeignNoteElement(note, canManage, canPoint) {
+    const W = window.WriteSysNoteWidget;
+    const handlers = canManage ? {
+      onColor: (color) => this.handleColorSelectionForNote(note.note_id, color),
+      onDims: (patch) => this.updateNoteDims(note, patch, noteEl),
+      onComplete: () => this.completeNote(note.note_id),
+      onScorePoints: (points) => this.scorePoints(note.note_id, points),
+      onAddTag: (name) => this.addTagByName(note, noteEl, name),
+      onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
+      showManuscriptChip: false,
+    } : { showManuscriptChip: false };
+    const noteEl = W.buildNoteElement(note, handlers, canManage
+      ? { lockBody: true, showDelete: false, showPoints: canPoint, hideColorCircle: false }
+      : { readOnly: true });
+    noteEl.dataset.annotationId = note.note_id;
+    if (note.hidden) noteEl.classList.add('note-hidden');
+
+    // Owner chip + hide/unhide — margin-specific chrome.
+    const chip = document.createElement('span');
+    chip.className = 'note-owner-chip';
+    chip.textContent = note.user_id;
+    noteEl.appendChild(chip);
+    const hideBtn = document.createElement('button');
+    hideBtn.type = 'button';
+    hideBtn.className = 'note-hide-btn';
+    hideBtn.title = note.hidden ? 'Unhide (shown dimmed, for you only)' : 'Hide from my view (the owner never knows)';
+    hideBtn.textContent = note.hidden ? 'unhide' : 'hide';
+    hideBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const resp = await authenticatedFetch(`api/notes/${note.note_id}/${note.hidden ? 'unhide' : 'hide'}`, { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        note.hidden = !note.hidden;
+        this.renderStickyNotes();
+      } catch (err) {
+        alert('Failed: ' + (err.message || err));
+      }
+    });
+    noteEl.appendChild(hideBtn);
     return noteEl;
   },
 

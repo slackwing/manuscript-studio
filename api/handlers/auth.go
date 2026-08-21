@@ -262,7 +262,13 @@ func (h *AuthHandlers) HandleSetLastManuscript(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	hasAccess, err := h.DB.HasManuscriptAccess(ctx, session.Username, req.ManuscriptName)
+	// v3: access = any role row (resolve the name to its manuscript row).
+	m, err := h.DB.GetManuscriptByName(ctx, req.ManuscriptName)
+	if err != nil || m == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	hasAccess, err := h.DB.HasAnyRole(ctx, session.Username, m.ManuscriptID)
 	if err != nil {
 		http.Error(w, "Failed to check access", http.StatusInternalServerError)
 		return
