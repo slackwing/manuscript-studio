@@ -109,10 +109,10 @@ async function loginAs(browser, username, password) {
 
     // ---- suggestions: visibility + review + contested win ---------------
     r = await api(ownerPage, 'PUT', `api/sentences/${encodeURIComponent(titleSid)}/suggestion`,
-      { text: '# MU Book (owner rewrite)' });
+      { text: '&title{MU Book (owner rewrite)}' });
     check('owner files a suggestion', r.status === 200, `status ${r.status}`);
     r = await api(e2Page, 'PUT', `api/sentences/${encodeURIComponent(titleSid)}/suggestion`,
-      { text: '# MU Book: Editor2 Revised' });
+      { text: '&title{MU Book: Editor2 Revised}' });
     check('editor2 files a competing suggestion', r.status === 200, `status ${r.status}`);
 
     r = await api(e2Page, 'GET', `api/migrations/${latest.migration_id}/suggestions`);
@@ -136,7 +136,7 @@ async function loginAs(browser, username, password) {
 
     // Owner edits their rejected suggestion → review resets to unreviewed.
     r = await api(ownerPage, 'PUT', `api/sentences/${encodeURIComponent(titleSid)}/suggestion`,
-      { text: '# MU Book (owner rewrite, v2)' });
+      { text: '&title{MU Book (owner rewrite, v2)}' });
     r = await api(ownerPage, 'GET', `api/migrations/${latest.migration_id}/suggestions`);
     const ownRow = r.json.suggestions.find(s => s.user_id === TEST_USERNAME);
     check('editing a reviewed suggestion resets its review', ownRow.review_status === null,
@@ -151,7 +151,7 @@ async function loginAs(browser, username, password) {
     r = await api(r3Page, 'GET', `api/migrations/${latest.migration_id}/suggestions`);
     check('reader sees NO others\' suggestions', r.json.suggestions.length === 0, `count ${r.json.suggestions.length}`);
     r = await api(r3Page, 'PUT', `api/sentences/${encodeURIComponent(titleSid)}/suggestion`,
-      { text: '# MU Book (reader idea)' });
+      { text: '&title{MU Book (reader idea)}' });
     check('reader CAN file their own suggestion', r.status === 200, `status ${r.status}`);
     r = await api(r3Page, 'POST', `api/sentences/${encodeURIComponent(titleSid)}/suggestion/review`,
       { username: EDITOR2, status: 'rejected' });

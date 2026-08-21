@@ -189,7 +189,7 @@ const WriteSysHome = {
   // sits after the last card — faint outline, centered +, label on hover.
   // Both grids use the same component; only kind/label differ.
   ghostCard(kind) {
-    const label = kind === 'manuscript' ? 'Create new manuscript' : 'Create new scratchpad';
+    const label = kind === 'manuscript' ? 'New manuscript' : 'New scratchpad';
     return `<button type="button" class="card card-ghost" data-ghost="${kind}" title="${label}">
       <span class="ghost-plus">+</span>
       <span class="ghost-label">${label}</span>

@@ -2981,10 +2981,17 @@ p.section-break {
    that the pane tabs sit under it. */
 #manuscript-chrome .mc-top {
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+/* Under-title controls: settings pinned left, Push/Commit pinned right. */
+#manuscript-chrome .mc-controls-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-height: 22px;
 }
 #manuscript-chrome #push-button-container,
 #manuscript-chrome #push-button-container * {
@@ -3431,12 +3438,13 @@ body.range-delete-mode .pagedjs_pages {
 #msm-overlay #msm-go { background: #2a6fb0; border-color: #2a6fb0; color: #fff; }
 #msm-overlay #msm-go:disabled { opacity: 0.6; }
 
-/* Title-strip gear: "The Wildfire ⚙" (MANUSCRIPT_LIFECYCLE_PLAN §4).
+/* Title-strip gear: "The Wildfire ⚙" — INLINE, right of the title (the
+   .mc-left column would otherwise stack it underneath).
    pointer-events: the chrome strip is none (clicks pass through to the
    page); interactive children opt back in, same as the push button. */
 .mc-settings {
   border: none; background: none; padding: 0 2px; cursor: pointer;
-  color: #b3ac9c; display: inline-flex; align-self: center;
+  color: #b3ac9c; display: inline-flex; flex: none;
   pointer-events: auto;
 }
 .mc-settings:hover { color: #2a6fb0; }
@@ -3504,36 +3512,38 @@ body.range-delete-mode .pagedjs_pages {
   justify-content: center;
 }
 #import-docx-modal {
-  width: 560px;
-  max-width: 92vw;
-  max-height: 86vh;
-  overflow-y: auto;
+  /* Scratchpad-modal sizing; the sn-* chrome inside matches the sketch
+     widget (see scratchpad/scratchpad.css .sn-main family). */
+  width: min(980px, 94vw);
+  height: min(86vh, 900px);
   background: #fff;
   border: 1px solid #c9c2b2;
   box-shadow: 0 12px 40px -12px rgba(20, 16, 8, 0.5);
-  padding: 16px 18px;
+  display: flex;
   font-family: "Helvetica", sans-serif;
   font-size: 13px;
+}
+#import-docx-modal .sn-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+#import-docx-modal .sn-header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e4ded1;
 }
-#import-docx-modal h3 { margin: 0 0 6px; font-size: 15px; }
-#import-docx-modal .idx-hint { color: #777; font-size: 11px; line-height: 1.5; margin: 0 0 12px; }
-#import-docx-modal .idx-messages { color: #8a6d1a; font-size: 11px; margin: 8px 0 0; }
-#import-docx-modal .idx-preview {
-  margin-top: 10px;
-  width: 100%;
-  box-sizing: border-box;
-  height: 320px;
-  font: 11px/1.5 "Monaco", monospace;
-  border: 1px solid #ccc;
-  padding: 8px;
-  resize: vertical;
-  white-space: pre;
-}
+#import-docx-modal .sn-status { font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; color: #57503f; }
+#import-docx-modal .sn-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
+#import-docx-modal .idx-messages { color: #8a6d1a; font-size: 11px; margin-top: 8px; }
 #import-docx-modal .idx-error { color: #b03030; font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
-#import-docx-modal .idx-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
-#import-docx-modal .idx-actions button { padding: 6px 14px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+#import-docx-modal .idx-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid #e4ded1;
+}
+#import-docx-modal .idx-actions button { padding: 6px 14px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 6px; }
 #import-docx-modal #idx-go { background: #2a6fb0; border-color: #2a6fb0; color: #fff; }
 #import-docx-modal #idx-go:disabled { opacity: 0.6; }
 
@@ -3553,7 +3563,6 @@ body.range-delete-mode .pagedjs_pages {
 }
 #people-margin::-webkit-scrollbar { width: 0; height: 0; display: none; }
 #people-margin.pane-on { display: block; }
-.people-hint { font: 10px "Helvetica", sans-serif; color: #8a8378; margin: 4px 0 10px; }
 .people-row {
   display: flex;
   align-items: center;

@@ -70,8 +70,14 @@ function cleanup() {
       roles.includes('admin') && roles.includes('author'), roles.join(','));
     const title = await page.textContent('#mc-name');
     check('title strip shows the display name', title === TITLE, title);
-    const seedText = await page.textContent('.pagedjs_page h1, .pagedjs_page .sentence');
-    check('seeded title line renders', (seedText || '').includes('Smoke') === false && (seedText || '').length > 0, seedText);
+    // v3.3: the seed is &title{...} — it must render as the H1 title page,
+    // NOT as literal markdown.
+    const seedTitle = await page.$eval('.pagedjs_page h1.cmd-title', (el) => {
+      const c = el.cloneNode(true);
+      c.querySelectorAll('.import-endzone').forEach(z => z.remove());
+      return c.textContent.trim();
+    });
+    check('seeded &title renders as the title page', seedTitle === TITLE, seedTitle);
 
     // ---- Phase 5: end-zone + insert menu + docx modal -------------------
     await page.waitForSelector('.import-endzone .import-end-tab', { timeout: 15000 });
@@ -87,7 +93,7 @@ function cleanup() {
     // File conversion is covered by unit + vendored libs; here the preview
     // is filled directly (it is editable by design) to exercise the
     // compose-as-one-suggestion path.
-    await page.fill('#idx-preview', '## Chapter 1: The Test\n\nFirst imported paragraph.\n\tSecond imported paragraph.');
+    await page.fill('#idx-preview', '&chapter{Chapter 1}{The Test}\n\nFirst imported paragraph.\n\tSecond imported paragraph.');
     await page.click('#idx-go');
     await page.waitForSelector('#import-docx-overlay', { state: 'detached', timeout: 20000 });
     await waitForPagination(page);

@@ -46,28 +46,43 @@ const WriteSysImportDocx = {
     this.target = target;
     const overlay = document.createElement('div');
     overlay.id = 'import-docx-overlay';
+    // The sketch-widget chrome (sn-main/sn-header/sn-body) around the SHARED
+    // mono edit pane (edit-pane.js) — tab/newline overlay for free, and the
+    // converted text is editable before inserting.
     overlay.innerHTML = `
       <div id="import-docx-modal" role="dialog" aria-label="Import .docx">
-        <h3>Import .docx</h3>
-        <p class="idx-hint">Converts the document to .manuscript text and inserts it after this
-          paragraph as <strong>one suggested edit</strong> — review it, then Push/Commit as usual.</p>
-        <input type="file" id="idx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-        <div class="idx-messages" id="idx-messages" hidden></div>
-        <textarea id="idx-preview" class="idx-preview" spellcheck="false"
-          placeholder="Converted .manuscript text appears here — editable before inserting."></textarea>
-        <div class="idx-error" id="idx-error" hidden></div>
-        <div class="idx-actions">
-          <button type="button" id="idx-cancel">Never mind</button>
-          <button type="button" id="idx-go" disabled>Insert as suggestion</button>
+        <div class="sn-main">
+          <div class="sn-header">
+            <span class="sn-status">Import .docx</span>
+            <input type="file" id="idx-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          </div>
+          <div class="sn-body">
+            <div class="idx-editor" id="idx-editor"></div>
+            <div class="idx-messages" id="idx-messages" hidden></div>
+            <div class="idx-error" id="idx-error" hidden></div>
+          </div>
+          <div class="idx-actions">
+            <button type="button" id="idx-cancel">Cancel</button>
+            <button type="button" id="idx-go" disabled>Insert</button>
+          </div>
         </div>
       </div>`;
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) this.close(); });
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) this.close(); });
     document.body.appendChild(overlay);
+
+    this._pane = window.WriteSysEditPane.createMonoEditor({
+      value: '',
+      overlayHTML: window.WriteSysEditPane.tabMarkupHTML,
+      onInput: () => {
+        document.getElementById('idx-go').disabled = !this._pane.textarea.value.trim();
+      },
+    });
+    this._pane.textarea.classList.add('idx-preview');
+    this._pane.textarea.id = 'idx-preview'; // stable hook (tests, tooling)
+    document.getElementById('idx-editor').appendChild(this._pane.wrap);
+
     document.getElementById('idx-cancel').addEventListener('click', () => this.close());
     document.getElementById('idx-file').addEventListener('change', (e) => this.convert(e.target.files[0]));
-    document.getElementById('idx-preview').addEventListener('input', () => {
-      document.getElementById('idx-go').disabled = !document.getElementById('idx-preview').value.trim();
-    });
     document.getElementById('idx-go').addEventListener('click', () => this.insert());
   },
 
@@ -75,6 +90,7 @@ const WriteSysImportDocx = {
     const el = document.getElementById('import-docx-overlay');
     if (el) el.remove();
     this.target = null;
+    this._pane = null;
   },
 
   showError(msg) {
@@ -99,8 +115,8 @@ const WriteSysImportDocx = {
       });
       const markdown = td.turndown(result.value || '');
       const normalized = window.WriteSysManuscriptNormalize.normalize(markdown);
-      const preview = document.getElementById('idx-preview');
-      preview.value = normalized;
+      this._pane.textarea.value = normalized;
+      this._pane.autoGrow();
       document.getElementById('idx-go').disabled = !normalized.trim();
       // mammoth reports unsupported styles etc. — surface, don't block.
       const msgs = (result.messages || []).map(m => m.message);
@@ -123,13 +139,13 @@ const WriteSysImportDocx = {
   async insert() {
     const r = window.WriteSysRenderer;
     const target = this.target;
-    const content = document.getElementById('idx-preview').value.replace(/\s+$/, '');
+    const content = this._pane.textarea.value.replace(/\s+$/, '');
     if (!r || !target || !content) return;
 
     const committed = r.sentenceMap[target.sentenceId] || '';
     const pending = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
     const base = pending[target.sentenceId] !== undefined ? pending[target.sentenceId] : committed;
-    const join = content.startsWith('#') ? '\n\n' : '\n\t';
+    const join = /^[#&]/.test(content) ? '\n\n' : '\n\t';
     const suggested = `${base.replace(/\s+$/, '')}${join}${content}`;
 
     const go = document.getElementById('idx-go');
@@ -154,7 +170,7 @@ const WriteSysImportDocx = {
     } catch (e) {
       this.showError(e.message || String(e));
       go.disabled = false;
-      go.textContent = 'Insert as suggestion';
+      go.textContent = 'Insert';
     }
   },
 };

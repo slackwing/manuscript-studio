@@ -478,8 +478,8 @@ body.home-page {
    centered plus; hover "lights it up" and reveals the label. Shared by the
    manuscript and scratchpad grids (data-ghost distinguishes handlers). */
 .card-ghost {
-  background: transparent;
-  border: 2px dashed #d5d1c4;
+  background: #edeae1;
+  border: 2px dashed #cfcaba;
   align-items: center;
   justify-content: center;
   gap: 6px;

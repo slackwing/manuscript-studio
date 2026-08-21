@@ -73,7 +73,6 @@ const WriteSysPeople = {
       </div>`;
     }).join('');
     this.el.innerHTML = `<div class="people-pane">
-      <div class="people-hint">Top person's suggestion wins the diff. Drag to reorder (yours only).</div>
       <div class="people-list">${rows}</div>
     </div>`;
     this.wireDrag();

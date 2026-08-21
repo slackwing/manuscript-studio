@@ -25,6 +25,10 @@ away. Prune when shipped.
 - **git/local prod backups** — server-owned repos exist nowhere else;
   nightly `git bundle`/mirror of `<repos_dir>/git/local/` still needs to
   be set up on the VM. Origin: MANUSCRIPT_LIFECYCLE_PLAN §3 (hard TODO).
+- **`&break` dinkus command** — imports currently turn authors' "***"
+  section markers into plain `\n\n` section breaks; a rendered ornament
+  (⁂ / * * *) would need a new block command in command.js. Origin:
+  Slackwing 2026-08-21 UI round.
 - **Points × roles follow-ups** — pointer role shipped; whether pointers
   see others' received-points views, and any per-manuscript vs global
   pointer nuances. Origin: PERMISSIONS_PLAN v1 §6 (points TODO).

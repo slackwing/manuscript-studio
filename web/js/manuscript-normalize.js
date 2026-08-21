@@ -5,8 +5,11 @@
  * mammoth+turndown produce from a .docx (or any markdown) and emits text in
  * the house .manuscript conventions:
  *
- *   - headings shifted so the fragment's top level becomes `##` (chapters);
- *     there is NO scene concept — deeper levels just shift along
+ *   - headings become `&chapter{...}` commands (the house heading syntax —
+ *     markdown # headers are DEPRECATED and render as plain prose); a
+ *     merged "Chapter 1: The Predator Paradox" splits into
+ *     `&chapter{Chapter 1}{The Predator Paradox}` (label on the page,
+ *     description in the outline). There is NO scene concept.
  *   - paragraph breaks become the `\n\t` indent convention: the first
  *     paragraph after a heading (or at the start) sits flush, each following
  *     paragraph joins with a single newline + tab
@@ -32,7 +35,7 @@ const WriteSysManuscriptNormalize = {
     // rather than real heading styles ("**Chapter 1**"). Promote those to
     // headings, merging a bold title line that directly follows a bold
     // chapter line ("**Chapter 1**" + "**The Predator Paradox**" →
-    // "# Chapter 1: The Predator Paradox") before the level shift runs.
+    // chapter "Chapter 1" with description "The Predator Paradox").
     const boldOnly = (b) => {
       const m = b.match(/^\*\*(.+)\*\*$/s);
       return (m && m[1].length <= 60 && !m[1].includes('\n') && !m[1].includes('**')) ? m[1].trim() : null;
@@ -41,38 +44,44 @@ const WriteSysManuscriptNormalize = {
     for (let i = 0; i < rawBlocks.length; i++) {
       const inner = boldOnly(rawBlocks[i]);
       if (inner == null) { promoted.push(rawBlocks[i]); continue; }
-      let title = inner;
+      const parts = [inner];
       while (i + 1 < rawBlocks.length) {
         const next = boldOnly(rawBlocks[i + 1]);
         if (next == null) break;
-        title += ': ' + next;
+        parts.push(next);
         i++;
       }
-      promoted.push('# ' + title);
+      promoted.push('# ' + parts.join(': '));
     }
     rawBlocks = promoted;
 
-    // Heading shift: the shallowest heading in the fragment becomes ##.
-    const levels = rawBlocks
-      .map(b => (b.match(/^(#{1,6})\s/) || [])[1])
-      .filter(Boolean)
-      .map(h => h.length);
-    const shift = levels.length ? Math.max(0, 2 - Math.min(...levels)) : 0;
-
     const out = [];
     let prevWasText = false;
+    let sectionBreak = false;
     for (const block of rawBlocks) {
       const h = block.match(/^(#{1,6})\s+(.*)$/s);
       if (h) {
-        const level = Math.min(6, h[1].length + shift);
-        out.push({ kind: 'heading', text: '#'.repeat(level) + ' ' + h[2].trim() });
+        out.push({ kind: 'heading', text: this.chapterCommand(h[2].trim()) });
         prevWasText = false;
+        sectionBreak = false;
+        continue;
+      }
+      // Authors' hand-rolled section breaks ("***", "* * *", odd asterisk
+      // variants, dots, dashes): drop the marker line and start the next
+      // paragraph as a SECTION (\n\n, flush) instead.
+      if (this.isSectionBreakMarker(block)) {
+        sectionBreak = prevWasText;
         continue;
       }
       // A paragraph. Collapse internal newlines (turndown soft-wraps) into
       // spaces — .manuscript paragraphs are one source line each.
       const para = block.replace(/\s*\n\s*/g, ' ').trim();
-      out.push({ kind: prevWasText ? 'para-cont' : 'para-first', text: para });
+      if (sectionBreak) {
+        out.push({ kind: 'para-first', text: para });
+        sectionBreak = false;
+      } else {
+        out.push({ kind: prevWasText ? 'para-cont' : 'para-first', text: para });
+      }
       prevWasText = true;
     }
 
@@ -91,6 +100,27 @@ const WriteSysManuscriptNormalize = {
       }
     });
     return result;
+  },
+
+  // isSectionBreakMarker: a short paragraph made ONLY of separator glyphs —
+  // asterisk variants (incl. the odd middle one some authors use), dots,
+  // dashes, tildes, section signs. No letters or digits, ≤ 12 glyphs.
+  isSectionBreakMarker(block) {
+    const t = block.replace(/\s+/g, '');
+    if (!t || t.length > 12) return false;
+    return /^[*∗✳✻✴⁂⁕※•·●○◦◆#~\-–—_=§|\\/+^]+$/.test(t);
+  },
+
+  // chapterCommand renders a heading as the house &chapter command.
+  // "Chapter 1: The Predator Paradox" → &chapter{Chapter 1}{The Predator
+  // Paradox} (the label shows on the page, the description in the
+  // outline); anything else → &chapter{text}. Braces would break command
+  // parsing, so they become parentheses.
+  chapterCommand(text) {
+    const clean = text.replace(/[{]/g, '(').replace(/[}]/g, ')');
+    const m = clean.match(/^(.{1,40}?):\s+(.+)$/);
+    if (m) return `&chapter{${m[1].trim()}}{${m[2].trim()}}`;
+    return `&chapter{${clean}}`;
   },
 
   // Word/turndown cruft, applied to the whole text before block parsing.

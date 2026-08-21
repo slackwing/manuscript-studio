@@ -27,10 +27,14 @@ type ManuscriptCreateHandlers struct {
 	Admin        *AdminHandlers // migration queue for the bootstrap
 }
 
-// The seeded file: `# <Title>` — never empty, so docx import (which files a
-// composed suggestion) always has a committed sentence to anchor to (§6).
+// The seeded file: `&title{<Title>}` — the house heading command (markdown
+// # headers are deprecated; command.js structuralForm renders &title as the
+// book's title page). Never empty, so docx import (which files a composed
+// suggestion) always has a committed sentence to anchor to (§6). Braces
+// would break command parsing, so they become parentheses.
 func seedContent(displayName string) []byte {
-	return []byte("# " + displayName + "\n")
+	clean := strings.NewReplacer("{", "(", "}", ")").Replace(displayName)
+	return []byte("&title{" + clean + "}\n")
 }
 
 var slugCleanup = regexp.MustCompile(`[^a-z0-9]+`)

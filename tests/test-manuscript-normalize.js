@@ -15,19 +15,24 @@ function t(name, fn) {
   }
 }
 
-t('heading shift: top level becomes ## (chapters), no scene inference', () => {
+t('headings become &chapter commands (markdown # is deprecated)', () => {
   const out = N.normalize('# Chapter 1\n\nFirst para.\n\nSecond para.');
-  assert.strictEqual(out, '## Chapter 1\n\nFirst para.\n\tSecond para.');
+  assert.strictEqual(out, '&chapter{Chapter 1}\n\nFirst para.\n\tSecond para.');
 });
 
-t('already-## headings stay put', () => {
-  const out = N.normalize('## Chapter 2\n\nText.');
-  assert.strictEqual(out, '## Chapter 2\n\nText.');
+t('every heading level maps to &chapter', () => {
+  const out = N.normalize('## Chapter 2\n\nText.\n\n### Deeper\n\nMore.');
+  assert.strictEqual(out, '&chapter{Chapter 2}\n\nText.\n\n&chapter{Deeper}\n\nMore.');
 });
 
-t('deeper headings shift along with the top level', () => {
-  const out = N.normalize('# Book\n\n### Part\n\nText.');
-  assert.strictEqual(out, '## Book\n\n#### Part\n\nText.');
+t('"label: title" headings split into label + outline description', () => {
+  const out = N.normalize('# Chapter 2: The Reckoning\n\nText.');
+  assert.strictEqual(out, '&chapter{Chapter 2}{The Reckoning}\n\nText.');
+});
+
+t('braces in headings become parentheses (command syntax safety)', () => {
+  const out = N.normalize('# The {Weird} One\n\nText.');
+  assert.strictEqual(out, '&chapter{The (Weird) One}\n\nText.');
 });
 
 t('paragraph runs: first flush, rest \\n\\t-joined', () => {
@@ -37,7 +42,7 @@ t('paragraph runs: first flush, rest \\n\\t-joined', () => {
 
 t('heading resets the paragraph run', () => {
   const out = N.normalize('## A\n\nP1.\n\nP2.\n\n## B\n\nP3.\n\nP4.');
-  assert.strictEqual(out, '## A\n\nP1.\n\tP2.\n\n## B\n\nP3.\n\tP4.');
+  assert.strictEqual(out, '&chapter{A}\n\nP1.\n\tP2.\n\n&chapter{B}\n\nP3.\n\tP4.');
 });
 
 t('soft-wrapped lines inside a paragraph collapse to spaces', () => {
@@ -85,14 +90,14 @@ function t2(name, fn) {
   catch (e) { failures2++; console.error(`  FAIL - ${name}: ${e.message}`); }
 }
 
-t2('bold-only chapter + title lines merge into one ## heading', () => {
+t2('bold-only chapter + title lines merge into one &chapter command', () => {
   const out = N2.normalize('**Chapter 1**\n\n**The Predator Paradox**\n\nFirst para.\n\nSecond.');
-  assert.strictEqual(out, '## Chapter 1: The Predator Paradox\n\nFirst para.\n\tSecond.');
+  assert.strictEqual(out, '&chapter{Chapter 1}{The Predator Paradox}\n\nFirst para.\n\tSecond.');
 });
 
-t2('a lone bold-only line becomes a heading', () => {
+t2('a lone bold-only line becomes a chapter', () => {
   const out = N2.normalize('**Prologue**\n\nText.');
-  assert.strictEqual(out, '## Prologue\n\nText.');
+  assert.strictEqual(out, '&chapter{Prologue}\n\nText.');
 });
 
 t2('long bold paragraphs are NOT promoted (real emphasis stays)', () => {
@@ -108,3 +113,33 @@ t2('paragraphs with internal bold are untouched', () => {
 
 if (failures2) { console.error(`${failures2} bold-heading test(s) failed`); process.exit(1); }
 console.log('bold-heading tests: all passed');
+
+// Appended: authors' hand-rolled section breaks → \n\n section start.
+let failures3 = 0;
+function t3(name, fn) {
+  try { fn(); console.log(`  ok - ${name}`); }
+  catch (e) { failures3++; console.error(`  FAIL - ${name}: ${e.message}`); }
+}
+
+t3('*** becomes a section break (next para flush after blank line)', () => {
+  const out = N.normalize('One.\n\nTwo.\n\n***\n\nThree.\n\nFour.');
+  assert.strictEqual(out, 'One.\n\tTwo.\n\nThree.\n\tFour.');
+});
+
+t3('spaced and odd-asterisk markers count ("* ✻ *")', () => {
+  const out = N.normalize('One.\n\n* ✻ *\n\nTwo.');
+  assert.strictEqual(out, 'One.\n\nTwo.');
+});
+
+t3('a leading marker (nothing before it) is just dropped', () => {
+  const out = N.normalize('***\n\nOne.');
+  assert.strictEqual(out, 'One.');
+});
+
+t3('short dashes count; real prose does not', () => {
+  assert.strictEqual(N.normalize('One.\n\n---\n\nTwo.'), 'One.\n\nTwo.');
+  assert.strictEqual(N.normalize('One.\n\nA-B.\n\nTwo.'), 'One.\n\tA-B.\n\tTwo.');
+});
+
+if (failures3) { console.error(`${failures3} section-break test(s) failed`); process.exit(1); }
+console.log('section-break tests: all passed');

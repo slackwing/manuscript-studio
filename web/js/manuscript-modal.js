@@ -18,14 +18,13 @@ const WriteSysManuscriptModal = {
   // as inputs when editableAfterCreate, read-only otherwise.
   FIELDS: [
     { key: 'display_name', label: 'Title', type: 'text', required: true,
-      editableAfterCreate: true, placeholder: 'The Great Novel' },
+      editableAfterCreate: true },
     { key: 'name', label: 'Slug', type: 'text', createOnly: false,
-      editableAfterCreate: false, derivedFromTitle: true,
-      hint: 'URL-safe id; also the on-disk repo folder name' },
+      editableAfterCreate: false, derivedFromTitle: true },
     { key: 'storage', label: 'Storage', type: 'storage',
       editableAfterCreate: false },
     { key: 'birthday', label: 'Birthday', type: 'date',
-      editableAfterCreate: true, hint: 'the day writing began' },
+      editableAfterCreate: true, title: 'The day writing began' },
     { key: 'word_goal', label: 'Word goal', type: 'number',
       editableAfterCreate: true, placeholder: '40000' },
   ],
@@ -184,10 +183,8 @@ const WriteSysManuscriptModal = {
       }
       return `<label class="msm-row"><span class="msm-label">${f.label}</span>
         <span class="msm-radio-row">
-          <label class="msm-radio"><input type="radio" name="storage" value="local" checked> local
-            <span class="msm-hint-inline">server-owned repo; commit &amp; migrate in one click</span></label>
-          <label class="msm-radio msm-disabled"><input type="radio" name="storage" value="github" disabled> github
-            <span class="msm-hint-inline">sync an external repo — coming with the repo picker</span></label>
+          <label class="msm-radio" title="Server-owned repo"><input type="radio" name="storage" value="local" checked> local</label>
+          <label class="msm-radio msm-disabled" title="External repo — coming soon"><input type="radio" name="storage" value="github" disabled> github</label>
         </span></label>`;
     }
 
@@ -203,11 +200,10 @@ const WriteSysManuscriptModal = {
     // name must still be able to save other settings (an empty field is
     // simply omitted from the PATCH).
     const required = f.required && this._mode === 'create';
-    return `<label class="msm-row"><span class="msm-label">${f.label}${required ? ' *' : ''}</span>
+    return `<label class="msm-row"${f.title ? ` title="${this.esc(f.title)}"` : ''}><span class="msm-label">${f.label}${required ? ' *' : ''}</span>
       <input type="${f.type}" name="${f.key}" value="${this.esc(v)}"
         ${f.placeholder ? `placeholder="${this.esc(f.placeholder)}"` : ''}
-        ${required ? 'required' : ''} ${f.type === 'number' ? 'min="1"' : ''}>
-      ${f.hint ? `<span class="msm-hint">${f.hint}</span>` : ''}</label>`;
+        ${required ? 'required' : ''} ${f.type === 'number' ? 'min="1"' : ''}></label>`;
   },
 
   _roRow(label, value) {
