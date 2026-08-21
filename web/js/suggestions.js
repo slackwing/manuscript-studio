@@ -130,6 +130,22 @@ const WriteSysSuggestions = {
     return this.rows.filter(s => !s.stale && s.user_id === this.viewer && !s.review_status).length;
   },
 
+  // uncontestedPendingCount: unreviewed fresh suggestions that are the ONLY
+  // live suggestion on their sentence — what a batch accept would take.
+  // scope 'own' counts the viewer's; 'all' counts everyone's.
+  uncontestedPendingCount(scope) {
+    let n = 0;
+    Object.values(this.rowsBySentence).forEach(rows => {
+      const live = rows.filter(r => r.review_status !== 'rejected');
+      if (live.length !== 1) return; // contested (or nothing live)
+      const r = live[0];
+      if (r.review_status) return;   // already accepted
+      if (scope === 'own' && r.user_id !== this.viewer) return;
+      n++;
+    });
+    return n;
+  },
+
   // Dotted-underline pass for stale suggestions — runs with the other
   // post-pagination affordance passes.
   markStaleSentences() {

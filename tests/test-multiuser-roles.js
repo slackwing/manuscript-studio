@@ -143,8 +143,10 @@ async function loginAs(browser, username, password) {
       String(ownRow.review_status));
 
     // accept-own-uncontested must SKIP the contested sentence.
-    r = await api(ownerPage, 'POST', `api/migrations/${latest.migration_id}/accept-own-uncontested`);
-    check('accept-own-uncontested skips contested sentences', r.json.accepted === 0, `accepted ${r.json.accepted}`);
+    r = await api(ownerPage, 'POST', `api/migrations/${latest.migration_id}/accept-uncontested`, { scope: 'own' });
+    check('accept-uncontested(own) skips contested sentences', r.json.accepted === 0, `accepted ${r.json.accepted}`);
+    r = await api(ownerPage, 'POST', `api/migrations/${latest.migration_id}/accept-uncontested`, { scope: 'all' });
+    check('accept-uncontested(all) also skips contested sentences', r.json.accepted === 0, `accepted ${r.json.accepted}`);
 
     // ---- reader isolation ----------------------------------------------
     const r3Page = await loginAs(browser, READER3, 'test');
@@ -161,8 +163,8 @@ async function loginAs(browser, username, password) {
     r = await api(r3Page, 'POST', `api/sentences/${encodeURIComponent(titleSid)}/suggestion/review`,
       { username: READER3, status: 'accepted' });
     check('reader cannot accept their OWN suggestion', r.status === 403, `status ${r.status}`);
-    r = await api(r3Page, 'POST', `api/migrations/${latest.migration_id}/accept-own-uncontested`);
-    check('reader cannot accept-own-uncontested', r.status === 403, `status ${r.status}`);
+    r = await api(r3Page, 'POST', `api/migrations/${latest.migration_id}/accept-uncontested`, { scope: 'own' });
+    check('reader cannot batch-accept', r.status === 403, `status ${r.status}`);
     r = await api(r3Page, 'PATCH', `api/manuscripts/${mid}/meta`, { word_goal: 1234 });
     check('reader cannot edit settings', r.status === 403, `status ${r.status}`);
     // Cleanup reader's suggestion so the editor2 push below is deterministic.

@@ -40,6 +40,7 @@ type Server struct {
 	dailyRuleHandlers    *handlers.DailyRuleHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
+	signupHandlers     *handlers.SignupHandlers
 
 	manuscriptCreateHandlers *handlers.ManuscriptCreateHandlers
 	roleHandlers             *handlers.RoleHandlers
@@ -54,6 +55,12 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 		db:           db,
 		dbWrapper:    dbWrapper,
 		sessionStore: sessionStore,
+		signupHandlers: &handlers.SignupHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+			Config:       cfg,
+			IsProduction: cfg.Server.Env == "production",
+		},
 		authHandlers: &handlers.AuthHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
@@ -249,6 +256,7 @@ func (s *Server) setupRouter() {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/login", s.authHandlers.HandleLogin)
+		r.Post("/signup", s.signupHandlers.HandleSignup)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(s.sessionStore))
@@ -267,13 +275,14 @@ func (s *Server) setupRouter() {
 			r.Get("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleGetManuscriptMeta)
 			r.Patch("/manuscripts/{manuscript_id}/meta", s.migrationHandlers.HandleUpdateManuscriptMeta)
 			r.Get("/roles", s.roleHandlers.HandleGetRolesJSON)
+			r.Get("/users/search", s.signupHandlers.HandleSearchUsers)
 			r.Get("/manuscripts/{manuscript_id}/people", s.roleHandlers.HandleGetPeople)
 			r.Post("/manuscripts/{manuscript_id}/roles", s.roleHandlers.HandleGrantRole)
 			r.Delete("/manuscripts/{manuscript_id}/roles", s.roleHandlers.HandleRevokeRole)
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/sentences/{sentence_id}/suggestion/review", s.suggestionHandlers.HandleReviewSuggestion)
-			r.Post("/migrations/{migration_id}/accept-own-uncontested", s.suggestionHandlers.HandleAcceptOwnUncontested)
+			r.Post("/migrations/{migration_id}/accept-uncontested", s.suggestionHandlers.HandleAcceptUncontested)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
 			r.Get("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state", s.suggestionHandlers.HandleGetPushState)
 
@@ -375,6 +384,7 @@ func (s *Server) setupRouter() {
 			r.Post("/sync", s.adminHandlers.HandleSync)
 			r.Get("/status", s.adminHandlers.HandleStatus)
 			r.Post("/users", s.adminHandlers.HandleCreateUser)
+			r.Post("/invites", s.signupHandlers.HandleMintInvite)
 			r.Post("/grants", s.adminHandlers.HandleCreateGrant)
 			r.Post("/wordcount-compute", s.adminHandlers.HandleWordcountCompute)
 		})

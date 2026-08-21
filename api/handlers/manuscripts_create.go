@@ -34,7 +34,9 @@ type ManuscriptCreateHandlers struct {
 // would break command parsing, so they become parentheses.
 func seedContent(displayName string) []byte {
 	clean := strings.NewReplacer("{", "(", "}", ")").Replace(displayName)
-	return []byte("&title{" + clean + "}\n")
+	// Centered chapter headings by default (per Slackwing, 2026-08-21) —
+	// deletable like any sentence if a book wants left-aligned.
+	return []byte("&title{" + clean + "}\n\n&meta{chapter-align}{center}\n")
 }
 
 var slugCleanup = regexp.MustCompile(`[^a-z0-9]+`)

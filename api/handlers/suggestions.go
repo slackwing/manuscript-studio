@@ -168,11 +168,11 @@ func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *ht
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleAcceptOwnUncontested marks every own fresh unreviewed suggestion
-// on the migration accepted where no other user has a live suggestion on
-// the same sentence — the one-click path to today's "my edits are ready".
-// v3.1: gated like any accept (manage-suggestions).
-func (h *SuggestionHandlers) HandleAcceptOwnUncontested(w http.ResponseWriter, r *http.Request) {
+// HandleAcceptUncontested batch-accepts fresh unreviewed suggestions on
+// the migration — ALWAYS uncontested-only (contested sentences take manual
+// verdicts). Body: {"scope":"own"|"all"} (default own). Gated like any
+// accept (manage-suggestions).
+func (h *SuggestionHandlers) HandleAcceptUncontested(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	migrationID, err := strconv.Atoi(chi.URLParam(r, "migration_id"))
 	if err != nil {
@@ -196,9 +196,20 @@ func (h *SuggestionHandlers) HandleAcceptOwnUncontested(w http.ResponseWriter, r
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
-	n, err := h.DB.AcceptOwnUncontested(ctx, migrationID, session.Username)
+	var body struct {
+		Scope string `json:"scope"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Scope == "" {
+		body.Scope = "own"
+	}
+	if body.Scope != "own" && body.Scope != "all" {
+		http.Error(w, "scope must be own or all", http.StatusBadRequest)
+		return
+	}
+	n, err := h.DB.AcceptUncontested(ctx, migrationID, session.Username, body.Scope)
 	if err != nil {
-		log.Printf("suggestions: accept own uncontested: %v", err)
+		log.Printf("suggestions: accept uncontested: %v", err)
 		http.Error(w, "Failed to accept", http.StatusInternalServerError)
 		return
 	}

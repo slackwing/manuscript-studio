@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Invite-only sign-up (2026-08-21): users self-register with a
+         single-use invite code (default 1-year expiry, minted by the
+         operator via admin API / debug script). user.email is stored but
+         nothing emails yet. -->
+    <changeSet id="039-signup-invites" author="claude">
+        <addColumn tableName="user">
+            <column name="email" type="VARCHAR(255)"/>
+        </addColumn>
+        <createTable tableName="invite_code">
+            <column name="code" type="VARCHAR(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="VARCHAR(255)"/>
+            <column name="used_by" type="VARCHAR(255)"/>
+            <column name="used_at" type="TIMESTAMPTZ"/>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

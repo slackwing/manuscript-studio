@@ -85,7 +85,8 @@ function cleanup() {
     await page.click('.import-endzone .import-end-tab');
     await page.waitForSelector('#insert-menu');
     const menuItems = await page.$$eval('#insert-menu button', bs => bs.map(b => b.textContent));
-    check('insert menu offers sketch and docx', menuItems.length === 2 && /docx/i.test(menuItems[1]), menuItems.join(' | '));
+    check('insert menu offers sketch, docx, chapter',
+      menuItems.length === 3 && /docx/i.test(menuItems[1]) && /chapter/i.test(menuItems[2]), menuItems.join(' | '));
     await page.click('#insert-menu [data-act="docx"]');
     await page.waitForSelector('#import-docx-modal');
     check('docx import modal opens', true);
@@ -100,24 +101,28 @@ function cleanup() {
     const sugCount = await page.evaluate(() => Object.keys((window.WriteSysSuggestions || {}).bySentenceId || {}).length);
     check('import filed exactly one composed suggestion', sugCount === 1, `count ${sugCount}`);
 
-    // ---- Phase 1 + v3: accept-then-Commit flow -------------------------
-    await page.waitForSelector('.push-btn-primary');
-    let label = await page.textContent('.push-btn-primary .push-btn-label');
-    check('button starts as Accept mine (1) (v3: pushes land accepted only)', label === 'Accept mine (1)', label);
-    await page.click('.push-btn-primary');
+    // ---- v3.3 button row: accept pair then push/commit pair ------------
     await page.waitForFunction(() => {
-      const el = document.querySelector('.push-btn-primary .push-btn-label');
-      return el && /^Commit \(1\)$/.test(el.textContent);
+      const el = document.getElementById('accept-btn');
+      return el && el.title === 'Accept my uncontested (1)';
     }, { timeout: 20000 });
-    check('accepting flips the button to Commit (1)', true);
-    const hasOctocat = await page.$('.push-btn-primary .push-btn-gh');
-    check('git commit icon replaces the octocat', !hasOctocat);
+    check('accept button offers my uncontested (1)', true);
+    const pushDisabled = await page.getAttribute('#push-btn', 'disabled');
+    check('commit button disabled before any accept', pushDisabled !== null);
+    await page.click('#accept-btn');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('push-btn');
+      return el && !el.disabled && el.title === 'Commit own accepted (1)';
+    }, { timeout: 20000 });
+    check('accepting arms Commit own accepted (1)', true);
+    check('git commit glyph (not octocat) on local', !!(await page.$('#push-btn .mc-ic-commit')));
+    check('no View button on local manuscripts', !(await page.$('#view-btn')));
     const reviewMark = await page.$('sup.sg-review.accepted');
     check('accepted suggestion wears the ✓ superscript', !!reviewMark);
 
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }), // commit → migrate → reload
-      page.click('.push-btn-primary'),
+      page.click('#push-btn'),
     ]);
     await waitForPagination(page);
     const bodyText = await page.evaluate(() => document.body.innerText);

@@ -1,45 +1,46 @@
 /**
- * Push-to-PR feature.
+ * Manuscript action buttons (v3.3 — Slackwing's spec, 2026-08-21):
+ * a uniform icon-button row in the chrome's controls strip:
  *
- * Top-toolbar button that force-pushes the current user's unmerged
- * suggestions to the canonical `suggestions-{shortSHA}-{user}` branch on
- * the manuscript's GitHub repo. Single-user, single-branch per (commit,
- * user). See PUSH_FEATURE_PLAN.md.
+ *   [⚙ settings] [✓✓✓ accept ▾] [push/commit ▾] [view]
  *
- *   - 0 suggestions → button hidden
- *   - N > 0         → "Push (N)" — clicking pushes immediately, no confirm
- *   - while in flight, the GitHub icon swaps for a spinner
- *   - dropdown ▼ appears once a branch exists, with one item: "View on GitHub"
+ *   - ACCEPT pair: batch-accept is ALWAYS uncontested-only (contested
+ *     sentences take manual verdicts in the suggest modal). Variants: my /
+ *     everyone's — the shown variant is MINE unless I have none and others
+ *     do; the caret menu carries the alternate. Disabled at zero.
+ *   - PUSH pair: applies accepted suggestions. Variants: own / everyone's,
+ *     same auto-selection. Verb is Push (github, octocat) or Commit
+ *     (local, git glyph). Disabled at zero.
+ *   - VIEW: the GitHub compare page — github mode only, disabled until the
+ *     suggestions branch exists. Absent entirely on local manuscripts.
  *
- * Branch existence + compare URL come from GET .../push-state — server
- * truth. Refreshed on init and after every successful push.
+ * All labels are icons; hover titles carry the words + counts.
  */
 
-const ICON_EXTERNAL = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3a.75.75 0 0 0-1.5 0v3a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3a.75.75 0 0 0 0-1.5h-3zm6.854-1a.75.75 0 0 0 0 1.5h1.836L8.22 7.22a.75.75 0 1 0 1.06 1.06L13.5 4.06v1.836a.75.75 0 0 0 1.5 0V1.75A.75.75 0 0 0 14.25 1h-3.646z"/></svg>`;
-const ICON_GITHUB = `<svg class="push-btn-gh" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
+const ICON_EXTERNAL = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3a.75.75 0 0 0-1.5 0v3a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3a.75.75 0 0 0 0-1.5h-3zm6.854-1a.75.75 0 0 0 0 1.5h1.836L8.22 7.22a.75.75 0 1 0 1.06 1.06L13.5 4.06v1.836a.75.75 0 0 0 1.5 0V1.75A.75.75 0 0 0 14.25 1h-3.646z"/></svg>`;
+const ICON_GITHUB = `<svg class="mc-ic-github" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
 const ICON_SPINNER = `<svg class="push-btn-spinner" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.3"/><path d="M14 8a6 6 0 0 0-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
-// Git commit glyph (dot on a line) for LOCAL manuscripts — the octocat is
-// GitHub-specific, and "merge" would imply branch semantics local mode
-// deliberately doesn't have (MANUSCRIPT_LIFECYCLE_PLAN §3).
-const ICON_COMMIT = `<svg class="push-btn-commit" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 5.25a2.75 2.75 0 0 1 2.646 2H14.25a.75.75 0 0 1 0 1.5h-3.604a2.751 2.751 0 0 1-5.292 0H1.75a.75.75 0 0 1 0-1.5h3.604A2.75 2.75 0 0 1 8 5.25zm0 1.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z"/></svg>`;
+// Git commit glyph (dot on a line) for LOCAL manuscripts.
+const ICON_COMMIT = `<svg class="mc-ic-commit" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 5.25a2.75 2.75 0 0 1 2.646 2H14.25a.75.75 0 0 1 0 1.5h-3.604a2.751 2.751 0 0 1-5.292 0H1.75a.75.75 0 0 1 0-1.5h3.604A2.75 2.75 0 0 1 8 5.25zm0 1.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z"/></svg>`;
+// Three green checkmarks — the accept-uncontested batch.
+const ICON_CHECKS3 = `<svg viewBox="0 0 34 16" width="30" height="14" aria-hidden="true"><g fill="none" stroke="#2e7d32" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l3 3 5-6"/><path d="M13 9l3 3 5-6"/><path d="M24 9l3 3 5-6"/></g></svg>`;
+// Three person silhouettes — the "everyone's" variant marker.
+const ICON_PERSONS3 = `<svg viewBox="0 0 34 16" width="26" height="13" aria-hidden="true"><g fill="currentColor"><circle cx="6" cy="5" r="2.6"/><path d="M1.5 14c0-2.8 2-4.6 4.5-4.6S10.5 11.2 10.5 14z"/><circle cx="17" cy="5" r="2.6"/><path d="M12.5 14c0-2.8 2-4.6 4.5-4.6s4.5 1.8 4.5 4.6z"/><circle cx="28" cy="5" r="2.6"/><path d="M23.5 14c0-2.8 2-4.6 4.5-4.6s4.5 1.8 4.5 4.6z"/></g></svg>`;
 
 const WriteSysPush = {
   apiBaseUrl: 'api',
   _container: null,
-  _menuOpen: false,
+  _openMenu: null,
   _branchExists: false, // server-reported
   _compareURL: '',      // server-computed; empty when no slug configured
-  _storage: 'github',   // 'github' | 'local' — drives label + icon + flow
+  _storage: 'github',   // 'github' | 'local'
 
   init() {
     this._container = document.getElementById('push-button-container');
     if (!this._container) return;
     document.addEventListener('click', (e) => {
-      if (this._menuOpen && !this._container.contains(e.target)) {
-        this._closeMenu();
-      }
+      if (this._openMenu && !this._openMenu.parentNode.contains(e.target)) this._closeMenus();
     });
-    // Fire-and-forget; refresh() runs whether or not the lookup succeeds.
     this._loadBranchState().finally(() => this.refresh());
   },
 
@@ -57,147 +58,132 @@ const WriteSysPush = {
       this._compareURL = data.compare_url || '';
       this._storage = data.storage || 'github';
     } catch (err) {
-      console.warn('push-state lookup failed (defaulting to "new"):', err.message || err);
+      console.warn('push-state lookup failed:', err.message || err);
       this._branchExists = false;
       this._compareURL = '';
     }
   },
 
   _isLocal() { return this._storage === 'local'; },
-  _icon() { return this._isLocal() ? ICON_COMMIT : ICON_GITHUB; },
+  _verb() { return this._isLocal() ? 'Commit' : 'Push'; },
+  _verbIcon() { return this._isLocal() ? ICON_COMMIT : ICON_GITHUB; },
 
-  // Re-renders the button to reflect review state + branch state (v3:
-  // pushes land ACCEPTED suggestions only — PERMISSIONS_PLAN §4).
-  // Called after suggestion save/delete/review.
+  // A split pair: primary executes the shown variant; the caret menu holds
+  // the alternate. Shown = own unless own is empty and everyone's isn't.
+  _pairHTML(id, counts, icons, hints) {
+    const variant = counts.own === 0 && counts.all > 0 ? 'all' : 'own';
+    const alt = variant === 'own' ? 'all' : 'own';
+    const icon = (v) => v === 'all' ? `${icons.base}${ICON_PERSONS3}` : icons.base;
+    const title = (v) => `${hints[v]} (${counts[v]})`;
+    return `<span class="mc-split" id="${id}-split" data-variant="${variant}">
+      <button type="button" class="mc-btn" id="${id}-btn" data-variant="${variant}"
+        title="${title(variant)}" ${counts[variant] === 0 ? 'disabled' : ''}>${icon(variant)}</button>
+      <button type="button" class="mc-caret" aria-haspopup="true" aria-expanded="false">▾</button>
+      <span class="mc-menu" hidden>
+        <button type="button" class="mc-menu-item" data-variant="${alt}"
+          ${counts[alt] === 0 ? 'disabled' : ''}>${icon(alt)}<span>${title(alt)}</span></button>
+      </span>
+    </span>`;
+  },
+
   refresh() {
     if (!this._container) return;
     const S = window.WriteSysSuggestions || {};
-    const accepted = S.acceptedCount ? S.acceptedCount('all') : 0;
-    const ownAccepted = S.acceptedCount ? S.acceptedCount('own') : 0;
-    // v3.1: accepting (even one's own) needs manage-suggestions — a reader
-    // just files suggestions and the button stays hidden for them.
+    const A = window.WriteSysActions;
+    const mid = A ? A.currentManuscriptId() : 0;
     const canReview = !!S.canReview;
-    const ownPending = canReview && S.ownPendingCount ? S.ownPendingCount() : 0;
-    if (accepted === 0 && ownPending === 0) {
-      this._container.innerHTML = '';
-      return;
+    const canPush = A ? A.has(mid, 'commit-and-push-suggestions') : true;
+
+    const pend = {
+      own: S.uncontestedPendingCount ? S.uncontestedPendingCount('own') : 0,
+      all: S.uncontestedPendingCount ? S.uncontestedPendingCount('all') : 0,
+    };
+    const acc = {
+      own: S.acceptedCount ? S.acceptedCount('own') : 0,
+      all: S.acceptedCount ? S.acceptedCount('all') : 0,
+    };
+    const verb = this._verb();
+
+    let html = '';
+    if (canReview) {
+      html += this._pairHTML('accept', pend, { base: ICON_CHECKS3 },
+        { own: 'Accept my uncontested', all: "Accept everyone's uncontested" });
     }
-
-    // Primary: push/commit accepted edits; with nothing accepted yet the
-    // button becomes the one-click "accept all my uncontested" step.
-    const verb = this._isLocal() ? 'Commit' : 'Push';
-    const primaryIsAccept = accepted === 0;
-    const primaryLabel = primaryIsAccept ? `Accept mine (${ownPending})` : `${verb} (${accepted})`;
-
-    const showView = !this._isLocal() && this._branchExists && !!this._compareURL;
-    const items = [];
-    if (!primaryIsAccept && ownPending > 0) {
-      items.push({ act: 'accept', label: `Accept all my uncontested (${ownPending})`, desc: 'Marks your unchallenged edits accepted.' });
+    if (canPush) {
+      html += this._pairHTML('push', acc, { base: this._verbIcon() },
+        { own: `${verb} own accepted`, all: `${verb} everyone's accepted` });
+      if (!this._isLocal()) {
+        const viewable = this._branchExists && !!this._compareURL;
+        html += viewable
+          ? `<a class="mc-btn" id="view-btn" href="${this._compareURL}" target="_blank" rel="noopener" title="View on GitHub">${ICON_EXTERNAL}</a>`
+          : `<button type="button" class="mc-btn" id="view-btn" disabled title="View on GitHub — nothing pushed yet">${ICON_EXTERNAL}</button>`;
+      }
     }
-    if (ownAccepted > 0 && ownAccepted !== accepted) {
-      items.push({ act: 'push-own', label: `${verb} own accepted (${ownAccepted})`, desc: 'Leave others\' accepted edits behind.' });
-    }
-    const menuNeeded = showView || items.length > 0;
-    const primaryCls = menuNeeded ? 'push-btn-primary push-btn-grouped' : 'push-btn-primary push-btn-solo';
+    this._container.innerHTML = html;
 
-    let menuHtml = '';
-    if (menuNeeded) {
-      const itemHtml = items.map(it => `
-        <button type="button" class="push-menu-item" data-act="${it.act}">
-          <span class="push-menu-text">
-            <span class="push-menu-label">${it.label}</span>
-            <span class="push-menu-desc">${it.desc}</span>
-          </span>
-        </button>`).join('');
-      const viewHtml = showView ? `
-        <a class="push-menu-item" data-act="view" href="${this._compareURL}" target="_blank" rel="noopener">
-          <span class="push-menu-icon">${ICON_EXTERNAL}</span>
-          <span class="push-menu-text">
-            <span class="push-menu-label">View on GitHub</span>
-            <span class="push-menu-desc">Open the compare page in a new tab.</span>
-          </span>
-        </a>` : '';
-      menuHtml = `<button type="button" class="push-btn-caret" aria-haspopup="true" aria-expanded="false">▼</button>
-        <div class="push-menu" hidden>${itemHtml}${viewHtml}</div>`;
-    }
-
-    this._container.innerHTML = `<button type="button" class="${primaryCls}" data-action="update"><span class="push-btn-icon">${this._icon()}</span><span class="push-btn-label">${primaryLabel}</span></button>${menuHtml}`;
-
-    const primary = this._container.querySelector('.push-btn-primary');
-    const caret   = this._container.querySelector('.push-btn-caret');
-    const menu    = this._container.querySelector('.push-menu');
-    primary.addEventListener('click', () => primaryIsAccept ? this._acceptOwn() : this._push('all-accepted'));
-    if (caret && menu) {
+    this._container.querySelectorAll('.mc-split').forEach(split => {
+      const id = split.id.replace('-split', '');
+      const act = (variant) => id === 'accept' ? this._accept(variant) : this._push(variant);
+      const primary = split.querySelector('.mc-btn');
+      primary.addEventListener('click', () => act(primary.dataset.variant));
+      const caret = split.querySelector('.mc-caret');
+      const menu = split.querySelector('.mc-menu');
       caret.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._toggleMenu();
+        const opening = menu.hidden;
+        this._closeMenus();
+        if (opening) {
+          menu.hidden = false;
+          caret.setAttribute('aria-expanded', 'true');
+          this._openMenu = menu;
+        }
       });
-      menu.querySelectorAll('.push-menu-item').forEach(el => {
-        el.addEventListener('click', () => {
-          const act = el.dataset.act;
-          this._closeMenu();
-          if (act === 'accept') this._acceptOwn();
-          else if (act === 'push-own') this._push('own-accepted');
-          // 'view' is an <a target=_blank> — navigation handles itself.
-        });
+      menu.querySelector('.mc-menu-item').addEventListener('click', (e) => {
+        this._closeMenus();
+        act(e.currentTarget.dataset.variant);
       });
-    }
+    });
   },
 
-  // Accept-all-own-uncontested → refresh counts (the button flips to Push).
-  async _acceptOwn() {
+  _closeMenus() {
+    this._container.querySelectorAll('.mc-menu').forEach(m => { m.hidden = true; });
+    this._container.querySelectorAll('.mc-caret').forEach(c => c.setAttribute('aria-expanded', 'false'));
+    this._openMenu = null;
+  },
+
+  async _accept(variant) {
     const r = window.WriteSysRenderer;
     if (!r || !r.currentMigrationID) return;
     try {
-      this._setBusy(true);
+      this._setBusy('accept');
       const resp = await authenticatedFetch(
-        `${this.apiBaseUrl}/migrations/${r.currentMigrationID}/accept-own-uncontested`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        `${this.apiBaseUrl}/migrations/${r.currentMigrationID}/accept-uncontested`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: variant }),
+        });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       if (window.WriteSysSuggestions) await window.WriteSysSuggestions.loadForMigration(r.currentMigrationID);
       await r.renderManuscript({});
-      this.refresh();
     } catch (err) {
       alert('Accept failed: ' + (err.message || err));
     } finally {
-      this._setBusy(false);
+      this.refresh();
     }
   },
 
-  _toggleMenu() {
-    const menu = this._container.querySelector('.push-menu');
-    const caret = this._container.querySelector('.push-btn-caret');
-    if (!menu || !caret) return;
-    this._menuOpen = !this._menuOpen;
-    menu.hidden = !this._menuOpen;
-    caret.setAttribute('aria-expanded', String(this._menuOpen));
-  },
-
-  _closeMenu() {
-    const menu = this._container.querySelector('.push-menu');
-    const caret = this._container.querySelector('.push-btn-caret');
-    if (menu) menu.hidden = true;
-    if (caret) caret.setAttribute('aria-expanded', 'false');
-    this._menuOpen = false;
-  },
-
-  // No confirm — pushing is non-destructive (force-push only touches a branch
-  // dedicated to this user + commit). On success: silent (the icon stops
-  // spinning and View on GitHub appears). On failure: alert, since a silent
-  // failure would leave the user thinking it worked.
-  async _push(scope) {
+  // No confirm — pushing is non-destructive for github (force-push touches
+  // only the dedicated branch); local commits are the point. Failures alert.
+  async _push(variant) {
     const r = window.WriteSysRenderer;
-    if (!r || !r.manuscriptId || !r.currentMigrationID) {
-      alert('Manuscript not loaded yet.');
-      return;
-    }
+    if (!r || !r.manuscriptId || !r.currentMigrationID) return;
     try {
-      this._setBusy(true);
+      this._setBusy('push');
       const url = `${this.apiBaseUrl}/manuscripts/${r.manuscriptId}/migrations/${r.currentMigrationID}/push-suggestions`;
       const resp = await authenticatedFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: scope || 'all-accepted' }),
+        body: JSON.stringify({ scope: variant === 'own' ? 'own-accepted' : 'all-accepted' }),
       });
       if (!resp.ok) {
         const body = await resp.text().catch(() => '');
@@ -209,34 +195,25 @@ const WriteSysPush = {
       }
       const data = await resp.json();
       if (data.compare_url) this._compareURL = data.compare_url;
-      // Skipped suggestions are rare and silent-success goes against showing
-      // them — surface them only when the count is non-zero.
       if (data.skipped > 0) {
-        alert(`${data.applied} ${this._isLocal() ? 'committed' : 'pushed'}; ${data.skipped} skipped (originals not found in source).`);
+        alert(`${data.applied} ${this._isLocal() ? 'committed' : 'pushed'}; ${data.skipped} skipped.`);
       }
       if (this._isLocal()) {
-        // Local commit = commit + migration in one request. The page's
-        // migration is now superseded — wait for the new one, then reload
-        // into it (the same "please refresh" the PR-merge flow needs, done
-        // for you).
+        // Commit + migration in one request; wait for the new migration and
+        // reload into it.
         await this._awaitLocalMigration(data.commit_sha);
         window.location.reload();
         return;
       }
       await this._loadBranchState();
-      this.refresh();
     } catch (err) {
       console.error('push failed:', err);
-      alert(`Push failed: ${err.message || err}`);
+      alert(`${this._verb()} failed: ${err.message || err}`);
     } finally {
-      this._setBusy(false);
+      this.refresh();
     }
   },
 
-  // Poll until the just-committed SHA's migration is the latest (local mode
-  // runs it in the same request's goroutine — typically a second or two).
-  // Times out quietly; the reload then lands on the old migration and the
-  // stale banner machinery takes over.
   async _awaitLocalMigration(commitSHA) {
     const r = window.WriteSysRenderer;
     if (!r || !r.manuscriptId || !commitSHA) return;
@@ -249,14 +226,12 @@ const WriteSysPush = {
     }
   },
 
-  // Spinner replaces the icon; clicks suppressed by `disabled`.
-  _setBusy(busy) {
+  // Disable everything; spin the acting pair's primary.
+  _setBusy(which) {
     if (!this._container) return;
-    const btns = this._container.querySelectorAll('button');
-    btns.forEach(b => b.disabled = busy);
-    this._container.classList.toggle('push-busy', busy);
-    const iconSlot = this._container.querySelector('.push-btn-icon');
-    if (iconSlot) iconSlot.innerHTML = busy ? ICON_SPINNER : this._icon();
+    this._container.querySelectorAll('button, a').forEach(b => { b.disabled = true; });
+    const btn = this._container.querySelector(`#${which}-btn`);
+    if (btn) btn.innerHTML = ICON_SPINNER;
   },
 };
 

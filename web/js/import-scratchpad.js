@@ -147,7 +147,8 @@ const WriteSysImportScratchpad = {
     menu.id = 'insert-menu';
     menu.innerHTML = `
       <button type="button" data-act="sketch">Place sketch…</button>
-      <button type="button" data-act="docx">Import .docx…</button>`;
+      <button type="button" data-act="docx">Import .docx…</button>
+      <button type="button" data-act="chapter">Chapter…</button>`;
     document.body.appendChild(menu);
     const r = anchorEl.getBoundingClientRect();
     menu.style.left = `${Math.round(r.left + window.scrollX + r.width + 6)}px`;
@@ -160,6 +161,11 @@ const WriteSysImportScratchpad = {
       this.closeInsertMenu();
       if (window.WriteSysImportDocx) window.WriteSysImportDocx.open({ sentenceId: boundaryId });
     });
+    menu.querySelector('[data-act="chapter"]').addEventListener('click', () => {
+      const rect = anchorEl.getBoundingClientRect();
+      this.closeInsertMenu();
+      this.openChapterPrompt(rect, boundaryId);
+    });
     this._menuDismiss = (e) => {
       if (e.type === 'keydown' && e.key !== 'Escape') return;
       if (e.type === 'mousedown' && menu.contains(e.target)) return;
@@ -170,6 +176,43 @@ const WriteSysImportScratchpad = {
       document.addEventListener('mousedown', this._menuDismiss);
       document.addEventListener('keydown', this._menuDismiss);
     }, 0);
+  },
+
+  // Chapter…: a one-field prompt; "Chapter 2: The Title" splits into
+  // &chapter{Chapter 2}{The Title} (same rule as the docx importer).
+  openChapterPrompt(anchorRect, boundaryId) {
+    const box = document.createElement('div');
+    box.id = 'chapter-prompt';
+    box.innerHTML = `<input type="text" placeholder="Chapter 2: The Title"><button type="button">Insert</button>`;
+    document.body.appendChild(box);
+    box.style.left = `${Math.round(anchorRect.left + window.scrollX + anchorRect.width + 6)}px`;
+    box.style.top = `${Math.round(anchorRect.top + window.scrollY - 4)}px`;
+    const input = box.querySelector('input');
+    const go = box.querySelector('button');
+    const close = () => box.remove();
+    const submit = async () => {
+      const v = input.value.trim();
+      if (!v) return;
+      go.disabled = true;
+      try {
+        const cmd = window.WriteSysManuscriptNormalize.chapterCommand(v);
+        await window.WriteSysImportDocx.insertFragment(boundaryId, cmd);
+        close();
+      } catch (e) {
+        alert(e.message || e);
+        go.disabled = false;
+      }
+    };
+    go.addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit();
+      else if (e.key === 'Escape') close();
+    });
+    setTimeout(() => {
+      const dismiss = (e) => { if (!box.contains(e.target)) { close(); document.removeEventListener('mousedown', dismiss); } };
+      document.addEventListener('mousedown', dismiss);
+    }, 0);
+    input.focus();
   },
 
   closeInsertMenu() {
@@ -192,17 +235,21 @@ const WriteSysImportScratchpad = {
     // suggestion is fine (composition), same rule as the gap zones.
     const spans = document.querySelectorAll('.pagedjs_page .sentence[data-sentence-id]');
     let anchorSpan = null;
+    let host = null;
     for (let i = spans.length - 1; i >= 0; i--) {
       const id = spans[i].dataset.sentenceId;
-      if (r.sentenceMap[id]) { anchorSpan = spans[i]; break; }
+      if (!r.sentenceMap[id]) continue;
+      // Command-only sentences (&meta, &end) render invisibly — a zone
+      // anchored in a zero-height host would never show. Walk back to the
+      // last sentence whose block actually paints.
+      const h = spans[i].closest('p, h1, h2, h3, h4, h5, h6') || spans[i].parentElement;
+      if (!h || h.offsetHeight === 0) continue;
+      anchorSpan = spans[i];
+      host = h;
+      break;
     }
-    if (!anchorSpan) return;
+    if (!anchorSpan || !host) return;
     const anchorId = anchorSpan.dataset.sentenceId;
-    // ANCHORED INSIDE the final text block (position:relative host), same as
-    // the gap zones — appending to the page area put the zone into paged.js
-    // flow, where the mobile transform math blew out the body scroll width.
-    const host = anchorSpan.closest('p, h1, h2, h3, h4, h5, h6') || anchorSpan.parentElement;
-    if (!host) return;
 
     const zone = document.createElement('div');
     zone.className = 'import-endzone';

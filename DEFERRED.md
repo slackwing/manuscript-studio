@@ -36,3 +36,11 @@ away. Prune when shipped.
   unread (people_order since v3.2 moved the display order to
   localStorage); remove in a later changeset once a deploy cycle has
   proven the role table. Origin: PERMISSIONS_PLAN v3 §1 / v3.2.
+- **Email wiring** — sign-up (039) stores `user.email` but nothing sends
+  mail (no verification, no password reset, no invite delivery — the
+  operator hands codes out personally). Wire an SMTP/SES path when a
+  real flow needs it. Origin: invite-only sign-up round, 2026-08-21.
+- **Invite management UI** — codes are minted via system token
+  (`POST api/admin/invites` / `debug/mint_invite.sh`) and live only in
+  the DB; an admin surface for listing/revoking codes can come with the
+  email work. Same origin.

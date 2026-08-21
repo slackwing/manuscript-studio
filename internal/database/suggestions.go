@@ -93,29 +93,31 @@ func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser st
 	return tag.RowsAffected() > 0, nil
 }
 
-// AcceptOwnUncontested marks every FRESH, unreviewed suggestion by the user
-// in this migration accepted — where no OTHER user has a live (fresh,
-// non-rejected) suggestion on the same sentence ("uncontested"). Returns
-// the number accepted.
-func (db *DB) AcceptOwnUncontested(ctx context.Context, migrationID int, username string) (int, error) {
+// AcceptUncontested marks FRESH, unreviewed suggestions in this migration
+// accepted — batch accepts are ALWAYS uncontested-only (a sentence with
+// competing live suggestions needs a manual verdict). scope 'own' limits
+// to the reviewer's suggestions; 'all' accepts any sentence whose single
+// live suggestion is unreviewed, whoever wrote it. Returns the count.
+func (db *DB) AcceptUncontested(ctx context.Context, migrationID int, reviewer, scope string) (int, error) {
+	ownOnly := scope == "own"
 	tag, err := db.Pool.Exec(ctx, `
 		UPDATE suggested_change sc
 		SET review_status = 'accepted', reviewed_by = $2, reviewed_at = NOW()
 		FROM sentence s
 		WHERE s.sentence_id = sc.sentence_id
 		  AND s.migration_id = $1
-		  AND sc.user_id = $2
+		  AND ($3::boolean = FALSE OR sc.user_id = $2)
 		  AND sc.stale = FALSE
 		  AND sc.review_status IS NULL
 		  AND NOT EXISTS (
 			SELECT 1 FROM suggested_change other
 			WHERE other.sentence_id = sc.sentence_id
-			  AND other.user_id <> $2
+			  AND other.user_id <> sc.user_id
 			  AND other.stale = FALSE
 			  AND (other.review_status IS NULL OR other.review_status = 'accepted')
-		  )`, migrationID, username)
+		  )`, migrationID, reviewer, ownOnly)
 	if err != nil {
-		return 0, fmt.Errorf("accept own uncontested: %w", err)
+		return 0, fmt.Errorf("accept uncontested (%s): %w", scope, err)
 	}
 	return int(tag.RowsAffected()), nil
 }

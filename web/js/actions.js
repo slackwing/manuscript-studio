@@ -47,7 +47,11 @@ const WriteSysActions = {
     gate(document.querySelector('#pane-tabs .pane-tab[data-pane="stats"]'), 'see-statistics');
     gate(document.querySelector('#pane-tabs .pane-tab[data-pane="people"]'), 'see-others-edits');
     gate(document.getElementById('mc-settings'), 'manage-manuscript');
-    gate(document.getElementById('push-button-container'), 'commit-and-push-suggestions');
+    const pc = document.getElementById('push-button-container');
+    if (pc) {
+      pc.style.display = (this.has(id, 'commit-and-push-suggestions')
+        || this.has(id, 'manage-suggestions')) ? '' : 'none';
+    }
     // If the saved pane choice is now invisible, fall back to the first
     // visible tab (or none).
     const active = document.querySelector('#pane-tabs .pane-tab.active');

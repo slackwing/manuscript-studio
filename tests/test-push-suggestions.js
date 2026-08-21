@@ -147,33 +147,28 @@ function teardownBareRemote(bareDir) {
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
 
-    // v3 (PERMISSIONS_PLAN §4): pushes land accepted edits only, so the
-    // button starts as the accept step and flips to Push.
-    await page.waitForSelector('.push-btn-primary', { timeout: 3000 });
-    const initialLabel = (await page.locator('.push-btn-primary .push-btn-label').textContent()).trim();
-    assert(/^Accept mine \(1\)$/.test(initialLabel),
-      `Initial label is "Accept mine (1)" (got "${initialLabel}")`);
-    await page.locator('.push-btn-primary').click();
+    // v3.3 button row: accept pair arms the push pair; View stays disabled
+    // until a branch exists.
+    // The row refreshes after the post-save repagination — wait on the
+    // title, not the element.
     await page.waitForFunction(() => {
-      const el = document.querySelector('.push-btn-primary .push-btn-label');
-      return el && /^Push \(1\)$/.test(el.textContent.trim());
+      const el = document.getElementById('accept-btn');
+      return el && el.title === 'Accept my uncontested (1)';
+    }, null, { timeout: 20000 });
+    assert(true, 'Accept button reads "Accept my uncontested (1)"');
+    assert(await page.locator('#view-btn[disabled]').count() === 1,
+      'View disabled before any push');
+    await page.locator('#accept-btn').click();
+    await page.waitForFunction(() => {
+      const el = document.getElementById('push-btn');
+      return el && !el.disabled && el.title === 'Push own accepted (1)';
     }, null, { timeout: 10000 });
 
-    // Click Push — no confirm, no alert on success.
-    await page.locator('.push-btn-primary').click();
-    // Wait for the spinner to come and go (busy class toggles).
-    await page.waitForFunction(
-      () => {
-        const c = document.getElementById('push-button-container');
-        // Spinner SVG class set during the request.
-        return c && !c.classList.contains('push-busy');
-      },
-      null,
-      { timeout: 10000 }
-    );
-    // After push, the dropdown caret should appear (View on GitHub item).
-    await page.waitForSelector('.push-btn-caret', { timeout: 3000 });
-    assert(true, 'Push completed and dropdown appears');
+    // Click Push — no confirm, no alert on success. Success re-renders the
+    // row with an enabled View link.
+    await page.locator('#push-btn').click();
+    await page.waitForSelector('a#view-btn[href]', { timeout: 15000 });
+    assert(true, 'Push completed and View armed');
 
     // Verify the branch landed on the bare remote with the canonical name.
     const branches = execSync(`git -C "${bareDir}" branch --list`, { encoding: 'utf-8' });
@@ -193,27 +188,26 @@ function teardownBareRemote(bareDir) {
     assert(fileOnBranch.includes('PUSHED EDIT'),
       `Pushed branch contains the suggested edit`);
 
-    // Second push: force-update, branch list unchanged.
-    await page.locator('.push-btn-primary').click();
-    await page.waitForFunction(
-      () => {
-        const c = document.getElementById('push-button-container');
-        return c && !c.classList.contains('push-busy');
-      },
-      null,
-      { timeout: 10000 }
-    );
+    // Second push: force-update, branch list unchanged. (Suggestions stay
+    // accepted after a push, so the button is still armed.)
+    await page.waitForFunction(() => {
+      const el = document.getElementById('push-btn');
+      return el && !el.disabled;
+    }, null, { timeout: 10000 });
+    await page.locator('#push-btn').click();
+    await page.waitForFunction(() => {
+      const el = document.getElementById('push-btn');
+      return el && !el.disabled;
+    }, null, { timeout: 15000 });
     const branchesAfter = execSync(`git -C "${bareDir}" branch --list 'suggestions-*'`, { encoding: 'utf-8' })
       .split('\n').map(s => s.replace('*', '').trim()).filter(Boolean);
     assert(branchesAfter.length === 1 && branchesAfter[0] === branch,
       `Second push reuses the same branch (saw "${branchesAfter.join('|')}")`);
 
-    // View on GitHub menu item points at the canonical compare URL.
-    await page.locator('.push-btn-caret').click();
-    await page.waitForSelector('.push-menu:not([hidden])', { timeout: 2000 });
-    const viewHref = await page.locator('.push-menu-item').getAttribute('href');
+    // View points at the canonical compare URL.
+    const viewHref = await page.getAttribute('a#view-btn', 'href');
     assert(typeof viewHref === 'string' && viewHref.includes(`/compare/${branch}`),
-      `View on GitHub points at /compare/${branch} (got "${viewHref}")`);
+      `View points at /compare/${branch} (got "${viewHref}")`);
 
     // Without a sibling .segman in the source tree, the pushed commit
     // should NOT include one — we don't presume on repos that don't use

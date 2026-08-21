@@ -132,41 +132,48 @@ const WriteSysImportDocx = {
     }
   },
 
-  // Compose exactly like canonize (import-scratchpad.js): the fragment goes
-  // AFTER the boundary sentence's effective text, riding any pending
-  // suggestion so both push together. Headings get a blank line; plain prose
-  // continues as an indented paragraph.
-  async insert() {
+  // insertFragment composes exactly like canonize (import-scratchpad.js):
+  // the fragment goes AFTER the boundary sentence's effective text, riding
+  // any pending suggestion so both push together. Commands/headings get a
+  // blank line; plain prose continues as an indented paragraph. Shared by
+  // the docx import and the + menu's Chapter item. Throws on failure.
+  async insertFragment(sentenceId, content) {
     const r = window.WriteSysRenderer;
-    const target = this.target;
-    const content = this._pane.textarea.value.replace(/\s+$/, '');
-    if (!r || !target || !content) return;
-
-    const committed = r.sentenceMap[target.sentenceId] || '';
+    content = String(content || '').replace(/\s+$/, '');
+    if (!r || !content) return;
+    const committed = r.sentenceMap[sentenceId] || '';
     const pending = (window.WriteSysSuggestions && window.WriteSysSuggestions.bySentenceId) || {};
-    const base = pending[target.sentenceId] !== undefined ? pending[target.sentenceId] : committed;
+    const base = pending[sentenceId] !== undefined ? pending[sentenceId] : committed;
     const join = /^[#&]/.test(content) ? '\n\n' : '\n\t';
     const suggested = `${base.replace(/\s+$/, '')}${join}${content}`;
 
+    const put = await fetch(`api/sentences/${encodeURIComponent(sentenceId)}/suggestion`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+      body: JSON.stringify({ text: suggested }),
+    });
+    if (put.status === 409) throw new Error('The manuscript changed under you — reload the page and retry.');
+    if (!put.ok) throw new Error(`suggestion rejected (${put.status}): ${(await put.text()).slice(0, 200)}`);
+
+    // A stale suggest-edit draft must not auto-restore over the insert.
+    try { localStorage.removeItem(`ms-draft-suggest-${sentenceId}`); } catch (e) { /* non-fatal */ }
+
+    if (window.WriteSysSuggestions) await window.WriteSysSuggestions.loadForMigration(r.currentMigrationID);
+    if (window.WriteSysPush) window.WriteSysPush.refresh();
+    await r.renderManuscript({ anchorSentenceId: sentenceId, selectSentenceId: sentenceId });
+  },
+
+  async insert() {
+    const target = this.target;
+    const content = this._pane ? this._pane.textarea.value : '';
+    if (!target || !content.trim()) return;
     const go = document.getElementById('idx-go');
     go.disabled = true;
     go.textContent = 'Inserting…';
     try {
-      const put = await fetch(`api/sentences/${encodeURIComponent(target.sentenceId)}/suggestion`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
-        body: JSON.stringify({ text: suggested }),
-      });
-      if (put.status === 409) throw new Error('The manuscript changed under you — reload the page and retry.');
-      if (!put.ok) throw new Error(`suggestion rejected (${put.status}): ${(await put.text()).slice(0, 200)}`);
-
-      // A stale suggest-edit draft must not auto-restore over the import.
-      try { localStorage.removeItem(`ms-draft-suggest-${target.sentenceId}`); } catch (e) { /* non-fatal */ }
-
-      if (window.WriteSysSuggestions) await window.WriteSysSuggestions.loadForMigration(r.currentMigrationID);
-      if (window.WriteSysPush) window.WriteSysPush.refresh();
+      const sid = target.sentenceId;
+      await this.insertFragment(sid, content);
       this.close();
-      await r.renderManuscript({ anchorSentenceId: target.sentenceId, selectSentenceId: target.sentenceId });
     } catch (e) {
       this.showError(e.message || String(e));
       go.disabled = false;

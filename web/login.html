@@ -157,12 +157,28 @@
       text-shadow: none;
     }
     .password-toggle button:hover { transform: none; box-shadow: none; filter: none; color: #2f2415; }
+
+    .mode-switch {
+      margin-top: 16px;
+      text-align: center;
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 12px;
+      color: #6b5c42;
+    }
+    .mode-switch a {
+      color: #7a5a34;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    /* Sign-up-only fields hide as a group so the two modes share one form. */
+    body:not(.signup) .signup-only { display: none; }
   </style>
 </head>
 <body>
   <div class="login-container">
     <h1>Manuscript Studio</h1>
-    <p class="subtitle">Sign in to continue</p>
+    <p class="subtitle" id="subtitle">Sign in to continue</p>
 
     <div id="error" class="error"></div>
 
@@ -172,6 +188,11 @@
         <input type="text" id="username" name="username" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" />
       </div>
 
+      <div class="form-group signup-only">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="email" spellcheck="false" />
+      </div>
+
       <div class="form-group">
         <label for="password">Password</label>
         <div class="password-toggle">
@@ -179,8 +200,15 @@
         </div>
       </div>
 
+      <div class="form-group signup-only">
+        <label for="invite">Invite code</label>
+        <input type="text" id="invite" name="invite" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
+      </div>
+
       <button type="submit" id="login-btn">Log In</button>
     </form>
+
+    <p class="mode-switch"><a id="mode-toggle">Sign up</a></p>
   </div>
 
   <script>
@@ -190,34 +218,53 @@
     // The login response carries the user's accessible manuscripts and which
     // one to land on (last_manuscript_name; falls back to the first one).
 
+    // Two modes on one form: sign-up adds email + invite code (invite-only
+    // for now; nothing emails yet). Both land on home with a live session.
+    let signup = false;
+    const modeToggle = document.getElementById('mode-toggle');
+    modeToggle.addEventListener('click', () => {
+      signup = !signup;
+      document.body.classList.toggle('signup', signup);
+      document.getElementById('subtitle').textContent = signup ? 'Sign up' : 'Sign in to continue';
+      document.getElementById('login-btn').textContent = signup ? 'Sign Up' : 'Log In';
+      modeToggle.textContent = signup ? 'Log in' : 'Sign up';
+      document.getElementById('email').required = signup;
+      document.getElementById('invite').required = signup;
+      document.getElementById('password').autocomplete = signup ? 'new-password' : 'current-password';
+    });
+
     document.getElementById('login-form').addEventListener('submit', async function(e) {
       e.preventDefault();
 
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
+      const email = document.getElementById('email').value;
+      const invite = document.getElementById('invite').value;
 
-      if (!username || !password) {
+      if (!username || !password || (signup && (!email || !invite))) {
         showError('Please fill in all fields');
         return;
       }
 
       const loginBtn = document.getElementById('login-btn');
       loginBtn.disabled = true;
-      loginBtn.textContent = 'Logging in...';
+      loginBtn.textContent = signup ? 'Signing up...' : 'Logging in...';
 
       try {
-        const response = await fetch('api/login', {
+        const response = await fetch(signup ? 'api/signup' : 'api/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           credentials: 'include',
-          body: JSON.stringify({ username, password })
+          body: signup
+            ? JSON.stringify({ username, password, email, invite_code: invite })
+            : JSON.stringify({ username, password })
         });
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(errorText || 'Login failed');
+          throw new Error(errorText || (signup ? 'Sign-up failed' : 'Login failed'));
         }
 
         const data = await response.json();
@@ -235,7 +282,7 @@
       } catch (error) {
         showError(error.message);
         loginBtn.disabled = false;
-        loginBtn.textContent = 'Log In';
+        loginBtn.textContent = signup ? 'Sign Up' : 'Log In';
       }
     });
 

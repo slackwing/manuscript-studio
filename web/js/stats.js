@@ -142,7 +142,7 @@ const WriteSysStats = {
     // (MANUSCRIPT_LIFECYCLE_PLAN §4) — values still display here.
     const birthdayVal = m.birthT != null
       ? `<span class="stats-row-value" id="stats-birthday">${this.fmtDayLong(m.birthT)}</span>`
-      : `<span class="stats-row-value stats-unset" id="stats-birthday" title="Set it via the ⚙ settings">not set</span>`;
+      : `<span class="stats-row-value stats-unset" id="stats-birthday" title="Set in settings">unknown</span>`;
     const haveRates = m.birthT != null && m.current != null;
     const rate = (r) => haveRates
       ? `${this.fmtNum(r)} <span class="stats-row-unit">words/day</span>`

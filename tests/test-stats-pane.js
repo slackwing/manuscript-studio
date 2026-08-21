@@ -125,7 +125,7 @@ function resetMeta() {
   // over editing, MANUSCRIPT_LIFECYCLE_PLAN §4); set it via the ⚙ modal.
   await page.waitForSelector('#stats-birthday');
   let bdayText = await page.locator('#stats-birthday').innerText();
-  check('birthday shows "not set" when null', /not set/i.test(bdayText), bdayText);
+  check('birthday shows "unknown" when null', /unknown/i.test(bdayText), bdayText);
   await page.click('#mc-settings');
   await page.waitForSelector('#msm-overlay #msm-form');
   await page.fill('#msm-overlay [name="birthday"]', '2025-12-02');

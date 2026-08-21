@@ -120,23 +120,17 @@ function setupBareRemote() {
   // Push from the book page.
   await page.goto(TEST_URL);
   await waitForPagination(page);
-  // v3: the primary starts as "Accept mine (N)" — accept, then push.
-  await page.waitForFunction(() => {
-    const c = document.getElementById('push-button-container');
-    return c && /Accept mine \(\d+\)|Push \(\d+\)/.test(c.textContent);
-  }, null, { timeout: 15000 });
-  if (/Accept mine/.test(await page.locator('#push-button-container').textContent())) {
-    await page.locator('#push-button-container button').first().click();
-    await page.waitForFunction(() => {
-      const c = document.getElementById('push-button-container');
-      return c && /Push \(\d+\)/.test(c.textContent);
-    }, null, { timeout: 15000 });
+  // v3.3 button row: accept my uncontested (if pending), push own accepted.
+  await page.waitForSelector('#accept-btn', { timeout: 15000 });
+  if (!(await page.locator('#accept-btn[disabled]').count())) {
+    await page.locator('#accept-btn').click();
   }
-  await page.locator('#push-button-container button').first().click();
   await page.waitForFunction(() => {
-    const c = document.getElementById('push-button-container');
-    return c && !/Pushing/.test(c.textContent);
-  }, null, { timeout: 30000 });
+    const el = document.getElementById('push-btn');
+    return el && !el.disabled;
+  }, null, { timeout: 15000 });
+  await page.locator('#push-btn').click();
+  await page.waitForSelector('a#view-btn[href]', { timeout: 30000 });
   await page.waitForTimeout(1000);
 
   const readBranchFile = () => {
@@ -173,7 +167,11 @@ function setupBareRemote() {
 
   // Second push: force-push same branch — content must be IDENTICAL (no
   // anchor duplication from suggestions surviving a push).
-  await page.locator('#push-button-container button').first().click();
+  await page.waitForFunction(() => {
+    const el = document.getElementById('push-btn');
+    return el && !el.disabled;
+  }, null, { timeout: 15000 });
+  await page.locator('#push-btn').click();
   await page.waitForTimeout(4000);
   const pushed2 = readBranchFile();
   check('second push does not duplicate anchors',

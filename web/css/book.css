@@ -2357,17 +2357,11 @@ p.section-break {
   margin-right: 0.15em;
 }
 
-/* Push-to-PR split-button (lives in #controls). */
+/* Action-button row container (v3.3) — the row's look lives in .mc-btn. */
 .push-button-container {
-  display: inline-flex;
-  margin-left: 16px;
   position: relative;
   vertical-align: middle;
 }
-
-/* While pushing, dim the menu but keep the spinner crisp. */
-.push-button-container.push-busy .push-btn-caret,
-.push-button-container.push-busy .push-btn-label { opacity: 0.7; }
 
 .push-btn-spinner { animation: push-spin 0.8s linear infinite; }
 
@@ -2375,144 +2369,11 @@ p.section-break {
   to { transform: rotate(360deg); }
 }
 
-/* `#controls button` is more specific than `.push-btn-primary` because it
-   chains an ID + element. Match its specificity by anchoring under #controls
-   so these rules actually win. */
-#controls .push-btn-primary,
-#controls .push-btn-caret {
-  font-family: "Helvetica", sans-serif;
-  font-size: 13px;
-  border: 1px solid #2a7bb0;
-  background: #2a7bb0;
-  color: #fff;
-  cursor: pointer;
-  padding: 5px 12px;
-  border-radius: 0;
-}
-
-#controls .push-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* No dropdown — primary is the whole button. */
-#controls .push-btn-primary.push-btn-solo { border-radius: 4px; }
-
-/* With dropdown — primary + caret share a seam. Round only the outside
-   corners, drop the caret's left border (the seam itself does the work),
-   and add a divider so they read as one button with two zones. */
-#controls .push-btn-primary.push-btn-grouped {
-  border-radius: 4px 0 0 4px;
-  border-right: 1px solid rgba(255, 255, 255, 0.55);
-}
-
-#controls .push-btn-caret {
-  border-left: 0;
-  border-radius: 0 4px 4px 0;
-  padding: 5px 8px;
-}
-
-#controls .push-btn-primary:hover,
-#controls .push-btn-caret:hover {
-  background: #225f8c;
-}
-
-#controls .push-btn-primary:disabled,
-#controls .push-btn-caret:disabled {
-  cursor: default;
-  background: #6b9ec1;
-  border-color: #6b9ec1;
-}
-
-.push-btn-gh { display: inline-block; }
-
 /* Dropdown panel — borrows GitHub's merge-button look: white surface,
    subtle border + shadow, items separated by hairlines. */
-#controls .push-menu,
-#manuscript-chrome .push-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  background: #fff;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
-  min-width: 280px;
-  z-index: 50;
-  padding: 4px 0;
-  overflow: hidden;
-}
-
 /* Items: two-row layout (label on top, smaller dim description below) with
    a leading icon column. <button> and <a> share identical layout so they
    look uniform. Anchor under #controls to beat `#controls button { ... }`. */
-#controls .push-menu-item,
-#manuscript-chrome .push-menu-item {
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  align-items: start;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  background: #fff;
-  border: 0;
-  padding: 8px 12px;
-  font-family: "Helvetica", sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  color: #1f2328;
-  text-decoration: none;
-  box-sizing: border-box;
-  line-height: 1.3;
-}
-
-#controls .push-menu-item + .push-menu-item {
-  border-top: 1px solid #d8dee4;
-}
-
-#controls .push-menu-item:hover,
-#manuscript-chrome .push-menu-item:hover {
-  background: #f6f8fa;
-  color: #1f2328;
-}
-
-#controls .push-menu-icon,
-#manuscript-chrome .push-menu-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: #57606a;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-#controls .push-menu-text,
-#manuscript-chrome .push-menu-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-#controls .push-menu-label,
-#manuscript-chrome .push-menu-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1f2328;
-}
-
-#controls .push-menu-desc,
-#manuscript-chrome .push-menu-desc {
-  font-size: 12px;
-  font-weight: 400;
-  color: #57606a;
-  margin-top: 2px;
-}
-
 #controls #logout-btn {
   margin-left: 20px;
   padding: 5px 12px;
@@ -3040,32 +2901,6 @@ p.section-break {
 }
 /* Compact push controls: the grouped primary+caret read as ONE button
    (rounded outer corners only), matching the old top-bar multi-button. */
-#manuscript-chrome .push-btn-primary,
-#manuscript-chrome .push-btn-caret {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font: 600 11px "Helvetica", sans-serif;
-  padding: 5px 9px;
-  border: 1px solid #d0cabb;
-  background: #fff;
-  color: #57503f;
-  cursor: pointer;
-}
-#manuscript-chrome .push-btn-solo { border-radius: 6px; }
-#manuscript-chrome .push-btn-grouped { border-radius: 6px 0 0 6px; }
-#manuscript-chrome .push-btn-caret {
-  border-radius: 0 6px 6px 0;
-  border-left: none;
-  padding: 5px 6px;
-  font-size: 8px;
-}
-#manuscript-chrome .push-btn-primary:hover,
-#manuscript-chrome .push-btn-caret:hover {
-  border-color: #57503f;
-  color: #222;
-}
-#manuscript-chrome .push-btn-icon { display: inline-flex; }
 #manuscript-chrome .push-button-container { position: relative; flex: none; }
 
 /* ============================================================
@@ -3443,11 +3278,71 @@ body.range-delete-mode .pagedjs_pages {
    pointer-events: the chrome strip is none (clicks pass through to the
    page); interactive children opt back in, same as the push button. */
 .mc-settings {
-  border: none; background: none; padding: 0 2px; cursor: pointer;
-  color: #b3ac9c; display: inline-flex; flex: none;
+  color: #57503f; flex: none;
   pointer-events: auto;
 }
-.mc-settings:hover { color: #2a6fb0; }
+
+/* Uniform icon-button row (v3.3): ⚙ · accept pair · push pair · view. */
+.mc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  min-width: 30px;
+  padding: 0 6px;
+  border: 1px solid #d5d1c4;
+  border-radius: 6px;
+  background: #fff;
+  color: #57503f;
+  cursor: pointer;
+  gap: 3px;
+  pointer-events: auto;
+  text-decoration: none;
+}
+.mc-btn:hover:not(:disabled) { border-color: #2a6fb0; color: #2a6fb0; }
+.mc-btn:disabled { opacity: 0.4; cursor: default; }
+.push-button-container { display: inline-flex; gap: 6px; align-items: center; }
+.mc-split { position: relative; display: inline-flex; }
+.mc-split .mc-btn { border-radius: 6px 0 0 6px; }
+.mc-caret {
+  border: 1px solid #d5d1c4;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  background: #fff;
+  color: #a29a8b;
+  font-size: 8px;
+  padding: 0 4px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.mc-caret:hover { color: #2a6fb0; border-color: #2a6fb0; }
+.mc-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  right: 0;
+  z-index: 1300;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px -10px rgba(20, 16, 8, 0.5);
+  padding: 3px;
+  white-space: nowrap;
+}
+.mc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  padding: 5px 9px;
+  font: 11px "Helvetica", sans-serif;
+  color: #57503f;
+  cursor: pointer;
+  border-radius: 4px;
+  width: 100%;
+}
+.mc-menu-item:hover:not(:disabled) { background: #eef4fa; color: #2a6fb0; }
+.mc-menu-item:disabled { opacity: 0.4; cursor: default; }
 
 /* Insert menu on the + affordance (LIFECYCLE §6): tiny anchored dropdown
    with the two insert actions. */
@@ -3664,6 +3559,50 @@ sup.sg-review.rejected { color: #b03030; }
 #msm-overlay .msm-role-x { border: none; background: none; cursor: pointer; color: #a29a8b; font-size: 11px; padding: 0; }
 #msm-overlay .msm-role-x:hover { color: #b03030; }
 #msm-overlay .msm-access-add { display: flex; gap: 6px; margin-top: 8px; }
-#msm-overlay .msm-access-add input { flex: 1; padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; font: 12px "Helvetica", sans-serif; }
-#msm-overlay .msm-access-add select { border: 1px solid #ccc; border-radius: 6px; font: 12px "Helvetica", sans-serif; }
+#msm-overlay .msm-add-user-wrap { flex: 1; position: relative; }
+#msm-overlay .msm-access-add input { width: 100%; padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; font: 12px "Helvetica", sans-serif; }
+#msm-overlay .msm-user-ac {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+  background: #fff; border: 1px solid #ccc; border-radius: 6px;
+  margin-top: 2px; max-height: 160px; overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+#msm-overlay .msm-user-ac-item { padding: 5px 8px; font: 12px "Helvetica", sans-serif; cursor: pointer; }
+#msm-overlay .msm-user-ac-item:hover { background: #eef4fa; }
+#msm-overlay .msm-access-add select {
+  border: 1px solid #ccc; border-radius: 6px;
+  font: 12px "Helvetica", sans-serif;
+  padding: 4px 8px; height: 30px; box-sizing: border-box;
+  background: #fff; color: #333;
+}
+#msm-overlay .msm-access-add input { height: 30px; box-sizing: border-box; }
 #msm-overlay .msm-access-add button { padding: 4px 12px; border: 1px solid #2a6fb0; color: #2a6fb0; background: #fff; border-radius: 6px; cursor: pointer; }
+
+/* Chapter… prompt (the + menu's third item). */
+#chapter-prompt {
+  position: absolute;
+  z-index: 1200;
+  display: flex;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #c9c2b2;
+  box-shadow: 0 8px 24px -10px rgba(20, 16, 8, 0.5);
+  padding: 6px;
+  border-radius: 6px;
+}
+#chapter-prompt input {
+  width: 220px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font: 12px "Helvetica", sans-serif;
+}
+#chapter-prompt button {
+  padding: 4px 10px;
+  border: 1px solid #2a6fb0;
+  color: #fff;
+  background: #2a6fb0;
+  border-radius: 5px;
+  cursor: pointer;
+  font: 12px "Helvetica", sans-serif;
+}

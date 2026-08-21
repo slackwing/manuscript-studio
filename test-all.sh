@@ -20,6 +20,7 @@ set -u
 #        require waiting on hover-out timeouts and animation settles.
 FAST_TESTS=(
   test-manuscript-normalize
+  test-signup-invites
   test-sketch-from-selection
   test-points-grid
   test-daily-tasks

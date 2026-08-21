@@ -128,7 +128,10 @@ const WriteSysManuscriptModal = {
       }).join('');
       const addForm = manageable.length ? `
         <div class="msm-access-add">
-          <input type="text" id="msm-add-user" placeholder="username">
+          <span class="msm-add-user-wrap">
+            <input type="text" id="msm-add-user" placeholder="username" autocomplete="off">
+            <div id="msm-user-ac" class="msm-user-ac" hidden></div>
+          </span>
           <select id="msm-add-role">${manageable.map(r => `<option>${this.esc(r)}</option>`).join('')}</select>
           <button type="button" id="msm-add-go">Add</button>
         </div>` : '';
@@ -150,6 +153,40 @@ const WriteSysManuscriptModal = {
           render();
         });
       });
+      // Autocomplete over SYSTEM users (invite-only, so the pool is people
+      // you know) — type a prefix, pick a name.
+      const userInput = host.querySelector('#msm-add-user');
+      const acBox = host.querySelector('#msm-user-ac');
+      if (userInput && acBox) {
+        let acTimer = null;
+        const closeAc = () => { acBox.hidden = true; acBox.innerHTML = ''; };
+        userInput.addEventListener('input', () => {
+          clearTimeout(acTimer);
+          const q = userInput.value.trim();
+          if (!q) { closeAc(); return; }
+          acTimer = setTimeout(async () => {
+            try {
+              const r = await fetch(`api/users/search?q=${encodeURIComponent(q)}`);
+              if (!r.ok) { closeAc(); return; }
+              const { users } = await r.json();
+              const names = (users || []).filter(u => u.startsWith(userInput.value.trim().toLowerCase()));
+              if (!names.length) { closeAc(); return; }
+              acBox.innerHTML = names.map(u => `<div class="msm-user-ac-item">${this.esc(u)}</div>`).join('');
+              acBox.hidden = false;
+              acBox.querySelectorAll('.msm-user-ac-item').forEach(item => {
+                item.addEventListener('mousedown', (e) => {
+                  e.preventDefault();
+                  userInput.value = item.textContent;
+                  closeAc();
+                  userInput.focus();
+                });
+              });
+            } catch (e) { closeAc(); }
+          }, 150);
+        });
+        userInput.addEventListener('blur', () => setTimeout(closeAc, 120));
+        userInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAc(); });
+      }
       const go = host.querySelector('#msm-add-go');
       if (go) go.addEventListener('click', async () => {
         const username = host.querySelector('#msm-add-user').value.trim();
@@ -178,8 +215,8 @@ const WriteSysManuscriptModal = {
     if (f.type === 'storage') {
       if (inSettings) {
         return this._roRow(f.label, m.storage === 'local'
-          ? 'local (server-owned repo)'
-          : `github (${this.esc(m.git_repo_name || '')} · ${this.esc(m.git_branch || 'main')})`);
+          ? 'local'
+          : `github · ${this.esc(m.git_repo_name || '')} · ${this.esc(m.git_branch || 'main')}`);
       }
       return `<label class="msm-row"><span class="msm-label">${f.label}</span>
         <span class="msm-radio-row">
