@@ -62,6 +62,9 @@ const psql = (sql) => execSync(
   await page.evaluate((sid) => {
     document.querySelector(`.import-zone[data-sentence-id="${CSS.escape(sid)}"] .import-tab`).click();
   }, boundary);
+  // the + opens the insert menu now (LIFECYCLE §6) — pick "Place sketch"
+  await page.waitForSelector('#insert-menu [data-act="sketch"]');
+  await page.click('#insert-menu [data-act="sketch"]');
   await page.waitForSelector('#im-blocks .im-block, #im-blocks button, #import-modal', { timeout: 10000 });
   await page.waitForTimeout(800);
   // pick our variation (search narrows it)

@@ -301,6 +301,20 @@ func (h *SuggestionHandlers) HandleGetPushState(w http.ResponseWriter, r *http.R
 	}
 
 	branch := canonicalSuggestionsBranch(migration.CommitHash, session.Username)
+	// The checkout may not exist yet (fresh server, wiped repos dir) —
+	// Clone is a no-op when present. Failure degrades to "no branch"
+	// rather than a 500: push-state is advisory.
+	if err := gitRepo.Clone(ctx); err != nil {
+		log.Printf("suggestions: push-state clone %s: %v", manuscript.Name, err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"storage":       models.StorageGitHub,
+			"branch":        branch,
+			"branch_exists": false,
+			"compare_url":   h.compareURLFor(manuscript, branch),
+		})
+		return
+	}
 	exists, err := gitRepo.LocalBranchExists(ctx, branch)
 	if err != nil {
 		log.Printf("suggestions: check branch %s: %v", branch, err)
@@ -467,6 +481,15 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 	// sentence-granular PR diffs). See MANUSCRIPT_LIFECYCLE_PLAN §3.
 	if manuscript.Storage == models.StorageLocal {
 		h.commitLocalSuggestions(ctx, w, manuscript, gitRepo, latest, files, applied, skipped, results, session.Username)
+		return
+	}
+
+	// The checkout may not exist yet (fresh server, wiped repos dir) —
+	// Clone is a no-op when present, and the base commit is reachable from
+	// origin by definition (it was migrated from there).
+	if err := gitRepo.Clone(ctx); err != nil {
+		log.Printf("suggestions: push clone %s: %v", manuscript.Name, err)
+		http.Error(w, "Failed to prepare repository", http.StatusInternalServerError)
 		return
 	}
 

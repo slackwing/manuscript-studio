@@ -24,7 +24,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const {
   TEST_URL,
-  cleanupTestAnnotations,
+  cleanupTestAnnotations, resetTestManuscript,
   loginAsTestUser,
   TEST_USERNAME, TEST_MANUSCRIPT_NAME,
 } = require('./test-utils');
@@ -37,6 +37,9 @@ function psql(sql) {
 }
 
 const REPO_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', TEST_MANUSCRIPT_NAME);
+// Since the git/[local,remote] layout (037): see test-sketch-place-push.js —
+// the fixture repo IS the push remote; rewinds must nuke the server clone.
+const CHECKOUT_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', 'git', 'remote', TEST_MANUSCRIPT_NAME);
 
 function git(args, cwd) {
   return execSync(`git -C "${cwd || REPO_DIR}" ${args}`, { encoding: 'utf-8' }).trim();
@@ -47,35 +50,33 @@ function setupBareRemote() {
   // run may have created additional commits (e.g. the .segman opt-in
   // commit later in this test). main must be at "Initial test manuscript"
   // so the assertions about base state hold.
-  const initialCommit = execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
+  // Reset target: the worker-fixture uniquifying commit when present
+  // (workers ≥2 — rewinding past it would collide sentence IDs with
+  // worker 1's byte-identical history), else the true initial commit.
+  const uniq = execSync(`git -C "${REPO_DIR}" log --format=%H --grep='worker fixture' -n 1`, { encoding: 'utf-8' }).trim();
+  const initialCommit = uniq || execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
   execSync(`git -C "${REPO_DIR}" reset --hard ${initialCommit} 2>/dev/null`);
   execSync(`git -C "${REPO_DIR}" clean -fd 2>/dev/null`);
 
-  const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-push-remote-'));
-  execSync(`git init --bare -q -b main "${bareDir}"`);
-  try { git(`remote remove origin`); } catch (_) {}
-  git(`remote add origin "${bareDir}"`);
-  git(`push -q origin main`);
-
-  // Clean up stray suggestions-* branches in the local repo so the test starts
-  // from a known state. Otherwise prior dev runs could pollute branch counts.
+  // Clean up stray suggestions-* branches so the test starts from a known
+  // state, and nuke the server's clone so it re-clones the rewound fixture.
   const localBranches = execSync(`git -C "${REPO_DIR}" branch --list 'suggestions-*'`, { encoding: 'utf-8' });
   localBranches.split('\n').map(s => s.replace('*', '').trim()).filter(Boolean).forEach(b => {
     try { git(`branch -D "${b}"`); } catch (_) {}
   });
-  return bareDir;
+  fs.rmSync(CHECKOUT_DIR, { recursive: true, force: true });
+  return REPO_DIR;
 }
 
 function teardownBareRemote(bareDir) {
-  try { git(`remote remove origin`); } catch (_) {}
-  // Nuke local suggestions-* branches so next run starts clean.
+  // bareDir IS the fixture repo now — never delete it; just drop pushed
+  // suggestion branches so the next run starts clean.
   try {
     const out = execSync(`git -C "${REPO_DIR}" branch --list 'suggestions-*'`, { encoding: 'utf-8' });
     out.split('\n').map(s => s.replace('*', '').trim()).filter(Boolean).forEach(b => {
       try { git(`branch -D "${b}"`); } catch (_) {}
     });
   } catch (_) {}
-  if (bareDir && fs.existsSync(bareDir)) fs.rmSync(bareDir, { recursive: true, force: true });
 }
 
 (async () => {
@@ -87,7 +88,10 @@ function teardownBareRemote(bareDir) {
 
   // Get a fresh, predictable bare remote for this run.
   const bareDir = setupBareRemote();
-  console.log(`[setup] bare remote at ${bareDir}`);
+  console.log(`[setup] fixture remote at ${bareDir}`);
+  // The rewind moved origin behind the DB's latest migration; re-sync so the
+  // push base commit is reachable from a fresh server clone.
+  await resetTestManuscript();
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();

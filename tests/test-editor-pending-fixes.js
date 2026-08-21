@@ -156,6 +156,9 @@ function psql(sql) {
       z.querySelector('.import-tab').click();
       return z.dataset.sentenceId;
     });
+    // the + opens the insert menu now (LIFECYCLE §6) — pick "Place sketch"
+    await page.waitForSelector('#insert-menu [data-act="sketch"]');
+    await page.click('#insert-menu [data-act="sketch"]');
     await page.waitForSelector('.im-block');
     check('the button starts as "Place"', (await page.textContent('#im-go')).trim() === 'Place');
     await page.evaluate(() => {

@@ -134,6 +134,9 @@ function psql(sql) {
       z.querySelector('.import-tab').click();
       return z.dataset.sentenceId;
     });
+    // the + opens the insert menu now (LIFECYCLE §6) — pick "Place sketch"
+    await page.waitForSelector('#insert-menu [data-act="sketch"]');
+    await page.click('#insert-menu [data-act="sketch"]');
     await page.waitForSelector('#import-modal');
     await page.waitForSelector('.im-block');
 
@@ -200,6 +203,8 @@ function psql(sql) {
         const z = [...document.querySelectorAll('.import-zone')].find(z => z.dataset.sentenceId !== b1);
         z.querySelector('.import-tab').click();
       }, boundary1);
+      await page.waitForSelector('#insert-menu [data-act="sketch"]');
+      await page.click('#insert-menu [data-act="sketch"]');
       await page.waitForSelector('.im-block');
       await page.evaluate(() => {
         [...document.querySelectorAll('.im-block')].find(r => /Freeze accept body/.test(r.textContent)).querySelector('input').click();
@@ -226,6 +231,8 @@ function psql(sql) {
         const zones = [...document.querySelectorAll('.import-zone')].filter(z => z.dataset.sentenceId !== b1);
         zones[zones.length - 1].querySelector('.import-tab').click();
       }, boundary1);
+      await page.waitForSelector('#insert-menu [data-act="sketch"]');
+      await page.click('#insert-menu [data-act="sketch"]');
       await page.waitForSelector('.im-block');
       await page.evaluate(() => {
         [...document.querySelectorAll('.im-block')].find(r => /Freeze failure body/.test(r.textContent)).querySelector('input').click();
@@ -251,6 +258,8 @@ function psql(sql) {
         return route.continue();
       });
       await page.evaluate(() => document.querySelector('.import-zone .import-tab').click());
+      await page.waitForSelector('#insert-menu [data-act="sketch"]');
+      await page.click('#insert-menu [data-act="sketch"]');
       await page.waitForSelector('.im-block');
       await page.evaluate(() => {
         [...document.querySelectorAll('.im-block')].find(r => /Slug collision body/.test(r.textContent)).querySelector('input').click();

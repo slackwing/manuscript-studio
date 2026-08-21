@@ -182,6 +182,9 @@ function noisyPng(w, h) {
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.waitForSelector('.import-zone .import-tab', { timeout: 15000 });
     await page.evaluate(() => document.querySelector('.import-zone .import-tab').click());
+    // the + opens the insert menu now (LIFECYCLE §6) — pick "Place sketch"
+    await page.waitForSelector('#insert-menu [data-act="sketch"]', { timeout: 5000 });
+    await page.click('#insert-menu [data-act="sketch"]');
     await page.waitForSelector('#import-modal', { timeout: 5000 });
     await page.waitForSelector('input[name="im-block"]', { timeout: 10000 });
     const picked = await page.evaluate(() => {

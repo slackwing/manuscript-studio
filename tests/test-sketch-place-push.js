@@ -17,28 +17,31 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, TEST_MANUSCRIPT_NAME, loginAsTestUser, waitForPagination, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, TEST_MANUSCRIPT_NAME, loginAsTestUser, waitForPagination, cleanupTestNotes, resetTestManuscript } = require('./test-utils');
 
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf-8' }).trim().split('\n')[0];
 
 const REPO_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', TEST_MANUSCRIPT_NAME);
+// Since the git/[local,remote] layout (037), the server works in a CLONE of
+// the fixture; pushed suggestion branches land back in the fixture repo
+// itself (its origin). The old temp bare remote is gone: the fixture IS the
+// remote to assert on, and rewinding it must nuke the server's clone so the
+// next access re-clones instead of failing a non-ff pull.
+const CHECKOUT_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', 'git', 'remote', TEST_MANUSCRIPT_NAME);
 const git = (args, cwd) => execSync(`git -C "${cwd || REPO_DIR}" ${args}`, { encoding: 'utf-8' }).trim();
 
 function setupBareRemote() {
-  const initial = execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
+  const uniq = execSync(`git -C "${REPO_DIR}" log --format=%H --grep='worker fixture' -n 1`, { encoding: 'utf-8' }).trim();
+  const initial = uniq || execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
   execSync(`git -C "${REPO_DIR}" reset --hard ${initial} 2>/dev/null`);
   execSync(`git -C "${REPO_DIR}" clean -fd 2>/dev/null`);
-  const bareDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-place-remote-'));
-  execSync(`git init --bare -q -b main "${bareDir}"`);
-  try { git('remote remove origin'); } catch (_) {}
-  git(`remote add origin "${bareDir}"`);
-  git('push -q origin main');
   execSync(`git -C "${REPO_DIR}" branch --list 'suggestions-*'`, { encoding: 'utf-8' })
     .split('\n').map(s => s.replace('*', '').trim()).filter(Boolean)
     .forEach(b => { try { git(`branch -D "${b}"`); } catch (_) {} });
-  return bareDir;
+  fs.rmSync(CHECKOUT_DIR, { recursive: true, force: true });
+  return REPO_DIR;
 }
 
 (async () => {
@@ -48,6 +51,8 @@ function setupBareRemote() {
   psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   await cleanupTestNotes();
   const bareDir = setupBareRemote();
+  // Rewound origin: re-sync so the DB base commit exists in a fresh clone.
+  await resetTestManuscript();
 
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
@@ -198,7 +203,11 @@ function setupBareRemote() {
   // Cleanup.
   psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   try { git('remote remove origin'); } catch (_) {}
-  if (fs.existsSync(bareDir)) fs.rmSync(bareDir, { recursive: true, force: true });
+  // bareDir IS the fixture repo now — never delete it; just drop the
+  // pushed suggestion branches so the next run starts clean.
+  execSync(`git -C "${REPO_DIR}" branch --list 'suggestions-*'`, { encoding: 'utf-8' })
+    .split('\n').map(s => s.replace('*', '').trim()).filter(Boolean)
+    .forEach(b => { try { git(`branch -D "${b}"`); } catch (_) {} });
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();
   process.exit(failed ? 1 : 0);
