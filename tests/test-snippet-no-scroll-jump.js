@@ -63,7 +63,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const beforeFreeze = await page.evaluate((sel) => document.querySelector(sel).scrollTop, host);
 
   // 2) Toggle freeze — must not jump.
-  await page.click(`.sn-widget[data-variation-id="${vid}"] [data-act="freeze"]`);
+  await page.click(`.sn-widget[data-variation-id="${vid}"] .sn-freeze`);
   await page.waitForTimeout(350);
   const afterFreeze = await page.evaluate((sel) => document.querySelector(sel).scrollTop, host);
   check('freeze does not scroll the pad', Math.abs(afterFreeze - beforeFreeze) <= 8,

@@ -160,25 +160,45 @@ function psql(sql) {
       `Unchanged text issues no PUT (got ${putRequests.length - putsBefore} extra)`);
 
     const assert2 = (n, ok, extra) => assert(ok, n + (extra ? ' — ' + extra : ''));
-    // --- Title-bar state machine + revert/reject (2026-08-20 labels) ---
+    // --- Pane-widget shell: title, rails, 0↔letter, revert, review icons ---
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
     const title = () => page.evaluate(() => document.querySelector('#suggestion-modal .sn-status').textContent.trim());
     assert2('clean modal titles "Suggest edit"', /^Suggest edit$/i.test(await title()), await title());
     assert2('no corner asterisk button in the rail',
       await page.evaluate(() => !document.querySelector('#suggestion-modal .sn-rail-self')));
-    assert2('left pane label has revert link, no asterisk', await page.evaluate(() => {
-      const n = document.querySelector('#suggestion-modal .sn-split-left .sn-note');
-      return n && !n.textContent.includes('*') && !!n.querySelector('.sgm-revert');
+    assert2('left pane note has a revert link, hidden while clean', await page.evaluate(() => {
+      const n = document.querySelector('#suggestion-modal .pw-content-left .sn-note');
+      return n && !n.textContent.includes('*') && !!n.querySelector('.sgm-revert')
+        && n.querySelector('.sgm-revert-wrap').hidden === true;
     }));
+    assert2('both panes carry rails on their right edges (shell geometry)', await page.evaluate(() => {
+      const m = document.querySelector('#suggestion-modal');
+      const railLast = (p) => p && p.lastElementChild && p.lastElementChild.classList.contains('sn-rail');
+      return railLast(m.querySelector('.pw-left')) && railLast(m.querySelector('.pw-right'))
+        && !m.querySelector('.pw-right').classList.contains('pw-collapsed');
+    }));
+    assert2('own rail button reads 0 while unchanged', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn').textContent.trim() === '0'));
+    assert2('no review icons while unchanged', await page.evaluate(() =>
+      document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn').length === 0));
     assert2('version caption single-numbered', await page.evaluate(() =>
       /^currently committed$/.test(document.querySelector('.sgm-version-label').textContent.trim())));
     await page.locator('.suggestion-modal-textarea').fill(first.text + ' TITLETEST.');
     await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
     await page.waitForTimeout(100);
-    assert2('changed modal titles "Suggested edit" + Reject', await page.evaluate(() => {
+    assert2('changed modal titles "Suggested edit", no title reject link', await page.evaluate(() => {
       const el = document.querySelector('#suggestion-modal .sn-status');
-      return /Suggested edit/i.test(el.textContent) && !!el.querySelector('.sgm-reject');
+      return /Suggested edit/i.test(el.textContent) && !el.querySelector('a');
+    }));
+    assert2('own rail button swaps 0 → user letter on change', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn').textContent.trim().startsWith('T')));
+    assert2('revert link visible once changed', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .sgm-revert-wrap').hidden === false));
+    assert2('Accept ✓ / Reject ✗ state icons appear on the left action row', await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn')];
+      return btns.length === 2 && btns[0].classList.contains('sgm-accept') && btns[1].classList.contains('sgm-reject')
+        && btns[0].title === 'Accept' && btns[1].title === 'Reject';
     }));
     // left-pane revert copies committed back in, modal stays open
     await page.locator('#suggestion-modal .sgm-revert').click();
@@ -188,19 +208,46 @@ function psql(sql) {
     assert2('title returns to "Suggest edit" after revert', /^Suggest edit$/i.test(await title()), await title());
     assert2('modal still open after revert',
       (await page.locator('#suggestion-modal').count()) === 1);
-    // REJECT: change again, then reject → reverts AND closes
-    await page.locator('.suggestion-modal-textarea').fill(first.text + ' REJECTME.');
+    // Review own suggestion via the state icons: Accept → pressed + green,
+    // rail letter tinted; re-click clears.
+    await page.locator('.suggestion-modal-textarea').fill(first.text + ' ACCEPTME.');
     await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
     await page.waitForTimeout(600);
-    await page.locator('#suggestion-modal .sgm-reject').click();
+    await page.locator('#suggestion-modal .pw-actionrow-left .sgm-accept').click();
+    await page.waitForFunction(() =>
+      document.querySelector('#suggestion-modal .pw-actionrow-left .sgm-accept.pw-on'), null, { timeout: 10000 });
+    assert2('accepting own suggestion presses the ✓ state button', true);
+    assert2('rail letter tinted by the accepted state', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn').classList.contains('pw-colored')));
+    let accRows = '0';
+    for (let i = 0; i < 20; i++) {
+      accRows = psql(`SELECT count(*) FROM suggested_change WHERE user_id = '${TEST_USERNAME}' AND review_status = 'accepted'`);
+      if ((accRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '1') break;
+      await page.waitForTimeout(250);
+    }
+    assert2('own review persisted server-side',
+      (accRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '1', `rows=${accRows}`);
+    // Collapse the right pane by re-clicking the selected version, then
+    // reopen — the toggle policy in the shell.
+    await page.locator('#suggestion-modal .pw-rail-right .sn-rail-btn[data-key="0"]').click();
+    assert2('re-clicking 0 collapses the right pane', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-right').classList.contains('pw-collapsed')));
+    await page.locator('#suggestion-modal .pw-rail-right .sn-rail-btn[data-key="0"]').click();
+    assert2('clicking 0 again reopens it', await page.evaluate(() =>
+      !document.querySelector('#suggestion-modal .pw-right').classList.contains('pw-collapsed')));
+    // Revert (discard) empties the suggestion; close leaves no row.
+    await page.locator('#suggestion-modal .sgm-revert').click();
+    await page.waitForTimeout(400);
+    await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
     let rejRows = '1';
     for (let i = 0; i < 20; i++) {
       rejRows = psql(`SELECT count(*) FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
-      if (rejRows === '0') break;
+      if ((rejRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '0') break;
       await page.waitForTimeout(250);
     }
-    assert2('reject leaves no suggestion row', rejRows === '0', `rows=${rejRows}`);
+    assert2('revert + close leaves no suggestion row',
+      (rejRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '0', `rows=${rejRows}`);
 
 
   } catch (e) {

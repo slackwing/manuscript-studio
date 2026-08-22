@@ -7,7 +7,7 @@
 import { NodeSelection, wrapIn, liftTarget } from './vendor/prosemirror.mjs';
 import { schema } from './schema.mjs?v=1';
 import { variationApi } from './api.mjs?v=1';
-import { esc, letterOf, parseVariationRef, refreshSketchSiblings } from './sketch-view.mjs?v=1';
+import { esc, letterOf, parseVariationRef, refreshSketchSiblings } from './sketch-view.mjs?v=2';
 
 // fmtDeleted renders a deleted_at ISO timestamp as a short local date for the
 // Restore… list (e.g. "Jul 26"). Empty/invalid → ''.

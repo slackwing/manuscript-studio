@@ -156,119 +156,6 @@ const WriteSysSuggestions = {
     });
   },
 
-  // mountUserRail builds the left-edge user rail + read-only other/stale
-  // views + Accept/Reject controls inside an open suggest-edit modal.
-  // STYLING NOTE: renders through the shared .sn-rail classes defined in
-  // scratchpad/scratchpad.css — same look as the sketch widget's variation
-  // rail and this modal's right history rail (see DEFERRED.md: shared rail
-  // component).
-  mountUserRail(modal, sentenceId, pane, original) {
-    const others = (this.rowsBySentence[sentenceId] || []).filter(s => s.user_id !== this.viewer);
-    const stale = this.staleBySentence[sentenceId] || [];
-    const mine = (this.rowsBySentence[sentenceId] || []).find(s => s.user_id === this.viewer);
-
-    const cols = modal.querySelector('.sn-cols');
-    const rail = document.createElement('div');
-    rail.className = 'sn-rail sgm-rail-left';
-    cols.insertBefore(rail, cols.firstChild);
-
-    // Read-only viewer for other/stale entries, swapped in place of the
-    // editor; the review bar sits under whichever view is active.
-    const left = modal.querySelector('.sgm-left');
-    const otherView = document.createElement('div');
-    otherView.className = 'sgm-other-view';
-    otherView.hidden = true;
-    left.appendChild(otherView);
-    const reviewBar = document.createElement('div');
-    reviewBar.className = 'sgm-review-bar';
-    left.appendChild(reviewBar);
-
-    const entries = [{ kind: 'own', label: '0', title: 'Your suggestion (editable)' }];
-    others.forEach(s => entries.push({
-      kind: 'other', row: s,
-      label: (s.user_id[0] || '?').toUpperCase(),
-      title: `${s.user_id}'s suggestion`,
-    }));
-    stale.forEach(s => entries.push({
-      kind: 'stale', row: s,
-      label: (s.user_id[0] || '?').toUpperCase(),
-      title: `${s.user_id}'s STALE suggestion (from an earlier commit — review or reject)`,
-    }));
-
-    const statusGlyph = (row) => row.review_status === 'accepted' ? ' ✓'
-      : row.review_status === 'rejected' ? ' ✗' : '';
-
-    const renderReviewBar = (entry) => {
-      reviewBar.innerHTML = '';
-      const row = entry.kind === 'own' ? mine : entry.row;
-      if (!row) return; // own with no saved suggestion yet — nothing to review
-      // v3.1: accepting/rejecting ANY suggestion (own included) is
-      // author/editor territory — it changes the manuscript.
-      const canReview = this.canReview;
-      const status = document.createElement('span');
-      status.className = 'sgm-review-status' + (row.review_status ? ` ${row.review_status}` : '');
-      status.textContent = (row.stale ? 'STALE · ' : '')
-        + (row.review_status ? row.review_status + statusGlyph(row) : 'unreviewed')
-        + (row.user_id !== this.viewer ? ` · by ${row.user_id}` : '');
-      reviewBar.appendChild(status);
-      if (!canReview) return;
-      const mk = (label, status) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'sgm-review-btn ' + (status || 'clear');
-        b.textContent = label;
-        b.addEventListener('click', async () => {
-          try {
-            const resp = await authenticatedFetch(
-              `${this.apiBaseUrl}/sentences/${encodeURIComponent(sentenceId)}/suggestion/review`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: row.user_id, status }),
-              });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            row.review_status = status;
-            this.rebuildMaps();
-            renderReviewBar(entry);
-            if (window.WriteSysPush) window.WriteSysPush.refresh();
-          } catch (e) {
-            alert('Review failed: ' + (e.message || e));
-          }
-        });
-        return b;
-      };
-      if (row.review_status !== 'accepted') reviewBar.appendChild(mk('Accept', 'accepted'));
-      if (row.review_status !== 'rejected') reviewBar.appendChild(mk('Reject', 'rejected'));
-      if (row.review_status) reviewBar.appendChild(mk('Clear', null));
-    };
-
-    const select = (i) => {
-      rail.querySelectorAll('.sn-rail-btn').forEach((b, bi) =>
-        b.classList.toggle('active', bi === i));
-      const entry = entries[i];
-      if (entry.kind === 'own') {
-        pane.wrap.hidden = false;
-        otherView.hidden = true;
-      } else {
-        pane.wrap.hidden = true;
-        otherView.hidden = false;
-        otherView.textContent = entry.row.text;
-        otherView.classList.toggle('stale', entry.kind === 'stale');
-      }
-      renderReviewBar(entry);
-    };
-
-    entries.forEach((entry, i) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'sn-rail-btn sgm-user-btn' + (entry.kind === 'stale' ? ' stale' : '');
-      b.title = entry.title;
-      b.textContent = entry.label + (entry.kind !== 'own' ? statusGlyph(entry.row) : '');
-      b.addEventListener('click', () => select(i));
-      rail.appendChild(b);
-    });
-    select(0);
-  },
-
   // putSuggestion PUTs a sentence's suggestion text — the ONE write path,
   // shared by the modal autosaver and range-delete.js. Throws an Error with
   // .status on a non-OK response (409 = stale migration). Callers own any
@@ -313,48 +200,171 @@ const WriteSysSuggestions = {
     overlay.id = 'suggestion-modal-overlay';
     const modal = document.createElement('div');
     modal.id = 'suggestion-modal';
-    const railBtns = versions.map((v) => {
-      if (v.k === 0) {
-        return '<button type="button" class="sn-rail-btn sn-rail-peer" data-ver="0" title="Committed text (current)">0</button>';
+    // ---- The shared two-pane shell (pane-widget.js) --------------------
+    // LEFT pane (always shows): your editable suggestion, or a read-only
+    // view of another user's / a stale one — chosen on the left rail
+    // (you at top: "0" until your text differs, then your letter).
+    // RIGHT pane: committed history (0..3), open by default at 0; re-click
+    // the selected version to collapse it. Accept ✓ / Reject ✗ are STATE
+    // icon buttons on the left pane's action row, colored when active.
+    const others = (this.rowsBySentence[sentenceId] || []).filter(r => r.user_id !== this.viewer);
+    const stale = this.staleBySentence[sentenceId] || [];
+    const mineRow = () => (this.rowsBySentence[sentenceId] || []).find(r => r.user_id === this.viewer);
+    const ownLetter = (this.viewer[0] || '?').toUpperCase();
+    let textarea = null; // assigned once the edit pane mounts below
+    const ownChanged = () => !!textarea && textarea.value !== original;
+    const GREEN = '#2e7d32';
+    const RED = '#b03030';
+    const reviewColor = (row) => row && row.review_status === 'accepted' ? GREEN
+      : row && row.review_status === 'rejected' ? RED : null;
+
+    const leftEntries = () => {
+      const me = mineRow();
+      const list = [{
+        key: 'me', kind: 'me',
+        label: ownChanged() || me ? ownLetter : '0',
+        title: ownChanged() || me ? 'Your suggestion' : 'Committed text — type to suggest',
+        color: reviewColor(me),
+      }];
+      others.forEach((r) => list.push({
+        key: 'u:' + r.user_id, kind: 'other', row: r,
+        label: (r.user_id[0] || '?').toUpperCase(),
+        title: `${r.user_id}'s suggestion`,
+        color: reviewColor(r),
+      }));
+      stale.forEach((r, i) => list.push({
+        key: 'st:' + i, kind: 'stale', row: r,
+        label: (r.user_id[0] || '?').toUpperCase(),
+        title: `${r.user_id}'s STALE suggestion (from an earlier commit — review or reject)`,
+        className: 'stale',
+        color: reviewColor(r),
+      }));
+      return list;
+    };
+    let leftSel = 'me'; // tracked locally — the widget calls onSelect before `w` exists
+    const leftEntry = () => leftEntries().find(e => e.key === leftSel) || leftEntries()[0];
+
+    const ICON_CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.5 3.5L13 4.5"/></svg>';
+    const ICON_X = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>';
+
+    const review = async (entry, target) => {
+      try {
+        // Own suggestion may still be mid-autosave — flush so the row
+        // exists server-side before reviewing it.
+        if (entry.kind === 'me' && !(await saver.flush())) return;
+        const row = entry.kind === 'me' ? mineRow() : entry.row;
+        if (!row) return;
+        const next = row.review_status === target ? null : target; // re-click clears
+        const resp = await authenticatedFetch(
+          `${this.apiBaseUrl}/sentences/${encodeURIComponent(sentenceId)}/suggestion/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: row.user_id, status: next }),
+          });
+        if (resp.status === 409) {
+          alert('Another suggestion on this sentence is already accepted.');
+          return;
+        }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        row.review_status = next;
+        this.rebuildMaps();
+        w.refresh();
+        if (window.WriteSysPush) window.WriteSysPush.refresh();
+      } catch (e) {
+        alert('Review failed: ' + (e.message || e));
       }
+    };
+
+    const reviewActions = () => {
+      if (!this.canReview) return [];
+      const entry = leftEntry();
+      if (!entry) return [];
+      const row = entry.kind === 'me' ? mineRow() : entry.row;
+      if (!row && !(entry.kind === 'me' && ownChanged())) return [];
+      const status = row ? row.review_status : null;
+      return [
+        { icon: ICON_CHECK, title: 'Accept', className: 'sgm-accept', color: GREEN,
+          active: () => status === 'accepted', onClick: () => review(entry, 'accepted') },
+        { icon: ICON_X, title: 'Reject', className: 'sgm-reject', color: RED,
+          active: () => status === 'rejected', onClick: () => review(entry, 'rejected') },
+      ];
+    };
+
+    const histEntries = () => versions.map((v) => {
+      if (v.k === 0) return { key: 0, label: '0', title: 'Committed text (current) — click again to collapse', data: { ver: '0' } };
       const prev = versions[v.k - 1].text;
       const plural = v.k > 1 ? 's' : '';
       const dis = v.text == null || v.text === prev;
-      const title = v.text == null ? `No record ${v.k} commits back`
-        : dis ? `Unchanged ${v.k} commit${plural} ago`
-        : `${v.k} commit${plural} ago`;
-      return `<button type="button" class="sn-rail-btn sn-rail-peer" data-ver="${v.k}" title="${title}"${dis ? ' disabled' : ''}>${v.k}</button>`;
-    }).join('');
-    // EXACTLY the snippet widget's chrome (scratchpad.css): sn-cols → sn-main
-    // (sn-header + sn-body with the split) + sn-rail down the right edge, the
-    // * button in the corner where a widget shows its variation letter. The edit
-    // pane IS the variation editor — raw .manuscript text, real newlines, Tab
-    // inserts a literal \t (rendered as → by the shared overlay). No glyphs,
-    // no break buttons.
-    modal.innerHTML = `
-      <div class="sn-cols">
-        <div class="sn-main">
-          <div class="sn-header">
-            <span class="sn-status" title="Your edit auto-saves as you type. Closing flushes first — nothing is lost.">Suggest edit</span><span class="sn-save"></span>
-          </div>
-          <div class="sn-body">
-            <div class="sn-split">
-              <div class="sn-split-left">
-                <div class="sn-note">suggested edit &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a>
-                  &middot; <a href="#" class="sgm-insert-after" title="Insert a new sentence after this one — positions the caret; just type the sentence (Tab first for a new paragraph)">+ sentence after</a></div>
-                <div class="sgm-left"></div>
-              </div>
-              <div class="sn-split-right">
-                <div class="sn-note sgm-version-label"></div>
-                <textarea class="suggestion-modal-original sgm-version-text" readonly spellcheck="false"></textarea>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="sn-rail">
-          ${railBtns}
-        </div>
-      </div>`;
+      return {
+        key: v.k, label: String(v.k), disabled: dis, data: { ver: String(v.k) },
+        title: v.text == null ? `No record ${v.k} commits back`
+          : dis ? `Unchanged ${v.k} commit${plural} ago` : `${v.k} commit${plural} ago`,
+      };
+    });
+
+    const w = window.WriteSysPaneWidget.create({
+      className: 'sgm-widget',
+      headerHTML: '<span class="sn-status" title="Your edit auto-saves as you type. Closing flushes first — nothing is lost.">Suggest edit</span>',
+      left: {
+        rail: leftEntries,
+        onSelect: (key) => { leftSel = key; showLeft(key); },
+        actions: reviewActions,
+      },
+      right: {
+        rail: histEntries,
+        onChange: (k) => showVersion(k),
+        openByDefault: true,
+        defaultKey: 0,
+      },
+    });
+    modal.appendChild(w.el);
+
+    // Left pane content (caller-owned): note line + editor host; a
+    // read-only view swaps in for other/stale entries.
+    w.leftContent.innerHTML = `
+      <div class="sn-note"><span class="sgm-pane-label">suggested edit</span><span class="sgm-edit-links"><span class="sgm-revert-wrap" hidden> &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a></span>
+        &middot; <a href="#" class="sgm-insert-after" title="Insert a new sentence after this one — positions the caret; just type the sentence (Tab first for a new paragraph)">+ sentence after</a></span></div>
+      <div class="sgm-left"></div>`;
+    const otherView = document.createElement('div');
+    otherView.className = 'sgm-other-view';
+    otherView.hidden = true;
+    w.leftContent.querySelector('.sgm-left').appendChild(otherView);
+
+    // Right pane content: version caption + read-only text.
+    w.rightContent.innerHTML = `
+      <div class="sn-note sgm-version-label"></div>
+      <textarea class="suggestion-modal-original sgm-version-text" readonly spellcheck="false"></textarea>`;
+
+    const showLeft = (key) => {
+      const entry = leftEntries().find(e => e.key === key);
+      const label = w.leftContent.querySelector('.sgm-pane-label');
+      const links = w.leftContent.querySelector('.sgm-edit-links');
+      if (!entry || entry.kind === 'me') {
+        if (pane) pane.wrap.hidden = false;
+        otherView.hidden = true;
+        links.hidden = false;
+        label.textContent = 'suggested edit';
+      } else {
+        if (pane) pane.wrap.hidden = true;
+        otherView.hidden = false;
+        otherView.textContent = entry.row.text;
+        otherView.classList.toggle('stale', entry.kind === 'stale');
+        links.hidden = true;
+        label.textContent = entry.kind === 'stale' ? `${entry.row.user_id} · stale` : entry.row.user_id;
+      }
+    };
+
+    const originalArea = w.rightContent.querySelector('.suggestion-modal-original');
+    const verLabel = w.rightContent.querySelector('.sgm-version-label');
+    const showVersion = (k) => {
+      if (k == null) return; // collapsed — the pane is hidden, nothing to render
+      originalArea.value = versions[k].text || '';
+      verLabel.textContent = k === 0
+        ? 'currently committed'
+        : `${k} commit${k > 1 ? 's' : ''} ago`;
+    };
+    showVersion(0);
+
     document.body.appendChild(overlay);
 
     // MOBILE: the note margin is hidden, so the sentence's notes stack BELOW
@@ -374,24 +384,6 @@ const WriteSysSuggestions = {
     } else {
       document.body.appendChild(modal);
     }
-
-    // Version selector → right pane (read-only, same monospace metrics as the
-    // edit pane so the two align char-for-char).
-    const originalArea = modal.querySelector('.suggestion-modal-original');
-    const verLabel = modal.querySelector('.sgm-version-label');
-    const showVersion = (k) => {
-      originalArea.value = versions[k].text || '';
-      verLabel.textContent = k === 0
-        ? 'currently committed'
-        : `${k} commit${k > 1 ? 's' : ''} ago`;
-      modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) =>
-        b.classList.toggle('active', parseInt(b.dataset.ver, 10) === k));
-    };
-    modal.querySelectorAll('.sn-rail [data-ver]').forEach((b) => {
-      b.addEventListener('click', () => {
-        if (!b.disabled) showVersion(parseInt(b.dataset.ver, 10));
-      });
-    });
 
     // LEFT pane: the SHARED edit component (edit-pane.js) — the same
     // autosave-as-you-type, retry ladder, dirty tracking, tab overlay and
@@ -415,13 +407,14 @@ const WriteSysSuggestions = {
         await this.putSuggestion(sentenceId, newText);
         // Server collapses "text == original" into a delete; mirror locally
         // (rows too — an edit resets review/stale server-side, v3).
-        this.rows = this.rows.filter(s => !(s.sentence_id === sentenceId && s.user_id === this.viewer));
+        this.rows = this.rows.filter(r => !(r.sentence_id === sentenceId && r.user_id === this.viewer));
         if (newText !== original) {
           this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText, review_status: null, stale: false });
         }
         this.rebuildMaps();
+        w.refresh();
       },
-      statusEl: modal.querySelector('.sn-save'),
+      statusEl: w.saveEl,
       onFatal: (e) => {
         if (e.status !== 409) return null;
         // 409 = stale migration (see the stale banner / poll in renderer.js):
@@ -434,46 +427,24 @@ const WriteSysSuggestions = {
         return 'manuscript updated — copy your text, then reload';
       },
     });
-    modal.querySelector('.sgm-left').appendChild(pane.wrap);
-    const textarea = pane.textarea;
-    showVersion(0);
+    w.leftContent.querySelector('.sgm-left').insertBefore(pane.wrap, otherView);
+    textarea = pane.textarea;
 
-    // ---- v3 multi-user rail (PERMISSIONS_PLAN §4) -----------------------
-    // Left-edge rail: "0" = your live editable suggestion (today's modal),
-    // then a letter per OTHER user's fresh suggestion here (read-only),
-    // then dimmed letters for STALE suggestions. Accept/Reject act on the
-    // selected entry (own = free; others need manage-others-suggestions).
-    this.mountUserRail(modal, sentenceId, pane, original);
-
-    // Title state: "Suggest edit" while the editor matches the committed
-    // text; "Suggested edit · REJECT" once it differs. REJECT (red) reverts
-    // to committed AND closes; the left pane's quieter "revert" link only
-    // copies the committed text in, leaving the modal open. (CSS uppercases
-    // the bar.) The old corner * carried this meaning invisibly — it's gone.
+    // Title + revert visibility + rail 0↔letter all re-derive on input.
     const titleEl = modal.querySelector('.sn-status');
+    const revertWrap = w.leftContent.querySelector('.sgm-revert-wrap');
+    const updateTitle = () => {
+      titleEl.textContent = ownChanged() ? 'Suggested edit' : 'Suggest edit';
+      revertWrap.hidden = !ownChanged();
+    };
     const applyRevert = () => {
       textarea.value = original;
       pane.autoGrow();
       saver.poke();
       updateTitle();
+      w.refresh();
     };
-    const updateTitle = () => {
-      const changed = textarea.value !== original;
-      if (changed === (titleEl.dataset.mode === 'changed')) return;
-      titleEl.dataset.mode = changed ? 'changed' : 'clean';
-      if (changed) {
-        titleEl.innerHTML = 'Suggested edit<a href="#" class="sgm-reject" title="Discard this suggestion and close">Reject</a>';
-        titleEl.querySelector('.sgm-reject').addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          applyRevert();
-          close();
-        });
-      } else {
-        titleEl.textContent = 'Suggest edit';
-      }
-    };
-    modal.querySelector('.sgm-revert').addEventListener('click', (e) => {
+    w.leftContent.querySelector('.sgm-revert').addEventListener('click', (e) => {
       e.preventDefault();
       applyRevert();
     });
@@ -481,7 +452,7 @@ const WriteSysSuggestions = {
     // suggestion — seed "effective text + space", caret at the end, so the
     // user types ONLY the new sentence (leading Tab for a new paragraph
     // instead). The diff then renders as a pure insertion.
-    modal.querySelector('.sgm-insert-after').addEventListener('click', (e) => {
+    w.leftContent.querySelector('.sgm-insert-after').addEventListener('click', (e) => {
       e.preventDefault();
       textarea.value = textarea.value.replace(/\s+$/, '') + ' ';
       textarea.focus();
@@ -489,9 +460,11 @@ const WriteSysSuggestions = {
       pane.autoGrow();
       saver.poke();
       updateTitle();
+      w.refresh();
     });
-    textarea.addEventListener('input', updateTitle);
+    textarea.addEventListener('input', () => { updateTitle(); w.refresh(); });
     updateTitle();
+    w.refresh();
 
     // Closing ALWAYS flushes first; a failing save keeps the modal open with
     // the retry/stale status showing — an accidental overlay click or Escape

@@ -58,15 +58,6 @@ export const parseVariationRef = (text) => {
 // later refuse the programmatic clipboard READ in the ⧉ menu even though
 // this WRITE succeeds — the menu falls back to this record, so the flow
 // works regardless; the copied tick shows either way.
-function wireCopyRef(btn, variationId) {
-  btn.addEventListener('click', async (e) => {
-    const b = e.currentTarget;
-    try { localStorage.setItem('ms_last_variation_ref', String(variationId)); } catch (_) { /* private mode */ }
-    try { await navigator.clipboard.writeText(VARIATION_REF_PREFIX + variationId); } catch (_) { /* in-app record suffices */ }
-    b.classList.add('sn-copied');
-    setTimeout(() => b.classList.remove('sn-copied'), 900);
-  });
-}
 const PARENT_SVG = '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>';
 
 
@@ -211,55 +202,43 @@ export class SketchView {
     // cards. Canon pins the link permanently (chip becomes read-only).
     const linkBit = '<span class="sn-linkslot"></span>';
 
-    // (The open-in-book ↗ lives on the PLACED pane's header — renderCanon.)
-    // Layout: main column (header + body) plus the letter RAIL down the right
-    // edge — a symmetric "titlebar" whose top button is THIS variation's letter
-    // (the upper-right corner identity), with every sibling below it and the
-    // canon fleuron at the bottom. The widget always grows to fit the rail.
-    // The header is TWO halves: the left half carries identity + the SELF
-    // variation's actions; the right half is empty until a compare pane
-    // opens, then it carries the COMPARED variation's actions — so each
-    // action bar sits above the pane it applies to (the split header).
-    this.dom.innerHTML = `
-      <div class="sn-header${this.compare != null ? ' sn-head-split' : ''}">
-        <div class="sn-head-left">
-          <span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span><span class="sn-topgap"></span>${linkBit}${this.canonized() ? '<span class="sn-placedmark" title="Placed in the manuscript">\u2766</span>' : ''}<span class="sn-save"></span>
-          <span class="sn-actcluster">
-            <span class="sn-actions sn-actions-main">
-              <button type="button" data-act="remove" class="sn-trash" title="Delete this variation (recoverable via Restore&hellip;)">${TRASH_SVG()}</button>
-              <button type="button" data-act="supersede" class="sn-supersede${this.superseded() ? ' pressed' : ''}" title="${this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
-              <button type="button" data-act="freeze" class="sn-freeze${this.frozen() ? ' pressed' : ''}" title="${this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-              <button type="button" data-act="copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
-              <button type="button" data-act="branch" class="sn-branch" title="New variation based on this one">${SPARK_SVG}</button>
-              ${this.canonized() && sn.linked_manuscript_id ? `<button type="button" data-act="place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">❦</button>` : ''}
-            </span>
-            <span class="sn-act-label sn-selfletter st-${this.stateName()}" title="This widget is variation ${this.letter()}.">${esc(this.letter())}</span>
-          </span>
-        </div>
-      </div>
-      <div class="sn-cols">
-        <div class="sn-main">
-          <div class="sn-actionrow" style="display: none">
-            <div class="sn-act-self"></div>
-            <div class="sn-head-right"></div>
-          </div>
-          <div class="sn-body"></div>
-        </div>
-        <div class="sn-rail">${this.railHTML()}</div>
-      </div>`;
-    this.body = this.dom.querySelector('.sn-body');
+    // The SHARED pane-widget shell (js/pane-widget.js, window global): the
+    // LEFT pane is SELF — its rail carries this variation's identity letter
+    // (the old upper-right corner letter, now in rail position). The RIGHT
+    // pane is the peers — siblings + the canon fleuron — collapsed to just
+    // its rail until a peer is clicked (the split-compare). Actions are
+    // icon DEFINITIONS; the shell places them (header while collapsed,
+    // per-pane action rows when split) and colors STATE buttons
+    // (freeze-blue, supersede-red) — the old relocating .sn-actcluster and
+    // .sn-head-right machinery is gone.
+    this.dom.innerHTML = '';
+    this.w = window.WriteSysPaneWidget.create({
+      className: 'sk-widget',
+      headerHTML: `<span class="sn-status${this.canonized() ? ' sn-canonized' : ''}" title="${statusHint}">${status}</span><span class="sn-topgap"></span>${linkBit}${this.canonized() ? '<span class="sn-placedmark" title="Placed in the manuscript">\u2766</span>' : ''}`,
+      left: {
+        rail: () => [{
+          key: 'self',
+          label: this.letter(),
+          className: 'sn-rail-self st-' + this.stateName(),
+          color: this.stateColor(this.stateName()),
+          title: `This widget is variation ${this.letter()}.`,
+        }],
+        actions: () => this.selfActionDefs(),
+      },
+      right: {
+        rail: () => this.peerEntries(),
+        onChange: (key) => { this.compare = key; this.renderBody(); },
+        actions: (key) => this.peerActionDefs(key),
+        openByDefault: false,
+      },
+    });
+    if (this.compare != null) this.w.rightKey = this.compare; // refresh() keeps an open compare
+    this.dom.appendChild(this.w.el);
+    this.body = this.w.leftContent;
     this.saveEl = this.dom.querySelector('.sn-save');
+    this.w.refresh();
 
-    this.bindCompareButtons(this.dom);
-    this.dom.querySelector('[data-act="remove"]').addEventListener('click', () => this.removeWidget(false));
-    this.dom.querySelector('[data-act="freeze"]').addEventListener('click', () =>
-      this.applyState(this.variationId, this.frozen() ? 'draft' : 'frozen'));
-    this.dom.querySelector('[data-act="supersede"]').addEventListener('click', () =>
-      this.applyState(this.variationId, this.superseded() ? 'draft' : 'superseded'));
-    this.dom.querySelector('[data-act="branch"]').addEventListener('click', () => this.branchVariation(this.variationId));
-    const placeBtn = this.dom.querySelector('[data-act="place"]');
-    if (placeBtn) placeBtn.addEventListener('click', () => this.placeVariation(this.variationId));
-    wireCopyRef(this.dom.querySelector('[data-act="copyref"]'), this.variationId);
+    this.dom.querySelector('[data-act="remove"]')?.addEventListener('click', () => this.removeWidget(false));
     // The sketch's NOTE square (026) — the exact component that fronts
     // highlighted text in the doc, minus the text — top-left, left of the
     // status word. Click opens the same note float. Green check once the
@@ -300,53 +279,104 @@ export class SketchView {
     this.renderBody();
   }
 
-  // The right-edge rail: self letter (top, inert identity), siblings below
-  // (click = split-compare, colored by state), canon fleuron at the bottom.
-  railHTML() {
-    const btns = [];
-    // Split open → the self letter travels to the LEFT pane's upper-right
-    // corner (renderBody mounts it) and the sibling buttons shift up to
-    // take its place; unsplit → self letter tops the rail as usual.
+  // Rail + action DEFINITIONS for the shared shell (pane-widget.js) —
+  // domain data in, geometry out. State coloring is generalized: one color
+  // per state, tinting both the rail letter and the state button.
+  stateColor(st) {
+    return st === 'frozen' ? '#2a6fb0' : st === 'superseded' ? '#b04038' : null;
+  }
+
+  peerEntries() {
     const lastPlaced = this.ctx.sketch.placed_from_variation_id || 0;
-    // The self letter never rides the rail — it sits plain in the top bar
-    // (single pane) or on the left pane's corner (split).
-    const others = (this.ctx.siblings || []).filter(x => x.variation_id !== this.variationId);
-    for (const x of others) {
-      const st = x.state || 'draft';
-      const stNote = st === 'superseded' ? ' (superseded)' : st === 'frozen' ? ' (frozen)' : '';
-      btns.push(`<button type="button" data-compare="${x.variation_id}" class="sn-rail-btn sn-rail-peer st-${st}${this.compare === x.variation_id ? ' active' : ''}${x.variation_id === lastPlaced ? ' sn-last-placed' : ''}" title="Compare to variation ${letterOf(x.ordinal)}.${stNote}${x.variation_id === lastPlaced ? ' (Last placed.)' : ''}">${esc(letterOf(x.ordinal))}</button>`);
-    }
+    const entries = (this.ctx.siblings || [])
+      .filter((x) => x.variation_id !== this.variationId)
+      .map((x) => {
+        const st = x.state || 'draft';
+        const stNote = st === 'superseded' ? ' (superseded)' : st === 'frozen' ? ' (frozen)' : '';
+        return {
+          key: x.variation_id,
+          label: letterOf(x.ordinal),
+          className: `sn-rail-peer st-${st}${x.variation_id === lastPlaced ? ' sn-last-placed' : ''}`,
+          color: this.stateColor(st),
+          data: { compare: String(x.variation_id) },
+          title: `Compare to variation ${letterOf(x.ordinal)}.${stNote}${x.variation_id === lastPlaced ? ' (Last placed.)' : ''}`,
+        };
+      });
     if (this.canonized()) {
-      btns.push(`<button type="button" data-compare="canon" class="sn-rail-btn sn-rail-canon${this.compare === 'canon' ? ' active' : ''}" title="The placed text — live from the book.">❦</button>`);
+      entries.push({
+        key: 'canon', label: '\u2766', className: 'sn-rail-canon',
+        data: { compare: 'canon' },
+        title: 'The placed text — live from the book.',
+      });
     }
-    return btns.join('');
+    return entries;
   }
 
-  // Toggle the split-compare: same target closes it, another target swaps the
-  // right half. The self pane (left) is untouched — same subcomponent, still
-  // editable — so comparing never loses your place or your edit.
+  copyRefDef(variationId) {
+    return {
+      icon: COPY_SVG, className: 'sn-copyref',
+      title: 'Copy sketch reference — start a related variation anywhere via \u29c9 Sketch \u25be \u2192 From clipboard',
+      onClick: async (btn) => {
+        try { localStorage.setItem('ms_last_variation_ref', String(variationId)); } catch (_) { /* private mode */ }
+        try { await navigator.clipboard.writeText(VARIATION_REF_PREFIX + variationId); } catch (_) { /* in-app record suffices */ }
+        btn.classList.add('sn-copied');
+        setTimeout(() => btn.classList.remove('sn-copied'), 900);
+      },
+    };
+  }
+
+  selfActionDefs() {
+    const sn = this.ctx.sketch;
+    const defs = [
+      { icon: TRASH_SVG(), className: 'sn-trash', title: 'Delete this variation (recoverable via Restore\u2026)', onClick: () => this.removeWidget(false) },
+      { icon: DOWN_SVG, className: 'sn-supersede', color: '#b04038', active: () => this.superseded(),
+        title: this.superseded() ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)',
+        onClick: () => this.applyState(this.variationId, this.superseded() ? 'draft' : 'superseded') },
+      { icon: SNOW_SVG, className: 'sn-freeze', color: '#2a6fb0', active: () => this.frozen(),
+        title: this.frozen() ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)',
+        onClick: () => this.applyState(this.variationId, this.frozen() ? 'draft' : 'frozen') },
+      this.copyRefDef(this.variationId),
+      { icon: SPARK_SVG, className: 'sn-branch', title: 'New variation based on this one', onClick: () => this.branchVariation(this.variationId) },
+    ];
+    if (this.canonized() && sn.linked_manuscript_id) {
+      defs.push({ icon: '\u2766', className: 'sn-place', title: 'Place this variation into the manuscript — replaces the placed text, as suggested edits', onClick: () => this.placeVariation(this.variationId) });
+    }
+    return defs;
+  }
+
+  peerActionDefs(key) {
+    if (key == null) return [];
+    const sn = this.ctx.sketch;
+    if (key === 'canon') {
+      return [
+        { icon: GOTO_SVG, className: 'sn-goto-ext', title: 'Open in book',
+          onClick: () => {
+            if (sn.linked_manuscript_id) window.location.href = `index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.sketch_id)}`;
+          } },
+        { icon: SPARK_SVG, className: 'sn-branch sn-from-placed', title: "New variation from the placed text — start editing what's in the book", onClick: () => this.newFromPlaced() },
+      ];
+    }
+    const ctx = this.peerCache[key];
+    if (!ctx) return []; // still loading — renderComparePeer refreshes once ready
+    const st = ctx.variation.state || 'draft';
+    return [
+      { icon: GOTO_SVG, className: 'sn-goto-ext', title: 'Go to source', onClick: () => this.gotoVariationSource(key, ctx.variation.sketch_id, ctx.variation.ordinal) },
+      { icon: SPARK_SVG, className: 'sn-branch', title: 'New variation based on this one', onClick: () => this.branchVariation(key) },
+      ...(this.canonized() && sn.linked_manuscript_id ? [{ icon: '\u2766', className: 'sn-place', title: 'Place this variation into the manuscript — replaces the placed text, as suggested edits', onClick: () => this.placeVariation(key) }] : []),
+      { icon: DOWN_SVG, className: 'sn-supersede', color: '#b04038', active: () => st === 'superseded',
+        title: st === 'superseded' ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)',
+        onClick: () => this.applyState(key, st === 'superseded' ? 'draft' : 'superseded') },
+      { icon: SNOW_SVG, className: 'sn-freeze', color: '#2a6fb0', active: () => st === 'frozen',
+        title: st === 'frozen' ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)',
+        onClick: () => this.applyState(key, st === 'frozen' ? 'draft' : 'frozen') },
+      this.copyRefDef(key),
+    ];
+  }
+
+  // Toggle the split-compare (kept for callers + tests): same target
+  // closes it, another target swaps. The shell owns the geometry now.
   setCompare(key) {
-    this.compare = this.compare === key ? null : key;
-    this.renderRail();
-    this.renderBody();
-  }
-
-  // THE one compare-button binder — build() (whole widget) and renderRail()
-  // (rail only) both route through it.
-  bindCompareButtons(scope) {
-    scope.querySelectorAll('[data-compare]').forEach(btn => {
-      btn.addEventListener('click', () => this.setCompare(
-        btn.dataset.compare === 'canon' ? 'canon' : parseInt(btn.dataset.compare, 10)));
-    });
-  }
-
-  // (Re)build the rail and bind its compare buttons — needed whenever the
-  // rail's composition changes (split open/close moves the self letter).
-  renderRail() {
-    const rail = this.dom.querySelector('.sn-rail');
-    if (!rail) return;
-    rail.innerHTML = this.railHTML();
-    this.bindCompareButtons(rail);
+    if (this.compare === key) this.w.closeRight(); else this.w.openRight(key);
   }
 
   renderBody() {
@@ -354,52 +384,15 @@ export class SketchView {
     // replace DOM and may move focus; preserve the reader's scroll position so
     // none of them jump the pad to the top of the widget.
     return this.preserveScroll(() => {
-      // Toolbar split: single pane keeps the actions in the full-width top
-      // bar; a compare open moves them into the LEFT half of the action row
-      // (physically relocating the node — handlers ride along) and the
-      // RIGHT half hosts the compared pane's actions. The top bar keeps
-      // only identity (note square, SKETCH X, link, save).
-      const head = this.dom.querySelector('.sn-header');
-      const headRight = this.dom.querySelector('.sn-actionrow .sn-head-right');
-      const row = this.dom.querySelector('.sn-actionrow');
-      // The action CLUSTER (buttons + pane label) is ONE node that moves
-      // between the top bar (single pane) and the left half-toolbar
-      // (split) — one component, so the two states can never diverge.
-      // Move ONLY on an actual side change: a re-insert detaches it
-      // mid-gesture and swallows in-flight clicks.
-      const cluster = this.dom.querySelector('.sn-actcluster');
-      if (headRight) {
-        headRight.innerHTML = '';
-        head.classList.toggle('sn-head-split', this.compare != null);
-        if (row && cluster) {
-          if (this.compare != null) {
-            row.style.display = 'flex';
-            const half = this.dom.querySelector('.sn-act-self');
-            if (cluster.parentNode !== half) half.appendChild(cluster);
-          } else {
-            row.style.display = 'none';
-            const headLeft = this.dom.querySelector('.sn-head-left');
-            if (cluster.parentNode !== headLeft) headLeft.appendChild(cluster);
-          }
-        }
-      }
-      if (this.compare == null) {
-        this.selfHost = this.body;
-        this.body.innerHTML = '';
-        return this.mode === 'edit' ? this.renderEdit() : this.renderSelfPreview();
-      }
-      // Split: LEFT = self (same subcomponent as unsplit — preview or edit),
-      // RIGHT = the comparison target, read-only on a disabled background.
-      this.body.innerHTML = `
-        <div class="sn-split">
-          <div class="sn-split-left"></div>
-          <div class="sn-split-right"></div>
-        </div>`;
-      this.selfHost = this.body.querySelector('.sn-split-left');
+      this.selfHost = this.w.leftContent;
+      this.selfHost.innerHTML = '';
       if (this.mode === 'edit') this.renderEdit(); else this.renderSelfPreview();
-      const right = this.body.querySelector('.sn-split-right');
-      if (this.compare === 'canon') this.renderCanon(false, right);
-      else this.renderComparePeer(this.compare, right);
+      if (this.compare != null) {
+        const right = this.w.rightContent;
+        if (this.compare === 'canon') this.renderCanon(false, right);
+        else this.renderComparePeer(this.compare, right);
+      }
+      this.w.refresh();
     });
   }
 
@@ -653,31 +646,9 @@ export class SketchView {
     pane.dataset.ordinal = String(ctx.variation.ordinal);
     const sketchId = ctx.variation.sketch_id;
     const ordinal = ctx.variation.ordinal;
-    // The split header's RIGHT half: this pane's own actions — go-to-source
-    // (the ↗), supersede, freeze, copy reference. No trash (deleting a
-    // variation belongs to its own widget).
-    const headRight = this.dom.querySelector('.sn-head-right');
-    if (headRight) {
-      headRight.innerHTML = `
-        <span class="sn-actions">
-          <button type="button" data-act="peer-goto" class="sn-goto-ext" title="Go to source">${GOTO_SVG}</button>
-          <button type="button" data-act="peer-branch" class="sn-branch" title="New variation based on this one">${SPARK_SVG}</button>
-          ${this.canonized() && this.ctx.sketch.linked_manuscript_id ? `<button type="button" data-act="peer-place" class="sn-place" title="Place this variation into the manuscript — replaces the placed text, as suggested edits">❦</button>` : ''}
-          <button type="button" data-act="peer-supersede" class="sn-supersede${st === 'superseded' ? ' pressed' : ''}" title="${st === 'superseded' ? 'Superseded — click to un-supersede' : 'Supersede (mark no longer preferred; read-only)'}">${DOWN_SVG}</button>
-          <button type="button" data-act="peer-freeze" class="sn-freeze${st === 'frozen' ? ' pressed' : ''}" title="${st === 'frozen' ? 'Frozen — click to unfreeze' : 'Freeze (make read-only)'}">${SNOW_SVG}</button>
-          <button type="button" data-act="peer-copyref" class="sn-copyref" title="Copy sketch reference — start a related variation anywhere via ⧉ Sketch ▾ → From clipboard">${COPY_SVG}</button>
-        </span><span class="sn-act-label st-${st}" title="This pane is variation ${esc(letterOf(ctx.variation.ordinal))}.">${esc(letterOf(ctx.variation.ordinal))}</span>`;
-      headRight.querySelector('[data-act="peer-goto"]').addEventListener('click', () =>
-        this.gotoVariationSource(variationId, sketchId, ordinal));
-      headRight.querySelector('[data-act="peer-branch"]').addEventListener('click', () => this.branchVariation(variationId));
-      const peerPlace = headRight.querySelector('[data-act="peer-place"]');
-      if (peerPlace) peerPlace.addEventListener('click', () => this.placeVariation(variationId));
-      headRight.querySelector('[data-act="peer-supersede"]').addEventListener('click', () =>
-        this.applyState(variationId, st === 'superseded' ? 'draft' : 'superseded'));
-      headRight.querySelector('[data-act="peer-freeze"]').addEventListener('click', () =>
-        this.applyState(variationId, st === 'frozen' ? 'draft' : 'frozen'));
-      wireCopyRef(headRight.querySelector('[data-act="peer-copyref"]'), variationId);
-    }
+    // Peer actions render in the right pane's action row (peerActionDefs);
+    // the ctx just loaded, so rebuild them.
+    this.w.refresh();
     const host = pane.querySelector('.sn-render');
     // Stop mousedown from REACHING ProseMirror (which would move the PM
     // selection and scroll the pad) but let the browser's default run — that
@@ -806,32 +777,6 @@ export class SketchView {
   // fallback and via the in-body toggle.
   async renderCanon(showSnapshot, pane) {
     const sn = this.ctx.sketch;
-    // The placed pane's one action: start a NEW variation seeded with the
-    // live placed text — edit what's in the book without touching it.
-    const headRight = this.dom.querySelector('.sn-head-right');
-    if (headRight && !headRight.childElementCount) {
-      headRight.innerHTML = `<span class="sn-actions">${openBookLink(sn)}<button type="button" data-act="from-placed" class="sn-branch sn-from-placed" title="New variation from the placed text — start editing what's in the book">${SPARK_SVG}</button></span><span class="sn-act-label sn-act-label-gilt" title="The placed text.">\u2766</span>`;
-      headRight.querySelector('[data-act="from-placed"]').addEventListener('click', async () => {
-        try {
-          // One forced retry, like renderCanon/placeVariation — a transient
-          // fetch failure must not read as "region gone".
-          let seed = null;
-          for (let attempt = 0; attempt < 2 && seed == null; attempt++) {
-            const data = await bookData.load(sn.linked_manuscript_id, true);
-            seed = window.WriteSysRegion.regionRawText(
-              data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, null);
-          }
-          if (seed == null) { alert('Could not resolve the placed region.'); return; }
-          const ctx = await variationApi.createFromText(sn.sketch_id, seed);
-          const pos = this.getPos();
-          if (pos != null) {
-            this.view.dispatch(this.view.state.tr.insert(pos + this.node.nodeSize,
-              this.view.state.schema.nodes.snippet.create({ variationId: ctx.variation.variation_id })));
-          }
-          await this.refresh();
-        } catch (e) { alert('Could not sketch from the placed text: ' + e.message); }
-      });
-    }
     // NO explanatory bar: the live render IS the placed truth (the
     // manuscript is the source of truth — nothing else to explain). There
     // is no snapshot to fall back to (the placed variation itself is the
@@ -865,6 +810,31 @@ export class SketchView {
     } catch (e) {
       anomaly(`Could not load manuscript ${sn.linked_manuscript_id} (${esc(e.message)}).`);
     }
+  }
+
+
+  // Start a NEW variation seeded with the live placed text — edit what's
+  // in the book without touching it (the placed pane's sparkle action).
+  async newFromPlaced() {
+    const sn = this.ctx.sketch;
+    try {
+      // One forced retry, like renderCanon/placeVariation — a transient
+      // fetch failure must not read as "region gone".
+      let seed = null;
+      for (let attempt = 0; attempt < 2 && seed == null; attempt++) {
+        const data = await bookData.load(sn.linked_manuscript_id, true);
+        seed = window.WriteSysRegion.regionRawText(
+          data.sentences, data.sugMap, sn.sketch_id, window.WriteSysCommand, null);
+      }
+      if (seed == null) { alert('Could not resolve the placed region.'); return; }
+      const ctx = await variationApi.createFromText(sn.sketch_id, seed);
+      const pos = this.getPos();
+      if (pos != null) {
+        this.view.dispatch(this.view.state.tr.insert(pos + this.node.nodeSize,
+          this.view.state.schema.nodes.snippet.create({ variationId: ctx.variation.variation_id })));
+      }
+      await this.refresh();
+    } catch (e) { alert('Could not sketch from the placed text: ' + e.message); }
   }
 
   // THE state toggle (self buttons + compare-pane buttons): set the state,

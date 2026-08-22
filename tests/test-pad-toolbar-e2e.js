@@ -175,8 +175,8 @@ const PNG_1PX = Buffer.from(
     check('sketch text persisted before the menu checks', zebraSaved);
 
     // ---- sketch-menu-clipboard-valid -------------------------------------
-    await page.locator('.sn-widget [data-act="copyref"]').click();
-    await page.waitForSelector('.sn-widget [data-act="copyref"].sn-copied');
+    await page.locator('.sn-widget .sn-copyref').click();
+    await page.waitForSelector('.sn-widget .sn-copyref.sn-copied');
     const clip = await page.evaluate(() => navigator.clipboard.readText());
     check('copy button writes ms-variation:N to the clipboard', clip === `ms-variation:${varA}`, clip);
     await page.locator('#spm-toolbar button', { hasText: '⧉ Sketch ▾' }).click();

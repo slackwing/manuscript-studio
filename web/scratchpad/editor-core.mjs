@@ -35,7 +35,7 @@ import { csrf, bookData, variationApi, uploadImage } from './api.mjs?v=1';
 import { scrollDiag } from './scroll.mjs?v=1';
 import {
   SketchView, variationFlushers, dirtyVariations, refreshSketchSiblings,
-} from './sketch-view.mjs?v=1';
+} from './sketch-view.mjs?v=2';
 import {
   NoteRefView, buildNoteColorBar, noteColorGroups, noteCache, closeNoteFloat,
   setActiveView, getActiveView, setEditorTearingDown,
@@ -50,7 +50,7 @@ import {
 export { schema, modernizeDoc } from './schema.mjs?v=1';
 export { apiCall, bookData, variationApi, setCurrentScratchpadId } from './api.mjs?v=1';
 export { suspendScrollHolds } from './scroll.mjs?v=1';
-export { letterOf, parseVariationRef } from './sketch-view.mjs?v=1';
+export { letterOf, parseVariationRef } from './sketch-view.mjs?v=2';
 export { findNormalized } from './pad-notes.mjs?v=1';
 export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=1';
 

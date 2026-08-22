@@ -337,11 +337,9 @@
    header. Its top button is THIS widget's letter (the upper-right corner);
    siblings stack below; the canon fleuron sits at the bottom of the list.
    No overflow — the widget always grows to fit every button. */
-/* .sn-rail is shared LOOK, not shared code: the sketch widget's variation
-   rail (sketch-view.mjs) and the suggest-modal's rails — history versions
-   AND the v3 user rail (suggestions.js mountUserRail) — all render through
-   these classes. Extracting one real component is on DEFERRED.md; until
-   then, style changes here restyle all three. */
+/* .sn-rail is SHARED CODE now: pane-widget.js (window.WriteSysPaneWidget)
+   builds every rail — the sketch widget's and both of the suggest-edit
+   modal's — through these classes. Style changes here restyle them all. */
 .sn-rail {
   flex: 0 0 auto;
   display: flex;
@@ -909,3 +907,46 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
   line-height: 1;
   flex: none;
 }
+
+/* ---- pane-widget shell (pane-widget.js): the unified two-pane geometry.
+   A pane is [main | rail-on-its-right]; the right pane collapses to just
+   its rail, flush against the left pane's rail. ---- */
+.pw { display: flex; flex-direction: column; min-height: 0; }
+.pw-cols { flex: 1; min-height: 0; }
+.sn-pane { display: flex; align-items: stretch; min-width: 0; }
+.pw-left { flex: 1 1 50%; }
+.pw-right { flex: 1 1 50%; }
+.pw-right.pw-collapsed { flex: 0 0 auto; }
+.pw-right.pw-collapsed > .sn-main { display: none; }
+.pw-main { display: flex; flex-direction: column; min-height: 0; }
+.pw-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pw-actionrow { justify-content: flex-end; }
+.pw-actionrow[hidden] { display: none; }
+.pw-actionrow .sn-actions { flex: 1; justify-content: flex-end; padding: 3px 8px; }
+
+/* Action icon buttons: grey at rest, colored on hover; STATE buttons
+   (freeze/accept/reject/…) read pressed + tinted while active — the
+   generalization of the old .sn-freeze.pressed treatment, driven by the
+   per-button --pw-c color. */
+.pw-actbtn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: #a49b8a;
+  padding: 3px 5px;
+  display: inline-flex;
+  align-items: center;
+}
+.pw-actbtn svg { display: block; }
+.pw-actbtn.pw-colored:hover { color: var(--pw-c); }
+.pw-actbtn.pw-on {
+  color: var(--pw-c);
+  background: color-mix(in srgb, var(--pw-c) 12%, white);
+  border-color: color-mix(in srgb, var(--pw-c) 40%, white);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--pw-c) 30%, transparent);
+}
+/* Rail letters tinted by subject state (frozen, superseded, accepted,
+   rejected — same mechanism, color passed in). */
+.sn-rail-btn.pw-colored { color: var(--pw-c); }
+.sn-rail-btn.pw-colored:not(.active) { background: color-mix(in srgb, var(--pw-c) 10%, transparent); }

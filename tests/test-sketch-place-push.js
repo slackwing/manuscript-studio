@@ -95,9 +95,9 @@ function setupBareRemote() {
   check('home pad resolved', padId > 0, String(padId));
   await page.goto(new URL('home.html', TEST_URL).href);
   await page.evaluate((id) => window.WriteSysScratchpadModal.open(id), padId);
-  await page.waitForSelector('.sn-widget [data-act="branch"]', { timeout: 15000 });
+  await page.waitForSelector('.sn-widget .sn-branch', { timeout: 15000 });
   const widgetsBefore = await page.locator('.sn-widget').count();
-  await page.locator('.sn-widget [data-act="branch"]').first().click();
+  await page.locator('.sn-widget .sn-branch').first().click();
   await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, widgetsBefore, { timeout: 15000 });
   await page.waitForTimeout(1200); // new widget ctx loads
   // Enter edit on the NEW widget (B) — click its preview.
@@ -111,7 +111,7 @@ function setupBareRemote() {
   await page.keyboard.type('PLACEDMARK beta second paragraph keeping its indent marker.');
   await page.waitForTimeout(2500); // autosave settles
   // Place variation B (the widget button — real replacePlan path).
-  const placeBtn = page.locator('.sn-widget [data-act="place"]');
+  const placeBtn = page.locator('.sn-widget .sn-place');
   await placeBtn.last().click();
   await page.waitForTimeout(3000); // suggestions PUT + canonize + refresh
   const sugCount = psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
@@ -183,9 +183,9 @@ function setupBareRemote() {
   const sugsBefore = parseInt(psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`), 10);
   await page.goto(new URL('home.html', TEST_URL).href);
   await page.evaluate((id) => window.WriteSysScratchpadModal.open(id), padId);
-  await page.waitForSelector('.sn-widget [data-act="branch"]', { timeout: 15000 });
+  await page.waitForSelector('.sn-widget .sn-branch', { timeout: 15000 });
   const wBefore = await page.locator('.sn-widget').count();
-  await page.locator('.sn-widget [data-act="branch"]').last().click();
+  await page.locator('.sn-widget .sn-branch').last().click();
   await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, wBefore, { timeout: 15000 });
   await page.waitForTimeout(1200);
   await page.locator('.sn-widget .sn-render.sn-clickable').last().click();
@@ -196,7 +196,7 @@ function setupBareRemote() {
   await page.keyboard.press('Tab');
   await page.keyboard.type('PLACEDMARK beta second paragraph keeping its indent marker.');
   await page.waitForTimeout(2500);
-  await page.locator('.sn-widget [data-act="place"]').last().click();
+  await page.locator('.sn-widget .sn-place').last().click();
   await page.waitForTimeout(3000);
   const sugsAfter = parseInt(psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`), 10);
   check('re-place adds NO blanket suggestions (surgical per-sentence plan)',

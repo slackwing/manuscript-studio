@@ -112,7 +112,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const sq = page.locator('.sn-widget .sn-note-solo').first();
   check('note square present in the widget header', (await sq.count()) === 1);
   const sqBeforeStatus = await page.evaluate(() => {
-    const kids = Array.from(document.querySelectorAll('.sn-widget .sn-head-left > *'));
+    // Identity content lives inside the shell's header slot now.
+    const kids = Array.from(document.querySelectorAll('.sn-widget .pw-head-slot > *'));
     const si = kids.findIndex(k => k.classList.contains('sn-note-solo'));
     const st = kids.findIndex(k => k.classList.contains('sn-status'));
     return { si, st };

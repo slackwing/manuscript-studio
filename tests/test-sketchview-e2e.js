@@ -84,24 +84,24 @@ function psql(sql) {
       (await page.locator('.sn-place').count()) === 0);
 
     // ---- supersede-toggle -------------------------------------------------
-    await w(varB).locator('[data-act="supersede"]').click();
+    await w(varB).locator('.sn-supersede').click();
     await page.waitForSelector(`.sn-widget[data-variation-id="${varB}"].sn-state-superseded`);
     check('↓ marks the widget superseded (class + DB)',
       psql(`SELECT state FROM variation WHERE variation_id=${varB}`) === 'superseded');
-    check('supersede button shows pressed', (await w(varB).locator('[data-act="supersede"].pressed').count()) === 1);
+    check('supersede button shows pressed', (await w(varB).locator('.sn-supersede.pw-on').count()) === 1);
     await page.waitForFunction((vid) => {
       const a = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
       return a && [...a.querySelectorAll('.sn-rail-peer')].some(b => /st-superseded/.test(b.className));
     }, varA);
     check('sibling rail letter recolors (st-superseded on A\'s rail)', true);
-    await w(varB).locator('[data-act="supersede"]').click(); // un-supersede
+    await w(varB).locator('.sn-supersede').click(); // un-supersede
     await page.waitForFunction((vid) =>
       !document.querySelector(`.sn-widget[data-variation-id="${vid}"].sn-state-superseded`), varB);
     check('↓ again un-supersedes back to draft',
       psql(`SELECT state FROM variation WHERE variation_id=${varB}`) === 'draft');
 
     // ---- readonly-mono-view (self pane, frozen) ---------------------------
-    await w(varB).locator('[data-act="freeze"]').click();
+    await w(varB).locator('.sn-freeze').click();
     await page.waitForSelector(`.sn-widget[data-variation-id="${varB}"].sn-state-frozen`);
     await w(varB).locator('.sn-render.sn-frozen').click();
     await w(varB).locator('textarea.sn-mono-ro').waitFor();
@@ -113,67 +113,73 @@ function psql(sql) {
     await w(varB).locator('textarea.sn-mono-ro').evaluate(ta => ta.blur());
     await w(varB).locator('.sn-render').waitFor();
     check('blur returns the rendered view', true);
-    await w(varB).locator('[data-act="freeze"]').click(); // unfreeze
+    await w(varB).locator('.sn-freeze').click(); // unfreeze
     await page.waitForFunction((vid) =>
       !document.querySelector(`.sn-widget[data-variation-id="${vid}"].sn-state-frozen`), varB);
 
-    // ---- cluster-relocation ----------------------------------------------
-    await api((vid) => {
-      const el = document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-actcluster`);
-      el.__marked = true;
-    }, varA);
-    await w(varA).locator('.sn-rail-peer').first().click(); // open split (B)
-    await w(varA).locator('.sn-split-right').waitFor();
-    const reloc = await api((vid) => {
+    // ---- action placement (pane-widget shell) ----------------------------
+    // Collapsed: self actions in the header. Split: they move to the left
+    // pane's action row; the right pane grows its own.
+    const placedBefore = await api((vid) => {
       const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      const c = wg.querySelector('.sn-act-self .sn-actcluster');
-      return { inLeftHalf: !!c, sameNode: !!(c && c.__marked) };
+      return {
+        header: wg.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+        rows: [...wg.querySelectorAll('.pw-actionrow')].every(r => r.hidden),
+      };
     }, varA);
-    check('split relocates the SAME action-cluster node into the left half',
-      reloc.inLeftHalf && reloc.sameNode, JSON.stringify(reloc));
-    // Buttons must be clickable immediately after the relocation.
-    await w(varA).locator('.sn-act-self [data-act="freeze"]').click();
-    await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"] [data-act="freeze"].pressed`);
-    check('relocated cluster buttons work immediately (freeze pressed)', true);
+    check('collapsed: self actions live in the header, action rows hidden',
+      placedBefore.header >= 5 && placedBefore.rows, JSON.stringify(placedBefore));
+    await w(varA).locator('.sn-rail-peer').first().click(); // open split (B)
+    await w(varA).locator('.pw-right:not(.pw-collapsed)').waitFor();
+    // Peer actions arrive once the compared variation's ctx loads.
+    await w(varA).locator('.pw-actionrow-right .pw-actbtn').first().waitFor({ timeout: 10000 });
+    const placed = await api((vid) => {
+      const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
+      return {
+        header: wg.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+        left: wg.querySelectorAll('.pw-actionrow-left .pw-actbtn').length,
+        right: wg.querySelectorAll('.pw-actionrow-right .pw-actbtn').length,
+      };
+    }, varA);
+    check('split: actions move to the per-pane rows (header emptied)',
+      placed.header === 0 && placed.left >= 5 && placed.right >= 4, JSON.stringify(placed));
+    // Buttons must be clickable immediately after the move.
+    await w(varA).locator('.pw-actionrow-left .sn-freeze').click();
+    await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"] .sn-freeze.pw-on`);
+    check('left-row buttons work immediately (freeze pressed)', true);
 
     // ---- refresh-keeps-compare -------------------------------------------
     // The freeze above ran setVariationState → refresh(); compare must survive.
     check('compare survives the widget refresh (split still open)',
-      (await w(varA).locator('.sn-split-right').count()) === 1);
-    await w(varA).locator('[data-act="freeze"]').click(); // unfreeze (another refresh)
+      (await w(varA).locator('.pw-right:not(.pw-collapsed)').count()) === 1);
+    await w(varA).locator('.pw-actionrow-left .sn-freeze').click(); // unfreeze (another refresh)
     await page.waitForFunction((vid) =>
-      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] [data-act="freeze"].pressed`), varA);
+      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-freeze.pw-on`), varA);
     check('compare survives a second refresh too',
-      (await w(varA).locator('.sn-split-right').count()) === 1);
-    // Cluster returns home when the split closes. Re-mark the node first —
-    // the freeze refreshes above ran build() (full innerHTML rebuild), which
-    // legitimately mints a fresh cluster; the same-node invariant applies to
-    // renderBody() relocations, not full rebuilds.
-    await api((vid) => {
-      const el = document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-actcluster`);
-      el.__marked = true;
-    }, varA);
+      (await w(varA).locator('.pw-right:not(.pw-collapsed)').count()) === 1);
     await w(varA).locator('.sn-rail-peer.active').click(); // same letter → close
     await page.waitForFunction((vid) =>
-      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-split-left`), varA);
+      document.querySelector(`.sn-widget[data-variation-id="${vid}"] .pw-right.pw-collapsed`), varA);
     const back = await api((vid) => {
       const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      const c = wg.querySelector('.sn-head-left .sn-actcluster');
-      return { inTopbar: !!c, sameNode: !!(c && c.__marked) };
+      return {
+        header: wg.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+        rowsHidden: [...wg.querySelectorAll('.pw-actionrow')].every(r => r.hidden),
+      };
     }, varA);
-    check('closing the split moves the same cluster node back to the top bar',
-      back.inTopbar && back.sameNode, JSON.stringify(back));
+    check('closing the split returns the actions to the header',
+      back.header >= 5 && back.rowsHidden, JSON.stringify(back));
     // Vanished target: soft-delete B, refresh A → compare must close.
     await w(varA).locator('.sn-rail-peer').first().click();
-    await w(varA).locator('.sn-split-right').waitFor();
+    await w(varA).locator('.pw-right:not(.pw-collapsed)').waitFor();
     await api(async (vid) => window.WriteSysScratchpad.variationApi.softDelete(vid), varB);
-    await w(varA).locator('[data-act="freeze"]').click(); // triggers refresh
+    await w(varA).locator('.pw-actionrow-left .sn-freeze').click(); // triggers refresh
     await page.waitForFunction((vid) =>
-      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-split-left`), varA);
+      document.querySelector(`.sn-widget[data-variation-id="${vid}"] .pw-right.pw-collapsed`), varA);
     check('compare CLOSES when its target vanished during refresh', true);
-    await w(varA).locator('[data-act="freeze"].pressed').click(); // unfreeze
+    await w(varA).locator('.sn-freeze.pw-on').click(); // unfreeze
     await page.waitForFunction((vid) =>
-      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] [data-act="freeze"].pressed`), varA);
+      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-freeze.pw-on`), varA);
     await api(async (vid) => window.WriteSysScratchpad.variationApi.restore(vid), varB);
 
     // ---- peer-switch-while-loading ---------------------------------------
@@ -193,7 +199,7 @@ function psql(sql) {
     await w(varA).locator('.sn-rail-peer', { hasText: letterC }).click(); // slow
     await w(varA).locator('.sn-rail-peer', { hasText: 'B' }).click();     // fast swap
     await page.waitForFunction((vid) => {
-      const el = document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-split-right`);
+      const el = document.querySelector(`.sn-widget[data-variation-id="${vid}"] .pw-content-right`);
       return el && el.dataset.ordinal === '2';
     }, varA);
     check('fast B pane renders while C is still loading', true);
@@ -201,12 +207,12 @@ function psql(sql) {
     let tries = 0;
     while (!cLanded && tries++ < 40) await page.waitForTimeout(100);
     await page.waitForTimeout(400); // let any (wrong) late render happen
-    const paneAfter = await w(varA).locator('.sn-split-right').getAttribute('data-ordinal');
+    const paneAfter = await w(varA).locator('.pw-content-right').getAttribute('data-ordinal');
     check('late C response is discarded (pane still B)', paneAfter === '2', `ordinal=${paneAfter}`);
     await page.unroute(`**/api/variations/${varC}`);
     await w(varA).locator('.sn-rail-peer', { hasText: 'B' }).click(); // close split
     await page.waitForFunction((vid) =>
-      !document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-split-left`), varA);
+      document.querySelector(`.sn-widget[data-variation-id="${vid}"] .pw-right.pw-collapsed`), varA);
 
     // ---- goto-no-home -----------------------------------------------------
     const homeless = await api(async () => {
@@ -226,10 +232,10 @@ function psql(sql) {
     }, homeless.a);
     await w(homeless.a).locator('.sn-rail-peer').first().waitFor();
     await w(homeless.a).locator('.sn-rail-peer').first().click();
-    await w(homeless.a).locator('[data-act="peer-goto"]').waitFor();
+    await w(homeless.a).locator('.pw-actionrow-right .sn-goto-ext').waitFor();
     const hashBefore = await api(() => window.location.hash);
     dialogs.length = 0;
-    await w(homeless.a).locator('[data-act="peer-goto"]').click();
+    await w(homeless.a).locator('.pw-actionrow-right .sn-goto-ext').click();
     await page.waitForFunction(() => true); // yield
     let gotAlert = false;
     for (let i = 0; i < 30 && !gotAlert; i++) {
@@ -257,7 +263,7 @@ function psql(sql) {
         return route.continue();
       });
       dialogs.length = 0;
-      await w(varC).locator('[data-act="remove"]').click(); // confirm accepted
+      await w(varC).locator('.sn-trash').first().click(); // confirm accepted
       let alerted = false;
       for (let i = 0; i < 30 && !alerted; i++) {
         alerted = dialogs.some(m => /Could not delete variation/.test(m));
@@ -307,13 +313,13 @@ function psql(sql) {
       await w(varA).locator('.sn-rail-canon').click();
       await page.waitForFunction((vid) => {
         const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-        const host = wg && wg.querySelector('.sn-split-right .sn-render');
+        const host = wg && wg.querySelector('.pw-content-right .sn-render');
         return host && host.shadowRoot && /Alpha beta gamma/.test(host.shadowRoot.textContent);
       }, varA, { timeout: 15000 });
       check('stale bookData cache → ONE forced retry resolves the region (live render)', true);
       check('exactly one forced refetch (first attempt used the stale cache)',
         latestFetches === 1, `latest fetches=${latestFetches}`);
-      check('no stale-cache error surfaced', (await w(varA).locator('.sn-split-right .sn-error').count()) === 0);
+      check('no stale-cache error surfaced', (await w(varA).locator('.pw-content-right .sn-error').count()) === 0);
       await page.unroute('**/api/migrations/latest*');
     }
 
@@ -347,7 +353,7 @@ function psql(sql) {
     await w(varD).locator('.sn-rail-canon').click();
     await page.waitForFunction((vid) => {
       const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      const host = wg && wg.querySelector('.sn-split-right .sn-render');
+      const host = wg && wg.querySelector('.pw-content-right .sn-render');
       return host && host.shadowRoot && /Replacement text entirely new/.test(host.shadowRoot.textContent);
     }, varD, { timeout: 15000 });
     check('canon pane shows the NEWLY placed region without reload (cache evicted on place)', true);
@@ -391,17 +397,17 @@ function psql(sql) {
       await api((mid) => { delete window.WriteSysScratchpad.bookData.cache[mid]; }, TEST_MANUSCRIPT_ID);
       await w(varD).locator('.sn-rail-canon').click(); // close pane
       await page.waitForFunction((vid) =>
-        !document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-split-left`), varD);
+        document.querySelector(`.sn-widget[data-variation-id="${vid}"] .pw-right.pw-collapsed`), varD);
       await w(varD).locator('.sn-rail-canon').click(); // reopen → resolve fails
       await page.waitForFunction((vid) => {
         const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-        return wg && wg.querySelector('.sn-split-right .sn-error');
+        return wg && wg.querySelector('.pw-content-right .sn-error');
       }, varD, { timeout: 15000 });
-      const errText = await w(varD).locator('.sn-split-right .sn-error').textContent();
+      const errText = await w(varD).locator('.pw-content-right .sn-error').textContent();
       check('missing region → explicit error', /not found in the effective manuscript/.test(errText), errText.trim());
       const staleShown = await api((vid) => {
         const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-        const host = wg.querySelector('.sn-split-right .sn-render');
+        const host = wg.querySelector('.pw-content-right .sn-render');
         return !!(host && host.shadowRoot && /Replacement text/.test(host.shadowRoot.textContent));
       }, varD);
       check('…and NEVER a stale snapshot', !staleShown);

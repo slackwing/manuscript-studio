@@ -116,8 +116,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     }, seed.varA);
     check('widget A sits fully above the viewport before the refresh', before.aAbove);
     // A state toggle on W2 refreshes W2 AND its siblings (incl. W1).
-    await wB.locator('[data-act="freeze"]').click();
-    await page.waitForSelector(`.sn-widget[data-variation-id="${seed.varB}"] [data-act="freeze"].pressed`);
+    await wB.locator('.sn-freeze').click();
+    await page.waitForSelector(`.sn-widget[data-variation-id="${seed.varB}"] .sn-freeze.pw-on`);
     // Wait out the 700ms hold window, then measure.
     for (let i = 0; i < 3; i++) await page.waitForTimeout(400);
     const after = await page.evaluate((vid) => {
@@ -135,12 +135,12 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       `markerTop ${Math.round(before.markerTop)} → ${Math.round(after.markerTop)}`);
 
     // ---- holdscroll-single-pin (fight while active, release after) --------
-    await wB.locator('[data-act="freeze"].pressed').click(); // unfreeze → refresh → fresh hold
+    await wB.locator('.sn-freeze.pw-on').click(); // unfreeze → refresh → fresh hold
     // The refresh (and its preserveScroll hold) arms only after the state PUT
     // round-trips — wait for the rebuilt (un-pressed) widget, THEN fight the
     // hold inside its 700ms window.
     await page.waitForFunction((vid) =>
-      document.querySelector(`.sn-widget[data-variation-id="${vid}"] [data-act="freeze"]:not(.pressed)`), seed.varB);
+      document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-freeze:not(.pw-on)`), seed.varB);
     const fight = await page.evaluate(async () => {
       const h = document.querySelector('.spm-editor');
       const held = h.scrollTop;

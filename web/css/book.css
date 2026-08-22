@@ -2260,14 +2260,6 @@ p.section-break {
 /* Suggest-edit modal title-bar REJECT (red, spaced) and the left pane's
    quieter revert link. The bar is CSS-uppercased, so "Reject" renders
    REJECT. */
-#suggestion-modal .sgm-reject {
-  color: #b33b3a;
-  margin-left: 16px;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-#suggestion-modal .sgm-reject:hover { text-decoration: underline; }
 #suggestion-modal .sgm-revert {
   color: inherit;
   text-decoration: underline;
@@ -2276,9 +2268,9 @@ p.section-break {
 }
 
 #suggestion-modal {
-  /* A snippet widget, floated: the chrome (sn-header / sn-cols / sn-rail /
-     sn-split) is scratchpad.css verbatim — this block only positions the
-     floating shell and bounds its height. */
+  /* The shared pane-widget shell (pane-widget.js), floated: its chrome is
+     scratchpad.css verbatim — this block only positions the floating shell
+     and bounds its height. */
   position: fixed;
   top: 50%;
   left: 50%;
@@ -2294,18 +2286,14 @@ p.section-break {
   overflow: hidden;
   font-family: "Helvetica", sans-serif;
 }
-#suggestion-modal .sn-cols { flex: 1; min-height: 0; }
-#suggestion-modal .sn-main { display: flex; flex-direction: column; min-height: 0; }
-#suggestion-modal .sn-body { flex: 1; overflow-y: auto; min-height: 0; }
-#suggestion-modal .sn-split { align-items: stretch; min-height: 100%; }
-/* Both panes are flex columns filling the row, so the two textboxes are
-   ALWAYS the same height (the row is as tall as the taller content; the
-   shorter side stretches; an overlong old version scrolls internally). */
-#suggestion-modal .sn-split-left,
-#suggestion-modal .sn-split-right { display: flex; flex-direction: column; }
+/* The pane-widget shell (pane-widget.js) fills the modal; each pane's
+   content column scrolls on its own, so the two panes are ALWAYS the same
+   height and an overlong old version scrolls internally. */
+#suggestion-modal .pw { flex: 1; min-height: 0; }
+#suggestion-modal .pw-content { overflow-y: auto; }
 #suggestion-modal .sgm-left { flex: 1; display: flex; flex-direction: column; }
 #suggestion-modal .sgm-left .sn-text-wrap { flex: 1; }
-#suggestion-modal .sgm-version-text { flex: 1; overflow-y: auto; }
+#suggestion-modal .sgm-version-text { flex: 1; overflow-y: auto; border: none; resize: none; }
 /* The widget chrome gives its header no padding of its own here (no
    .sn-head-left wrapper) — pad it so SUGGEST EDIT doesn't hug the corner.
    No close button: clicking the dark backdrop (or Escape) closes. */
@@ -3491,7 +3479,7 @@ sup.sg-review.rejected { color: #b03030; }
 
 /* Suggest-modal user rail (left edge) + read-only other/stale views. */
 .sgm-rail-left { order: -1; }
-.sgm-user-btn.stale { opacity: 0.5; }
+.sgm-widget .sn-rail-btn.stale { opacity: 0.5; }
 .sgm-other-view {
   font: 12px/1.6 "Monaco", monospace;
   white-space: pre-wrap;
@@ -3503,26 +3491,7 @@ sup.sg-review.rejected { color: #b03030; }
   overflow-y: auto;
 }
 .sgm-other-view.stale { background: #f5f2ea; color: #6b6558; }
-.sgm-review-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-.sgm-review-status { font: 11px "Helvetica", sans-serif; color: #8a8378; }
-.sgm-review-status.accepted { color: #2e7d32; }
-.sgm-review-status.rejected { color: #b03030; }
-.sgm-review-btn {
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  background: #fff;
-  font: 11px "Helvetica", sans-serif;
-  cursor: pointer;
-}
-.sgm-review-btn.accepted { border-color: #2e7d32; color: #2e7d32; }
-.sgm-review-btn.rejected { border-color: #b03030; color: #b03030; }
-.sgm-review-btn:hover { background: #f4f1ea; }
+/* Accept/Reject are pw-actbtn STATE buttons (pane-widget.css) now. */
 
 /* Hidden notes (per-viewer): dimmed, sorted below by the margin code. */
 .sn-note.note-hidden, .card-note.note-hidden { opacity: 0.5; }

@@ -47,15 +47,15 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   // (matches the reproduction sequence).
   // (The status reads just "Sketch X" now — state shows via the pressed
   // freeze button, so wait on that.)
-  await page.locator('.sn-widget [data-act="freeze"]').last().click();
+  await page.locator('.sn-widget .sn-freeze').last().click();
   await page.waitForFunction(() => {
-    const b = [...document.querySelectorAll('.sn-widget [data-act="freeze"]')].pop();
-    return b && b.classList.contains('pressed');
+    const b = [...document.querySelectorAll('.sn-widget .sn-freeze')].pop();
+    return b && b.classList.contains('pw-on');
   }, null, { timeout: 10000 });
-  await page.locator('.sn-widget [data-act="freeze"]').last().click();
+  await page.locator('.sn-widget .sn-freeze').last().click();
   await page.waitForFunction(() => {
-    const b = [...document.querySelectorAll('.sn-widget [data-act="freeze"]')].pop();
-    return b && !b.classList.contains('pressed');
+    const b = [...document.querySelectorAll('.sn-widget .sn-freeze')].pop();
+    return b && !b.classList.contains('pw-on');
   }, null, { timeout: 10000 });
   await page.waitForTimeout(400);
 

@@ -1,8 +1,11 @@
-// The sketch widget's RIGHT RAIL (replaced the tab bar + ▾ overflow):
-//  - self letter on top, every sibling below it — ALL of them, no overflow;
-//  - clicking a sibling opens a SPLIT compare (left self/editable, right the
+// The sketch widget under the SHARED pane-widget shell (pane-widget.js):
+//  - LEFT pane = self, its rail carrying the identity letter; RIGHT pane =
+//    peers, collapsed to just its rail until a sibling letter is clicked;
+//  - clicking a sibling opens the split (left self/editable, right the
 //    sibling read-only); same letter closes it, another letter swaps it;
-//  - sibling letters color-code state (frozen bluish, superseded reddish);
+//  - actions live in the header while collapsed, in per-pane action rows
+//    when split; sibling letters color-code state (frozen bluish,
+//    superseded reddish);
 //  - superseded variations are EXCLUDED from the wordcount representative
 //    ("canonized wins, then most recent non-superseded").
 const { chromium } = require('playwright');
@@ -44,97 +47,94 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   const rail = await page.evaluate(() => {
     const w = document.querySelector('.sn-widget');
     return {
-      letters: [...w.querySelectorAll('.sn-rail-btn')].map(b => b.textContent.trim()),
-      railSelf: !!w.querySelector('.sn-rail .sn-rail-self'),
-      topbarLetter: (w.querySelector('.sn-selfletter') || {}).textContent || '',
+      peers: [...w.querySelectorAll('.pw-rail-right .sn-rail-btn')].map(b => b.textContent.trim()),
+      selfRail: [...w.querySelectorAll('.pw-rail-left .sn-rail-btn')].map(b => b.textContent.trim()),
+      collapsed: w.querySelector('.pw-right').classList.contains('pw-collapsed'),
+      corner: !!w.querySelector('.sn-selfletter'),
       overflow: !!w.querySelector('.sn-more-btn'),
-      firstTitle: w.querySelectorAll('.sn-rail-peer')[0].title,
+      headerActions: w.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+      firstTitle: w.querySelectorAll('.pw-rail-right .sn-rail-peer')[0].title,
     };
   });
-  check('rail lists the 9 SIBLINGS (self plain in the top bar), no overflow',
-    rail.letters.length === 9 && !rail.railSelf && rail.topbarLetter === 'A' && !rail.overflow, JSON.stringify(rail.letters));
+  check('right rail lists the 9 SIBLINGS; left rail is the self letter; right pane collapsed',
+    rail.peers.length === 9 && rail.selfRail.join('') === 'A' && rail.collapsed && !rail.overflow, JSON.stringify(rail));
+  check('no corner letter (identity lives in the left rail now)', !rail.corner);
+  check('collapsed: self actions in the header', rail.headerActions >= 5, String(rail.headerActions));
   check('sibling tooltip says "Compare to variation …"', /^Compare to variation [A-Z]\./.test(rail.firstTitle), rail.firstTitle);
 
   // Open compare with B, swap to C, close on second click.
   const w = page.locator('.sn-widget').first();
-  await w.locator('.sn-rail-peer', { hasText: 'B' }).click();
+  await w.locator('.pw-rail-right .sn-rail-peer', { hasText: 'B' }).click();
   await page.waitForTimeout(700);
-  check('split opens (left+right panes)', await w.locator('.sn-split-left').count() === 1 && await w.locator('.sn-split-right').count() === 1);
+  check('split opens (right pane un-collapses)',
+    !(await w.locator('.pw-right').evaluate(el => el.classList.contains('pw-collapsed'))));
   const paneB = await w.evaluate(el => ({
-    ordinal: el.querySelector('.sn-split-right').dataset.ordinal,
-    headSplit: el.querySelector('.sn-header').classList.contains('sn-head-split'),
-    peerBtns: [...el.querySelectorAll('.sn-head-right button')].map(b => b.dataset.act).join(','),
+    ordinal: el.querySelector('.pw-content-right').dataset.ordinal,
+    active: (el.querySelector('.pw-rail-right .sn-rail-btn.active') || {}).textContent || '',
+    peerBtns: [...el.querySelectorAll('.pw-actionrow-right .pw-actbtn')].map(b => b.className.replace('pw-actbtn ', '').split(' ')[0]).join(','),
+    selfActionsInRow: el.querySelectorAll('.pw-actionrow-left .pw-actbtn').length,
+    headerActions: el.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+    selfStillInRail: !!el.querySelector('.pw-rail-left .sn-rail-self'),
   }));
-  check('right pane is B under a split header', paneB.ordinal === '2' && paneB.headSplit, JSON.stringify(paneB));
-  // Split: the self letter leaves the rail for the left pane's corner and
-  // the sibling buttons shift up into its slot.
-  const splitRail = await w.evaluate(el => ({
-    selfInRail: !!el.querySelector('.sn-rail .sn-rail-self'),
-    leftLabel: (el.querySelector('.sn-act-self .sn-act-label') || {}).textContent || '',
-    rightLabel: (el.querySelector('.sn-actionrow .sn-head-right .sn-act-label') || {}).textContent || '',
-    topLetter: (el.querySelector('.sn-rail .sn-rail-btn') || {}).textContent || '',
-    selfActionsInRow: !!el.querySelector('.sn-act-self .sn-actions-main'),
-    labelAfterActions: (() => { const c = el.querySelector('.sn-act-self .sn-actcluster'); return c && c.lastElementChild && c.lastElementChild.classList.contains('sn-act-label'); })(),
-    clusterLeftTopbar: !el.querySelector('.sn-head-left .sn-actcluster'),
-  }));
-  check('half-toolbars cap with plain pane labels (A left, B right)',
-    !splitRail.selfInRail && splitRail.leftLabel === 'A' && splitRail.rightLabel === 'B'
-    && splitRail.labelAfterActions && splitRail.clusterLeftTopbar, JSON.stringify(splitRail));
-  check('siblings shifted up (B tops the rail)', splitRail.topLetter === 'B', splitRail.topLetter);
-  check('self actions moved down into the left half-toolbar', splitRail.selfActionsInRow);
-  check('peer actions: ↗ goto, branch, supersede, freeze, copy — no trash',
-    paneB.peerBtns === 'peer-goto,peer-branch,peer-supersede,peer-freeze,peer-copyref', paneB.peerBtns);
-  await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
+  check('right pane is B (rail letter active)', paneB.ordinal === '2' && paneB.active === 'B', JSON.stringify(paneB));
+  check('peer actions in the RIGHT action row: goto, branch, supersede, freeze, copy — no trash',
+    paneB.peerBtns === 'sn-goto-ext,sn-branch,sn-supersede,sn-freeze,sn-copyref', paneB.peerBtns);
+  check('self actions moved into the LEFT action row, header emptied',
+    paneB.selfActionsInRow >= 5 && paneB.headerActions === 0);
+  check('self letter stays in the left rail', paneB.selfStillInRail);
+  await w.locator('.pw-rail-right .sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(700);
-  const paneC = await w.locator('.sn-split-right').evaluate(el => ({ ordinal: el.dataset.ordinal }));
+  const paneC = await w.locator('.pw-content-right').evaluate(el => ({ ordinal: el.dataset.ordinal }));
   check('clicking C swaps the right pane', paneC.ordinal === '3', JSON.stringify(paneC));
 
   // Peer FREEZE from the split header: state lands on the DB, the compare
   // stays open, the button shows pressed.
-  await w.locator('.sn-head-right [data-act="peer-freeze"]').click();
+  await w.locator('.pw-actionrow-right .sn-freeze').click();
   await page.waitForFunction(() =>
-    document.querySelector('.sn-head-right [data-act="peer-freeze"].pressed'), null, { timeout: 8000 });
-  check('compare survives the peer state change', await w.locator('.sn-split-right').count() === 1);
-  await w.locator('.sn-head-right [data-act="peer-freeze"]').click(); // un-freeze back
+    document.querySelector('.pw-actionrow-right .sn-freeze.pw-on'), null, { timeout: 8000 });
+  check('compare survives the peer state change (freeze button pressed + tinted)',
+    !(await w.locator('.pw-right').evaluate(el => el.classList.contains('pw-collapsed'))));
+  await w.locator('.pw-actionrow-right .sn-freeze').click(); // un-freeze back
   await page.waitForFunction(() =>
-    document.querySelector('.sn-head-right [data-act="peer-freeze"]:not(.pressed)'), null, { timeout: 8000 });
-  check('peer un-freezes from the header too', true);
+    document.querySelector('.pw-actionrow-right .sn-freeze:not(.pw-on)'), null, { timeout: 8000 });
+  check('peer un-freezes from its action row too', true);
 
   // Read-only pane → CLICK opens the raw source in a readOnly mono pane
   // (selectable/copyable, disabled bg, no caret); blur returns the render.
-  await w.locator('.sn-split-right .sn-render').click();
-  await page.waitForSelector('.sn-split-right textarea.sn-mono-ro.sn-peer-ro', { timeout: 5000 });
-  const mono = await w.locator('.sn-split-right textarea.sn-mono-ro').evaluate(ta => ({
+  await w.locator('.pw-content-right .sn-render').click();
+  await page.waitForSelector('.pw-content-right textarea.sn-mono-ro.sn-peer-ro', { timeout: 5000 });
+  const mono = await w.locator('.pw-content-right textarea.sn-mono-ro').evaluate(ta => ({
     readOnly: ta.readOnly, text: ta.value, caret: getComputedStyle(ta).caretColor,
   }));
   check('mono view is readOnly with the raw source', mono.readOnly && /alpha alpha/.test(mono.text), JSON.stringify({ ro: mono.readOnly }));
   check('no blinking caret (transparent)', /transparent|rgba\(0, 0, 0, 0\)/.test(mono.caret), mono.caret);
-  await w.locator('.sn-split-right textarea.sn-mono-ro').evaluate(ta => ta.blur());
-  await page.waitForSelector('.sn-split-right .sn-render', { timeout: 5000 });
+  await w.locator('.pw-content-right textarea.sn-mono-ro').evaluate(ta => ta.blur());
+  await page.waitForSelector('.pw-content-right .sn-render', { timeout: 5000 });
   check('blur returns the rendered view', true);
 
-  await w.locator('.sn-rail-peer', { hasText: 'C' }).click();
+  await w.locator('.pw-rail-right .sn-rail-peer', { hasText: 'C' }).click();
   await page.waitForTimeout(500);
-  check('clicking C again closes the split', await w.locator('.sn-split-left').count() === 0);
-  check('header unsplits with the pane', !(await w.locator('.sn-header').evaluate(el => el.classList.contains('sn-head-split'))));
+  check('clicking C again collapses the right pane',
+    await w.locator('.pw-right').evaluate(el => el.classList.contains('pw-collapsed')));
   const closedRail = await w.evaluate(el => ({
-    topbarLetter: (el.querySelector('.sn-selfletter') || {}).textContent || '',
-    letterVisible: el.querySelector('.sn-selfletter') && getComputedStyle(el.querySelector('.sn-selfletter')).display !== 'none',
-    railHasSelf: !!el.querySelector('.sn-rail .sn-rail-self'),
-    corner: !!el.querySelector('.sn-actionrow:not([style*="none"]) .sn-act-label'),
-    actionRowHidden: (el.querySelector('.sn-actionrow') || {}).style ? el.querySelector('.sn-actionrow').style.display === 'none' : false,
-    actionsInTopbar: !!el.querySelector('.sn-head-left .sn-actions-main'),
+    selfInRail: !!el.querySelector('.pw-rail-left .sn-rail-self'),
+    actionRowsHidden: [...el.querySelectorAll('.pw-actionrow')].every(r => r.hidden),
+    actionsInHeader: el.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+    railsFlush: (() => {
+      const l = el.querySelector('.pw-rail-left').getBoundingClientRect();
+      const r = el.querySelector('.pw-rail-right').getBoundingClientRect();
+      return Math.abs(r.left - l.right) < 2;
+    })(),
   }));
-  check('closed: self letter plain in the top bar, rail self-free, actions back up',
-    closedRail.topbarLetter === 'A' && closedRail.letterVisible && !closedRail.railHasSelf
-    && !closedRail.corner && closedRail.actionRowHidden && closedRail.actionsInTopbar,
-    JSON.stringify(closedRail));
+  check('closed: self letter in the left rail, action rows gone, actions back in the header, rails flush',
+    closedRail.selfInRail && closedRail.actionRowsHidden && closedRail.actionsInHeader >= 5
+    && closedRail.railsFlush, JSON.stringify(closedRail));
 
   // Left pane stays editable while split.
-  await w.locator('.sn-rail-peer', { hasText: 'B' }).click();
+  await w.locator('.pw-rail-right .sn-rail-peer', { hasText: 'B' }).click();
   await page.waitForTimeout(700);
-  await w.locator('.sn-split-left .sn-render').click();
-  check('left half is the editable self pane', await w.locator('.sn-split-left textarea').count() === 1);
+  await w.locator('.pw-content-left .sn-render').click();
+  check('left pane is the editable self pane', await w.locator('.pw-content-left textarea').count() === 1);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(600);
 
@@ -159,7 +159,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   const colors = await page.evaluate(() => {
     const w = document.querySelector('.sn-widget');
     const byLetter = {};
-    w.querySelectorAll('.sn-rail-peer').forEach(b => { byLetter[b.textContent.trim()] = b.className; });
+    w.querySelectorAll('.pw-rail-right .sn-rail-peer').forEach(b => { byLetter[b.textContent.trim()] = b.className; });
     return byLetter;
   });
   check('B rail letter reddish (superseded)', /st-superseded/.test(colors.B), colors.B);

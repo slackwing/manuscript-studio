@@ -9,11 +9,14 @@ away. Prune when shipped.
   Slackwing, 2026-08-21 review round 2 (item 13). Multi-user notes
   shipped without threading; replies + mentions + an inbox surface are
   the natural next layer.
-- **Shared rail component** — the suggest-modal's user rail
-  (`suggestions.js mountUserRail`) and the sketch widget's variation rail
-  share the `.sn-rail` CSS family but not code. Cross-reference comments
-  exist at both sites; extracting one real component keeps the look from
-  drifting. Origin: OPEN_QUESTIONS #12.
+- **~~Shared rail component~~ DONE 2026-08-22** — `web/js/pane-widget.js`
+  (`WriteSysPaneWidget`) is the one two-pane shell (header + [main|rail]
+  panes, collapsible right pane, state-colored action icons); the sketch
+  widget and the suggest-edit modal both build through it. Follow-up:
+  purge the now-dead `.sn-actcluster` / `.sn-act-self` / `.sn-head-right`
+  / `.sn-selfletter` CSS from scratchpad.css, and revisit the modal's
+  MOBILE layout (right pane could start collapsed on phones instead of
+  the old stacked split). Origin: OPEN_QUESTIONS #12.
 - **Phase 4: github-mode creation from the UI** — repo picker over a
   `git_repo_access` table + path/branch fields in the creation modal.
   Manuscripts on external repos are config-registered meanwhile.

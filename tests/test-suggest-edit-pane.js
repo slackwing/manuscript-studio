@@ -113,12 +113,12 @@ async function syncToHead() {
     const layout = await page.evaluate(() => {
       const m = document.querySelector('#suggestion-modal');
       // v3 added a LEFT user rail — this check targets the RIGHT (history) rail.
-      const rail = [...m.querySelectorAll('.sn-rail:not(.sgm-rail-left) .sn-rail-btn')].map(b => ({
+      const rail = [...m.querySelectorAll('.pw-rail-right .sn-rail-btn')].map(b => ({
         t: b.textContent.trim(), dis: b.disabled, cls: b.className,
       }));
       return {
         paneIsShared: !!m.querySelector('.sgm-left .sn-text-wrap textarea.sn-text.suggestion-modal-textarea'),
-        rightPane: !!m.querySelector('.sn-split-right .suggestion-modal-original'),
+        rightPane: !!m.querySelector('.pw-content-right .suggestion-modal-original'),
         rail,
         mono: getComputedStyle(m.querySelector('.suggestion-modal-textarea')).fontFamily,
       };

@@ -156,8 +156,8 @@ function noisyPng(w, h) {
     const bWidget = page.locator(`.sn-widget[data-variation-id="${varB}"]`);
 
     // B's identity: plain letter in the top bar; the rail lists sibling A.
-    await bWidget.locator('.sn-selfletter').waitFor({ timeout: 10000 });
-    check('B letter plain in the top bar', (await bWidget.locator('.sn-selfletter').textContent()).trim() === 'B');
+    await bWidget.locator('.pw-rail-left .sn-rail-self').waitFor({ timeout: 10000 });
+    check('B letter identifies the widget in its left rail', (await bWidget.locator('.pw-rail-left .sn-rail-self').textContent()).trim() === 'B');
     check('rail lists sibling A (no label)',
       (await bWidget.locator('.sn-rail-peer').allTextContents()).join('').includes('A'));
 
@@ -170,12 +170,12 @@ function noisyPng(w, h) {
     }, varB, { timeout: 10000 });
     check('sibling tab shows A read-only (peer preview)', true);
     check('peer preview offers navigate-to-source (split-header ↗)',
-      await bWidget.locator('.sn-head-right .sn-goto-ext').count() === 1);
+      await bWidget.locator('.pw-actionrow-right .sn-goto-ext').count() === 1);
 
     // A was NOT frozen by the based-on (siblings don't freeze sources).
     await page.waitForFunction(() => document.querySelector('#spm-status').textContent === 'Saved', null, { timeout: 10000 });
     const aWidget = page.locator(`.sn-widget[data-variation-id="${varA}"]`);
-    check('A stays editable (not frozen by based-on)', await aWidget.locator('.sn-freeze.pressed').count() === 0);
+    check('A stays editable (not frozen by based-on)', await aWidget.locator('.sn-freeze.pw-on').count() === 0);
 
     // --- book view: canonize B via the + affordance ---
     await page.goto(TEST_URL);
@@ -244,16 +244,16 @@ function noisyPng(w, h) {
     await page.locator(`.sn-widget[data-variation-id="${varB}"] .sn-rail-canon`).click();
     await page.waitForFunction((vid) => {
       const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
-      const host = w && w.querySelector('.sn-split-right .sn-render');
+      const host = w && w.querySelector('.pw-content-right .sn-render');
       return host && host.shadowRoot && /keg arrived at noon/i.test(host.shadowRoot.textContent);
     }, varB, { timeout: 15000 });
     check('placed pane live-resolves region from effective manuscript', true);
     const canonPane = await page.evaluate((vid) => {
       const w = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
       return {
-        notes: w.querySelectorAll('.sn-split-right .sn-note').length,
-        open: w.querySelectorAll('.sn-head-right .sn-open-icon').length,
-        pencil: w.querySelectorAll('.sn-head-right .sn-from-placed').length,
+        notes: w.querySelectorAll('.pw-content-right .sn-note').length,
+        open: w.querySelectorAll('.pw-actionrow-right .sn-goto-ext').length,
+        pencil: w.querySelectorAll('.pw-actionrow-right .sn-from-placed').length,
       };
     }, varB);
     check('no explanatory bar on the placed pane', canonPane.notes === 0, JSON.stringify(canonPane));
@@ -310,7 +310,7 @@ function noisyPng(w, h) {
 
     // --- placed pane: ＋ sketch seeds a NEW variation from the live text ---
     await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-rail-canon`).click();
-    await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"] .sn-head-right .sn-from-placed`, { timeout: 8000 });
+    await page.waitForSelector(`.sn-widget[data-variation-id="${varA}"] .pw-actionrow-right .sn-from-placed`, { timeout: 8000 });
     const widgetsBeforeFP = await page.locator('.sn-widget').count();
     await page.locator(`.sn-widget[data-variation-id="${varA}"] .sn-from-placed`).click();
     await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, widgetsBeforeFP, { timeout: 10000 });
