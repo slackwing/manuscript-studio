@@ -151,6 +151,9 @@ const WriteSysStats = {
       `<div class="stats-row"><span class="stats-row-label">BIRTHDAY</span>${birthdayVal}</div>` +
       `<div class="stats-row"><span class="stats-row-label">WORD GOAL</span>` +
         `<span class="stats-row-value" id="stats-goal">${this.fmtNum(m.goal)}</span></div>` +
+      // Word count lives here now, not in the chrome info line.
+      `<div class="stats-row"><span class="stats-row-label">WORDS</span>` +
+        `<span class="stats-row-value" id="stats-words">${m.current != null ? this.fmtNum(m.current) : '<span class="stats-row-unit">&mdash;</span>'}</span></div>` +
       `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value">${rate(m.avgRate)}</span></div>` +
       `<div class="stats-row"><span class="stats-row-label">PAST 30D</span><span class="stats-row-value">${rate(m.trendRate)}</span></div>` +
       // The pace that finishes the goal one year from now.

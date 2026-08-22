@@ -81,7 +81,7 @@ const WriteSysPush = {
       <button type="button" class="mc-caret" aria-haspopup="true" aria-expanded="false">▾</button>
       <span class="mc-menu" hidden>
         <button type="button" class="mc-menu-item" data-variant="${alt}"
-          ${counts[alt] === 0 ? 'disabled' : ''}>${icon(alt)}<span>${title(alt)}</span></button>
+          title="${title(alt)}" ${counts[alt] === 0 ? 'disabled' : ''}>${icon(alt)}</button>
       </span>
     </span>`;
   },

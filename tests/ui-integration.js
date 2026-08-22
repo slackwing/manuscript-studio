@@ -47,8 +47,8 @@ async function runTests() {
     await page.waitForFunction(() => /Updated .+ · [0-9a-f]{7}/.test(
       (document.getElementById('mc-info') || {}).textContent || ''), null, { timeout: 10000 });
     const infoLine = await page.evaluate(() => document.getElementById('mc-info').textContent);
-    assert(/[0-9a-f]{7}/.test(infoLine) && /words/.test(infoLine),
-      `Chrome info line shows updated · commit · words (got: "${infoLine}")`);
+    assert(/[0-9a-f]{7}/.test(infoLine) && !/words/.test(infoLine),
+      `Chrome info line shows updated · commit, no word count (got: "${infoLine}")`);
 
     // Test 3: Manuscript auto-loaded on page load
     const pagesRendered = await page.locator('.pagedjs_page').count();

@@ -16,7 +16,7 @@ const { TEST_URL, loginAsTestUser,
   await waitForPagination(page);
 
   // Migration info now lives in the manuscript-chrome strip's info line:
-  // "Updated <ts> · <shorthash> · <n> words".
+  // "Updated <ts> · <shorthash>" (word count lives in Statistics).
   await page.waitForFunction(() => /Updated .+ · [0-9a-f]{7}/.test(
     (document.getElementById('mc-info') || {}).textContent || ''), null, { timeout: 10000 });
   const infoLine = await page.evaluate(() => document.getElementById('mc-info').textContent);

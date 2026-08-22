@@ -495,9 +495,10 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
       el.textContent = prev; // restore
       return r;
     });
-    check('R22: "Updated <ts> · <short7> · <n> words" shape',
-      /^Updated [^·]+ · abcdef1 · 12,345 words$/.test(out.full), out.full);
-    check('R22: zero/missing word_count omitted', /· abcdef1$/.test(out.noCount), out.noCount);
+    check('R22: "Updated <ts> · <short7>" shape (word count lives in Statistics)',
+      /^Updated [^·]+ · abcdef1$/.test(out.full), out.full);
+    check('R22: no word count in the info line', !/words/.test(out.full), out.full);
+    check('R22: missing commit still renders Updated', /· abcdef1$/.test(out.noCount), out.noCount);
     check('R22: null migration clears the line', out.cleared === '');
   }
 

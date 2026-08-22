@@ -84,9 +84,9 @@ const WriteSysRenderer = {
     }
   },
 
-  // Chrome-strip info line: "Updated <ts> · <shorthash> · <n> words" —
-  // formatted in the browser's timezone so the abbreviation (EDT/EST/etc.)
-  // reflects where the reader is, not the VM.
+  // Chrome-strip info line: "Updated <ts> · <shorthash>" — formatted in
+  // the browser's timezone so the abbreviation (EDT/EST/etc.) reflects
+  // where the reader is, not the VM. (Word count moved to Statistics.)
   renderInfoLine(migration) {
     const el = document.getElementById('mc-info');
     if (!el) return;
@@ -102,7 +102,6 @@ const WriteSysRenderer = {
     const bits = [
       `Updated ${monthDay}, ${time}${tz ? ' ' + tz : ''}`,
       (migration.commit_hash || '').substring(0, 7),
-      migration.word_count ? `${migration.word_count.toLocaleString('en-US')} words` : '',
     ].filter(Boolean);
     el.textContent = bits.join(' · ');
   },

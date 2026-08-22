@@ -185,6 +185,8 @@ function resetMeta() {
   });
   check('settings modal sets word goal to 80,000', true);
   check('stats pane offers no inline editors', (await page.locator('#stats-margin .stats-editable').count()) === 0);
+  // Word count moved here from the chrome info line.
+  check('WORDS row shows the current count', (await page.locator('#stats-words').count()) === 1);
   resp = await authed(`/manuscripts/${TEST_MANUSCRIPT_ID}/wordcount-history`);
   data = await resp.json();
   check('goal edit persisted', data.word_goal === 80000, `got ${data.word_goal}`);
