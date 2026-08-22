@@ -912,6 +912,7 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
    A pane is [main | rail-on-its-right]; the right pane collapses to just
    its rail, flush against the left pane's rail. ---- */
 .pw { display: flex; flex-direction: column; min-height: 0; }
+.pw-head-slot { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
 .pw-cols { flex: 1; min-height: 0; }
 .sn-pane { display: flex; align-items: stretch; min-width: 0; }
 .pw-left { flex: 1 1 50%; }

@@ -17,10 +17,9 @@
  * - Subject ACTIONS are icon buttons with hover titles. Two kinds:
  *   STATE buttons carry a `color` and read pressed/tinted while
  *   `active()` (freeze-blue, accept-green, reject-red — all one
- *   mechanism); plain buttons just run their lambda. The left pane's
- *   actions live in the HEADER while the right pane is collapsed and move
- *   to the left pane's own action row when it opens; the right pane's
- *   actions always live in its action row.
+ *   mechanism); plain buttons just run their lambda. Each pane's actions
+ *   live in ITS OWN action row, collapsed or not — the header never
+ *   borrows them (cfg.headerActions is the only header slot).
  * - Rail entries are re-derived by lambdas on every refresh(), so labels
  *   (0↔letter), state colors, and disabled-ness stay live.
  *
@@ -151,22 +150,15 @@ window.WriteSysPaneWidget = {
       const rightEntries = (cfg.right && cfg.right.rail ? cfg.right.rail() : []);
       fillRail(rightRailEl, rightEntries, w.rightKey, (entry) => toggleRight(entry.key));
 
-      // Collapse state + the action relocation rule.
+      // Collapse state. Actions stay pinned to their panes either way.
       const open = w.rightKey != null;
       rightPane.classList.toggle('pw-collapsed', !open);
       const leftBtns = cfg.left && cfg.left.actions ? cfg.left.actions() : [];
-      if (open) {
-        fill(headerActions, []);
-        fill(leftRow.firstElementChild, leftBtns);
-        leftRow.hidden = leftBtns.length === 0;
-        const rightBtns = cfg.right && cfg.right.actions ? cfg.right.actions(w.rightKey) : [];
-        fill(rightRow.firstElementChild, rightBtns);
-        rightRow.hidden = rightBtns.length === 0;
-      } else {
-        fill(headerActions, leftBtns);
-        leftRow.hidden = true;
-        rightRow.hidden = true;
-      }
+      fill(leftRow.firstElementChild, leftBtns);
+      leftRow.hidden = leftBtns.length === 0;
+      const rightBtns = open && cfg.right && cfg.right.actions ? cfg.right.actions(w.rightKey) : [];
+      fill(rightRow.firstElementChild, rightBtns);
+      rightRow.hidden = rightBtns.length === 0;
     };
 
     const selectLeft = (key) => {
@@ -186,6 +178,8 @@ window.WriteSysPaneWidget = {
     w.selectLeft = selectLeft;
     w.openRight = (key) => { if (w.rightKey !== key) toggleRight(key); };
     w.closeRight = () => { if (w.rightKey != null) toggleRight(w.rightKey); };
+
+    if (cfg.headerActions) fill(headerActions, cfg.headerActions);
 
     // openByDefault seeds the selection only — the caller paints the
     // initial right-pane content itself (its renderer may not exist yet).

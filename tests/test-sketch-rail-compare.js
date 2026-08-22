@@ -52,14 +52,14 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
       collapsed: w.querySelector('.pw-right').classList.contains('pw-collapsed'),
       corner: !!w.querySelector('.sn-selfletter'),
       overflow: !!w.querySelector('.sn-more-btn'),
-      headerActions: w.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+      leftRowActions: w.querySelectorAll('.pw-actionrow-left .pw-actbtn').length,
       firstTitle: w.querySelectorAll('.pw-rail-right .sn-rail-peer')[0].title,
     };
   });
   check('right rail lists the 9 SIBLINGS; left rail is the self letter; right pane collapsed',
     rail.peers.length === 9 && rail.selfRail.join('') === 'A' && rail.collapsed && !rail.overflow, JSON.stringify(rail));
   check('no corner letter (identity lives in the left rail now)', !rail.corner);
-  check('collapsed: self actions in the header', rail.headerActions >= 5, String(rail.headerActions));
+  check('collapsed: self actions on the left pane row (never the header)', rail.leftRowActions >= 5, String(rail.leftRowActions));
   check('sibling tooltip says "Compare to variation …"', /^Compare to variation [A-Z]\./.test(rail.firstTitle), rail.firstTitle);
 
   // Open compare with B, swap to C, close on second click.
@@ -79,7 +79,7 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
   check('right pane is B (rail letter active)', paneB.ordinal === '2' && paneB.active === 'B', JSON.stringify(paneB));
   check('peer actions in the RIGHT action row: goto, branch, supersede, freeze, copy — no trash',
     paneB.peerBtns === 'sn-goto-ext,sn-branch,sn-supersede,sn-freeze,sn-copyref', paneB.peerBtns);
-  check('self actions moved into the LEFT action row, header emptied',
+  check('self actions stay on the LEFT action row; header carries none',
     paneB.selfActionsInRow >= 5 && paneB.headerActions === 0);
   check('self letter stays in the left rail', paneB.selfStillInRail);
   await w.locator('.pw-rail-right .sn-rail-peer', { hasText: 'C' }).click();
@@ -118,17 +118,19 @@ const API = TEST_URL.replace(/\/$/, '') + '/api';
     await w.locator('.pw-right').evaluate(el => el.classList.contains('pw-collapsed')));
   const closedRail = await w.evaluate(el => ({
     selfInRail: !!el.querySelector('.pw-rail-left .sn-rail-self'),
-    actionRowsHidden: [...el.querySelectorAll('.pw-actionrow')].every(r => r.hidden),
-    actionsInHeader: el.querySelectorAll('.pw-header-actions .pw-actbtn').length,
+    leftRowShown: !el.querySelector('.pw-actionrow-left').hidden
+      && el.querySelectorAll('.pw-actionrow-left .pw-actbtn').length >= 5,
+    rightRowHidden: el.querySelector('.pw-actionrow-right').hidden,
+    headerEmpty: el.querySelectorAll('.pw-header-actions .pw-actbtn').length === 0,
     railsFlush: (() => {
       const l = el.querySelector('.pw-rail-left').getBoundingClientRect();
       const r = el.querySelector('.pw-rail-right').getBoundingClientRect();
       return Math.abs(r.left - l.right) < 2;
     })(),
   }));
-  check('closed: self letter in the left rail, action rows gone, actions back in the header, rails flush',
-    closedRail.selfInRail && closedRail.actionRowsHidden && closedRail.actionsInHeader >= 5
-    && closedRail.railsFlush, JSON.stringify(closedRail));
+  check('closed: self letter + actions stay on the left pane, header empty, rails flush',
+    closedRail.selfInRail && closedRail.leftRowShown && closedRail.rightRowHidden
+    && closedRail.headerEmpty && closedRail.railsFlush, JSON.stringify(closedRail));
 
   // Left pane stays editable while split.
   await w.locator('.pw-rail-right .sn-rail-peer', { hasText: 'B' }).click();

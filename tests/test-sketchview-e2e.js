@@ -118,17 +118,19 @@ function psql(sql) {
       !document.querySelector(`.sn-widget[data-variation-id="${vid}"].sn-state-frozen`), varB);
 
     // ---- action placement (pane-widget shell) ----------------------------
-    // Collapsed: self actions in the header. Split: they move to the left
-    // pane's action row; the right pane grows its own.
+    // Actions are pinned to their panes, collapsed or not; the header
+    // never borrows them.
     const placedBefore = await api((vid) => {
       const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
       return {
         header: wg.querySelectorAll('.pw-header-actions .pw-actbtn').length,
-        rows: [...wg.querySelectorAll('.pw-actionrow')].every(r => r.hidden),
+        left: wg.querySelectorAll('.pw-actionrow-left .pw-actbtn').length,
+        rightHidden: wg.querySelector('.pw-actionrow-right').hidden,
       };
     }, varA);
-    check('collapsed: self actions live in the header, action rows hidden',
-      placedBefore.header >= 5 && placedBefore.rows, JSON.stringify(placedBefore));
+    check('collapsed: self actions on the left pane row, header empty',
+      placedBefore.header === 0 && placedBefore.left >= 5 && placedBefore.rightHidden,
+      JSON.stringify(placedBefore));
     await w(varA).locator('.sn-rail-peer').first().click(); // open split (B)
     await w(varA).locator('.pw-right:not(.pw-collapsed)').waitFor();
     // Peer actions arrive once the compared variation's ctx loads.
@@ -141,7 +143,7 @@ function psql(sql) {
         right: wg.querySelectorAll('.pw-actionrow-right .pw-actbtn').length,
       };
     }, varA);
-    check('split: actions move to the per-pane rows (header emptied)',
+    check('split: each pane carries its own action row',
       placed.header === 0 && placed.left >= 5 && placed.right >= 4, JSON.stringify(placed));
     // Buttons must be clickable immediately after the move.
     await w(varA).locator('.pw-actionrow-left .sn-freeze').click();
@@ -164,11 +166,12 @@ function psql(sql) {
       const wg = document.querySelector(`.sn-widget[data-variation-id="${vid}"]`);
       return {
         header: wg.querySelectorAll('.pw-header-actions .pw-actbtn').length,
-        rowsHidden: [...wg.querySelectorAll('.pw-actionrow')].every(r => r.hidden),
+        left: wg.querySelectorAll('.pw-actionrow-left .pw-actbtn').length,
+        rightHidden: wg.querySelector('.pw-actionrow-right').hidden,
       };
     }, varA);
-    check('closing the split returns the actions to the header',
-      back.header >= 5 && back.rowsHidden, JSON.stringify(back));
+    check('closing the split keeps the left actions in place, right row hidden',
+      back.header === 0 && back.left >= 5 && back.rightHidden, JSON.stringify(back));
     // Vanished target: soft-delete B, refresh A → compare must close.
     await w(varA).locator('.sn-rail-peer').first().click();
     await w(varA).locator('.pw-right:not(.pw-collapsed)').waitFor();
