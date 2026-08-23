@@ -365,8 +365,10 @@
 }
 .sn-rail-self { font-weight: 800; border-color: #b8b0a0; background: #fff; cursor: default; }
 .sn-rail-peer:hover { background: #fff; border-color: #d0c8b8; }
-/* The OPEN comparison reads as pressed/disabled grey, like its right pane. */
-.sn-rail-peer.active { background: #ddd8cc; border-color: #c2baa8; }
+/* The SELECTED entry always reads as a pressed/depressed button — every
+   rail, every pane (pane-widget geometry): the open comparison on a right
+   rail, the viewed person on the modal's left rail, the sketch's self. */
+.sn-rail-btn.active { background: #ddd8cc; border-color: #c2baa8; }
 /* Variation state at a glance: frozen letters bluish, superseded reddish. */
 .sn-rail-btn.st-frozen { color: #2a6fb0; background: #e8f0f8; }
 .sn-rail-btn.st-frozen:hover { background: #f2f7fc; }

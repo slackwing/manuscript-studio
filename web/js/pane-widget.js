@@ -157,7 +157,9 @@ window.WriteSysPaneWidget = {
       if (cfg.nav) {
         const { i, n } = cfg.nav.info() || {};
         navEl.hidden = !n;
-        if (n) el.querySelector('.pw-nav-count').textContent = `${i || '–'}/${n}`;
+        // Current item not in the nav space (e.g. a reverted edit left the
+        // suggested-edits list) → the whole count reads N/A.
+        if (n) el.querySelector('.pw-nav-count').textContent = i ? `${i}/${n}` : 'N/A';
       }
       // Rails re-derive from the lambdas — labels/colors/disabled are live.
       const leftEntries = (cfg.left && cfg.left.rail ? cfg.left.rail() : []);

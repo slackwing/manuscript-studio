@@ -2302,7 +2302,8 @@ p.section-break {
 #suggestion-modal .pw-content { overflow-y: auto; }
 #suggestion-modal .sgm-left { flex: 1; display: flex; flex-direction: column; }
 #suggestion-modal .sgm-left .sn-text-wrap { flex: 1; }
-#suggestion-modal .sgm-version-text { flex: 1; overflow-y: auto; border: none; resize: none; }
+#suggestion-modal .pw-content-right .sn-text-wrap { flex: 1; }
+#suggestion-modal .sgm-version-text { border: none; resize: none; }
 /* The widget chrome gives its header no padding of its own here (no
    .sn-head-left wrapper) — pad it so SUGGEST EDIT doesn't hug the corner.
    No close button: clicking the dark backdrop (or Escape) closes. */

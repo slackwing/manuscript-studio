@@ -218,6 +218,14 @@ function psql(sql) {
       return nav && !nav.hidden && /^\d+\/\d+$/.test(nav.querySelector('.pw-nav-count').textContent.trim());
     }, null, { timeout: 8000 });
     assert2('nav flippers show i/n across suggested edits', true);
+    // Second suggestion elsewhere so the nav space survives the revert.
+    await page.evaluate(async (cur) => {
+      const R = window.WriteSysRenderer;
+      const other = R.currentSentences.map(x => x.id).find(id => id !== cur
+        && R.sentenceMap[id] && R.sentenceMap[id].length > 40 && !/^[#&\n]/.test(R.sentenceMap[id]));
+      await window.WriteSysSuggestions.putSuggestion(other, R.sentenceMap[other] + ' OTHER.');
+      await window.WriteSysSuggestions.loadForMigration(R.currentMigrationID);
+    }, first.id);
     // left-pane revert copies committed back in, modal stays open
     await page.locator('#suggestion-modal .sgm-revert').click();
     await page.waitForTimeout(150);
@@ -226,6 +234,25 @@ function psql(sql) {
     assert2('title returns to "Suggest edit" after revert', /^Suggest edit$/i.test(await title()), await title());
     assert2('modal still open after revert',
       (await page.locator('#suggestion-modal').count()) === 1);
+    // Redo: fragile escape hatch — appears after revert, restores the
+    // discarded edit, dies on the next keystroke. And a reverted edit is
+    // out of the nav space, so the count reads N/A.
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#suggestion-modal .pw-nav-count');
+      return c && c.textContent.trim() === 'N/A';
+    }, null, { timeout: 8000 });
+    assert2('reverted edit → nav count reads N/A', true);
+    assert2('redo button appears after revert', await page.evaluate(() =>
+      !!document.querySelector('#suggestion-modal .sgm-redo')));
+    await page.locator('#suggestion-modal .sgm-redo').click();
+    await page.waitForTimeout(200);
+    assert2('redo restores the reverted edit',
+      /TITLETEST/.test(await page.locator('.suggestion-modal-textarea').inputValue()));
+    await page.locator('.suggestion-modal-textarea').click();
+    await page.keyboard.type('X');
+    await page.waitForTimeout(150);
+    assert2('typing kills the redo (fragile by design)', await page.evaluate(() =>
+      !document.querySelector('#suggestion-modal .sgm-redo')));
     // Review own suggestion via the state icons: Accept → pressed + green,
     // rail letter tinted; re-click clears.
     await page.locator('.suggestion-modal-textarea').fill(first.text + ' ACCEPTME.');

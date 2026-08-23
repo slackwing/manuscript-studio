@@ -283,6 +283,11 @@ const WriteSysSuggestions = {
     const ICON_CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.5 3.5L13 4.5"/></svg>';
     const ICON_X = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>';
     const ICON_REVERT = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M3.2 6.2a5.2 5.2 0 1 1-.4 3.3"/><path fill="currentColor" d="M2.2 2.2v4.8h4.8z"/></svg>';
+    const ICON_REDO = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12.8 6.2a5.2 5.2 0 1 0 .4 3.3"/><path fill="currentColor" d="M13.8 2.2v4.8H9z"/></svg>';
+    // Redo is deliberately SHORT-LIVED: it exists only between a revert and
+    // the next keystroke (or a reopen) — an "in case" escape hatch, not a
+    // history stack.
+    let redoText = null;
 
     const review = async (entry, target) => {
       try {
@@ -327,11 +332,25 @@ const WriteSysSuggestions = {
           );
         }
       }
-      // Revert: YOUR suggestion only (ownership, not review power) — put the
-      // committed text back in the editor.
-      if ((!entry || entry.kind === 'me') && ownChanged()) {
-        btns.push({ icon: ICON_REVERT, className: 'sgm-revert', title: 'Revert — restore the committed text',
-          onClick: () => applyRevert() });
+      // Revert / redo: YOUR suggestion only (ownership, not review power).
+      // Revert puts the committed text back; redo restores what revert
+      // discarded — until you type or reopen, then it's gone.
+      if (!entry || entry.kind === 'me') {
+        if (ownChanged()) {
+          btns.push({ icon: ICON_REVERT, className: 'sgm-revert', title: 'Revert — restore the committed text',
+            onClick: () => applyRevert() });
+        }
+        if (redoText != null) {
+          btns.push({ icon: ICON_REDO, className: 'sgm-redo', title: 'Redo the reverted edit',
+            onClick: () => {
+              textarea.value = redoText;
+              redoText = null;
+              pane.autoGrow();
+              saver.poke();
+              updateTitle();
+              w.refresh();
+            } });
+        }
       }
       return btns;
     };
@@ -389,10 +408,17 @@ const WriteSysSuggestions = {
     otherView.hidden = true;
     w.leftContent.querySelector('.sgm-left').appendChild(otherView);
 
-    // Right pane content: the read-only text (the caption is the pane
-    // row's title, shell-side).
-    w.rightContent.innerHTML = `
-      <textarea class="suggestion-modal-original sgm-version-text" readonly spellcheck="false"></textarea>`;
+    // Right pane content: the read-only text through the SHARED mono
+    // editor so tabs/newlines wear the same →/↵ glyph overlay as the left
+    // editor (edit-pane.js).
+    const versionPane = window.WriteSysEditPane.createMonoEditor({
+      value: '',
+      overlayHTML: window.WriteSysEditPane.tabMarkupHTML,
+    });
+    versionPane.textarea.readOnly = true;
+    versionPane.textarea.spellcheck = false;
+    versionPane.textarea.classList.add('suggestion-modal-original', 'sgm-version-text');
+    w.rightContent.appendChild(versionPane.wrap);
 
     const showLeft = (key) => {
       const entry = leftEntries().find(e => e.key === key);
@@ -407,10 +433,10 @@ const WriteSysSuggestions = {
       }
     };
 
-    const originalArea = w.rightContent.querySelector('.suggestion-modal-original');
     const showVersion = (k) => {
       if (k == null) return; // collapsed — the pane is hidden, nothing to render
-      originalArea.value = versions[k].text || '';
+      versionPane.textarea.value = versions[k].text || '';
+      versionPane.autoGrow(); // re-mirrors the →/↵ overlay for the new value
     };
     showVersion(0);
 
@@ -485,13 +511,14 @@ const WriteSysSuggestions = {
       titleEl.textContent = ownChanged() ? 'Suggested edit' : 'Suggest edit';
     };
     const applyRevert = () => {
+      redoText = textarea.value !== original ? textarea.value : null;
       textarea.value = original;
       pane.autoGrow();
       saver.poke();
       updateTitle();
       w.refresh();
     };
-    textarea.addEventListener('input', () => { updateTitle(); w.refresh(); });
+    textarea.addEventListener('input', () => { redoText = null; updateTitle(); w.refresh(); });
     updateTitle();
     w.refresh();
 
