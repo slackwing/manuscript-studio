@@ -167,10 +167,10 @@ function psql(sql) {
     assert2('clean modal titles "Suggest edit"', /^Suggest edit$/i.test(await title()), await title());
     assert2('no corner asterisk button in the rail',
       await page.evaluate(() => !document.querySelector('#suggestion-modal .sn-rail-self')));
-    assert2('left pane note has a revert link, hidden while clean', await page.evaluate(() => {
-      const n = document.querySelector('#suggestion-modal .pw-content-left .sn-note');
-      return n && !n.textContent.includes('*') && !!n.querySelector('.sgm-revert')
-        && n.querySelector('.sgm-revert-wrap').hidden === true;
+    assert2('left pane row titles "suggested edit"; no revert button while clean', await page.evaluate(() => {
+      const t = document.querySelector('#suggestion-modal .pw-actionrow-left .pw-row-title');
+      return t && t.textContent.trim() === 'suggested edit'
+        && !document.querySelector('#suggestion-modal .sgm-revert');
     }));
     assert2('both panes carry rails on their right edges (shell geometry)', await page.evaluate(() => {
       const m = document.querySelector('#suggestion-modal');
@@ -183,7 +183,7 @@ function psql(sql) {
     assert2('no review icons while unchanged', await page.evaluate(() =>
       document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn').length === 0));
     assert2('version caption single-numbered', await page.evaluate(() =>
-      /^currently committed$/.test(document.querySelector('.sgm-version-label').textContent.trim())));
+      /^currently committed$/.test(document.querySelector('#suggestion-modal .pw-actionrow-right .pw-row-title').textContent.trim())));
     await page.locator('.suggestion-modal-textarea').fill(first.text + ' TITLETEST.');
     await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
     await page.waitForTimeout(100);
@@ -193,11 +193,15 @@ function psql(sql) {
     }));
     assert2('own rail button swaps 0 → user letter on change', await page.evaluate(() =>
       document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn').textContent.trim().startsWith('T')));
-    assert2('revert link visible once changed', await page.evaluate(() =>
-      document.querySelector('#suggestion-modal .sgm-revert-wrap').hidden === false));
+    assert2('revert ICON appears once changed, right of reject', await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn')];
+      const i = btns.findIndex(b => b.classList.contains('sgm-revert'));
+      const j = btns.findIndex(b => b.classList.contains('sgm-reject'));
+      return i >= 0 && j >= 0 && i > j;
+    }));
     assert2('Accept ✓ / Reject ✗ state icons appear on the left action row', await page.evaluate(() => {
       const btns = [...document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn')];
-      return btns.length === 2 && btns[0].classList.contains('sgm-accept') && btns[1].classList.contains('sgm-reject')
+      return btns.length >= 2 && btns[0].classList.contains('sgm-accept') && btns[1].classList.contains('sgm-reject')
         && btns[0].title === 'Accept' && btns[1].title === 'Reject';
     }));
     assert2('review icons are tinted at rest (green ✓ / red ✗ before hover)', await page.evaluate(() => {

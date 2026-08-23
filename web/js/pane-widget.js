@@ -49,7 +49,7 @@ window.WriteSysPaneWidget = {
         <div class="sn-pane pw-left">
           <div class="sn-main pw-main">
             <div class="sn-actionrow pw-actionrow pw-actionrow-left" hidden>
-              <span class="sn-actions"></span>
+              <span class="pw-row-title"></span><span class="sn-actions"></span>
             </div>
             <div class="pw-content pw-content-left"></div>
           </div>
@@ -58,7 +58,7 @@ window.WriteSysPaneWidget = {
         <div class="sn-pane pw-right">
           <div class="sn-main pw-main">
             <div class="sn-actionrow pw-actionrow pw-actionrow-right" hidden>
-              <span class="sn-actions"></span>
+              <span class="pw-row-title"></span><span class="sn-actions"></span>
             </div>
             <div class="pw-content pw-content-right"></div>
           </div>
@@ -170,12 +170,17 @@ window.WriteSysPaneWidget = {
       // Collapse state. Actions stay pinned to their panes either way.
       const open = w.rightKey != null;
       rightPane.classList.toggle('pw-collapsed', !open);
-      const leftBtns = cfg.left && cfg.left.actions ? cfg.left.actions() : [];
-      fill(leftRow.firstElementChild, leftBtns);
-      leftRow.hidden = leftBtns.length === 0;
-      const rightBtns = open && cfg.right && cfg.right.actions ? cfg.right.actions(w.rightKey) : [];
-      fill(rightRow.firstElementChild, rightBtns);
-      rightRow.hidden = rightBtns.length === 0;
+      const setRow = (row, title, btns) => {
+        row.querySelector('.pw-row-title').textContent = title || '';
+        fill(row.querySelector('.sn-actions'), btns);
+        row.hidden = !title && btns.length === 0;
+      };
+      setRow(leftRow,
+        cfg.left && cfg.left.title ? cfg.left.title() : '',
+        cfg.left && cfg.left.actions ? cfg.left.actions() : []);
+      setRow(rightRow,
+        open && cfg.right && cfg.right.title ? cfg.right.title(w.rightKey) : '',
+        open && cfg.right && cfg.right.actions ? cfg.right.actions(w.rightKey) : []);
     };
 
     const selectLeft = (key) => {

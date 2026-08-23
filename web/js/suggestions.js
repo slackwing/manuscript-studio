@@ -282,6 +282,7 @@ const WriteSysSuggestions = {
 
     const ICON_CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.5 3.5L13 4.5"/></svg>';
     const ICON_X = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>';
+    const ICON_REVERT = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path fill="currentColor" d="M13.8 1.6v3.6h-3.6z"/></svg>';
 
     const review = async (entry, target) => {
       try {
@@ -311,19 +312,28 @@ const WriteSysSuggestions = {
       }
     };
 
-    const reviewActions = () => {
-      if (!this.canReview) return [];
+    const leftActions = () => {
+      const btns = [];
       const entry = leftEntry();
-      if (!entry) return [];
-      const row = entry.kind === 'me' ? mineRow() : entry.row;
-      if (!row && !(entry.kind === 'me' && ownChanged())) return [];
-      const status = row ? row.review_status : null;
-      return [
-        { icon: ICON_CHECK, title: 'Accept', className: 'sgm-accept', color: GREEN, tint: true,
-          active: () => status === 'accepted', onClick: () => review(entry, 'accepted') },
-        { icon: ICON_X, title: 'Reject', className: 'sgm-reject', color: RED, tint: true,
-          active: () => status === 'rejected', onClick: () => review(entry, 'rejected') },
-      ];
+      if (this.canReview && entry) {
+        const row = entry.kind === 'me' ? mineRow() : entry.row;
+        if (row || (entry.kind === 'me' && ownChanged())) {
+          const status = row ? row.review_status : null;
+          btns.push(
+            { icon: ICON_CHECK, title: 'Accept', className: 'sgm-accept', color: GREEN, tint: true,
+              active: () => status === 'accepted', onClick: () => review(entry, 'accepted') },
+            { icon: ICON_X, title: 'Reject', className: 'sgm-reject', color: RED, tint: true,
+              active: () => status === 'rejected', onClick: () => review(entry, 'rejected') },
+          );
+        }
+      }
+      // Revert: YOUR suggestion only (ownership, not review power) — put the
+      // committed text back in the editor.
+      if ((!entry || entry.kind === 'me') && ownChanged()) {
+        btns.push({ icon: ICON_REVERT, className: 'sgm-revert', title: 'Revert — restore the committed text',
+          onClick: () => applyRevert() });
+      }
+      return btns;
     };
 
     const histEntries = () => versions.map((v) => {
@@ -344,13 +354,19 @@ const WriteSysSuggestions = {
       left: {
         rail: leftEntries,
         onSelect: (key) => { leftSel = key; showLeft(key); },
-        actions: reviewActions,
+        actions: leftActions,
+        title: () => {
+          const entry = leftEntry();
+          if (!entry || entry.kind === 'me') return 'suggested edit';
+          return entry.kind === 'stale' ? `${entry.row.user_id} · stale` : entry.row.user_id;
+        },
       },
       right: {
         rail: histEntries,
         onChange: (k) => showVersion(k),
         openByDefault: true,
         defaultKey: 0,
+        title: (k) => k === 0 ? 'currently committed' : `${k} commit${k > 1 ? 's' : ''} ago`,
       },
       // ‹ i/n › across the manuscript's suggested edits, in book order.
       nav: {
@@ -367,46 +383,34 @@ const WriteSysSuggestions = {
 
     // Left pane content (caller-owned): note line + editor host; a
     // read-only view swaps in for other/stale entries.
-    w.leftContent.innerHTML = `
-      <div class="sn-note"><span class="sgm-pane-label">suggested edit</span><span class="sgm-edit-links"><span class="sgm-revert-wrap" hidden> &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a></span></span></div>
-      <div class="sgm-left"></div>`;
+    w.leftContent.innerHTML = `<div class="sgm-left"></div>`;
     const otherView = document.createElement('div');
     otherView.className = 'sgm-other-view';
     otherView.hidden = true;
     w.leftContent.querySelector('.sgm-left').appendChild(otherView);
 
-    // Right pane content: version caption + read-only text.
+    // Right pane content: the read-only text (the caption is the pane
+    // row's title, shell-side).
     w.rightContent.innerHTML = `
-      <div class="sn-note sgm-version-label"></div>
       <textarea class="suggestion-modal-original sgm-version-text" readonly spellcheck="false"></textarea>`;
 
     const showLeft = (key) => {
       const entry = leftEntries().find(e => e.key === key);
-      const label = w.leftContent.querySelector('.sgm-pane-label');
-      const links = w.leftContent.querySelector('.sgm-edit-links');
       if (!entry || entry.kind === 'me') {
         if (pane) pane.wrap.hidden = false;
         otherView.hidden = true;
-        links.hidden = false;
-        label.textContent = 'suggested edit';
       } else {
         if (pane) pane.wrap.hidden = true;
         otherView.hidden = false;
         otherView.textContent = entry.row.text;
         otherView.classList.toggle('stale', entry.kind === 'stale');
-        links.hidden = true;
-        label.textContent = entry.kind === 'stale' ? `${entry.row.user_id} · stale` : entry.row.user_id;
       }
     };
 
     const originalArea = w.rightContent.querySelector('.suggestion-modal-original');
-    const verLabel = w.rightContent.querySelector('.sgm-version-label');
     const showVersion = (k) => {
       if (k == null) return; // collapsed — the pane is hidden, nothing to render
       originalArea.value = versions[k].text || '';
-      verLabel.textContent = k === 0
-        ? 'currently committed'
-        : `${k} commit${k > 1 ? 's' : ''} ago`;
     };
     showVersion(0);
 
@@ -475,12 +479,10 @@ const WriteSysSuggestions = {
     w.leftContent.querySelector('.sgm-left').insertBefore(pane.wrap, otherView);
     textarea = pane.textarea;
 
-    // Title + revert visibility + rail 0↔letter all re-derive on input.
+    // Title + revert-button presence + rail 0↔letter re-derive on input.
     const titleEl = modal.querySelector('.sn-status');
-    const revertWrap = w.leftContent.querySelector('.sgm-revert-wrap');
     const updateTitle = () => {
       titleEl.textContent = ownChanged() ? 'Suggested edit' : 'Suggest edit';
-      revertWrap.hidden = !ownChanged();
     };
     const applyRevert = () => {
       textarea.value = original;
@@ -489,10 +491,6 @@ const WriteSysSuggestions = {
       updateTitle();
       w.refresh();
     };
-    w.leftContent.querySelector('.sgm-revert').addEventListener('click', (e) => {
-      e.preventDefault();
-      applyRevert();
-    });
     textarea.addEventListener('input', () => { updateTitle(); w.refresh(); });
     updateTitle();
     w.refresh();

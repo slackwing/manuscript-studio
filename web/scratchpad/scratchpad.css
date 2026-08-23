@@ -921,8 +921,22 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 .pw-right.pw-collapsed > .sn-main { display: none; }
 .pw-main { display: flex; flex-direction: column; min-height: 0; }
 .pw-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.pw-actionrow { justify-content: flex-end; }
+.pw-actionrow { display: flex; align-items: center; flex-wrap: wrap; }
 .pw-actionrow[hidden] { display: none; }
+/* Pane title (left) + actions (right) share the row; when they can't fit,
+   the wrap puts the title above and the actions below. */
+.pw-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 11px "Helvetica", sans-serif;
+  color: #8a8378;
+  padding: 3px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-row-title:empty { display: none; }
+.pw-actionrow .sn-actions { flex: 0 1 auto; margin-left: auto; }
 .pw-actionrow .sn-actions { flex: 1; justify-content: flex-end; padding: 3px 8px; }
 
 /* Action icon buttons: grey at rest, colored on hover; STATE buttons

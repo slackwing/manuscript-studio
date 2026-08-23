@@ -141,7 +141,7 @@ async function syncToHead() {
     await page.locator('#suggestion-modal .sn-rail [data-ver="1"]').click();
     const v1 = await page.locator('.suggestion-modal-original').inputValue();
     check('version 1 shows the prior commit text', v1.includes('Version one'), JSON.stringify(v1.slice(0, 40)));
-    const label = await page.locator('.sgm-version-label').textContent();
+    const label = await page.locator('#suggestion-modal .pw-actionrow-right .pw-row-title').textContent();
     check('version label updates (single caption, no leading number)', /^1 commit ago$/.test(label.trim()), label);
 
     // AUTOSAVE AS YOU TYPE: no close, no button — just wait out the debounce.
