@@ -3557,3 +3557,18 @@ sup.sg-review.rejected { color: #b03030; }
   cursor: pointer;
   font: 12px "Helvetica", sans-serif;
 }
+
+/* Formatted pane views (2026-08-23): serif book look at rest, click for
+   mono. The left view carries the red/green word diff against the right
+   pane's shown version. */
+.sgm-fmt { flex: 1; min-height: 60px; cursor: pointer; overflow-y: auto; }
+.sgm-fmt[hidden] { display: none; }
+.sgm-fmt-diff {
+  padding: 10px 14px;
+  font: 12pt/1.6 Georgia, serif;
+  color: #222;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.sgm-fmt-diff del { color: #b03030; text-decoration: line-through; text-decoration-thickness: 1px; }
+.sgm-fmt-diff strong { color: #2e7d32; font-weight: 600; }

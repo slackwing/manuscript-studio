@@ -23,6 +23,7 @@ const {
   cleanupTestAnnotations,
   loginAsTestUser,
 } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 
 const REPO_PARENT = process.env.MANUSCRIPT_STUDIO_DEV_CONFIG_DIR
   || `${process.env.HOME}/.config/manuscript-studio-dev`;
@@ -145,7 +146,7 @@ async function syncToHead() {
     check('version label updates (single caption, no leading number)', /^1 commit ago$/.test(label.trim()), label);
 
     // AUTOSAVE AS YOU TYPE: no close, no button — just wait out the debounce.
-    await page.locator('.suggestion-modal-textarea').click();
+    await (await suggestEditor(page)).click();
     await page.keyboard.press('End');
     await page.keyboard.type(' Autosaved tail.');
     await page.waitForTimeout(1500);
@@ -155,8 +156,8 @@ async function syncToHead() {
     check('save status settled (empty)', status === '', JSON.stringify(status));
 
     // Revert to original and close — suggestion collapses, no row left.
-    await page.locator('.suggestion-modal-textarea').fill(target.text);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill(target.text);
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
     await page.waitForTimeout(400);
     const left = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${target.id}' AND user_id='${TEST_USERNAME}'`);

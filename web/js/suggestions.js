@@ -248,6 +248,7 @@ const WriteSysSuggestions = {
     const mineRow = () => (this.rowsBySentence[sentenceId] || []).find(r => r.user_id === this.viewer);
     const ownLetter = (this.viewer[0] || '?').toUpperCase();
     let textarea = null; // assigned once the edit pane mounts below
+    let leftCtl = null, rightCtl = null; // formatted↔mono controllers, mounted after the panes
     const ownChanged = () => !!textarea && textarea.value !== original;
     const GREEN = '#2e7d32';
     const RED = '#b03030';
@@ -423,21 +424,22 @@ const WriteSysSuggestions = {
 
     const showLeft = (key) => {
       const entry = leftEntries().find(e => e.key === key);
-      if (!entry || entry.kind === 'me') {
-        if (pane) pane.wrap.hidden = false;
-        otherView.hidden = true;
-      } else {
-        if (pane) pane.wrap.hidden = true;
-        otherView.hidden = false;
+      if (entry && entry.kind !== 'me') {
         otherView.textContent = entry.row.text;
         otherView.classList.toggle('stale', entry.kind === 'stale');
       }
+      // Entry switches land back in the formatted view.
+      if (leftCtl) leftCtl.exitMono();
     };
 
     const showVersion = (k) => {
       if (k == null) return; // collapsed — the pane is hidden, nothing to render
       versionPane.textarea.value = versions[k].text || '';
       versionPane.autoGrow(); // re-mirrors the →/↵ overlay for the new value
+      // Both formatted views track the shown version: the right pane paints
+      // it, the left pane diffs against it.
+      if (rightCtl) rightCtl.sync();
+      if (leftCtl) leftCtl.sync();
     };
     showVersion(0);
 
@@ -506,6 +508,75 @@ const WriteSysSuggestions = {
     w.leftContent.querySelector('.sgm-left').insertBefore(pane.wrap, otherView);
     textarea = pane.textarea;
 
+    // ---- Formatted ↔ mono (2026-08-23): the panes open FORMATTED, like
+    // the sketch widget's preview — click drops into monospace (left
+    // editable, right read-only-but-selectable), blur returns. The left
+    // pane's formatted view is the red/green word diff against WHATEVER
+    // version the right pane currently shows (pane-widget.formattedMono —
+    // the diff source is the other pane's text).
+    const leftFmt = document.createElement('div');
+    leftFmt.className = 'sgm-fmt sgm-fmt-left';
+    leftFmt.title = 'Click to edit';
+    w.leftContent.querySelector('.sgm-left').appendChild(leftFmt);
+    const rightFmt = document.createElement('div');
+    rightFmt.className = 'sgm-fmt sgm-fmt-right';
+    rightFmt.title = 'Click for the raw source';
+    w.rightContent.appendChild(rightFmt);
+
+    const rightTextNow = () => {
+      const k = w.rightKey == null ? 0 : w.rightKey;
+      return (versions[k] && versions[k].text) || '';
+    };
+    const dmpInst = (window.WriteSysRenderer && window.WriteSysRenderer._dmp)
+      ? window.WriteSysRenderer._dmp() : null;
+    const fmtSerif = (host, text) => {
+      host.classList.remove('sgm-fmt-diff');
+      host.innerHTML = '';
+      if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderText(host, text);
+      else host.textContent = text;
+    };
+    leftCtl = window.WriteSysPaneWidget.formattedMono({
+      fmtEl: leftFmt,
+      render: () => {
+        const entry = leftEntry();
+        const txt = (!entry || entry.kind === 'me') ? textarea.value : entry.row.text;
+        const src = rightTextNow();
+        if (txt === src) {
+          fmtSerif(leftFmt, txt);
+          return;
+        }
+        leftFmt.classList.add('sgm-fmt-diff');
+        let html = renderDiffHTML(src, txt, dmpInst);
+        if (window.WriteSysRenderer && window.WriteSysRenderer.renderInlineCommandsInHtml) {
+          html = window.WriteSysRenderer.renderInlineCommandsInHtml(html);
+        }
+        leftFmt.innerHTML = html;
+      },
+      showMono: () => {
+        const entry = leftEntry();
+        const own = !entry || entry.kind === 'me';
+        pane.wrap.hidden = !own;
+        otherView.hidden = own;
+      },
+      hideMono: () => { pane.wrap.hidden = true; otherView.hidden = true; },
+      focusMono: () => {
+        const entry = leftEntry();
+        if (!entry || entry.kind === 'me') textarea.focus();
+        else otherView.focus();
+      },
+    });
+    rightCtl = window.WriteSysPaneWidget.formattedMono({
+      fmtEl: rightFmt,
+      render: () => fmtSerif(rightFmt, rightTextNow()),
+      showMono: () => { versionPane.wrap.hidden = false; },
+      hideMono: () => { versionPane.wrap.hidden = true; },
+      focusMono: () => versionPane.textarea.focus(),
+    });
+    otherView.tabIndex = -1; // focusable, so blur can return it to formatted
+    textarea.addEventListener('blur', () => leftCtl.exitMono());
+    otherView.addEventListener('blur', () => leftCtl.exitMono());
+    versionPane.textarea.addEventListener('blur', () => rightCtl.exitMono());
+
     // Title + revert-button presence + rail 0↔letter re-derive on input.
     const titleEl = modal.querySelector('.sn-status');
     const updateTitle = () => {
@@ -529,6 +600,7 @@ const WriteSysSuggestions = {
     const close = async () => {
       if (!(await saver.flush())) return false;
       this._activeClose = null;
+      document.removeEventListener('keydown', onDocKey);
       saver.destroy();
       if (notesStack) {
         notesStack.remove();
@@ -572,13 +644,17 @@ const WriteSysSuggestions = {
     };
     this._activeClose = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    modal.addEventListener('keydown', (e) => {
+    // Escape closes from ANYWHERE while the modal is open — the formatted
+    // default means focus often never enters the modal, so a modal-scoped
+    // keydown would go deaf. Removed on close.
+    const onDocKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         close();
       }
-    });
+    };
+    document.addEventListener('keydown', onDocKey);
     // Variation-editor keys: Tab inserts a literal \t (a "\n\t" paragraph break
     // is typeable); Shift-Tab still escapes the field.
     textarea.addEventListener('keydown', (e) => {
@@ -588,14 +664,8 @@ const WriteSysSuggestions = {
       }
     });
 
-    // Autofocus only on desktop: on a phone, focusing pops the keyboard and
-    // the browser PANS to the caret — shoving the modal's title bar off-screen
-    // and burying the note stack. Mobile users tap the pane when they want to
-    // type; until then the modal (and the notes below it) stay fully visible.
-    if (!window.matchMedia(SUGGESTIONS_MOBILE_MEDIA).matches) {
-      textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    }
+    // No autofocus: the pane opens FORMATTED (click to edit) — focusing the
+    // hidden editor would fight that, and on phones it pops the keyboard.
     pane.autoGrow();
     if (restored) {
       modal.querySelector('.sn-save').textContent = 'restored unsaved draft';

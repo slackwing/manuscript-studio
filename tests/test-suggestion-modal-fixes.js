@@ -23,6 +23,7 @@ const {
   loginAsTestUser,
   waitForPagination, TEST_USERNAME,
 } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 
 function psql(sql) {
   return execSync(
@@ -85,7 +86,7 @@ function psql(sql) {
 
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
-    const ta = page.locator('.suggestion-modal-textarea');
+    const ta = await suggestEditor(page);
 
     await ta.fill('abc');
     await ta.press('Enter');
@@ -117,8 +118,8 @@ function psql(sql) {
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
     const survivorText = 'edited text that must survive a failed save';
-    await page.locator('.suggestion-modal-textarea').fill(survivorText);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill(survivorText);
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForTimeout(500);
 
     const modalStillOpen = await page.locator('#suggestion-modal').count();
@@ -139,8 +140,8 @@ function psql(sql) {
     if (modalStillOpen === 1) {
       // Server reachable again: restore the ORIGINAL text so the flush-on-close
       // collapses the suggestion to none (autosave close always saves).
-      await page.locator('.suggestion-modal-textarea').fill(first.text);
-      await page.locator('.suggestion-modal-textarea').press('Escape');
+      await (await suggestEditor(page)).fill(first.text);
+      await (await suggestEditor(page)).press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
     }
 
@@ -152,7 +153,7 @@ function psql(sql) {
     const putsBefore = putRequests.length;
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
-    await page.locator('.suggestion-modal-textarea').press('Escape'); // unchanged text
+    await (await suggestEditor(page)).press('Escape'); // unchanged text
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     assert(true, 'Unchanged text closes the modal immediately');
     await page.waitForTimeout(500);
@@ -184,7 +185,7 @@ function psql(sql) {
       document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn').length === 0));
     assert2('version caption single-numbered', await page.evaluate(() =>
       /^currently committed$/.test(document.querySelector('#suggestion-modal .pw-actionrow-right .pw-row-title').textContent.trim())));
-    await page.locator('.suggestion-modal-textarea').fill(first.text + ' TITLETEST.');
+    await (await suggestEditor(page)).fill(first.text + ' TITLETEST.');
     await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
     await page.waitForTimeout(100);
     assert2('changed modal titles "Suggested edit", no title reject link', await page.evaluate(() => {
@@ -248,14 +249,14 @@ function psql(sql) {
     await page.waitForTimeout(200);
     assert2('redo restores the reverted edit',
       /TITLETEST/.test(await page.locator('.suggestion-modal-textarea').inputValue()));
-    await page.locator('.suggestion-modal-textarea').click();
+    await (await suggestEditor(page)).click();
     await page.keyboard.type('X');
     await page.waitForTimeout(150);
     assert2('typing kills the redo (fragile by design)', await page.evaluate(() =>
       !document.querySelector('#suggestion-modal .sgm-redo')));
     // Review own suggestion via the state icons: Accept → pressed + green,
     // rail letter tinted; re-click clears.
-    await page.locator('.suggestion-modal-textarea').fill(first.text + ' ACCEPTME.');
+    await (await suggestEditor(page)).fill(first.text + ' ACCEPTME.');
     await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
     await page.waitForTimeout(600);
     await page.locator('#suggestion-modal .pw-actionrow-left .sgm-accept').click();
@@ -283,7 +284,7 @@ function psql(sql) {
     // Revert (discard) empties the suggestion; close leaves no row.
     await page.locator('#suggestion-modal .sgm-revert').click();
     await page.waitForTimeout(400);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
     // Scoped to THIS sentence — the N/A check parked a helper suggestion
     // on another sentence on purpose.

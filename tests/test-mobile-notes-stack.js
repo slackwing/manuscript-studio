@@ -6,6 +6,7 @@
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
 const { TEST_URL, TEST_USERNAME, loginAsTestUser, waitForPagination } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf-8' }).trim();
@@ -72,7 +73,7 @@ const BODY = `Mobile stack note (${TEST_USERNAME})`;
   await desk.waitForSelector('#suggestion-modal', { timeout: 8000 });
   check('desktop: NO floating stack (margin owns notes)',
     (await desk.locator('#sgm-notes-stack').count()) === 0);
-  await desk.locator('.suggestion-modal-textarea').press('Escape');
+  await desk.keyboard.press('Escape');
   await desk.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
 
   psql(`DELETE FROM note WHERE user_id='${TEST_USERNAME}' AND body='${BODY}'`);

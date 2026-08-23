@@ -11,6 +11,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 
 (async () => {
   const browser = await chromium.launch({ headless: true });
@@ -457,12 +458,12 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
         window.WriteSysSuggestions.openModal(id);
       }, { id: simple.id });
       await page.waitForSelector('#suggestion-modal');
-      await page.fill('.suggestion-modal-textarea', simple.text + ' PLUSEDIT');
+      await (await suggestEditor(page)).fill(simple.text + ' PLUSEDIT');
       await page.waitForFunction(({ id, want }) =>
         window.WriteSysSuggestions.bySentenceId[id] === want,
         { id: simple.id, want: simple.text + ' PLUSEDIT' }, { timeout: 10000 });
       check('S12: differing text saved into the local suggestion map', true);
-      await page.fill('.suggestion-modal-textarea', simple.text);
+      await (await suggestEditor(page)).fill(simple.text);
       await page.waitForFunction(({ id }) =>
         window.WriteSysSuggestions.bySentenceId[id] === undefined,
         { id: simple.id }, { timeout: 10000 });

@@ -17,6 +17,7 @@ const {
   loginAsTestUser,
   TEST_MANUSCRIPT_ID, TEST_USERNAME,
 } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 
 function psql(sql) {
   return execSync(
@@ -81,8 +82,8 @@ function psql(sql) {
       `Textarea pre-fills with original sentence text (got "${textareaValue.slice(0,30)}..." want "${first.text.slice(0,30)}...")`);
 
     const newText = first.text.replace(/\.$/, '') + ' (with edit added).';
-    await page.locator('.suggestion-modal-textarea').fill(newText);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill(newText);
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     assert(true, 'Escape flushes the autosave and closes the modal');
 
@@ -135,8 +136,8 @@ function psql(sql) {
     // directly.
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForSelector('#suggestion-modal');
-    await page.locator('.suggestion-modal-textarea').fill(first.text);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill(first.text);
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(2000);
 
@@ -163,8 +164,8 @@ function psql(sql) {
       await page.waitForTimeout(300);
       await page.locator(`.sentence[data-sentence-id="${apos.id}"]`).first().click();
       await page.waitForSelector('#suggestion-modal');
-      await page.locator('.suggestion-modal-textarea').fill(aposNew);
-      await page.locator('.suggestion-modal-textarea').press('Escape');
+      await (await suggestEditor(page)).fill(aposNew);
+      await (await suggestEditor(page)).press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
       await page.waitForFunction(
         (sid) => {
@@ -191,8 +192,8 @@ function psql(sql) {
       // state across re-renders for the apostrophe sentence.
       await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), apos.id);
       await page.waitForSelector('#suggestion-modal');
-      await page.locator('.suggestion-modal-textarea').fill(apos.text);
-      await page.locator('.suggestion-modal-textarea').press('Escape');
+      await (await suggestEditor(page)).fill(apos.text);
+      await (await suggestEditor(page)).press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
       await page.waitForTimeout(2000);
     }
@@ -203,8 +204,8 @@ function psql(sql) {
     // Escaping again collapses the suggestion back to none.
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal');
-    await page.locator('.suggestion-modal-textarea').fill('this text auto-saves on Escape');
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill('this text auto-saves on Escape');
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
     const dbAfterEsc = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
@@ -212,8 +213,8 @@ function psql(sql) {
     // Revert: original text → server collapses to delete.
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
     await page.waitForSelector('#suggestion-modal');
-    await page.locator('.suggestion-modal-textarea').fill(first.text);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill(first.text);
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
     const dbAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);

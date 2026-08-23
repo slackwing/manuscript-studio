@@ -29,6 +29,38 @@
  * is inside leftContent / rightContent, it only shows/hides the right one.
  */
 window.WriteSysPaneWidget = {
+  // formattedMono: a pane CONTENT-MODE controller — FORMATTED at rest,
+  // monospace on click, formatted again when the mono surface blurs (the
+  // sketch widget's preview↔edit rhythm, reusable). The caller supplies
+  // the pieces: `render()` paints the formatted view (diff it against the
+  // other pane's text for the "compare to what's over there" reading);
+  // `showMono`/`hideMono` flip the caller's mono elements; `focusMono`
+  // lands the caret. Wire the mono surface's blur to `.exitMono()`.
+  formattedMono({ fmtEl, render, showMono, hideMono, focusMono }) {
+    let mono = false;
+    const sync = () => {
+      fmtEl.hidden = mono;
+      if (mono) {
+        showMono();
+      } else {
+        hideMono();
+        render();
+      }
+    };
+    fmtEl.addEventListener('click', () => {
+      mono = true;
+      sync();
+      if (focusMono) focusMono();
+    });
+    const ctl = {
+      sync,
+      isMono: () => mono,
+      exitMono: () => { mono = false; sync(); },
+    };
+    sync();
+    return ctl;
+  },
+
   create(cfg) {
     const el = document.createElement('div');
     el.className = 'pw' + (cfg.className ? ' ' + cfg.className : '');
@@ -98,6 +130,11 @@ window.WriteSysPaneWidget = {
         if (b.tint) btn.classList.add('pw-tint'); // colored at rest, not just hover
         if (b.active && b.active()) btn.classList.add('pw-on');
       }
+      // Don't steal focus on mousedown: blurring the mono editor mid-click
+      // re-renders the formatted view, the centered modal re-flows, and the
+      // button moves out from under the cursor before mouseup — the click
+      // never lands. No focus transfer → no blur → stable geometry.
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -120,6 +157,7 @@ window.WriteSysPaneWidget = {
         btn.style.setProperty('--pw-c', entry.color);
         btn.classList.add('pw-colored');
       }
+      btn.addEventListener('mousedown', (e) => e.preventDefault()); // see mkBtn
       btn.addEventListener('click', () => onClick(entry));
       return btn;
     };
@@ -149,6 +187,8 @@ window.WriteSysPaneWidget = {
 
     const navEl = el.querySelector('.pw-nav');
     if (cfg.nav) {
+      el.querySelectorAll('.pw-nav-prev, .pw-nav-next').forEach((b) =>
+        b.addEventListener('mousedown', (e) => e.preventDefault())); // see mkBtn
       el.querySelector('.pw-nav-prev').addEventListener('click', () => cfg.nav.prev());
       el.querySelector('.pw-nav-next').addEventListener('click', () => cfg.nav.next());
     }

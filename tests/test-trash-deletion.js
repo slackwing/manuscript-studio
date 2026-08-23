@@ -55,6 +55,11 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
       }
     }
     await createYellow();
+    // Park the mouse: the nav row shifted the stack down, leaving the
+    // cursor over the fresh uncreated note's circle — its palette would
+    // cover the real note's trash.
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(350);
 
     const trashOnReal = await page.locator('.sticky-note:not(.uncreated-note) .note-trash').count();
     if (trashOnReal >= 1) {

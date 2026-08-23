@@ -273,7 +273,22 @@ async function cleanupTestSessions() {
   }
 }
 
+/**
+ * suggestEditor: the modal's left pane opens FORMATTED (2026-08-23) — click
+ * it into monospace and hand back the textarea locator. Re-entrant: buttons
+ * blur the editor back to formatted, so call again before each typing burst.
+ */
+async function suggestEditor(page) {
+  const fmt = page.locator('#suggestion-modal .sgm-fmt-left');
+  try {
+    if (await fmt.isVisible()) await fmt.click();
+  } catch (e) { /* already mono or detached — fall through to the wait */ }
+  await page.waitForSelector('#suggestion-modal .suggestion-modal-textarea', { state: 'visible', timeout: 8000 });
+  return page.locator('.suggestion-modal-textarea');
+}
+
 module.exports = {
+  suggestEditor,
   get TEST_MANUSCRIPT_ID() { return TEST_MANUSCRIPT_ID; },
   TEST_MANUSCRIPT_NAME,
   get TEST_URL() { return TEST_URL; },

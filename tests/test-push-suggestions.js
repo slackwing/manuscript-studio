@@ -28,6 +28,7 @@ const {
   loginAsTestUser,
   TEST_USERNAME, TEST_MANUSCRIPT_NAME,
 } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 
 function psql(sql) {
   return execSync(
@@ -142,8 +143,8 @@ function teardownBareRemote(bareDir) {
     const newText = target.text.replace(/\.$/, '') + ' (PUSHED EDIT).';
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), target.id);
     await page.waitForSelector('#suggestion-modal');
-    await page.locator('.suggestion-modal-textarea').fill(newText);
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).fill(newText);
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
     await page.waitForTimeout(500);
 

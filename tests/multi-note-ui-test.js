@@ -215,11 +215,11 @@ const { TEST_URL, loginAsTestUser } = require('./test-utils');
 
     // Test 9: Hover over first sticky note to verify color circle appears
     console.log('\nTest 9: Hover over first sticky note to verify color circle appears');
-    await page.hover('.sticky-note:first-of-type');
+    await page.hover('.sticky-note');
     await new Promise(r => setTimeout(r, 300));
 
     const noteColorCircleVisible = await page.evaluate(() => {
-      const circle = document.querySelector('.sticky-note:first-of-type .sticky-note-color-circle');
+      const circle = document.querySelector('.sticky-note .sticky-note-color-circle');
       if (!circle) return false;
       const styles = window.getComputedStyle(circle);
       return styles.opacity !== '0';

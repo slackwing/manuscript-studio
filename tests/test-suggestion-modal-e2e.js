@@ -20,6 +20,7 @@ const {
   BASE_URL, TEST_URL, TEST_USERNAME, TEST_PASSWORD,
   waitForPagination, paginationStamp, waitForRepagination, cleanupTestAnnotations,
 } = require('./test-utils');
+const { suggestEditor } = require('./test-utils');
 
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -57,7 +58,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
   };
   const closeAndWaitDetached = async () => {
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
   };
 
@@ -124,7 +125,8 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
       JSON.stringify(s10.rail) === JSON.stringify(s10.expected),
       `rail=${JSON.stringify(s10.rail)} expected=${JSON.stringify(s10.expected)}`);
     check('S10: the edge is exercised (at least one disabled rail button)', s10.hasDisabled);
-    check('S16(desktop): textarea autofocused on desktop', s10.focused);
+    check('S16(desktop): opens FORMATTED — no autofocus into the editor', !s10.focused
+      && await page.evaluate(() => !document.querySelector('#suggestion-modal .sgm-fmt-left').hidden));
     await closeAndWaitDetached();
 
     // ---- S11: draft restore ------------------------------------------------
@@ -146,7 +148,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     check('S11: restored draft is dirty → autosaved to the server', saved,
       `count=${suggestionCount(pick.id)}`);
     // Revert to original → server collapses to delete.
-    await page.locator('.suggestion-modal-textarea').fill(pick.text);
+    await (await suggestEditor(page)).fill(pick.text);
     await closeAndWaitDetached();
     const reverted = await until(() => suggestionCount(pick.id) === '0', 8000);
     check('S11: reverting to the original collapses the suggestion', reverted);
@@ -160,7 +162,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     });
     dialogs.length = 0;
     await openModal(pick.id);
-    await page.locator('.suggestion-modal-textarea').fill(pick.text + ' STALE EDIT ONE');
+    await (await suggestEditor(page)).fill(pick.text + ' STALE EDIT ONE');
     await page.waitForFunction(() => {
       const el = document.querySelector('#suggestion-modal .sn-save');
       return el && el.textContent.includes('manuscript updated');
@@ -171,7 +173,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     check('S13: exactly one alert for the stale migration', dialogs.length === 1
       && dialogs[0].includes('Copy your text'), JSON.stringify(dialogs));
     // Close must refuse while the edit is unflushed.
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForFunction(() => {
       const el = document.querySelector('#suggestion-modal .sn-save');
       return el && el.textContent.includes('manuscript updated');
@@ -179,7 +181,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     check('S13: Escape while stale-unflushed leaves the modal open',
       await page.evaluate(() => !!document.getElementById('suggestion-modal')));
     // A second failing keystroke must NOT re-alert.
-    await page.locator('.suggestion-modal-textarea').fill(pick.text + ' STALE EDIT TWO');
+    await (await suggestEditor(page)).fill(pick.text + ' STALE EDIT TWO');
     await page.waitForFunction(() => {
       const el = document.querySelector('#suggestion-modal .sn-save');
       return el && el.textContent.includes('manuscript updated');
@@ -187,7 +189,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     check('S13: repeated 409s alert only once', dialogs.length === 1, `alerts=${dialogs.length}`);
     // Server recovers → close flushes and succeeds.
     await page.unroute('**/api/sentences/*/suggestion');
-    await page.locator('.suggestion-modal-textarea').fill(pick.text); // revert → collapses on save
+    await (await suggestEditor(page)).fill(pick.text); // revert → collapses on save
     await closeAndWaitDetached();
     check('S13: after recovery the close flushes and the modal closes', true);
     await until(() => suggestionCount(pick.id) === '0', 8000);
@@ -199,12 +201,12 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
       return route.fallback();
     });
     await openModal(pick.id);
-    await page.locator('.suggestion-modal-textarea').fill(pick.text + ' BLOCKED CLOSE');
+    await (await suggestEditor(page)).fill(pick.text + ' BLOCKED CLOSE');
     await page.waitForFunction(() => {
       const el = document.querySelector('#suggestion-modal .sn-save');
       return el && /Failed to save/.test(el.textContent);
     }, null, { timeout: 8000 });
-    await page.locator('.suggestion-modal-textarea').press('Escape');
+    await (await suggestEditor(page)).press('Escape');
     await page.waitForFunction(() => {
       const el = document.querySelector('#suggestion-modal .sn-save');
       return el && /Failed to save/.test(el.textContent);
@@ -258,7 +260,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     check('S14: no-net-change close skips the push refresh', s14b.pushCalls === 0);
     // (c) net change refreshes push state.
     await openModal(pick.id);
-    await page.locator('.suggestion-modal-textarea').fill(pick.text); // revert = net change back to none
+    await (await suggestEditor(page)).fill(pick.text); // revert = net change back to none
     const stampC = await paginationStamp(page);
     await closeAndWaitDetached();
     await waitForRepagination(page, stampC);
@@ -269,7 +271,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
 
     // ---- S15: Tab inserts \t, Shift-Tab escapes ----------------------------
     await openModal(pick.id);
-    const ta = page.locator('.suggestion-modal-textarea');
+    const ta = await suggestEditor(page);
     await ta.focus();
     await page.evaluate(() => {
       const t = document.querySelector('.suggestion-modal-textarea');
@@ -284,7 +286,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
     await ta.press('Shift+Tab');
     check('S15: Shift-Tab escapes the field (focus leaves the textarea)',
       await page.evaluate(() => document.activeElement !== document.querySelector('.suggestion-modal-textarea')));
-    await ta.fill(pick.text); // undo the \t
+    await (await suggestEditor(page)).fill(pick.text); // undo the \t (Shift-Tab blurred back to formatted)
     await closeAndWaitDetached();
     await until(() => suggestionCount(pick.id) === '0', 8000);
 
@@ -348,7 +350,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
       // diff semantics, not the apostrophe invariant this row pins.
       const aposNew = apos.text.replace(/\s*$/, '') + ' EXTRA';
       await openModal(apos.id);
-      await page.locator('.suggestion-modal-textarea').fill(aposNew);
+      await (await suggestEditor(page)).fill(aposNew);
       const stamp17 = await paginationStamp(page);
       await closeAndWaitDetached();
       // Wait for the AUTHORITATIVE re-render — during the optimistic window
@@ -380,7 +382,7 @@ async function until(fn, timeoutMs = 8000, stepMs = 200) {
         `del="${s17.delText}" strong="${s17.strongText}"`);
       // Cleanup: revert.
       await openModal(apos.id);
-      await page.locator('.suggestion-modal-textarea').fill(apos.text);
+      await (await suggestEditor(page)).fill(apos.text);
       await closeAndWaitDetached();
       await until(() => suggestionCount(apos.id) === '0', 8000);
     }
