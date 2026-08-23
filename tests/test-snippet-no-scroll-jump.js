@@ -74,8 +74,14 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     const r = document.querySelector(`.sn-widget[data-variation-id="${v}"] .sn-render.sn-frozen`);
     return r ? getComputedStyle(r).backgroundColor : null;
   }, vid);
-  check('frozen variation preview has the light-blue background',
-    frozenBg === 'rgb(238, 244, 251)', `bg=${frozenBg}`);
+  // The shade comes from the shared state-wash (color-mix over --pw-c) —
+  // assert a bluish near-white computed value, not a pinned hex.
+  const m = frozenBg && frozenBg.match(/srgb ([\d.]+) ([\d.]+) ([\d.]+)|\((\d+), (\d+), (\d+)\)/);
+  const [r, g, b] = m ? (m[1] !== undefined
+    ? [m[1], m[2], m[3]].map(Number).map(x => x * 255)
+    : [m[4], m[5], m[6]].map(Number)) : [0, 0, 0];
+  check('frozen variation preview washes light blue (shared state-wash)',
+    b > g && g > r && b > 235 && r > 200, `bg=${frozenBg}`);
 
   await browser.close();
   process.exit(failed ? 1 : 0);
