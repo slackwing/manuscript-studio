@@ -17,10 +17,20 @@ const check = (name, ok, extra) => {
 const pipeline = (raw) => cmd.segmentFragments(canonicalize(raw));
 const kinds = (frags) => frags.map(f => f.kind + (f.cmd ? ':' + f.cmd.kind : ''));
 
-// 1. Leading anchor + prose → block anchor fragment THEN prose fragment.
+// 1a. MARKER-LESS leading anchor + prose stays INLINE (2026-08-23 inline
+//     region starts): one prose fragment carrying the command in-flow.
 {
   const frags = pipeline('&anchor{The salvia night.} We probably recounted tales.');
-  check('leading anchor: [command:anchor, prose]',
+  check('marker-less leading anchor: single inline prose fragment',
+    JSON.stringify(kinds(frags)) === JSON.stringify(['prose']),
+    JSON.stringify(kinds(frags)));
+  check('inline prose keeps the command token in the flow',
+    /&anchor\{The salvia night\.\} We probably recounted/.test(frags[0].text), frags[0].text);
+}
+// 1b. MARKER-LED leading anchor still promotes to the block form.
+{
+  const frags = pipeline('\n\t&anchor{The salvia night.} We probably recounted tales.');
+  check('marker-led leading anchor: [command:anchor, prose]',
     JSON.stringify(kinds(frags)) === JSON.stringify(['command:anchor', 'prose']),
     JSON.stringify(kinds(frags)));
   const anchorFrag = frags.find(f => f.kind === 'command');

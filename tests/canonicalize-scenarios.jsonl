@@ -14,9 +14,9 @@
 {"name": "whole-block meta", "in": "&meta{chapter-align}{center}", "out": "&meta{chapter-align}{center}"}
 {"name": "whole-block anchor no prose", "in": "&anchor{The salvia night.}", "out": "&anchor{The salvia night.}"}
 {"name": "whole-block anchor with slug", "in": "&anchor#salvia{The salvia night.}", "out": "&anchor#salvia{The salvia night.}"}
-{"name": "leading anchor splits from prose", "in": "&anchor{The salvia night.} We probably recounted tales.", "out": "&anchor{The salvia night.}\nWe probably recounted tales."}
-{"name": "leading anchor with slug splits", "in": "&anchor#salvia{The salvia night.} We probably recounted.", "out": "&anchor#salvia{The salvia night.}\nWe probably recounted."}
-{"name": "leading anchor extra space before prose", "in": "&anchor{x}    prose here", "out": "&anchor{x}\nprose here"}
+{"name": "marker-less leading anchor stays INLINE (mid-paragraph start)", "in": "&anchor{The salvia night.} We probably recounted tales.", "out": "&anchor{The salvia night.} We probably recounted tales."}
+{"name": "marker-less leading anchor with slug stays inline", "in": "&anchor#salvia{The salvia night.} We probably recounted.", "out": "&anchor#salvia{The salvia night.} We probably recounted."}
+{"name": "inline leading anchor: space run normalizes to ONE space", "in": "&anchor{x}    prose here", "out": "&anchor{x} prose here"}
 {"name": "leading anchor with paragraph marker", "in": "\n\t&anchor{x} prose here", "out": "\n\t&anchor{x}\nprose here"}
 {"name": "leading anchor with section marker", "in": "\n\n&anchor{x} prose here", "out": "\n\n&anchor{x}\nprose here"}
 {"name": "inline anchor mid-sentence untouched", "in": "The fire &anchor#firemark{} spread.", "out": "The fire &anchor#firemark{} spread."}
@@ -31,7 +31,7 @@
 {"name": "leading anchor keeps section marker before prose", "in": "&anchor#x{lbl}\n\nNew section prose.", "out": "&anchor#x{lbl}\n\nNew section prose."}
 {"name": "messy marker run after anchor collapses to indented (own line kept)", "in": "\n&sketch#abc{}\n\n\tBut first we must get there.", "out": "\n&sketch#abc{}\n\tBut first we must get there."}
 {"name": "wrap artifact \\n\\t\\n\\t after anchor collapses to one indent", "in": "&sketch#abc{}\n\t\n\tBut first we must get there.", "out": "&sketch#abc{}\n\tBut first we must get there."}
-{"name": "spaces-only gap after anchor stays same-paragraph", "in": "&sketch#abc{} same paragraph prose.", "out": "&sketch#abc{}\nsame paragraph prose."}
+{"name": "spaces-only gap after sketch opener stays INLINE same-paragraph", "in": "&sketch#abc{} same paragraph prose.", "out": "&sketch#abc{} same paragraph prose."}
 {"name": "single newline after anchor stays same-paragraph", "in": "&sketch#abc{}\nsame paragraph prose.", "out": "&sketch#abc{}\nsame paragraph prose."}
 {"name": "outer marker plus anchor marker both survive", "in": "\n\t&sketch#abc{}\n\tIndented para.", "out": "\n\t&sketch#abc{}\n\tIndented para."}
 {"name": "bare newline before anchor kept (own-line form)", "in": "\n&sketch#abc{}\n\tBut first we must get there.", "out": "\n&sketch#abc{}\n\tBut first we must get there."}

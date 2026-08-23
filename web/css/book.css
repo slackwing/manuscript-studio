@@ -637,6 +637,15 @@ p.has-anchor-margin {
    absolute glyph resolves against its own paragraph. */
 .pagedjs_page_content p { position: relative; }
 .cmd-anchor-glyph.cmd-anchor-margin-inline { top: auto; }
+/* MID-PARAGRAPH anchors (2026-08-22): the icon rides IN the prose, between
+   the two spaces the command leaves behind — no margin pull, no absolute. */
+.cmd-anchor-glyph.cmd-anchor-inline {
+  position: static;
+  padding: 0;
+  font-size: 0.85em;
+  color: #a49b8a;
+}
+.cmd-anchor-glyph.cmd-anchor-inline:hover { color: #66492b; }
 /* No sentence-highlight box floating in the gutter — the glyph alone. Three
    classes to out-specify .sentence.selected / hover (both !important). */
 .sentence.cmd-anchor-glyph.cmd-anchor-margin,

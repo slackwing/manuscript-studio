@@ -27,7 +27,7 @@ const WriteSysCanonicalize = (function () {
     return s.replace(/^[ \t]+/, '').replace(/[ \t]+$/, '');
   }
 
-  function canonicalizeBody(body) {
+  function canonicalizeBody(body, hasMarker) {
     const trimmed = body.trim();
     if (trimmed === '') return '';
 
@@ -39,21 +39,24 @@ const WriteSysCanonicalize = (function () {
       if (parsed && cmd.BLOCK[parsed.kind] && parsed.raw === trimmed) {
         return parsed.raw;
       }
-      // Leading-anchor split. Idempotent: spaces, tabs, OR the inserted
-      // newline between the anchor and prose all normalize to a single "\n".
-      // &snippet (canon region opener) follows the same rule — Go lockstep.
+      // Leading-anchor forms (Go lockstep). Marker-led or newline-joined →
+      // block form ("&anchor{...}\nprose", own line). MARKER-LESS with a
+      // space/tab join → INLINE form ("&anchor{...} prose", one space) — a
+      // mid-paragraph region start; the renderer shows the go-to icon
+      // between the two spaces. Idempotent both ways.
       if (trimmed.startsWith('&anchor') || trimmed.startsWith('&snippet') || trimmed.startsWith('&sketch')) {
         const a = cmd.parse(trimmed);
         if (a && (a.kind === 'anchor' || a.kind === 'snippet')) {
           const restRaw = trimmed.slice(a.raw.length);
           const rest = restRaw.replace(/^[ \t\n]+/, '');
           if (rest !== '') {
-            // A STRUCTURAL MARKER in the whitespace between anchor and prose
-            // is the prose's paragraph break — collapsing it to a bare "\n"
-            // merged the paragraph into the previous one (the
-            // sketch-from-selection "new paragraph removed" bug). Keep \n\t
-            // (indented) or \n\n (section); plain runs stay "\n". Go lockstep.
             const ws = restRaw.slice(0, restRaw.length - rest.length);
+            if (!hasMarker && !ws.includes('\n')) {
+              return a.raw + ' ' + canonicalizeProse(rest);
+            }
+            // A STRUCTURAL MARKER in the whitespace between anchor and prose
+            // is the prose's paragraph break — keep \n\t (indented) or \n\n
+            // (section); plain runs stay "\n". Go lockstep.
             const join = ws.includes('\n\t') ? '\n\t' : (ws.includes('\n\n') ? '\n\n' : '\n');
             return a.raw + join + canonicalizeProse(rest);
           }
@@ -91,7 +94,7 @@ const WriteSysCanonicalize = (function () {
       marker = '\n';
       body = body.replace(/^[ \t\n]+/, '');
     }
-    return marker + canonicalizeBody(body);
+    return marker + canonicalizeBody(body, marker !== '');
   }
 
   return { canonicalize };

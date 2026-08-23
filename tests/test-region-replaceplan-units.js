@@ -29,8 +29,8 @@ console.log('=== region replacePlan + resolve units ===\n');
   check('inline same-sentence: status ok', res.status === 'ok', res.status);
   check('inline same-sentence: single suggestion', res.plan.length === 1, String(res.plan.length));
   check('inline same-sentence: targets the host sentence', res.plan[0] && res.plan[0].id === 'p');
-  check('inline same-sentence: prefix\\n\\tNEW\\nsuffix shape',
-    res.plan[0] && res.plan[0].text === 'Prose before. &snippet#keg{x}\n\tNEW\n&end#keg tail after.',
+  check('inline same-sentence: space joins preserved (inline region form)',
+    res.plan[0] && res.plan[0].text === 'Prose before. &snippet#keg{x} NEW &end#keg tail after.',
     JSON.stringify(res.plan[0] && res.plan[0].text));
 }
 
@@ -103,7 +103,7 @@ console.log('=== region replacePlan + resolve units ===\n');
   const res = region.replacePlan(sentences, sug, 'keg', cmd, 'NEW');
   check('sugMap composes: status ok', res.status === 'ok', res.status);
   check('sugMap composes: plan built on the suggestion, not the committed text',
-    res.plan.length === 1 && res.plan[0].text === 'Lead. &snippet#keg{x}\n\tNEW\n&end#keg tail.',
+    res.plan.length === 1 && res.plan[0].text === 'Lead. &snippet#keg{x} NEW &end#keg tail.',
     JSON.stringify(res.plan[0] && res.plan[0].text));
 }
 
@@ -118,7 +118,7 @@ console.log('=== region replacePlan + resolve units ===\n');
   check('codepoints: status ok', res.status === 'ok', res.status);
   check('codepoints: astral prefix/label/suffix survive exactly',
     res.plan.length === 1
-      && res.plan[0].text === '𝔘𝔫𝔦 😀 &snippet#keg{a😀b}\n\tNEW✨\n&end#keg 🎉 tail.',
+      && res.plan[0].text === '𝔘𝔫𝔦 😀 &snippet#keg{a😀b} NEW✨ &end#keg 🎉 tail.',
     JSON.stringify(res.plan[0] && res.plan[0].text));
 }
 

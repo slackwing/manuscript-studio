@@ -33,15 +33,16 @@ const { TEST_URL, loginAsTestUser,
     return html;
   }, { sentences, sug });
 
-  // Case 1: flush leading anchor (no preceding paragraph marker).
+  // Case 1: flush leading anchor (no preceding paragraph marker) is a
+  // MID-PARAGRAPH start (2026-08-23): the ⚓ rides IN the prose, between
+  // the spaces — no margin pull, no paragraph class.
   {
     const id = 'syn-flush';
     const html = await render([{ id, text: 'We probably recounted tales.' }],
       { [id]: '&anchor{The salvia night} We probably recounted tales.' });
-    check('flush: ⚓ present in margin', /cmd-anchor-margin/.test(html));
-    check('flush: paragraph has has-anchor-margin', /<p class="[^"]*has-anchor-margin[^"]*"/.test(html));
-    check('flush: not indented', !/<p class="[^"]*\bindented\b[^"]*has-anchor-margin|has-anchor-margin[^"]*\bindented\b/.test(html), html.match(/<p class="[^"]*"/)?.[0]);
-    check('flush: no inline "⚓ " prefix before text (glyph is a margin span)', /cmd-anchor-margin[^>]*>⚓<\/span><span/.test(html));
+    check('flush: ⚓ rides inline in the prose', /cmd-anchor-inline/.test(html));
+    check('flush: no margin glyph for a marker-less anchor', !/cmd-anchor-margin/.test(html));
+    check('flush: paragraph has no has-anchor-margin class', !/<p class="[^"]*has-anchor-margin/.test(html));
   }
 
   // Case 2: paragraph after a placeholder (\n\t marker) → indented AND margin.

@@ -52,7 +52,7 @@ func Canonicalize(text string) string {
 		body = strings.TrimLeft(body, " \t\n")
 	}
 
-	body = canonicalizeBody(body)
+	body = canonicalizeBody(body, marker != "")
 	return marker + body
 }
 
@@ -73,7 +73,7 @@ func leadingAnchorNewline(body string) bool {
 	return ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSnippet)
 }
 
-func canonicalizeBody(body string) string {
+func canonicalizeBody(body string, hasMarker bool) string {
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
 		return ""
@@ -84,23 +84,27 @@ func canonicalizeBody(body string) string {
 		return cmd.Raw
 	}
 
-	// Leading-anchor split: "&anchor{...} prose" → "&anchor{...}\nprose".
-	// Idempotent: any run of whitespace (spaces, tabs, OR the newline this rule
-	// itself inserts) between the anchor and following prose normalizes to a
-	// single "\n". Recognize an anchor command at the very start with trailing
-	// content. &snippet (canon region opener) follows the same rule.
+	// Leading-anchor forms. Marker-led (or newline-joined) → block form:
+	// "&anchor{...}\nprose", the anchor on its own line. MARKER-LESS with a
+	// space/tab join → INLINE form: "&anchor{...} prose" stays in the
+	// paragraph, one space — a mid-paragraph region start (2026-08-22:
+	// inline starts to anchored sections; the renderer shows the go-to icon
+	// between the two spaces). Idempotent both ways.
 	if strings.HasPrefix(trimmed, "&anchor") || strings.HasPrefix(trimmed, "&snippet") || strings.HasPrefix(trimmed, "&sketch") {
 		if cmd, ok := ParseCommand(trimmed); ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSnippet) {
 			rest := trimmed[len(cmd.Raw):]
 			restTrimmed := strings.TrimLeft(rest, " \t\n")
 			if restTrimmed != "" {
-				// Anchor leads a paragraph, prose follows → block anchor form.
-				// A STRUCTURAL MARKER in the whitespace between anchor and
-				// prose is the prose's paragraph break — collapsing it to a
-				// bare "\n" merged the paragraph into the previous one (the
-				// sketch-from-selection "new paragraph removed" bug). Keep
-				// \n\t (indented) or \n\n (section); plain runs stay "\n".
 				ws := rest[:len(rest)-len(restTrimmed)]
+				if !hasMarker && !strings.Contains(ws, "\n") {
+					// Mid-paragraph inline start: keep the anchor in the flow.
+					return cmd.Raw + " " + canonicalizeProse(restTrimmed)
+				}
+				// Block form. A STRUCTURAL MARKER in the whitespace between
+				// anchor and prose is the prose's paragraph break — collapsing
+				// it to a bare "\n" merged the paragraph into the previous one
+				// (the sketch-from-selection "new paragraph removed" bug). Keep
+				// \n\t (indented) or \n\n (section); plain runs stay "\n".
 				join := "\n"
 				if strings.Contains(ws, "\n\t") {
 					join = "\n\t"

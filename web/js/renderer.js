@@ -890,16 +890,16 @@ const WriteSysRenderer = {
       const label = (c.args && c.args[0]) || c.slug || '';
       const titleAttr = label ? ` title="${escapeHTML(label)}"` : '';
       // The zero-width target stays inline (scroll anchor); the VISIBLE
-      // marker rides in the left margin at this line's height (absolute, no
-      // top → static-position y), so the flow is never touched. A placed
-      // sketch region wears the SKETCH icon (click → its widget); plain
-      // anchors keep the ⚓.
+      // marker rides IN the prose — a mid-paragraph command leaves a space
+      // on each side, and the icon sits between the two (2026-08-22: how
+      // inline starts to anchored sections work). A placed sketch region
+      // wears the SKETCH icon (click → its widget); plain anchors keep ⚓.
       const isSketch = c.kind === 'snippet';
       const icon = isSketch && window.WriteSysIcons && window.WriteSysIcons.goto
         ? window.WriteSysIcons.goto(11) : (isSketch ? '↗' : '⚓');
       const extraCls = isSketch ? ' cmd-sketch-glyph' : '';
       return `<span class="inline-anchor"${slug} aria-hidden="true"></span>`
-        + `<span class="cmd-anchor-glyph cmd-anchor-margin cmd-anchor-margin-inline${extraCls}"${slug}${titleAttr} aria-label="${isSketch ? 'sketch' : 'anchor'}">${icon}</span>`;
+        + `<span class="cmd-anchor-glyph cmd-anchor-inline${extraCls}"${slug}${titleAttr} aria-label="${isSketch ? 'sketch' : 'anchor'}">${icon}</span>`;
     }
     // reference
     const slugMap = (window.WriteSysOutline && window.WriteSysOutline.slugMap) || {};

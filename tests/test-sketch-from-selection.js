@@ -70,6 +70,12 @@ const psql = (sql) => execSync(
   check('selection wrapped in &sketch anchors (2 suggestions)', sugAnchors === '2', sugAnchors);
   const openerForm = psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text LIKE '%&sketch#${slug}{}%'`);
   check('anchor is label-less (&sketch#id{})', openerForm === '1', openerForm);
+  // Inline-start rule (2026-08-22): a mid-paragraph selection start keeps
+  // its paragraph — the opener rides inline, command + space + prose. A
+  // marker-led start keeps the own-line form (leading newline).
+  const joinOk = psql(`SELECT (text LIKE '&sketch#${slug}{} %' OR text LIKE chr(10) || '%')
+    FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text LIKE '%&sketch#${slug}{}%'`);
+  check('opener joins inline (mid-paragraph) or own-line (marker-led) — never splits the paragraph', joinOk === 't', joinOk);
 
   // --- Book: margin glyph is the sketch icon; click navigates ---
   await page.waitForSelector(`.cmd-sketch-glyph[data-slug="${slug}"]`, { timeout: 20000 });

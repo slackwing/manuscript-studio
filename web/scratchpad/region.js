@@ -106,16 +106,21 @@ const WriteSysRegion = {
         const open = toks.find((c) => (c.kind === 'anchor' || c.kind === 'snippet') && c.slug === slug);
         if (!open) continue;
         const after = toks.find((c) => c.kind === 'end' && c.slug === slug && c.start >= open.end);
+        // An INLINE region start ("&sketch#x{} prose", 2026-08-22) keeps
+        // its space join on re-placement; own-line/tight forms keep their
+        // newline joins. Read the join off the existing text.
+        const joinAfter = (tok) => pts(eff, tok.end, tok.end + 1) === ' ' ? ' ' : '\n\t';
+        const joinBefore = (tok) => pts(eff, tok.start - 1, tok.start) === ' ' ? ' ' : '\n';
         if (open.block) {
           // A sole-line opener: the new content follows it, indented — the
           // tight placement form.
           push(s, eff, eff.replace(/\s+$/, '') + '\n\t' + newText);
           state = 'inside';
         } else if (after) {
-          push(s, eff, pts(eff, 0, open.end) + '\n\t' + newText + '\n' + pts(eff, after.start));
+          push(s, eff, pts(eff, 0, open.end) + joinAfter(open) + newText + joinBefore(after) + pts(eff, after.start));
           return { status: 'ok', plan };
         } else {
-          push(s, eff, pts(eff, 0, open.end) + '\n\t' + newText);
+          push(s, eff, pts(eff, 0, open.end) + joinAfter(open) + newText);
           state = 'inside';
         }
         continue;

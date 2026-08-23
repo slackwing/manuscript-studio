@@ -209,8 +209,9 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
     check('R10: trailing &reference stays in the flow (never promoted)',
       refStays.includes('inline-ref broken') && refStays.includes('see'), refStays);
     const midText = await render([{ id: 'r10e', text: 'a &anchor#mid{} b' }]);
-    check('R10: genuinely mid-text anchor left inline',
-      midText.includes('cmd-anchor-margin-inline') && / b<\/span>/.test(midText), midText);
+    check('R10: genuinely mid-text anchor rides IN the prose (inline glyph)',
+      midText.includes('cmd-anchor-inline') && !midText.includes('cmd-anchor-margin-inline')
+      && / b<\/span>/.test(midText), midText);
   }
 
   // ---- R11: orphan-glyph fallbacks --------------------------------------
@@ -239,8 +240,8 @@ const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils')
     check('R12: multibyte offsets — text before/after command intact',
       out.astral.startsWith('\u{1D49C} <em>i</em> ') && out.astral.endsWith(' tail')
       && out.astral.includes('inline-ref broken'), out.astral);
-    check('R12: inline anchor renders target + margin-inline glyph',
-      out.anchor.includes('inline-anchor') && out.anchor.includes('cmd-anchor-margin-inline'), out.anchor);
+    check('R12: inline anchor renders target + in-prose glyph',
+      out.anchor.includes('inline-anchor') && out.anchor.includes('cmd-anchor-inline'), out.anchor);
   }
 
   // ---- R13: renderInlineCommand all kinds -------------------------------

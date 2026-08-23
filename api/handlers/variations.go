@@ -441,7 +441,11 @@ func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Reque
 		}
 		return sentences[i].Text
 	}
-	// Locate the region's BLOCK anchors in effective text.
+	// Locate the region anchors in effective text. An opener/end may be a
+	// WHOLE sentence (block form — anchors on their own lines, the
+	// post-push shape) or ride INLINE inside a prose sentence: a
+	// mid-paragraph region start ("&sketch#x{} prose…", 2026-08-22 inline
+	// starts) or a pre-push composed suggestion carrying prose + "\n&end".
 	isAnchor := func(text string, wantEnd bool) bool {
 		trimmed := strings.TrimSpace(text)
 		cmd, ok := sentence.ParseCommand(trimmed)
@@ -453,11 +457,61 @@ func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Reque
 		}
 		return cmd.Kind == sentence.CmdAnchor || cmd.Kind == sentence.CmdSnippet
 	}
+	// joinOf normalizes the whitespace between a region command and its
+	// neighboring prose — the join must survive re-placement byte-shape
+	// intact (an inline " " start stays inline; an own-line "\n"/"\n\t"
+	// stays its own line).
+	joinOf := func(ws string) string {
+		switch {
+		case strings.Contains(ws, "\n\t"):
+			return "\n\t"
+		case strings.Contains(ws, "\n\n"):
+			return "\n\n"
+		case strings.Contains(ws, "\n"):
+			return "\n"
+		default:
+			return " "
+		}
+	}
+	// leadingOpener: text begins with this region's opener command followed
+	// by more content → (rest-after-opener, opener raw, original join, true).
+	leadingOpener := func(text string) (string, string, string, bool) {
+		trimmed := strings.TrimSpace(text)
+		cmd, ok := sentence.ParseCommand(trimmed)
+		if !ok || cmd.Slug != sketchID || (cmd.Kind != sentence.CmdAnchor && cmd.Kind != sentence.CmdSnippet) {
+			return "", "", "", false
+		}
+		if len(trimmed) <= len(cmd.Raw) {
+			return "", "", "", false
+		}
+		after := trimmed[len(cmd.Raw):]
+		rest := strings.TrimLeft(after, " \t\n")
+		join := joinOf(after[:len(after)-len(rest)])
+		if join != " " {
+			// Newline-joined composed forms (pre-push from-selection
+			// suggestions) keep falling back to the client's replacePlan,
+			// which attaches the new text tight after the opener — the
+			// shape this endpoint's matcher does not guarantee.
+			return "", "", "", false
+		}
+		return rest, cmd.Raw, join, true
+	}
 	openIdx, endIdx := -1, -1
+	openInline := false
+	openCmdRaw, openRest, openJoin := "", "", " "
 	for i := range sentences {
-		if openIdx < 0 && isAnchor(eff(i), false) {
-			openIdx = i
-		} else if openIdx >= 0 && isAnchor(eff(i), true) {
+		text := eff(i)
+		if openIdx < 0 {
+			if isAnchor(text, false) {
+				openIdx = i
+				continue
+			}
+			if rest, raw, join, ok := leadingOpener(text); ok {
+				openIdx, openInline, openCmdRaw, openRest, openJoin = i, true, raw, rest, join
+			}
+			continue
+		}
+		if isAnchor(text, true) {
 			endIdx = i
 			break
 		}
@@ -466,15 +520,38 @@ func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Reque
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": status, "plan": plan})
 	}
-	if openIdx < 0 || endIdx < 0 || endIdx-openIdx < 2 {
+	if openIdx < 0 || endIdx < 0 {
 		respond("unsupported-layout", nil)
 		return
 	}
-	interior := make([]sentence.PlaceOld, 0, endIdx-openIdx-1)
+	var interior []sentence.PlaceOld
+	if openInline && openRest != "" {
+		interior = append(interior, sentence.PlaceOld{ID: sentences[openIdx].SentenceID, Text: openRest})
+	}
 	for i := openIdx + 1; i < endIdx; i++ {
 		interior = append(interior, sentence.PlaceOld{ID: sentences[i].SentenceID, Text: eff(i)})
 	}
-	respond("ok", sentence.PlacePlan(interior, req.Text))
+	if len(interior) == 0 {
+		respond("unsupported-layout", nil)
+		return
+	}
+	plan := sentence.PlacePlan(interior, req.Text)
+	// Re-attach an inline opener to its planned text: the region command is
+	// structure, not content — a plan must never eat it.
+	if openInline {
+		openID := sentences[openIdx].SentenceID
+		for k := range plan {
+			if plan[k].SentenceID == openID {
+				t := strings.TrimSpace(plan[k].Text)
+				if t == "" {
+					plan[k].Text = openCmdRaw
+				} else {
+					plan[k].Text = openCmdRaw + openJoin + t
+				}
+			}
+		}
+	}
+	respond("ok", plan)
 }
 
 // HandleSketchHome: GET /api/sketches/{sketch_id}/home — where the GROUP
