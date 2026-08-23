@@ -231,12 +231,23 @@ export class SketchView {
         actions: (key) => this.peerActionDefs(key),
         openByDefault: false,
       },
+      // ‹ i/n › across the pad's sketch widgets — flip and flash.
+      nav: {
+        info: () => this.padNavInfo(),
+        prev: () => this.padNav(-1),
+        next: () => this.padNav(+1),
+      },
     });
     if (this.compare != null) this.w.rightKey = this.compare; // refresh() keeps an open compare
     this.dom.appendChild(this.w.el);
     this.body = this.w.leftContent;
     this.saveEl = this.dom.querySelector('.sn-save');
     this.w.refresh();
+    // Sibling widgets' ‹ i/n › counts include this newcomer — refresh them
+    // (cheap: the shell signature-diffs, only the nav text changes).
+    for (const v of liveSketchViews) {
+      if (v !== this && v.w) v.w.refresh();
+    }
 
     this.dom.querySelector('[data-act="remove"]')?.addEventListener('click', () => this.removeWidget(false));
     // The sketch's NOTE square (026) — the exact component that fronts
@@ -371,6 +382,28 @@ export class SketchView {
         onClick: () => this.applyState(key, st === 'frozen' ? 'draft' : 'frozen') },
       this.copyRefDef(key),
     ];
+  }
+
+  // Pad-level nav (the shell's ‹ i/n › flippers): this widget's position
+  // among the pad's sketches, and flip-to-neighbor with the flash cue.
+  padWidgets() {
+    const host = this.scrollHost();
+    return host ? [...host.querySelectorAll('.sn-widget')] : [];
+  }
+  padNavInfo() {
+    const ws = this.padWidgets();
+    const i = ws.indexOf(this.dom);
+    return { i: i >= 0 ? i + 1 : null, n: ws.length };
+  }
+  padNav(step) {
+    const ws = this.padWidgets();
+    const i = ws.indexOf(this.dom);
+    const t = ws[(i < 0 ? 0 : i) + step];
+    if (!t) return;
+    t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    t.classList.remove('sn-flash');
+    void t.offsetWidth;
+    t.classList.add('sn-flash');
   }
 
   // Toggle the split-compare (kept for callers + tests): same target
@@ -894,6 +927,10 @@ export class SketchView {
   }
 
   destroy() {
+    liveSketchViews.delete(this);
+    for (const v of liveSketchViews) {
+      if (v.w) v.w.refresh(); // pad nav counts shrink with this widget
+    }
     if (this._sqAdapter) unregisterNoteRefView(this._sqAdapter.noteId, this._sqAdapter);
     if (this._saver) this._saver.destroy();
     variationFlushers.delete(this.flush);

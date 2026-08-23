@@ -156,6 +156,42 @@ const WriteSysSuggestions = {
     });
   },
 
+  // _suggestedOrder: sentence ids carrying a live (fresh, non-rejected)
+  // suggestion, in book order — the ‹ i/n › nav space.
+  _suggestedOrder() {
+    const R = window.WriteSysRenderer;
+    if (!R || !R.currentSentences) return [];
+    return R.currentSentences.map(s => s.id)
+      .filter(id => (this.rowsBySentence[id] || []).length > 0);
+  },
+
+  // _navModal: flip to the previous/next suggested edit. The open modal
+  // flushes via its Escape path (close() flushes; a failing save keeps it
+  // open), then the neighbor opens.
+  async _navModal(currentId, step) {
+    const list = this._suggestedOrder();
+    if (!list.length) return;
+    let i = list.indexOf(currentId);
+    if (i < 0) {
+      // Current sentence has no suggestion — land on the nearest one in
+      // the step direction by document position.
+      const R = window.WriteSysRenderer;
+      const order = R.currentSentences.map(s => s.id);
+      const pos = order.indexOf(currentId);
+      i = step > 0
+        ? list.findIndex(id => order.indexOf(id) > pos)
+        : (() => { let k = -1; list.forEach((id, j) => { if (order.indexOf(id) < pos) k = j; }); return k; })();
+      if (i < 0) return;
+      const target = list[i];
+      if (!this._activeClose || await this._activeClose()) this.openModal(target);
+      return;
+    }
+    const j = i + step;
+    if (j < 0 || j >= list.length) return;
+    const target = list[j];
+    if (!this._activeClose || await this._activeClose()) this.openModal(target);
+  },
+
   // putSuggestion PUTs a sentence's suggestion text — the ONE write path,
   // shared by the modal autosaver and range-delete.js. Throws an Error with
   // .status on a non-OK response (409 = stale migration). Callers own any
@@ -283,9 +319,9 @@ const WriteSysSuggestions = {
       if (!row && !(entry.kind === 'me' && ownChanged())) return [];
       const status = row ? row.review_status : null;
       return [
-        { icon: ICON_CHECK, title: 'Accept', className: 'sgm-accept', color: GREEN,
+        { icon: ICON_CHECK, title: 'Accept', className: 'sgm-accept', color: GREEN, tint: true,
           active: () => status === 'accepted', onClick: () => review(entry, 'accepted') },
-        { icon: ICON_X, title: 'Reject', className: 'sgm-reject', color: RED,
+        { icon: ICON_X, title: 'Reject', className: 'sgm-reject', color: RED, tint: true,
           active: () => status === 'rejected', onClick: () => review(entry, 'rejected') },
       ];
     };
@@ -316,14 +352,23 @@ const WriteSysSuggestions = {
         openByDefault: true,
         defaultKey: 0,
       },
+      // ‹ i/n › across the manuscript's suggested edits, in book order.
+      nav: {
+        info: () => {
+          const list = this._suggestedOrder();
+          const i = list.indexOf(sentenceId);
+          return { i: i >= 0 ? i + 1 : null, n: list.length };
+        },
+        prev: () => this._navModal(sentenceId, -1),
+        next: () => this._navModal(sentenceId, +1),
+      },
     });
     modal.appendChild(w.el);
 
     // Left pane content (caller-owned): note line + editor host; a
     // read-only view swaps in for other/stale entries.
     w.leftContent.innerHTML = `
-      <div class="sn-note"><span class="sgm-pane-label">suggested edit</span><span class="sgm-edit-links"><span class="sgm-revert-wrap" hidden> &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a></span>
-        &middot; <a href="#" class="sgm-insert-after" title="Insert a new sentence after this one — positions the caret; just type the sentence (Tab first for a new paragraph)">+ sentence after</a></span></div>
+      <div class="sn-note"><span class="sgm-pane-label">suggested edit</span><span class="sgm-edit-links"><span class="sgm-revert-wrap" hidden> &middot; <a href="#" class="sgm-revert" title="Copy the committed text into the editor">revert</a></span></span></div>
       <div class="sgm-left"></div>`;
     const otherView = document.createElement('div');
     otherView.className = 'sgm-other-view';
@@ -448,20 +493,6 @@ const WriteSysSuggestions = {
       e.preventDefault();
       applyRevert();
     });
-    // Insert-a-sentence-after (LIFECYCLE §6.5): UX sugar over the same
-    // suggestion — seed "effective text + space", caret at the end, so the
-    // user types ONLY the new sentence (leading Tab for a new paragraph
-    // instead). The diff then renders as a pure insertion.
-    w.leftContent.querySelector('.sgm-insert-after').addEventListener('click', (e) => {
-      e.preventDefault();
-      textarea.value = textarea.value.replace(/\s+$/, '') + ' ';
-      textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-      pane.autoGrow();
-      saver.poke();
-      updateTitle();
-      w.refresh();
-    });
     textarea.addEventListener('input', () => { updateTitle(); w.refresh(); });
     updateTitle();
     w.refresh();
@@ -470,7 +501,8 @@ const WriteSysSuggestions = {
     // the retry/stale status showing — an accidental overlay click or Escape
     // can no longer lose anything.
     const close = async () => {
-      if (!(await saver.flush())) return;
+      if (!(await saver.flush())) return false;
+      this._activeClose = null;
       saver.destroy();
       if (notesStack) {
         notesStack.remove();
@@ -480,7 +512,7 @@ const WriteSysSuggestions = {
       modal.remove();
       const finalText = (this.bySentenceId[sentenceId] !== undefined)
         ? this.bySentenceId[sentenceId] : original;
-      if (finalText === openCurrent) return; // no net change → no re-render
+      if (finalText === openCurrent) return true; // no net change → no re-render
 
       // Stamp the URL so a manual hard-reload comes back to this sentence
       // instead of the top of the manuscript. replaceState — don't pollute
@@ -510,7 +542,9 @@ const WriteSysSuggestions = {
       if (window.WriteSysPush) {
         window.WriteSysPush.refresh();
       }
+      return true;
     };
+    this._activeClose = close;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {

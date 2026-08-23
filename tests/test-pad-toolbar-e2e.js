@@ -205,19 +205,22 @@ const PNG_1PX = Buffer.from(
       await page.locator('#spm-toolbar button', { hasText: '⧉ Sketch ▾' }).click();
       await page.waitForFunction(() => document.querySelector('.sn-insertpop').hidden);
     };
-    // (a) clipboard read HANGS >700ms → localStorage fallback lights the button.
-    await page.evaluate(() => { navigator.clipboard.readText = () => new Promise(() => {}); });
+    // 2026-08-23: the menu NEVER calls clipboard.readText() — Firefox
+    // answers it with a paste PROMPT that stole the menu's first click.
+    // The in-app record (ms_last_variation_ref) is the sole source; a
+    // hanging or foreign clipboard is irrelevant either way.
+    await page.evaluate(() => { navigator.clipboard.readText = () => { throw new Error('readText must not be called'); }; });
     await openMenu();
     await page.waitForSelector('.sn-insertpop .sn-ins-clip:not([disabled])', { timeout: 8000 });
-    check('hanging clipboard → localStorage fallback enables the button (after the 700ms race)', true);
+    check('in-app copy record enables the button — clipboard never read', true);
     await closeMenu();
-    // (b) READABLE clipboard holding foreign text → respect it, stay disabled.
-    await page.evaluate(() => { navigator.clipboard.readText = () => Promise.resolve('unrelated words'); });
+    await page.evaluate(() => { localStorage.removeItem('ms_last_variation_ref'); });
     await openMenu();
-    // Negative window — the async check needs a beat to (not) enable it.
-    for (let i = 0; i < 4; i++) await page.waitForTimeout(400);
-    check('foreign clipboard text keeps "From clipboard" DISABLED (no fallback)',
+    for (let i = 0; i < 3; i++) await page.waitForTimeout(300);
+    check('no in-app record → stays disabled',
       await page.locator('.sn-ins-clip').evaluate(el => el.disabled));
+    await page.evaluate((v) => { localStorage.setItem('ms_last_variation_ref', v); },
+      await page.evaluate(() => document.querySelector('.sn-widget').dataset.variationId));
 
     // ---- sketch-menu-picker-search ---------------------------------------
     await page.locator('.sn-insertpop .sn-ins-based').click();

@@ -38,6 +38,11 @@ window.WriteSysPaneWidget = {
           <span class="pw-head-slot"></span>
           <span class="sn-actions pw-header-actions"></span>
           <span class="sn-save"></span>
+          <span class="pw-nav" hidden>
+            <button type="button" class="pw-nav-prev" title="Previous">&lsaquo;</button>
+            <span class="pw-nav-count"></span>
+            <button type="button" class="pw-nav-next" title="Next">&rsaquo;</button>
+          </span>
         </div>
       </div>
       <div class="sn-cols pw-cols">
@@ -90,6 +95,7 @@ window.WriteSysPaneWidget = {
       if (b.color) {
         btn.style.setProperty('--pw-c', b.color);
         btn.classList.add('pw-colored');
+        if (b.tint) btn.classList.add('pw-tint'); // colored at rest, not just hover
         if (b.active && b.active()) btn.classList.add('pw-on');
       }
       btn.addEventListener('click', (e) => {
@@ -141,7 +147,18 @@ window.WriteSysPaneWidget = {
         mkRailBtn(entry, entry.key === selectedKey, () => onClick(entry))));
     };
 
+    const navEl = el.querySelector('.pw-nav');
+    if (cfg.nav) {
+      el.querySelector('.pw-nav-prev').addEventListener('click', () => cfg.nav.prev());
+      el.querySelector('.pw-nav-next').addEventListener('click', () => cfg.nav.next());
+    }
+
     const refresh = () => {
+      if (cfg.nav) {
+        const { i, n } = cfg.nav.info() || {};
+        navEl.hidden = !n;
+        if (n) el.querySelector('.pw-nav-count').textContent = `${i || '–'}/${n}`;
+      }
       // Rails re-derive from the lambdas — labels/colors/disabled are live.
       const leftEntries = (cfg.left && cfg.left.rail ? cfg.left.rail() : []);
       if (w.leftKey == null && leftEntries.length) w.leftKey = leftEntries[0].key;

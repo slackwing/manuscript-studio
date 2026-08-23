@@ -940,6 +940,7 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 }
 .pw-actbtn svg { display: block; }
 .pw-actbtn.pw-colored:hover { color: var(--pw-c); }
+.pw-actbtn.pw-tint { color: var(--pw-c); } /* colored at rest (accept ✓ / reject ✗) */
 .pw-actbtn.pw-on {
   color: var(--pw-c);
   background: color-mix(in srgb, var(--pw-c) 12%, white);
@@ -951,3 +952,14 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
    rejected — same mechanism, color passed in). */
 .sn-rail-btn.pw-colored { color: var(--pw-c); }
 .sn-rail-btn.pw-colored:not(.active) { background: color-mix(in srgb, var(--pw-c) 10%, transparent); }
+
+/* Header nav flippers (pw-nav): ‹ i/n › in the upper right — suggested
+   edits in the modal, sketches in a pad. */
+.pw-nav { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.pw-nav[hidden] { display: none; }
+.pw-nav-count { font: 10px "Helvetica", sans-serif; color: #a49b8a; padding: 0 2px; white-space: nowrap; }
+.pw-nav-prev, .pw-nav-next {
+  background: none; border: none; cursor: pointer;
+  color: #a49b8a; font-size: 14px; line-height: 1; padding: 1px 5px;
+}
+.pw-nav-prev:hover, .pw-nav-next:hover { color: #57503f; }

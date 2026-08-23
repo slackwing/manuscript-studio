@@ -7,7 +7,7 @@
 import { NodeSelection, wrapIn, liftTarget } from './vendor/prosemirror.mjs';
 import { schema } from './schema.mjs?v=1';
 import { variationApi } from './api.mjs?v=1';
-import { esc, letterOf, parseVariationRef, refreshSketchSiblings } from './sketch-view.mjs?v=2';
+import { esc, letterOf, parseVariationRef, refreshSketchSiblings } from './sketch-view.mjs?v=3';
 
 // fmtDeleted renders a deleted_at ISO timestamp as a short local date for the
 // Restore… list (e.g. "Jul 26"). Empty/invalid → ''.
@@ -195,38 +195,20 @@ export function buildSketchMenu(toolbarEl, getView) {
     });
     pop.querySelector('.sn-ins-based').addEventListener('click', renderPicker);
     pop.querySelector('.sn-ins-restore').addEventListener('click', renderRestore);
-    // "From clipboard" lights up only when the clipboard holds a VALID
-    // sketch reference (copied via a widget's copy button) — parsed, then
-    // confirmed against the API so a stale/foreign id stays disabled.
-    // The check is async (clipboard read + API confirm) — spin while it
-    // runs so the disabled state doesn't read as final.
+    // "From clipboard" lights up only when the app's record of the last
+    // copy-button press points at a VALID variation (confirmed against the
+    // API so a stale/foreign id stays disabled). Deliberately NO
+    // navigator.clipboard.readText() here: Firefox answers that with its
+    // paste PROMPT, which stole the menu's first click ("have to hit New
+    // sketch twice"). The copy button writes both the clipboard and
+    // ms_last_variation_ref — the record suffices.
     (async () => {
       const clipBtn = pop.querySelector('.sn-ins-clip');
       const spin = document.createElement('span');
       spin.className = 'sn-clip-spin';
       clipBtn.appendChild(spin);
       try {
-        let id = null;
-        let clipboardReadable = true;
-        try {
-          // Race the read against a short timeout: Firefox sometimes leaves
-          // readText() PENDING (its paste prompt waiting for attention)
-          // rather than rejecting — without the race the button would sit
-          // disabled forever on the first menu open.
-          id = parseVariationRef(await Promise.race([
-            navigator.clipboard.readText(),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('clipboard timeout')), 700)),
-          ]));
-        } catch (_) {
-          clipboardReadable = false; // refused OR still pending — same treatment
-        }
-        // Fallback ONLY when the clipboard couldn't be read at all: use the
-        // app's record of the last copy-button press. A READABLE clipboard
-        // holding something else means the user copied other content since —
-        // respect that and stay disabled.
-        if (id == null && !clipboardReadable) {
-          id = parseInt(localStorage.getItem('ms_last_variation_ref') || '', 10) || null;
-        }
+        const id = parseInt(localStorage.getItem('ms_last_variation_ref') || '', 10) || null;
         if (id == null) return;
         const ctx = await variationApi.context(id);
         if (!clipBtn.isConnected) return; // menu re-rendered/closed meanwhile

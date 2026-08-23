@@ -80,12 +80,14 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const variationId = await page.evaluate(() => document.querySelector('.sn-widget').dataset.variationId);
   check('copies ms-variation:<id>', clip === `ms-variation:${variationId}`, clip);
 
-  // With junk in the clipboard the option stays disabled.
+  // 2026-08-23: the menu NEVER reads the clipboard (Firefox's paste prompt
+  // was stealing the menu's first click) — the in-app copy record is the
+  // source of truth, so junk in the OS clipboard doesn't disable it.
   await page.evaluate(() => navigator.clipboard.writeText('just some prose'));
   await page.locator('.sn-btn', { hasText: 'Sketch' }).dispatchEvent('mousedown');
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
-  await page.waitForTimeout(400); // async validation settles
-  check('From clipboard disabled for junk', await page.locator('.sn-ins-clip').isDisabled());
+  await page.waitForSelector('.sn-insertpop .sn-ins-clip:not([disabled])', { timeout: 8000 });
+  check('From clipboard follows the in-app copy record (clipboard never read)', true);
   // Toggle the menu closed with the real button, then reopen fresh.
   await page.locator('.sn-btn', { hasText: 'Sketch' }).dispatchEvent('mousedown');
   await page.waitForSelector('.sn-insertpop', { state: 'hidden' });

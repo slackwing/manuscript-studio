@@ -200,6 +200,20 @@ function psql(sql) {
       return btns.length === 2 && btns[0].classList.contains('sgm-accept') && btns[1].classList.contains('sgm-reject')
         && btns[0].title === 'Accept' && btns[1].title === 'Reject';
     }));
+    assert2('review icons are tinted at rest (green ✓ / red ✗ before hover)', await page.evaluate(() => {
+      const [a, r] = document.querySelectorAll('#suggestion-modal .pw-actionrow-left .pw-actbtn');
+      const c = (el) => getComputedStyle(el).color;
+      return a.classList.contains('pw-tint') && r.classList.contains('pw-tint')
+        && c(a) !== c(document.querySelector('#suggestion-modal .sn-save'));
+    }));
+    assert2('no "+ sentence after" link anywhere in the modal', await page.evaluate(() =>
+      !document.querySelector('#suggestion-modal .sgm-insert-after')));
+    // Nav appears once the autosaved suggestion lands in the model.
+    await page.waitForFunction(() => {
+      const nav = document.querySelector('#suggestion-modal .pw-nav');
+      return nav && !nav.hidden && /^\d+\/\d+$/.test(nav.querySelector('.pw-nav-count').textContent.trim());
+    }, null, { timeout: 8000 });
+    assert2('nav flippers show i/n across suggested edits', true);
     // left-pane revert copies committed back in, modal stays open
     await page.locator('#suggestion-modal .sgm-revert').click();
     await page.waitForTimeout(150);
