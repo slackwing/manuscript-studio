@@ -126,6 +126,13 @@ const WriteSysSuggestions = {
       && (scope !== 'own' || s.user_id === this.viewer)).length;
   },
 
+  // suggestionTotal: ALL fresh (non-stale) suggestions in scope — the
+  // denominator of the accept button's (accepted/total) readout.
+  suggestionTotal(scope) {
+    return this.rows.filter(s => !s.stale
+      && (scope !== 'own' || s.user_id === this.viewer)).length;
+  },
+
   ownPendingCount() {
     return this.rows.filter(s => !s.stale && s.user_id === this.viewer && !s.review_status).length;
   },
@@ -183,13 +190,25 @@ const WriteSysSuggestions = {
         : (() => { let k = -1; list.forEach((id, j) => { if (order.indexOf(id) < pos) k = j; }); return k; })();
       if (i < 0) return;
       const target = list[i];
-      if (!this._activeClose || await this._activeClose()) this.openModal(target);
+      if (!this._activeClose || await this._activeClose()) {
+        if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
+          window.WriteSysRenderer.scrollToSentence(target);
+        }
+        this.openModal(target);
+      }
       return;
     }
     const j = i + step;
     if (j < 0 || j >= list.length) return;
     const target = list[j];
-    if (!this._activeClose || await this._activeClose()) this.openModal(target);
+    if (!this._activeClose || await this._activeClose()) {
+      // The page follows the tour — the flipped-to edit scrolls into view
+      // under the modal.
+      if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
+        window.WriteSysRenderer.scrollToSentence(target);
+      }
+      this.openModal(target);
+    }
   },
 
   // putSuggestion PUTs a sentence's suggestion text — the ONE write path,
@@ -866,14 +885,18 @@ function renderStructuralMarkers(html) {
     if (c === '\n' && (html[i + 1] === '\n' || html[i + 1] === '\t')) {
       // §/¶ come from text-markers.js (script-global constants; it loads
       // first) — the single home of the marker-glyph vocabulary.
-      const glyph = (html[i + 1] === '\n') ? SECTION_GLYPH : PARAGRAPH_GLYPH;
+      const isSection = html[i + 1] === '\n';
+      const glyph = isSection ? SECTION_GLYPH : PARAGRAPH_GLYPH;
       const isEq = !inDel && !inStrong;
       if (leading && isEq) {
         // Pre-existing marker at sentence start — drop entirely.
       } else if (leading || inDel) {
         out += `<span class="suggested-marker">${glyph}</span>`;
       } else {
-        out += `<span class="suggested-marker">${glyph}</span><br><span class="suggested-pindent">\u00a0\u00a0\u00a0\u00a0</span>`;
+        // Only a ¶ (\n\t) indents — a section's first paragraph starts
+        // flush, matching the book's own convention.
+        const indent = isSection ? '' : '<span class="suggested-pindent">\u00a0\u00a0\u00a0\u00a0</span>';
+        out += `<span class="suggested-marker">${glyph}</span><br>${indent}`;
       }
       i++;
       continue;

@@ -70,11 +70,11 @@ const WriteSysPush = {
 
   // A split pair: primary executes the shown variant; the caret menu holds
   // the alternate. Shown = own unless own is empty and everyone's isn't.
-  _pairHTML(id, counts, icons, hints) {
+  _pairHTML(id, counts, icons, hints, titleOverrides) {
     const variant = counts.own === 0 && counts.all > 0 ? 'all' : 'own';
     const alt = variant === 'own' ? 'all' : 'own';
     const icon = (v) => v === 'all' ? `${icons.base}${ICON_PERSONS3}` : icons.base;
-    const title = (v) => `${hints[v]} (${counts[v]})`;
+    const title = (v) => (titleOverrides && titleOverrides[v]) || `${hints[v]} (${counts[v]})`;
     return `<span class="mc-split" id="${id}-split" data-variant="${variant}">
       <button type="button" class="mc-btn" id="${id}-btn" data-variant="${variant}"
         title="${title(variant)}" ${counts[variant] === 0 ? 'disabled' : ''}>${icon(variant)}</button>
@@ -112,8 +112,12 @@ const WriteSysPush = {
       html += `<button type="button" class="mc-btn" id="first-edit-btn" title="Go to first suggested edit">1</button>`;
     }
     if (canReview) {
+      // The OWN button reads progress — (accepted/total) of YOUR live
+      // suggestions; the everyone's variant keeps its pending count.
+      const ownProgress = `Accept my uncontested (${acc.own}/${S.suggestionTotal ? S.suggestionTotal('own') : 0})`;
       html += this._pairHTML('accept', pend, { base: ICON_CHECKS3 },
-        { own: 'Accept my uncontested', all: "Accept everyone's uncontested" });
+        { own: 'Accept my uncontested', all: "Accept everyone's uncontested" },
+        { own: ownProgress });
     }
     if (canPush) {
       html += this._pairHTML('push', acc, { base: this._verbIcon() },
@@ -170,6 +174,12 @@ const WriteSysPush = {
   async _accept(variant) {
     const r = window.WriteSysRenderer;
     if (!r || !r.currentMigrationID) return;
+    // Batch accepts are a click away from changing the manuscript — confirm.
+    const S = window.WriteSysSuggestions || {};
+    const n = S.uncontestedPendingCount ? S.uncontestedPendingCount(variant) : 0;
+    if (!window.confirm(variant === 'own'
+      ? `Accept ${n} uncontested suggested edit${n === 1 ? '' : 's'}?`
+      : `Accept ${n} uncontested suggested edit${n === 1 ? '' : 's'} from everyone?`)) return;
     try {
       this._setBusy('accept');
       const resp = await authenticatedFetch(

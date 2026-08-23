@@ -34,6 +34,7 @@ function cleanup() {
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  page.on('dialog', d => d.accept()); // batch-accept confirm
   try {
     await loginAsTestUser(page);
 
@@ -104,7 +105,7 @@ function cleanup() {
     // ---- v3.3 button row: accept pair then push/commit pair ------------
     await page.waitForFunction(() => {
       const el = document.getElementById('accept-btn');
-      return el && el.title === 'Accept my uncontested (1)';
+      return el && el.title === 'Accept my uncontested (0/1)';
     }, { timeout: 20000 });
     check('accept button offers my uncontested (1)', true);
     const pushDisabled = await page.getAttribute('#push-btn', 'disabled');
