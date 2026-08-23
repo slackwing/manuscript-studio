@@ -529,6 +529,11 @@ const WriteSysRenderer = {
       // red/green at all (the "placed section shows no diff" bug).
       if (suggestion !== undefined && !isDeleteProposal && cmdLib
           && frags.length > 1 && frags.every((x) => x.kind === 'prose')
+          // Region tokens (&anchor/&snippet/&end) keep the fragment path —
+          // its margin-glyph promotion and real paragraph grouping render
+          // the tight compose form correctly; only PURE prose collapses.
+          && !(cmdLib.findInline ? cmdLib.findInline(effective) : [])
+            .some((c) => c.kind === 'anchor' || c.kind === 'snippet' || c.kind === 'end')
           && cmdLib.segmentFragments(canon(committed)).every((x) => x.kind === 'prose')) {
         frags = [{
           kind: 'prose',
