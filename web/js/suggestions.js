@@ -311,6 +311,7 @@ const WriteSysSuggestions = {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         row.review_status = next;
         this.rebuildMaps();
+        syncReviewShade();
         w.refresh();
         if (window.WriteSysPush) window.WriteSysPush.refresh();
       } catch (e) {
@@ -350,6 +351,7 @@ const WriteSysSuggestions = {
               pane.autoGrow();
               saver.poke();
               updateTitle();
+              if (leftCtl) leftCtl.sync();
               w.refresh();
             } });
         }
@@ -422,6 +424,14 @@ const WriteSysSuggestions = {
     versionPane.textarea.classList.add('suggestion-modal-original', 'sgm-version-text');
     w.rightContent.appendChild(versionPane.wrap);
 
+    // The left content area wears its review verdict as a pale wash.
+    const syncReviewShade = () => {
+      const host = w.leftContent.querySelector('.sgm-left');
+      const entry = leftEntry();
+      const row = (!entry || entry.kind === 'me') ? mineRow() : entry.row;
+      host.classList.toggle('rv-accepted', !!row && row.review_status === 'accepted');
+      host.classList.toggle('rv-rejected', !!row && row.review_status === 'rejected');
+    };
     const showLeft = (key) => {
       const entry = leftEntries().find(e => e.key === key);
       if (entry && entry.kind !== 'me') {
@@ -430,6 +440,7 @@ const WriteSysSuggestions = {
       }
       // Entry switches land back in the formatted view.
       if (leftCtl) leftCtl.exitMono();
+      syncReviewShade();
     };
 
     const showVersion = (k) => {
@@ -490,6 +501,7 @@ const WriteSysSuggestions = {
           this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText, review_status: null, stale: false });
         }
         this.rebuildMaps();
+        syncReviewShade();
         w.refresh();
       },
       statusEl: w.saveEl,
@@ -582,6 +594,7 @@ const WriteSysSuggestions = {
       hideMono: () => { versionPane.wrap.hidden = true; },
       focusMono: () => versionPane.textarea.focus(),
     });
+    syncReviewShade();
     otherView.tabIndex = -1; // focusable, so blur can return it to formatted
     textarea.addEventListener('blur', () => leftCtl.exitMono());
     otherView.addEventListener('blur', () => leftCtl.exitMono());
@@ -598,6 +611,7 @@ const WriteSysSuggestions = {
       pane.autoGrow();
       saver.poke();
       updateTitle();
+      if (leftCtl) leftCtl.sync(); // the formatted diff tracks the editor
       w.refresh();
     };
     textarea.addEventListener('input', () => { redoText = null; updateTitle(); w.refresh(); });

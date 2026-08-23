@@ -369,11 +369,15 @@
    rail, every pane (pane-widget geometry): the open comparison on a right
    rail, the viewed person on the modal's left rail, the sketch's self. */
 .sn-rail-btn.active { background: #ddd8cc; border-color: #c2baa8; }
-/* Variation state at a glance: frozen letters bluish, superseded reddish. */
-.sn-rail-btn.st-frozen { color: #2a6fb0; background: #e8f0f8; }
-.sn-rail-btn.st-frozen:hover { background: #f2f7fc; }
-.sn-rail-btn.st-superseded { color: #b04038; background: #f6e7e4; }
-.sn-rail-btn.st-superseded:hover { background: #faf0ee; }
+/* Variation state at a glance: the letter takes the state color and its
+   wash — same map/formula as every other tinted surface. */
+.sn-rail-btn.st-frozen, .sn-rail-btn.st-superseded {
+  color: var(--pw-c);
+  background: color-mix(in srgb, var(--pw-c) 14%, white);
+}
+.sn-rail-btn.st-frozen:hover, .sn-rail-btn.st-superseded:hover {
+  background: color-mix(in srgb, var(--pw-c) 7%, white);
+}
 .sn-rail-btn.st-frozen.active, .sn-rail-btn.st-superseded.active { border-color: #c2baa8; }
 /* A disabled rail button (e.g. an unchanged history hop in the suggest-edit
    modal) must READ disabled: faded, no hover invite, default cursor. */
@@ -399,10 +403,22 @@
 .sn-render { background: #fff; }
 /* A FROZEN variation's own preview wears a light blue so it reads as read-only at
    a glance (matching the snowflake/canon blue family). */
-.sn-render.sn-frozen { background: #eef4fb; }
+/* State→color map + THE wash formula (2026-08-24, DRY'd with the
+   suggest-modal's review washes): a state names its color ONCE via --pw-c;
+   every tinted surface — sketch previews, read-only mono panes, the
+   modal's review-washed faces — resolves through ONE color-mix. */
+.sn-frozen, .st-frozen { --pw-c: #2a6fb0; }
+.sn-superseded, .st-superseded { --pw-c: #b04038; }
+.rv-accepted { --pw-c: #2e7d32; }
+.rv-rejected { --pw-c: #b03030; }
+.sn-render.sn-frozen, .sn-render.sn-superseded,
+textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
+.rv-accepted .sgm-fmt, .rv-accepted .sn-text, .rv-accepted .sn-text-wrap, .rv-accepted .sgm-other-view,
+.rv-rejected .sgm-fmt, .rv-rejected .sn-text, .rv-rejected .sn-text-wrap, .rv-rejected .sgm-other-view {
+  background: color-mix(in srgb, var(--pw-c) 11%, white);
+}
 /* A SUPERSEDED variation reads like frozen but in a reddish hue — no longer the
    preferred variation, read-only until un-superseded. */
-.sn-render.sn-superseded { background: #faf0ee; }
 /* A sibling shown as a read-only PREVIEW: darker (disabled) background, but
    full-strength text (not lightened). It ABSORBS clicks (cursor:default; a JS
    handler swallows them) so there's no caret and — critically — the click does
@@ -865,8 +881,6 @@ textarea.sn-mono-ro {
   cursor: text;
   user-select: text;
 }
-textarea.sn-mono-ro.sn-frozen { background: #eef4fb; }
-textarea.sn-mono-ro.sn-superseded { background: #faf0ee; }
 textarea.sn-mono-ro.sn-peer-ro { background: #e7e2d6; }
 textarea.sn-mono-ro::selection { background: #bcd6ee; }
 /* The rendered peer pane's selection should be visible too (it's the
@@ -966,9 +980,11 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 .pw-actbtn.pw-colored:hover { color: var(--pw-c); }
 .pw-actbtn.pw-tint { color: var(--pw-c); } /* colored at rest (accept ✓ / reject ✗) */
 .pw-actbtn.pw-on {
+  /* Active = a SHADED button (the frozen-pressed recipe): the signal is
+     the pale background, not a louder icon. */
   color: var(--pw-c);
-  background: color-mix(in srgb, var(--pw-c) 12%, white);
-  border-color: color-mix(in srgb, var(--pw-c) 40%, white);
+  background: color-mix(in srgb, var(--pw-c) 18%, white);
+  border-color: color-mix(in srgb, var(--pw-c) 45%, white);
   border-radius: 3px;
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--pw-c) 30%, transparent);
 }
