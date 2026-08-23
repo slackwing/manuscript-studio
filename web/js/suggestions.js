@@ -156,9 +156,9 @@ const WriteSysSuggestions = {
     });
   },
 
-  // _suggestedOrder: sentence ids carrying a live (fresh, non-rejected)
+  // suggestedOrder: sentence ids carrying a live (fresh, non-rejected)
   // suggestion, in book order — the ‹ i/n › nav space.
-  _suggestedOrder() {
+  suggestedOrder() {
     const R = window.WriteSysRenderer;
     if (!R || !R.currentSentences) return [];
     return R.currentSentences.map(s => s.id)
@@ -169,7 +169,7 @@ const WriteSysSuggestions = {
   // flushes via its Escape path (close() flushes; a failing save keeps it
   // open), then the neighbor opens.
   async _navModal(currentId, step) {
-    const list = this._suggestedOrder();
+    const list = this.suggestedOrder();
     if (!list.length) return;
     let i = list.indexOf(currentId);
     if (i < 0) {
@@ -390,7 +390,7 @@ const WriteSysSuggestions = {
       // ‹ i/n › across the manuscript's suggested edits, in book order.
       nav: {
         info: () => {
-          const list = this._suggestedOrder();
+          const list = this.suggestedOrder();
           const i = list.indexOf(sentenceId);
           return { i: i >= 0 ? i + 1 : null, n: list.length };
         },

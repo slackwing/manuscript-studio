@@ -105,6 +105,12 @@ const WriteSysPush = {
     const verb = this._verb();
 
     let html = '';
+    // "1": jump to the first suggested edit (opens its modal — the nav
+    // flippers tour from there). Shown whenever any suggestion is live.
+    const tour = S.suggestedOrder ? S.suggestedOrder() : [];
+    if (tour.length) {
+      html += `<button type="button" class="mc-btn" id="first-edit-btn" title="Go to first suggested edit">1</button>`;
+    }
     if (canReview) {
       html += this._pairHTML('accept', pend, { base: ICON_CHECKS3 },
         { own: 'Accept my uncontested', all: "Accept everyone's uncontested" });
@@ -120,6 +126,16 @@ const WriteSysPush = {
       }
     }
     this._container.innerHTML = html;
+
+    const firstBtn = this._container.querySelector('#first-edit-btn');
+    if (firstBtn) firstBtn.addEventListener('click', () => {
+      const list = S.suggestedOrder ? S.suggestedOrder() : [];
+      if (!list.length) return;
+      if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
+        window.WriteSysRenderer.scrollToSentence(list[0]);
+      }
+      S.openModal(list[0]);
+    });
 
     this._container.querySelectorAll('.mc-split').forEach(split => {
       const id = split.id.replace('-split', '');

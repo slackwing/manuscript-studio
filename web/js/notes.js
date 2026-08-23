@@ -72,55 +72,59 @@ const WriteSysNotes = {
     }
   },
 
-  // First annotated sentence in DOM order strictly after the current one
-  // (wrapping). Works even when the current sentence itself isn't annotated
-  // anymore (e.g. just-completed last note).
-  jumpToNextAnnotatedSentence() {
+  // Annotated sentences in DOM order — the ‹ i/n › nav space.
+  annotatedOrdered() {
     const renderer = window.WriteSysRenderer;
-    if (!renderer || !renderer.currentNotes) return;
-
+    if (!renderer || !renderer.currentNotes) return [];
     const annotatedIds = new Set(
       renderer.currentNotes.map(a => a.sentence_id).filter(Boolean)
     );
-    if (annotatedIds.size === 0) return;
-
-    const allSentences = Array.from(document.querySelectorAll('.sentence[data-sentence-id]'));
+    if (annotatedIds.size === 0) return [];
     const orderedIds = [];
     const seen = new Set();
-    for (const el of allSentences) {
+    for (const el of document.querySelectorAll('.sentence[data-sentence-id]')) {
       const id = el.dataset.sentenceId;
       if (id && !seen.has(id)) {
         seen.add(id);
         orderedIds.push(id);
       }
     }
-    if (orderedIds.length === 0) return;
+    return orderedIds.filter(id => annotatedIds.has(id));
+  },
 
-    const annotatedOrdered = orderedIds.filter(id => annotatedIds.has(id));
-    if (annotatedOrdered.length === 0) return;
-
-    let nextId = null;
-    if (this.currentSentenceId) {
-      const currentDocIdx = orderedIds.indexOf(this.currentSentenceId);
-      nextId = annotatedOrdered.find(id => orderedIds.indexOf(id) > currentDocIdx);
-      if (!nextId) nextId = annotatedOrdered[0];
-    } else {
-      nextId = annotatedOrdered[0];
-    }
-
-    const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${nextId}"]`);
+  gotoAnnotated(id) {
+    const renderer = window.WriteSysRenderer;
+    const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${id}"]`);
     if (fragments.length === 0) return;
-
     document.querySelectorAll('.sentence.selected').forEach(s => s.classList.remove('selected'));
     fragments.forEach(f => f.classList.add('selected'));
-    if (renderer) renderer.currentSelectedSentenceId = nextId;
-
+    if (renderer) renderer.currentSelectedSentenceId = id;
     // sentenceMap has the full text; fragments[0] may only be a fragment.
-    const fullText = (renderer && renderer.sentenceMap && renderer.sentenceMap[nextId])
+    const fullText = (renderer && renderer.sentenceMap && renderer.sentenceMap[id])
       || fragments[0].textContent;
-    this.showNotesForSentence(nextId, fullText);
-
+    this.showNotesForSentence(id, fullText);
     fragments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+
+  // Kept for existing callers: step forward through annotated sentences
+  // (wrapping), the old down-arrow behavior.
+  jumpToNextAnnotatedSentence() {
+    const list = this.annotatedOrdered();
+    if (!list.length) return;
+    const i = this.currentSentenceId ? list.indexOf(this.currentSentenceId) : -1;
+    this.gotoAnnotated(list[i + 1] || list[0]);
+  },
+
+  // The container with NO sentence selected (first load): just the nav in
+  // its GO TO FIRST NOTE form, so the tour has an entry point.
+  showIdleNoteNav() {
+    if (this.currentSentenceId) return;
+    const container = document.getElementById('sticky-notes-container');
+    if (!container) return;
+    if (!this.annotatedOrdered().length) { container.classList.remove('visible'); return; }
+    container.innerHTML = '';
+    container.appendChild(this.createNoteNav());
+    container.classList.add('visible');
   },
 
   initNoteMargin() {
@@ -278,7 +282,7 @@ const WriteSysNotes = {
     container.appendChild(addNewNote);
 
     if (!isFirstNote) {
-      container.appendChild(this.createNextAnnotatedSentenceButton());
+      container.appendChild(this.createNoteNav());
     }
 
     container.classList.add('visible');
@@ -325,23 +329,34 @@ const WriteSysNotes = {
     this.populateMobileNoteStack(stack);
   },
 
-  createNextAnnotatedSentenceButton() {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'next-annotated-sentence-btn';
-    btn.title = 'Jump to next annotated sentence';
-    btn.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M5 8l5 5 5-5"
-              stroke="currentColor" fill="none" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `;
-    btn.addEventListener('click', (e) => {
+  // ‹ i/n › across annotated sentences — same style as the pane-widget
+  // header nav. No selection yet → "GO TO FIRST NOTE ›".
+  createNoteNav() {
+    const list = this.annotatedOrdered();
+    const i = this.currentSentenceId ? list.indexOf(this.currentSentenceId) : -1;
+    const wrap = document.createElement('div');
+    wrap.className = 'pw-nav note-nav';
+    if (i < 0) {
+      wrap.innerHTML = `<span class="pw-nav-count">GO TO FIRST NOTE</span>
+        <button type="button" class="pw-nav-next" title="First note">&rsaquo;</button>`;
+      wrap.querySelector('.pw-nav-next').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (list.length) this.gotoAnnotated(list[0]);
+      });
+      return wrap;
+    }
+    wrap.innerHTML = `<button type="button" class="pw-nav-prev" title="Previous note"${i === 0 ? ' disabled' : ''}>&lsaquo;</button>
+      <span class="pw-nav-count">${i + 1}/${list.length}</span>
+      <button type="button" class="pw-nav-next" title="Next note"${i >= list.length - 1 ? ' disabled' : ''}>&rsaquo;</button>`;
+    wrap.querySelector('.pw-nav-prev').addEventListener('click', (e) => {
       e.stopPropagation();
-      this.jumpToNextAnnotatedSentence();
+      if (list[i - 1]) this.gotoAnnotated(list[i - 1]);
     });
-    return btn;
+    wrap.querySelector('.pw-nav-next').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (list[i + 1]) this.gotoAnnotated(list[i + 1]);
+    });
+    return wrap;
   },
 
   // The manuscript margin now renders notes through the SHARED note-widget

@@ -327,6 +327,7 @@ const WriteSysRenderer = {
       if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
       if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
       if (window.WriteSysSuggestions && window.WriteSysSuggestions.markStaleSentences) window.WriteSysSuggestions.markStaleSentences();
+      if (window.WriteSysNotes && window.WriteSysNotes.showIdleNoteNav) window.WriteSysNotes.showIdleNoteNav();
       this.layoutMarginGlyphs();
       // Webfonts landing after pagination shift geometry — re-pin then.
       if (document.fonts && document.fonts.ready) {

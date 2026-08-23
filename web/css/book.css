@@ -2112,35 +2112,12 @@ p.section-break {
   transform-origin: center center;
 }
 
-/* Down-arrow button below the gradient uncreated note: jump to the next
-   sentence with notes. */
-.next-annotated-sentence-btn {
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-top: 8px;
-  background: transparent;
-  border: 1px solid #ccc;
-  border-radius: 50%;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.2s;
-  padding: 0;
-}
-
-.next-annotated-sentence-btn:hover {
-  background: #f0f0f0;
-  border-color: #888;
-  color: #222;
-}
-
-.next-annotated-sentence-btn svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
+/* Note nav below the notes (and the idle GO TO FIRST NOTE entry point):
+   the pane-widget ‹ i/n › flipper family, centered in the margin. */
+.note-nav { align-self: center; margin-top: 8px; }
+.note-nav .pw-nav-prev:disabled, .note-nav .pw-nav-next:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* History bars on the LEFT margin: 3 lanes encoding "what changed across
