@@ -33,6 +33,10 @@ const WriteSysScratchRender = {
       }
       /* Widgets are working views, not pages: left-justify prose. */
       .scratch-book p { text-align: left; }
+      /* Pre-rendered diff HTML (renderHTML) shares the book typography. */
+      .scratch-diff { white-space: pre-wrap; overflow-wrap: break-word; }
+      .scratch-diff del { color: #b03030; text-decoration: line-through; text-decoration-thickness: 1px; }
+      .scratch-diff strong { color: #2e7d32; font-weight: 600; }
       .scratch-book .sentence,
       .scratch-book .sentence:not(.selected):hover {
         cursor: text;
@@ -61,6 +65,15 @@ const WriteSysScratchRender = {
     container.innerHTML = r ? r.renderSentencesToHTML(pseudoSentences) : '';
     if (typeof smartquotes !== 'undefined') smartquotes.element(container);
     this.layoutPass(container);
+    return container;
+  },
+
+  // renderHTML: PRE-RENDERED inline HTML (e.g. a red/green word diff) in
+  // the same .scratch-book chrome/typography as render() — the one font
+  // truth, so a diff view can never drift from the plain view.
+  renderHTML(host, html) {
+    const container = this.ensure(host);
+    container.innerHTML = `<div class="scratch-diff">${html}</div>`;
     return container;
   },
 

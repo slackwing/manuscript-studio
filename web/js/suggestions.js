@@ -530,7 +530,6 @@ const WriteSysSuggestions = {
     const dmpInst = (window.WriteSysRenderer && window.WriteSysRenderer._dmp)
       ? window.WriteSysRenderer._dmp() : null;
     const fmtSerif = (host, text) => {
-      host.classList.remove('sgm-fmt-diff');
       host.innerHTML = '';
       if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderText(host, text);
       else host.textContent = text;
@@ -545,18 +544,21 @@ const WriteSysSuggestions = {
           fmtSerif(leftFmt, txt);
           return;
         }
-        leftFmt.classList.add('sgm-fmt-diff');
         let html = renderDiffHTML(src, txt, dmpInst);
         if (window.WriteSysRenderer && window.WriteSysRenderer.renderInlineCommandsInHtml) {
           html = window.WriteSysRenderer.renderInlineCommandsInHtml(html);
         }
-        leftFmt.innerHTML = html;
+        // Same renderer as the plain view — one typography truth.
+        if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderHTML(leftFmt, html);
+        else leftFmt.innerHTML = html;
       },
       showMono: () => {
         const entry = leftEntry();
         const own = !entry || entry.kind === 'me';
         pane.wrap.hidden = !own;
         otherView.hidden = own;
+        // Sizes measured while hidden are garbage — re-grow now visible.
+        if (own) pane.autoGrow();
       },
       hideMono: () => { pane.wrap.hidden = true; otherView.hidden = true; },
       focusMono: () => {
@@ -568,7 +570,7 @@ const WriteSysSuggestions = {
     rightCtl = window.WriteSysPaneWidget.formattedMono({
       fmtEl: rightFmt,
       render: () => fmtSerif(rightFmt, rightTextNow()),
-      showMono: () => { versionPane.wrap.hidden = false; },
+      showMono: () => { versionPane.wrap.hidden = false; versionPane.autoGrow(); },
       hideMono: () => { versionPane.wrap.hidden = true; },
       focusMono: () => versionPane.textarea.focus(),
     });
