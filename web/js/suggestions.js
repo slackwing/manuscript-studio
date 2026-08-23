@@ -52,6 +52,9 @@ const WriteSysSuggestions = {
       this.rows = [];
       this.rebuildMaps();
     }
+  // Counts on the chrome buttons derive from these rows — refresh them
+    // whenever the rows change hands.
+    if (window.WriteSysPush) window.WriteSysPush.refresh();
   },
 
   // People order → rank map (the display-priority tiebreak). Loaded once
@@ -457,6 +460,9 @@ const WriteSysSuggestions = {
         otherView.textContent = entry.row.text;
         otherView.classList.toggle('stale', entry.kind === 'stale');
       }
+      // Editable (yours) reads white; read-only views keep the tan.
+      const fmtEl = w.leftContent.querySelector('.sgm-fmt-left');
+      if (fmtEl) fmtEl.classList.toggle('sgm-fmt-ro', !!entry && entry.kind !== 'me');
       // Entry switches land back in the formatted view.
       if (leftCtl) leftCtl.exitMono();
       syncReviewShade();

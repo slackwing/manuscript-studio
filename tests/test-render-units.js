@@ -70,10 +70,13 @@ const { suggestEditor } = require('./test-utils');
     check('R3: single-prose suggestion word-diffs',
       lone.includes('<del>red</del>') && lone.includes('<strong>blue</strong>'), lone);
     const multi = await render([{ id: 'r3b', text: 'Base.' }], { r3b: 'One.\n\nTwo.' });
-    check('R3: multi-fragment suggestion does NOT word-diff',
-      !multi.includes('<del') && !multi.includes('<strong'), multi);
-    check('R3: multi-fragment spans still marked has-suggestion',
-      (multi.match(/has-suggestion/g) || []).length === 2, multi);
+    // 2026-08-24: an all-prose multi-paragraph rewrite collapses to ONE
+    // whole-text diff (¶/§ preview inline) — the placed-region case.
+    check('R3: multi-paragraph prose suggestion DOES word-diff now',
+      multi.includes('<del>Base.</del>') && multi.includes('<strong>')
+      && multi.includes('suggested-marker'), multi);
+    check('R3: collapsed to a single has-suggestion span',
+      (multi.match(/has-suggestion/g) || []).length === 1, multi);
     const cmdSug = await render([{ id: 'r3c', text: 'Base.' }], { r3c: '&title{X}' });
     check('R3: command-from-suggestion marked blue (cmd-suggested), no diff',
       cmdSug.includes('cmd-title cmd-suggested') && !cmdSug.includes('<del'), cmdSug);
@@ -419,11 +422,15 @@ const { suggestEditor } = require('./test-utils');
         r.committedHTML = committedHTML;
         // Refusal: unknown id (zero spans).
         r.unknown = R.patchSentenceInPlace('no-such-sentence-id');
-        // Refusal: multi-fragment suggestion → DOM untouched.
+        // Multi-PARAGRAPH prose suggestion: collapses to one diffable span
+        // (2026-08-24) — patches in place with the ¶/§ inline preview.
         S.bySentenceId[id] = 'Alpha.\n\nBeta.';
         S.renderBySentenceId[id] = 'Alpha.\n\nBeta.';
         r.multi = R.patchSentenceInPlace(id);
         r.multiHTML = span().innerHTML;
+        delete S.bySentenceId[id];
+        delete S.renderBySentenceId[id];
+        R.patchSentenceInPlace(id); // back to committed before the next probe
         // Refusal: structural (non-<p>) suggestion → DOM untouched.
         S.bySentenceId[id] = '&title{Synthetic}';
         S.renderBySentenceId[id] = '&title{Synthetic}';
@@ -440,8 +447,9 @@ const { suggestEditor } = require('./test-utils');
         out.restored === true && !out.restoredHTML.includes('<strong>')
         && !out.restoredClass.includes('has-suggestion'), out.restoredHTML.slice(0, 80));
       check('R16: unknown id refused', out.unknown === false);
-      check('R16: multi-fragment suggestion refused, DOM untouched',
-        out.multi === false && out.multiHTML === out.restoredHTML);
+      check('R16: multi-paragraph prose suggestion patches in place (diff + ¶ preview)',
+        out.multi === true && out.multiHTML.includes('<strong>')
+        && out.multiHTML.includes('suggested-marker'), (out.multiHTML || '').slice(0, 80));
       check('R16: structural (non-p) suggestion refused, DOM untouched',
         out.structural === false && out.structuralHTML === out.restoredHTML);
     }

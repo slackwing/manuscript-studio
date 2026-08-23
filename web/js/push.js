@@ -70,11 +70,12 @@ const WriteSysPush = {
 
   // A split pair: primary executes the shown variant; the caret menu holds
   // the alternate. Shown = own unless own is empty and everyone's isn't.
-  _pairHTML(id, counts, icons, hints, titleOverrides) {
+  _pairHTML(id, counts, icons, hints, labelExtras) {
     const variant = counts.own === 0 && counts.all > 0 ? 'all' : 'own';
     const alt = variant === 'own' ? 'all' : 'own';
-    const icon = (v) => v === 'all' ? `${icons.base}${ICON_PERSONS3}` : icons.base;
-    const title = (v) => (titleOverrides && titleOverrides[v]) || `${hints[v]} (${counts[v]})`;
+    const icon = (v) => (v === 'all' ? `${icons.base}${ICON_PERSONS3}` : icons.base)
+      + ((labelExtras && labelExtras[v]) || '');
+    const title = (v) => `${hints[v]} (${counts[v]})`;
     return `<span class="mc-split" id="${id}-split" data-variant="${variant}">
       <button type="button" class="mc-btn" id="${id}-btn" data-variant="${variant}"
         title="${title(variant)}" ${counts[variant] === 0 ? 'disabled' : ''}>${icon(variant)}</button>
@@ -112,12 +113,12 @@ const WriteSysPush = {
       html += `<button type="button" class="mc-btn" id="first-edit-btn" title="Go to first suggested edit">1</button>`;
     }
     if (canReview) {
-      // The OWN button reads progress — (accepted/total) of YOUR live
-      // suggestions; the everyone's variant keeps its pending count.
-      const ownProgress = `Accept my uncontested (${acc.own}/${S.suggestionTotal ? S.suggestionTotal('own') : 0})`;
+      // The OWN button wears its progress ON the button, right of the
+      // checks — accepted/total of YOUR live suggestions.
+      const ownCount = `<span class="mc-count">${acc.own}/${S.suggestionTotal ? S.suggestionTotal('own') : 0}</span>`;
       html += this._pairHTML('accept', pend, { base: ICON_CHECKS3 },
         { own: 'Accept my uncontested', all: "Accept everyone's uncontested" },
-        { own: ownProgress });
+        { own: ownCount });
     }
     if (canPush) {
       html += this._pairHTML('push', acc, { base: this._verbIcon() },

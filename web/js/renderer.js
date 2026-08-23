@@ -520,7 +520,22 @@ const WriteSysRenderer = {
 
       // Segment the effective text into fragments, all sharing this
       // sentence's real ID (SUGGESTION_RENDER_PLAN.md). Each renders by kind.
-      const frags = cmdLib ? cmdLib.segmentFragments(effective) : [{ kind: 'prose', text: effective, marker: '' }];
+      let frags = cmdLib ? cmdLib.segmentFragments(effective) : [{ kind: 'prose', text: effective, marker: '' }];
+      // A MULTI-PARAGRAPH prose rewrite — every suggested fragment prose,
+      // committed all-prose too (e.g. a placed sketch region) — collapses
+      // to ONE diffable fragment: the whole-text word diff previews the
+      // internal ¶/§ inline (renderStructuralMarkers), where the
+      // per-fragment path could only render the pieces plain, with no
+      // red/green at all (the "placed section shows no diff" bug).
+      if (suggestion !== undefined && !isDeleteProposal && cmdLib
+          && frags.length > 1 && frags.every((x) => x.kind === 'prose')
+          && cmdLib.segmentFragments(canon(committed)).every((x) => x.kind === 'prose')) {
+        frags = [{
+          kind: 'prose',
+          text: this.stripLeadingMarker(effective),
+          marker: this.leadingMarker(effective),
+        }];
+      }
       // The original prose (committed, marker-stripped) to diff a single-prose
       // suggestion against. Canonicalize the committed baseline too so a
       // word-diff reflects real content edits, not whitespace canonicalization.

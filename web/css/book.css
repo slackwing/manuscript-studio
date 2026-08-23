@@ -2113,6 +2113,7 @@ p.section-break {
 }
 
 #first-edit-btn { font-size: 10px; font-weight: 600; }
+.mc-count { font: 600 9px "Helvetica", sans-serif; color: #57503f; margin-left: 4px; }
 /* Note nav above the notes (and the idle – / n entry point):
    the pane-widget ‹ i/n › flipper family, centered in the margin. */
 .note-nav { align-self: center; margin-bottom: 4px; }
@@ -3563,4 +3564,7 @@ sup.sg-review.rejected { color: #b03030; }
    mono. The left view carries the red/green word diff against the right
    pane's shown version. */
 .sgm-fmt { flex: 1; min-height: 60px; cursor: pointer; overflow-y: auto; background: #e7e2d6; }
+/* YOUR suggestion's formatted view is a click-to-edit surface — white,
+   like every editable face; tan stays for truly read-only views. */
+.sgm-fmt-left:not(.sgm-fmt-ro) { background: #fff; }
 .sgm-fmt[hidden] { display: none; }

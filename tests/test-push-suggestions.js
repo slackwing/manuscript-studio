@@ -154,9 +154,9 @@ function teardownBareRemote(bareDir) {
     // title, not the element.
     await page.waitForFunction(() => {
       const el = document.getElementById('accept-btn');
-      return el && el.title === 'Accept my uncontested (0/1)';
+      return el && el.title === 'Accept my uncontested (1)' && /0\/1/.test(el.textContent);
     }, null, { timeout: 20000 });
-    assert(true, 'Accept button reads "Accept my uncontested (0/1)"');
+    assert(true, 'Accept button: title pending-count, visible 0/1 progress');
     assert(await page.locator('#view-btn[disabled]').count() === 1,
       'View disabled before any push');
     await page.locator('#accept-btn').click();
