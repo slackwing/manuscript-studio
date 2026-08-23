@@ -35,6 +35,19 @@ const WriteSysScratchRender = {
       .scratch-book p { text-align: left; }
       /* Pre-rendered diff HTML (renderHTML) shares the book typography. */
       .scratch-diff { white-space: pre-wrap; overflow-wrap: break-word; }
+      /* Faint →/↵ glyphs painted OVER the real whitespace (zero layout
+         impact — absolute inside a relative shell), mirroring the mono
+         overlay's markers. */
+      .sd-tab, .sd-nl { position: relative; }
+      .sd-g {
+        position: absolute;
+        left: 0;
+        top: 0;
+        color: #b8b0a0;
+        font-size: 0.85em;
+        pointer-events: none;
+        user-select: none;
+      }
       .scratch-diff del { color: #b03030; text-decoration: line-through; text-decoration-thickness: 1px; }
       .scratch-diff strong { color: #2e7d32; font-weight: 600; }
       .scratch-book .sentence,

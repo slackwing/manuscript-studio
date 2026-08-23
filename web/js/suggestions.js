@@ -529,9 +529,15 @@ const WriteSysSuggestions = {
     };
     const dmpInst = (window.WriteSysRenderer && window.WriteSysRenderer._dmp)
       ? window.WriteSysRenderer._dmp() : null;
-    const fmtSerif = (host, text) => {
-      host.innerHTML = '';
-      if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderText(host, text);
+    // glyphizeWS paints the mono overlay's →/↵ markers over the raw
+    // whitespace of an (already-escaped) HTML string — the formatted views
+    // keep the suggested edit's structure visible, matching the mono form.
+    const glyphizeWS = (html) => html
+      .replace(/\t/g, '<span class="sd-tab"><span class="sd-g">→</span>\t</span>')
+      .replace(/\n/g, '<span class="sd-nl"><span class="sd-g">↵</span></span>\n');
+    const fmtRaw = (host, text) => {
+      const html = glyphizeWS(escapeHTML(text));
+      if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderHTML(host, html);
       else host.textContent = text;
     };
     leftCtl = window.WriteSysPaneWidget.formattedMono({
@@ -541,14 +547,16 @@ const WriteSysSuggestions = {
         const txt = (!entry || entry.kind === 'me') ? textarea.value : entry.row.text;
         const src = rightTextNow();
         if (txt === src) {
-          fmtSerif(leftFmt, txt);
+          fmtRaw(leftFmt, txt);
           return;
         }
         let html = renderDiffHTML(src, txt, dmpInst);
         if (window.WriteSysRenderer && window.WriteSysRenderer.renderInlineCommandsInHtml) {
           html = window.WriteSysRenderer.renderInlineCommandsInHtml(html);
         }
-        // Same renderer as the plain view — one typography truth.
+        // Same renderer as the plain view — one typography truth. (No
+        // glyphize here: the diff pipeline renders structure via its own
+        // ¶/§ markers — renderStructuralMarkers — the on-page diff idiom.)
         if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderHTML(leftFmt, html);
         else leftFmt.innerHTML = html;
       },
@@ -569,7 +577,7 @@ const WriteSysSuggestions = {
     });
     rightCtl = window.WriteSysPaneWidget.formattedMono({
       fmtEl: rightFmt,
-      render: () => fmtSerif(rightFmt, rightTextNow()),
+      render: () => fmtRaw(rightFmt, rightTextNow()),
       showMono: () => { versionPane.wrap.hidden = false; versionPane.autoGrow(); },
       hideMono: () => { versionPane.wrap.hidden = true; },
       focusMono: () => versionPane.textarea.focus(),

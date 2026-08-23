@@ -2275,7 +2275,8 @@ p.section-break {
 #suggestion-modal .sgm-left { flex: 1; display: flex; flex-direction: column; }
 #suggestion-modal .sgm-left .sn-text-wrap { flex: 1; }
 #suggestion-modal .pw-content-right .sn-text-wrap { flex: 1; }
-#suggestion-modal .sgm-version-text { border: none; resize: none; }
+#suggestion-modal .sgm-version-text { border: none; resize: none; background: #e7e2d6; }
+#suggestion-modal .pw-content-right .sn-text-wrap { background: #e7e2d6; }
 /* The widget chrome gives its header no padding of its own here (no
    .sn-head-left wrapper) — pad it so SUGGEST EDIT doesn't hug the corner.
    No close button: clicking the dark backdrop (or Escape) closes. */
@@ -3465,8 +3466,8 @@ sup.sg-review.rejected { color: #b03030; }
 .sgm-other-view {
   font: 12px/1.6 "Monaco", monospace;
   white-space: pre-wrap;
-  background: #faf9f5;
-  border: 1px solid #e4e1d8;
+  background: #e7e2d6;
+  border: 1px solid #d8d2c4;
   padding: 10px;
   min-height: 120px;
   max-height: 40vh;
@@ -3561,5 +3562,5 @@ sup.sg-review.rejected { color: #b03030; }
 /* Formatted pane views (2026-08-23): serif book look at rest, click for
    mono. The left view carries the red/green word diff against the right
    pane's shown version. */
-.sgm-fmt { flex: 1; min-height: 60px; cursor: pointer; overflow-y: auto; }
+.sgm-fmt { flex: 1; min-height: 60px; cursor: pointer; overflow-y: auto; background: #e7e2d6; }
 .sgm-fmt[hidden] { display: none; }
