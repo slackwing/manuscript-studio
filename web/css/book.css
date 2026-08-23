@@ -2112,9 +2112,10 @@ p.section-break {
   transform-origin: center center;
 }
 
-/* Note nav below the notes (and the idle GO TO FIRST NOTE entry point):
+#first-edit-btn { font-size: 10px; font-weight: 600; }
+/* Note nav above the notes (and the idle – / n entry point):
    the pane-widget ‹ i/n › flipper family, centered in the margin. */
-.note-nav { align-self: center; margin-top: 8px; }
+.note-nav { align-self: center; margin-bottom: 4px; }
 .note-nav .pw-nav-prev:disabled, .note-nav .pw-nav-next:disabled {
   opacity: 0.35;
   cursor: default;
@@ -2246,12 +2247,6 @@ p.section-break {
 /* Suggest-edit modal title-bar REJECT (red, spaced) and the left pane's
    quieter revert link. The bar is CSS-uppercased, so "Reject" renders
    REJECT. */
-#suggestion-modal .sgm-revert {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
 
 #suggestion-modal {
   /* The shared pane-widget shell (pane-widget.js), floated: its chrome is

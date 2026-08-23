@@ -157,9 +157,10 @@ window.WriteSysPaneWidget = {
       if (cfg.nav) {
         const { i, n } = cfg.nav.info() || {};
         navEl.hidden = !n;
-        // Current item not in the nav space (e.g. a reverted edit left the
-        // suggested-edits list) → the whole count reads N/A.
-        if (n) el.querySelector('.pw-nav-count').textContent = i ? `${i}/${n}` : 'N/A';
+        // Spaced count, en-dash when the current item isn't in the nav
+        // space (nothing selected yet / a reverted edit left the list) —
+        // "– / 19" transitions smoothly into "3 / 19".
+        if (n) el.querySelector('.pw-nav-count').textContent = i ? `${i} / ${n}` : `– / ${n}`;
       }
       // Rails re-derive from the lambdas — labels/colors/disabled are live.
       const leftEntries = (cfg.left && cfg.left.rail ? cfg.left.rail() : []);

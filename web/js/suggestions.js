@@ -338,10 +338,11 @@ const WriteSysSuggestions = {
       if (!entry || entry.kind === 'me') {
         if (ownChanged()) {
           btns.push({ icon: ICON_REVERT, className: 'sgm-revert', title: 'Revert — restore the committed text',
-            onClick: () => applyRevert() });
+            color: '#2a6fb0', tint: true, onClick: () => applyRevert() });
         }
         if (redoText != null) {
           btns.push({ icon: ICON_REDO, className: 'sgm-redo', title: 'Redo the reverted edit',
+            color: '#2a6fb0', tint: true,
             onClick: () => {
               textarea.value = redoText;
               redoText = null;

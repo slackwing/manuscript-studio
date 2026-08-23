@@ -215,7 +215,7 @@ function psql(sql) {
     // Nav appears once the autosaved suggestion lands in the model.
     await page.waitForFunction(() => {
       const nav = document.querySelector('#suggestion-modal .pw-nav');
-      return nav && !nav.hidden && /^\d+\/\d+$/.test(nav.querySelector('.pw-nav-count').textContent.trim());
+      return nav && !nav.hidden && /^\d+ \/ \d+$/.test(nav.querySelector('.pw-nav-count').textContent.trim());
     }, null, { timeout: 8000 });
     assert2('nav flippers show i/n across suggested edits', true);
     // Second suggestion elsewhere so the nav space survives the revert.
@@ -239,9 +239,9 @@ function psql(sql) {
     // out of the nav space, so the count reads N/A.
     await page.waitForFunction(() => {
       const c = document.querySelector('#suggestion-modal .pw-nav-count');
-      return c && c.textContent.trim() === 'N/A';
+      return c && /^– \/ \d+$/.test(c.textContent.trim());
     }, null, { timeout: 8000 });
-    assert2('reverted edit → nav count reads N/A', true);
+    assert2('reverted edit → nav count reads "– / n"', true);
     assert2('redo button appears after revert', await page.evaluate(() =>
       !!document.querySelector('#suggestion-modal .sgm-redo')));
     await page.locator('#suggestion-modal .sgm-redo').click();

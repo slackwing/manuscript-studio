@@ -268,6 +268,12 @@ const WriteSysNotes = {
 
     container.innerHTML = '';
 
+    // Nav on TOP — the idle "– / n" and the counter occupy the same spot,
+    // so entering the tour reads as the dash becoming a number.
+    if (this.annotatedOrdered().length) {
+      container.appendChild(this.createNoteNav());
+    }
+
     // v3 multi-user: hidden notes (per-viewer) sink below unhidden ones,
     // preserving position order within each group.
     const ordered = [...this.notes].sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
@@ -281,9 +287,7 @@ const WriteSysNotes = {
     const addNewNote = this.createAddNewNoteElement(isFirstNote);
     container.appendChild(addNewNote);
 
-    if (!isFirstNote) {
-      container.appendChild(this.createNoteNav());
-    }
+
 
     container.classList.add('visible');
 
@@ -329,32 +333,27 @@ const WriteSysNotes = {
     this.populateMobileNoteStack(stack);
   },
 
-  // ‹ i/n › across annotated sentences — same style as the pane-widget
-  // header nav. No selection yet → "GO TO FIRST NOTE ›".
+  // ‹ i / n › across annotated sentences — same style as the pane-widget
+  // header nav. Nothing selected yet → "– / n" (the en-dash form
+  // transitions smoothly into the counter); next lands on the first note.
   createNoteNav() {
     const list = this.annotatedOrdered();
     const i = this.currentSentenceId ? list.indexOf(this.currentSentenceId) : -1;
     const wrap = document.createElement('div');
     wrap.className = 'pw-nav note-nav';
-    if (i < 0) {
-      wrap.innerHTML = `<span class="pw-nav-count">GO TO FIRST NOTE</span>
-        <button type="button" class="pw-nav-next" title="First note">&rsaquo;</button>`;
-      wrap.querySelector('.pw-nav-next').addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (list.length) this.gotoAnnotated(list[0]);
-      });
-      return wrap;
-    }
-    wrap.innerHTML = `<button type="button" class="pw-nav-prev" title="Previous note"${i === 0 ? ' disabled' : ''}>&lsaquo;</button>
-      <span class="pw-nav-count">${i + 1}/${list.length}</span>
-      <button type="button" class="pw-nav-next" title="Next note"${i >= list.length - 1 ? ' disabled' : ''}>&rsaquo;</button>`;
+    const count = i < 0 ? `– / ${list.length}` : `${i + 1} / ${list.length}`;
+    const prevTarget = i > 0 ? list[i - 1] : null;
+    const nextTarget = i < 0 ? list[0] : (list[i + 1] || null);
+    wrap.innerHTML = `<button type="button" class="pw-nav-prev" title="Previous note"${prevTarget ? '' : ' disabled'}>&lsaquo;</button>
+      <span class="pw-nav-count">${count}</span>
+      <button type="button" class="pw-nav-next" title="${i < 0 ? 'First note' : 'Next note'}"${nextTarget ? '' : ' disabled'}>&rsaquo;</button>`;
     wrap.querySelector('.pw-nav-prev').addEventListener('click', (e) => {
       e.stopPropagation();
-      if (list[i - 1]) this.gotoAnnotated(list[i - 1]);
+      if (prevTarget) this.gotoAnnotated(prevTarget);
     });
     wrap.querySelector('.pw-nav-next').addEventListener('click', (e) => {
       e.stopPropagation();
-      if (list[i + 1]) this.gotoAnnotated(list[i + 1]);
+      if (nextTarget) this.gotoAnnotated(nextTarget);
     });
     return wrap;
   },
