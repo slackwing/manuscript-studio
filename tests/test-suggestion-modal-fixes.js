@@ -285,13 +285,15 @@ function psql(sql) {
     await page.waitForTimeout(400);
     await page.locator('.suggestion-modal-textarea').press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
+    // Scoped to THIS sentence — the N/A check parked a helper suggestion
+    // on another sentence on purpose.
     let rejRows = '1';
     for (let i = 0; i < 20; i++) {
-      rejRows = psql(`SELECT count(*) FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
+      rejRows = psql(`SELECT count(*) FROM suggested_change WHERE user_id = '${TEST_USERNAME}' AND sentence_id = '${first.id}'`);
       if ((rejRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '0') break;
       await page.waitForTimeout(250);
     }
-    assert2('revert + close leaves no suggestion row',
+    assert2('revert + close leaves no suggestion row on this sentence',
       (rejRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '0', `rows=${rejRows}`);
 
 
