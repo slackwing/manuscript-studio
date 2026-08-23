@@ -921,7 +921,15 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 .pw-right.pw-collapsed > .sn-main { display: none; }
 .pw-main { display: flex; flex-direction: column; min-height: 0; }
 .pw-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.pw-actionrow { display: flex; align-items: center; flex-wrap: wrap; }
+.pw-actionrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  /* Both panes' rows read as ONE bar: same height whether or not this
+     side has action buttons (buttons are the tall element at ~29px). */
+  min-height: 29px;
+  box-sizing: border-box;
+}
 .pw-actionrow[hidden] { display: none; }
 /* Pane title (left) + actions (right) share the row; when they can't fit,
    the wrap puts the title above and the actions below. */

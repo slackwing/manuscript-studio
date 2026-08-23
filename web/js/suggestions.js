@@ -282,7 +282,7 @@ const WriteSysSuggestions = {
 
     const ICON_CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.5 3.5L13 4.5"/></svg>';
     const ICON_X = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>';
-    const ICON_REVERT = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path fill="currentColor" d="M13.8 1.6v3.6h-3.6z"/></svg>';
+    const ICON_REVERT = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M3.2 6.2a5.2 5.2 0 1 1-.4 3.3"/><path fill="currentColor" d="M2.2 2.2v4.8h4.8z"/></svg>';
 
     const review = async (entry, target) => {
       try {
