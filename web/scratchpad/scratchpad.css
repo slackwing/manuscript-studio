@@ -369,14 +369,14 @@
    rail, every pane (pane-widget geometry): the open comparison on a right
    rail, the viewed person on the modal's left rail, the sketch's self. */
 .sn-rail-btn.active { background: #ddd8cc; border-color: #c2baa8; }
-/* Variation state at a glance: the letter takes the state color and its
-   wash — same map/formula as every other tinted surface. */
+/* Variation state at a glance: the BUTTON's background wears the state
+   shade — the letter itself stays ink (same map/formula as every other
+   tinted surface). */
 .sn-rail-btn.st-frozen, .sn-rail-btn.st-superseded {
-  color: var(--pw-c);
-  background: color-mix(in srgb, var(--pw-c) 14%, white);
+  background: color-mix(in srgb, var(--pw-c) 22%, white);
 }
 .sn-rail-btn.st-frozen:hover, .sn-rail-btn.st-superseded:hover {
-  background: color-mix(in srgb, var(--pw-c) 7%, white);
+  background: color-mix(in srgb, var(--pw-c) 32%, white);
 }
 .sn-rail-btn.st-frozen.active, .sn-rail-btn.st-superseded.active { border-color: #c2baa8; }
 /* A disabled rail button (e.g. an unchanged history hop in the suggest-edit
@@ -931,6 +931,9 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
 .pw-head-slot { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
 .pw-cols { flex: 1; min-height: 0; }
 .sn-pane { display: flex; align-items: stretch; min-width: 0; }
+/* The seam between panes wears the same hairline as the rest of the
+   chrome (rails/headers all use #e4ded1). */
+.sn-pane + .sn-pane { border-left: 1px solid #e4ded1; }
 .pw-left { flex: 1 1 50%; }
 .pw-right { flex: 1 1 50%; }
 .pw-right.pw-collapsed { flex: 0 0 auto; }
@@ -988,10 +991,11 @@ textarea.sn-mono-ro::selection { background: #bcd6ee; }
   border-radius: 3px;
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--pw-c) 30%, transparent);
 }
-/* Rail letters tinted by subject state (frozen, superseded, accepted,
-   rejected — same mechanism, color passed in). */
-.sn-rail-btn.pw-colored { color: var(--pw-c); }
-.sn-rail-btn.pw-colored:not(.active) { background: color-mix(in srgb, var(--pw-c) 10%, transparent); }
+/* Rail letters carry subject state as a BACKGROUND shade (frozen,
+   superseded, accepted, rejected — same mechanism, color passed in);
+   the letter stays ink. */
+.sn-rail-btn.pw-colored { background: color-mix(in srgb, var(--pw-c) 22%, white); }
+.sn-rail-btn.pw-colored:hover { background: color-mix(in srgb, var(--pw-c) 32%, white); }
 
 /* Header nav flippers (pw-nav): ‹ i/n › in the upper right — suggested
    edits in the modal, sketches in a pad. */
