@@ -2112,7 +2112,8 @@ p.section-break {
   transform-origin: center center;
 }
 
-#first-edit-btn { font-size: 10px; font-weight: 600; }
+#first-edit-btn, #first-split .mc-menu-item { font-size: 10px; font-weight: 600; }
+.mc-first-sub { font-size: 9px; margin-left: 2px; }
 .mc-count { font: 600 9px "Helvetica", sans-serif; color: #57503f; margin-left: 4px; }
 /* Note nav above the notes (and the idle – / n entry point):
    the pane-widget ‹ i/n › flipper family, centered in the margin. */

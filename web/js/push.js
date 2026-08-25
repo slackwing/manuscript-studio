@@ -107,10 +107,18 @@ const WriteSysPush = {
 
     let html = '';
     // "1": jump to the first suggested edit (opens its modal — the nav
-    // flippers tour from there). Shown whenever any suggestion is live.
+    // flippers tour from there). The caret's alternate "1○" jumps to the
+    // first UNACCEPTED (still-pending) one. Shown while suggestions live.
     const tour = S.suggestedOrder ? S.suggestedOrder() : [];
+    const pendingTour = S.suggestedOrder ? S.suggestedOrder('pending') : [];
     if (tour.length) {
-      html += `<button type="button" class="mc-btn" id="first-edit-btn" title="Go to first suggested edit">1</button>`;
+      html += `<span class="mc-split" id="first-split" data-variant="own">
+        <button type="button" class="mc-btn" id="first-edit-btn" data-variant="own" title="Go to first suggested edit">1</button>
+        <button type="button" class="mc-caret" aria-haspopup="true" aria-expanded="false">▾</button>
+        <span class="mc-menu" hidden>
+          <button type="button" class="mc-menu-item" data-variant="all" title="Go to first unaccepted suggested edit" ${pendingTour.length ? '' : 'disabled'}>1<span class="mc-first-sub">○</span></button>
+        </span>
+      </span>`;
     }
     if (canReview) {
       // The OWN button wears its progress ON the button, right of the
@@ -132,19 +140,11 @@ const WriteSysPush = {
     }
     this._container.innerHTML = html;
 
-    const firstBtn = this._container.querySelector('#first-edit-btn');
-    if (firstBtn) firstBtn.addEventListener('click', () => {
-      const list = S.suggestedOrder ? S.suggestedOrder() : [];
-      if (!list.length) return;
-      if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
-        window.WriteSysRenderer.scrollToSentence(list[0]);
-      }
-      S.openModal(list[0]);
-    });
 
     this._container.querySelectorAll('.mc-split').forEach(split => {
       const id = split.id.replace('-split', '');
-      const act = (variant) => id === 'accept' ? this._accept(variant) : this._push(variant);
+      const act = (variant) => id === 'first' ? this._gotoFirst(variant)
+        : id === 'accept' ? this._accept(variant) : this._push(variant);
       const primary = split.querySelector('.mc-btn');
       primary.addEventListener('click', () => act(primary.dataset.variant));
       const caret = split.querySelector('.mc-caret');
@@ -170,6 +170,17 @@ const WriteSysPush = {
     this._container.querySelectorAll('.mc-menu').forEach(m => { m.hidden = true; });
     this._container.querySelectorAll('.mc-caret').forEach(c => c.setAttribute('aria-expanded', 'false'));
     this._openMenu = null;
+  },
+
+  // "1" split: own = first suggested edit; all = first UNACCEPTED one.
+  _gotoFirst(variant) {
+    const S = window.WriteSysSuggestions || {};
+    const list = S.suggestedOrder ? S.suggestedOrder(variant === 'all' ? 'pending' : undefined) : [];
+    if (!list.length) return;
+    if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
+      window.WriteSysRenderer.scrollToSentence(list[0]);
+    }
+    S.openModal(list[0]);
   },
 
   async _accept(variant) {

@@ -168,11 +168,16 @@ const WriteSysSuggestions = {
 
   // suggestedOrder: sentence ids carrying a live (fresh, non-rejected)
   // suggestion, in book order — the ‹ i/n › nav space.
-  suggestedOrder() {
+  suggestedOrder(filter) {
     const R = window.WriteSysRenderer;
     if (!R || !R.currentSentences) return [];
-    return R.currentSentences.map(s => s.id)
-      .filter(id => (this.rowsBySentence[id] || []).length > 0);
+    return R.currentSentences.map(s => s.id).filter(id => {
+      const rows = this.rowsBySentence[id] || [];
+      if (!rows.length) return false;
+      // 'pending': only sentences still awaiting a verdict.
+      if (filter === 'pending') return rows.some(r => !r.review_status);
+      return true;
+    });
   },
 
   // _navModal: flip to the previous/next suggested edit. The open modal
