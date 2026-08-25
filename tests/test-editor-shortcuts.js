@@ -25,29 +25,42 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const pm = page.locator('.spm-editor .ProseMirror');
   await pm.click();
 
-  // Alt+D in prose.
+  // Alt+D inserts today's date as an H2 BLOCK (2026-08-25 — was inline
+  // prose before the calendar-button round).
   await page.keyboard.press('Alt+KeyD');
-  const text1 = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.textContent);
-  check(`Alt+D types "${wantDate}" in prose`, text1.includes(wantDate), JSON.stringify(text1));
+  const dateH2 = await page.evaluate(() => {
+    let hit = false;
+    window.WriteSysScratchpad.view.state.doc.descendants((n) => {
+      if (n.type.name === 'heading' && n.attrs.level === 2) hit = n.textContent;
+    });
+    return hit;
+  });
+  check(`Alt+D inserts "${wantDate}" as an H2 block`, dateH2 === wantDate, JSON.stringify(dateH2));
 
   // Ctrl+Alt+2 → H2 on the current block (plain Alt+N is Firefox's tab
-  // switcher, so headers are Ctrl+Alt only).
+  // switcher, so headers are Ctrl+Alt only). Probe the block AT the
+  // selection — the date H2 above shifted the doc's first child.
+  const selBlock = () => page.evaluate(() => {
+    const p = window.WriteSysScratchpad.view.state.selection.$from.parent;
+    return p.type.name + ':' + (p.attrs.level || '');
+  });
+  await page.keyboard.type('Heading test');
   await page.keyboard.press('Control+Alt+2');
-  let types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name + ':' + (window.WriteSysScratchpad.view.state.doc.firstChild.attrs.level || ''));
+  let types = await selBlock();
   check('Ctrl+Alt+2 turns the block into H2', types === 'heading:2', types);
   await page.keyboard.press('Control+Alt+3');
-  types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name + ':' + (window.WriteSysScratchpad.view.state.doc.firstChild.attrs.level || ''));
+  types = await selBlock();
   check('Ctrl+Alt+3 → H3', types === 'heading:3', types);
   // TOGGLE: the same shortcut (or button) on an active heading reverts to a
   // paragraph — "can't unselect H2" regression.
   await page.keyboard.press('Control+Alt+3');
-  types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name);
-  check('Ctrl+Alt+3 again toggles BACK to paragraph', types === 'paragraph', types);
+  types = await selBlock();
+  check('Ctrl+Alt+3 again toggles BACK to paragraph', types === 'paragraph:', types);
   await page.keyboard.press('Control+Alt+2');
   await page.evaluate(() => { /* toolbar path: click the active H2 button */ });
   await page.locator('.sp-toolbar button', { hasText: /^H2$/ }).click();
-  types = await page.evaluate(() => window.WriteSysScratchpad.view.state.doc.firstChild.type.name);
-  check('clicking the active H2 button unsets it', types === 'paragraph', types);
+  types = await selBlock();
+  check('clicking the active H2 button unsets it', types === 'paragraph:', types);
 
   // Lists / quote on a fresh paragraph.
   await page.keyboard.press('Control+End');

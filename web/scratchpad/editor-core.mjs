@@ -233,10 +233,17 @@ export async function createScratchpadEditor(els, scratchpadId) {
   // ---- editor ----
   // Alt+D: type today's date ("Saturday, August 1") at the cursor.
   const insertDate = (state, dispatch) => {
-    // Today's date as an H2 block at the caret — "Tuesday, August 25".
+    // Today's date as an H2 block at the caret — "Tuesday, August 25" —
+    // with the caret left in a FRESH paragraph underneath, ready to type
+    // (landing inside the heading made the next keystrokes part of it).
     if (dispatch) {
-      insertBlockSafely(state, dispatch, schema.nodes.heading.create({ level: 2 },
-        schema.text(window.WriteSysEditPane.dateString())));
+      const h = schema.nodes.heading.create({ level: 2 },
+        schema.text(window.WriteSysEditPane.dateString()));
+      let tr = state.tr.replaceSelectionWith(h);
+      const pos = tr.selection.from;
+      tr = tr.insert(pos, schema.nodes.paragraph.create());
+      tr = tr.setSelection(TextSelection.create(tr.doc, pos + 1));
+      dispatch(tr.scrollIntoView());
     }
     return true;
   };
