@@ -928,9 +928,10 @@ function renderStructuralMarkers(html) {
         out += `<span class="suggested-marker">${glyph}</span>`;
       } else {
         // Only a ¶ (\n\t) indents — a section's first paragraph starts
-        // flush, matching the book's own convention.
-        const indent = isSection ? '' : '<span class="suggested-pindent">\u00a0\u00a0\u00a0\u00a0</span>';
-        out += `<span class="suggested-marker">${glyph}</span><br>${indent}`;
+        // flush BUT with the section's blank-line gap (double spacing),
+        // matching the book's own convention.
+        const tail = isSection ? '<br>' : '<span class="suggested-pindent">\u00a0\u00a0\u00a0\u00a0</span>';
+        out += `<span class="suggested-marker">${glyph}</span><br>${tail}`;
       }
       i++;
       continue;

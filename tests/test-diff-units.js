@@ -143,8 +143,8 @@ console.log('=== S8 structural-markers-4-rules ===');
 
   // Rule 3: mid-content marker → glyph + <br> + indent.
   const mid = renderStructuralMarkers('Hello\n\nworld');
-  check('mid-content § → glyph + <br>, NO indent (sections start flush)',
-    mid === 'Hello<span class="suggested-marker">§</span><br>world', mid);
+  check('mid-content § → glyph + blank line (double spacing), flush start',
+    mid === 'Hello<span class="suggested-marker">§</span><br><br>world', mid);
   const midP = renderStructuralMarkers('Hello\n\tworld');
   check('mid-content ¶ same shape', midP.includes('suggested-marker">¶</span><br>'), midP);
 
