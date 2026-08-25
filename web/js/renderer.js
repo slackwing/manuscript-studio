@@ -521,6 +521,15 @@ const WriteSysRenderer = {
       // Segment the effective text into fragments, all sharing this
       // sentence's real ID (SUGGESTION_RENDER_PLAN.md). Each renders by kind.
       let frags = cmdLib ? cmdLib.segmentFragments(effective) : [{ kind: 'prose', text: effective, marker: '' }];
+      // A DELETE proposal on a paragraph-LEADING sentence deletes its break
+      // too: preview the join — the struck sentence rides at the END of the
+      // previous paragraph behind a struck ¶/§ glyph, and the rest of its
+      // old paragraph follows in the same flow (what the push produces).
+      let deletedLeadGlyph = '';
+      if (isDeleteProposal && frags.length && frags[0].marker) {
+        deletedLeadGlyph = this.markerGlyphDiff(frags[0].marker, '');
+        frags[0] = { ...frags[0], marker: '' };
+      }
       // A MULTI-PARAGRAPH prose rewrite — every suggested fragment prose,
       // committed all-prose too (e.g. a placed sketch region) — collapses
       // to ONE diffable fragment: the whole-text word diff previews the
@@ -636,6 +645,10 @@ const WriteSysRenderer = {
           }
         } else {
           inner = this.applyInlineFormatting(body);
+        }
+        if (deletedLeadGlyph) {
+          inner = deletedLeadGlyph + inner;
+          deletedLeadGlyph = '';
         }
         const sugRow = sugRows[id];
         // Review marker: superscript ✓/✗ immediately after the diff (v3).
