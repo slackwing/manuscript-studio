@@ -538,11 +538,19 @@ const WriteSysRenderer = {
       // red/green at all (the "placed section shows no diff" bug).
       if (suggestion !== undefined && !isDeleteProposal && cmdLib
           && frags.length > 1 && frags.every((x) => x.kind === 'prose')
-          // Region tokens (&anchor/&snippet/&end) keep the fragment path —
-          // its margin-glyph promotion and real paragraph grouping render
-          // the tight compose form correctly; only PURE prose collapses.
+          // OWN-LINE region tokens (\n-adjacent &anchor/&snippet/&end —
+          // the tight compose form) keep the fragment path for its
+          // margin-glyph promotion and real paragraph grouping. An
+          // INLINE-joined opener ("&sketch#x{} prose", mid-paragraph
+          // starts) is ordinary prose — it collapses and diffs.
           && !(cmdLib.findInline ? cmdLib.findInline(effective) : [])
-            .some((c) => c.kind === 'anchor' || c.kind === 'snippet' || c.kind === 'end')
+            .some((c) => {
+              if (c.kind !== 'anchor' && c.kind !== 'snippet' && c.kind !== 'end') return false;
+              const chars = Array.from(effective);
+              const before = chars.slice(0, c.start).join('');
+              const after = chars.slice(c.end).join('');
+              return /\n[\t ]*$/.test(before) || /^ *\n/.test(after);
+            })
           && cmdLib.segmentFragments(canon(committed)).every((x) => x.kind === 'prose')) {
         frags = [{
           kind: 'prose',

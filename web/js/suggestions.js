@@ -769,6 +769,18 @@ function renderDiffHTML(oldText, newText, dmp) {
   const segs = [];
   for (let i = 0; i < diffs.length; i++) segs.push([diffs[i][0], diffs[i][1]]);
 
+  // WHOLESALE REWRITE: when little text survives (EQ share under 40%),
+  // the interleaved word diff reads as noise — a rewritten block (e.g. a
+  // placed sketch region) renders as ONE solid strike + ONE solid green
+  // block instead, so "replaced entirely" looks replaced entirely.
+  const eqChars = segs.reduce((n, sg) => n + (sg[0] === 0 ? sg[1].length : 0), 0);
+  const maxLen = Math.max(oldText.length, newText.length);
+  if (maxLen > 60 && eqChars / maxLen < 0.4) {
+    return renderStructuralMarkers(pairItalicsAcrossInserts(
+      (oldText ? `<del>${escapeHTML(oldText)}</del>` : '')
+      + (newText ? `<strong>${escapeHTML(newText)}</strong>` : '')));
+  }
+
   // Coalesce alternating del/ins runs into contiguous blocks. The token
   // diff produces e.g. DEL "big" EQ " " DEL "red" because spaces between
   // changed words match — visually that's an unreadable barber-pole. Pull
