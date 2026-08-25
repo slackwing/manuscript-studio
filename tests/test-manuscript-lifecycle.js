@@ -118,8 +118,8 @@ function cleanup() {
     check('accepting arms Commit own accepted (1)', true);
     check('git commit glyph (not octocat) on local', !!(await page.$('#push-btn .mc-ic-commit')));
     check('no View button on local manuscripts', !(await page.$('#view-btn')));
-    const reviewMark = await page.$('sup.sg-review.accepted');
-    check('accepted suggestion wears the ✓ superscript', !!reviewMark);
+    // 2026-08-25: accepted is the quiet default — NO ✓ superscript.
+    check('accepted suggestion carries no ✓ marker', !(await page.$('sup.sg-review.accepted')));
 
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }), // commit → migrate → reload

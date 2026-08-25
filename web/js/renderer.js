@@ -639,9 +639,10 @@ const WriteSysRenderer = {
         }
         const sugRow = sugRows[id];
         // Review marker: superscript ✓/✗ immediately after the diff (v3).
-        if (suggestion !== undefined && sugRow && sugRow.review_status && f.kind === 'prose') {
-          const mark = sugRow.review_status === 'accepted' ? '✓' : '✗';
-          inner += `<sup class="sg-review ${sugRow.review_status}" title="${escapeHTML(sugRow.user_id)}: ${sugRow.review_status}">${mark}</sup>`;
+        // Accepted edits carry no marker — accepted is the quiet default
+        // outcome; only a REJECTED (but still shown) suggestion flags ✗.
+        if (suggestion !== undefined && sugRow && sugRow.review_status === 'rejected' && f.kind === 'prose') {
+          inner += `<sup class="sg-review rejected" title="${escapeHTML(sugRow.user_id)}: rejected">✗</sup>`;
         }
         const sugClass = (suggestion !== undefined ? ' has-suggestion' : '')
           + (isDeleteProposal ? ' suggested-delete' : '')

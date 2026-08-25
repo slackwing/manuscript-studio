@@ -158,6 +158,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
         : setBlockType(schema.nodes.heading, { level: l })(s, d),
       active: s => headingActive(s, l),
     })),
+    { html: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="1.5"/><path d="M1.5 6h13M5 1v3M11 1v3"/></svg>',
+      title: 'Insert today\u2019s date as a heading (Alt+D)', run: (s, d) => insertDate(s, d) },
     { sep: true },
     { html: ICON_UL, title: 'Bullet list (Ctrl+Shift+8)', run: wrapInList(schema.nodes.bullet_list) },
     { html: ICON_OL, title: 'Numbered list (Ctrl+Shift+7)', run: wrapInList(schema.nodes.ordered_list) },
@@ -231,8 +233,10 @@ export async function createScratchpadEditor(els, scratchpadId) {
   // ---- editor ----
   // Alt+D: type today's date ("Saturday, August 1") at the cursor.
   const insertDate = (state, dispatch) => {
+    // Today's date as an H2 block at the caret — "Tuesday, August 25".
     if (dispatch) {
-      dispatch(state.tr.insertText(window.WriteSysEditPane.dateString()).scrollIntoView());
+      insertBlockSafely(state, dispatch, schema.nodes.heading.create({ level: 2 },
+        schema.text(window.WriteSysEditPane.dateString())));
     }
     return true;
   };

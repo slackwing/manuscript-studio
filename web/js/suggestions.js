@@ -701,6 +701,17 @@ const WriteSysSuggestions = {
         e.preventDefault();
         e.stopPropagation();
         close();
+        return;
+      }
+      // ←/→ flip through the suggested edits — only while NOT typing or
+      // selecting in a pane (any focused field keeps its own arrows).
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const t = document.activeElement;
+        const editing = t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable);
+        if (!editing) {
+          e.preventDefault();
+          this._navModal(sentenceId, e.key === 'ArrowLeft' ? -1 : 1);
+        }
       }
     };
     document.addEventListener('keydown', onDocKey);

@@ -469,6 +469,14 @@ const WriteSysImportScratchpad = {
         window.WriteSysRenderer.scrollToSentence(map[slug]);
         return;
       }
+      // Label-less anchors (from-selection regions) never enter the
+      // outline's slugMap — resolve via the rendered glyph instead. Works
+      // for committed AND still-suggested regions (both render the glyph).
+      const el = document.querySelector(`.pagedjs_pages [data-slug="${CSS.escape(slug)}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       if (++tries < 40) setTimeout(tick, 500);
     };
     setTimeout(tick, 800);

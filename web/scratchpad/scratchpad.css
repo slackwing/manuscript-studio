@@ -414,6 +414,7 @@
 .sn-render.sn-frozen, .sn-render.sn-superseded,
 textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
 .rv-accepted .sgm-fmt, .rv-accepted .sn-text, .rv-accepted .sn-text-wrap, .rv-accepted .sgm-other-view,
+.sgm-left.rv-accepted .sgm-fmt-left, .sgm-left.rv-rejected .sgm-fmt-left,
 .rv-rejected .sgm-fmt, .rv-rejected .sn-text, .rv-rejected .sn-text-wrap, .rv-rejected .sgm-other-view {
   background: color-mix(in srgb, var(--pw-c) 11%, white);
 }
