@@ -64,6 +64,9 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
     created_at: new Date().toISOString(),
   }));
   await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
+  check('history dialog panes lay out side by side (pane-widget CSS loaded)',
+    await page.evaluate(() =>
+      getComputedStyle(document.querySelector('#suggestion-modal .sn-cols')).display === 'flex'));
   check('history dialog shows the word diff', await page.evaluate(() => {
     const f = document.querySelector('#suggestion-modal .sgm-fmt-left');
     return !!f && /<del>/.test(f.innerHTML) && /<strong>/.test(f.innerHTML)
