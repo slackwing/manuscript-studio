@@ -367,6 +367,10 @@ const WriteSysSuggestions = {
         syncReviewShade();
         w.refresh();
         if (window.WriteSysPush) window.WriteSysPush.refresh();
+        // A verdict ends the look-closer: back to the formatted view, focus
+        // released — so ←/→ flips straight to the next suggested edit.
+        if (textarea) textarea.blur();
+        if (leftCtl) leftCtl.exitMono();
       } catch (e) {
         alert('Review failed: ' + (e.message || e));
       }
@@ -672,7 +676,10 @@ const WriteSysSuggestions = {
       pane.autoGrow();
       saver.poke();
       updateTitle();
-      if (leftCtl) leftCtl.sync(); // the formatted diff tracks the editor
+      // Reverting ends the look-closer too: formatted view, focus released,
+      // ←/→ live for the tour (same as a verdict).
+      textarea.blur();
+      if (leftCtl) leftCtl.exitMono();
       w.refresh();
     };
     textarea.addEventListener('input', () => { redoText = null; updateTitle(); w.refresh(); });

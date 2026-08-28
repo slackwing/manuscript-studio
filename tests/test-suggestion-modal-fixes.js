@@ -250,6 +250,13 @@ function psql(sql) {
     await page.waitForTimeout(150);
     assert2('revert restores committed text in the editor',
       (await page.locator('.suggestion-modal-textarea').inputValue()) === first.text);
+    assert2('revert returns to the formatted (viewing) mode', await page.evaluate(() => {
+      const m = document.querySelector('#suggestion-modal');
+      const fmt = m.querySelector('.sgm-fmt-left');
+      const ta = m.querySelector('.suggestion-modal-textarea');
+      return !!fmt && !fmt.hidden && !!ta && ta.offsetParent === null
+        && !['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName);
+    }));
     assert2('title returns to "Suggest edit" after revert', /^Suggest edit$/i.test(await title()), await title());
     assert2('modal still open after revert',
       (await page.locator('#suggestion-modal').count()) === 1);
@@ -291,6 +298,29 @@ function psql(sql) {
     }
     assert2('own review persisted server-side',
       (accRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '1', `rows=${accRows}`);
+    // A verdict exits the mono editor back to the FORMATTED view and
+    // releases focus — so the ←/→ tour keys work immediately.
+    assert2('accept returns to the formatted (viewing) mode', await page.evaluate(() => {
+      const m = document.querySelector('#suggestion-modal');
+      const fmt = m.querySelector('.sgm-fmt-left');
+      const ta = m.querySelector('.suggestion-modal-textarea');
+      return !!fmt && !fmt.hidden && !!ta && ta.offsetParent === null
+        && !['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName);
+    }));
+    const countNow = await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-nav-count').textContent.trim());
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction((prev) => {
+      const c = document.querySelector('#suggestion-modal .pw-nav-count');
+      return c && c.textContent.trim() !== prev;
+    }, countNow, { timeout: 10000 });
+    assert2('ArrowRight flips to the next edit right after accepting', true);
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction((prev) => {
+      const c = document.querySelector('#suggestion-modal .pw-nav-count');
+      return c && c.textContent.trim() === prev;
+    }, countNow, { timeout: 10000 });
+    assert2('ArrowLeft returns to the accepted edit', true);
     // Collapse the right pane by re-clicking the selected version, then
     // reopen — the toggle policy in the shell.
     await page.locator('#suggestion-modal .pw-rail-right .sn-rail-btn[data-key="0"]').click();
