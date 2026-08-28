@@ -48,8 +48,8 @@ const { suggestEditor } = require('./test-utils');
       { id: 'r1c', text: '\n\tThree.' }, { id: 'r1d', text: '\n\nFour.' },
     ]);
     const paras = html.split('\n');
-    check('R1: no-marker sentences join one <p> (space-joined)',
-      paras[0] === '<p><span class="sentence" data-sentence-id="r1a">One.</span> <span class="sentence" data-sentence-id="r1b">Two.</span></p>', paras[0]);
+    check('R1: no-marker sentences join one <p> (separator-span joined — bare spaces die in pagination)',
+      paras[0] === '<p><span class="sentence" data-sentence-id="r1a">One.</span><span class="sent-sp"> </span><span class="sentence" data-sentence-id="r1b">Two.</span></p>', paras[0]);
     check('R1: \\n\\t opens an indented paragraph, marker stripped from text',
       paras[1] === '<p class="indented"><span class="sentence" data-sentence-id="r1c">Three.</span></p>', paras[1]);
     check('R1: \\n\\n opens a section-break paragraph',

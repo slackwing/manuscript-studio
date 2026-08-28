@@ -81,18 +81,19 @@ const psql = (sql) => execSync(
     // afterRendered hook + post-swap re-runs provide must be present HERE.
     const p3 = await page.evaluate((sid) => {
       const trees = document.querySelectorAll('.pagedjs_pages');
-      // Inter-sentence spaces: find a paragraph with 2+ sentence spans and
-      // verify a whitespace text node sits between each adjacent pair.
+      // Inter-sentence separators: adjacent sentences join through a
+      // .sent-sp span carrying a real space — baked in at render time,
+      // because an ELEMENT survives pagination where the old bare text
+      // node did not (the page-boundary word-loss bug).
       let spacedChecked = 0, spacedOk = 0;
       trees[0].querySelectorAll('p').forEach((p) => {
-        const kids = [...p.childNodes];
+        const kids = [...p.childNodes].filter((n) => !(n.nodeType === 3 && !n.nodeValue.trim()));
         for (let i = 1; i < kids.length; i++) {
           const a = kids[i - 1], b = kids[i];
-          if (a.nodeType === 1 && a.classList.contains('sentence')
-            && b.nodeType === 1 && b.classList.contains('sentence')) {
-            spacedChecked += 1; // adjacent with NO text node = missing space
-          } else if (a.nodeType === 1 && a.classList.contains('sentence')
-            && b.nodeType === 3 && /^\s+$/.test(b.nodeValue)
+          if (a.nodeType !== 1 || !a.classList.contains('sentence')) continue;
+          if (b.nodeType === 1 && b.classList.contains('sentence')) {
+            spacedChecked += 1; // adjacent with NO separator = missing space
+          } else if (b.nodeType === 1 && b.classList.contains('sent-sp') && /\s/.test(b.textContent)
             && kids[i + 1] && kids[i + 1].nodeType === 1 && kids[i + 1].classList.contains('sentence')) {
             spacedChecked += 1; spacedOk += 1;
           }
@@ -111,7 +112,7 @@ const psql = (sql) => execSync(
       };
     }, noted.sid);
     check('P3: single live tree after re-renders', p3.trees === 1, `trees=${p3.trees}`);
-    check('P3: NEW pages have inter-sentence spaces (post-swap re-run)',
+    check('P3: NEW pages keep their inter-sentence separator spans',
       p3.spacedChecked > 0 && p3.spacedOk === p3.spacedChecked,
       `${p3.spacedOk}/${p3.spacedChecked} adjacent pairs spaced`);
     check('P3: rainbow bars re-attached inside the NEW tree, on the noted page',
@@ -128,6 +129,25 @@ const psql = (sql) => execSync(
         [...document.querySelectorAll(`.sentence[data-sentence-id="${CSS.escape(id)}"]`)]
           .every((el) => el.classList.contains('hover')), hoverId));
     await page.mouse.move(5, 5);
+
+    // ---- P5: no sentence fragment escapes its page box ---------------------
+    // The 2026-08 word-loss bug: pagination measured text WITHOUT its
+    // inter-sentence spaces (bare text nodes die in pagination), then the
+    // post-hoc space pass re-wrapped lines into the multicol phantom
+    // column beyond the page edge — words invisible at page boundaries.
+    const p5 = await page.evaluate(() => {
+      let escaped = 0;
+      document.querySelectorAll('.pagedjs_pages .sentence').forEach((el) => {
+        const pg = el.closest('.pagedjs_page');
+        if (!pg) return;
+        const b = pg.getBoundingClientRect();
+        for (const r of el.getClientRects()) {
+          if (r.width > 0 && r.right > b.right + 2) { escaped += 1; break; }
+        }
+      });
+      return escaped;
+    });
+    check('P5: no sentence fragment parked beyond its page edge', p5 === 0, `escaped=${p5}`);
 
     // ---- P2: no-folio on &part/&title divider pages ------------------------
     // The fixture is markdown-only, so inject a SUGGESTED &part — the

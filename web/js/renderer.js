@@ -1,3 +1,13 @@
+// Inter-sentence separator: a real space WRAPPED IN A SPAN. Paged.js
+// strips bare whitespace-only text nodes between sentence spans while
+// paginating, so a naked ' ' join meant pages were MEASURED without their
+// spaces; re-inserting them afterwards re-wrapped lines and pushed the
+// tail of page-split paragraphs into the multicol phantom column — words
+// invisibly parked beyond the page edge (the 2026-08 "missing words at a
+// page boundary" bug). An element survives pagination, so what Paged.js
+// measures is what the reader gets.
+const SENT_SEP = '<span class="sent-sp"> </span>';
+
 const WriteSysRenderer = {
   apiBaseUrl: 'api',
   currentSentences: [],
@@ -312,18 +322,8 @@ const WriteSysRenderer = {
 
       oldPages.forEach(el => el.remove());
 
-      // Re-run the inter-sentence space insertion now that the OLD pages
-      // are gone. pagedjs-config.js's afterRendered already ran it, but
-      // during in-place re-renders both old and new .pagedjs_pages
-      // coexist briefly; that hook hits document.querySelector(
-      // '.pagedjs_pages') which finds the OLD one and patches it instead
-      // of the new one. Re-running here guarantees the new pages get it.
-      const newPages = document.querySelector('.pagedjs_pages');
-      if (newPages) this.insertSpacesBetweenSentences(newPages);
-
       // Placeholder hatch geometry (row-bridge padding + phase nudge) is
-      // DOM-position-derived, so it re-runs on the fresh pages — same
-      // reasoning as the insertSpacesBetweenSentences re-run above. The
+      // DOM-position-derived, so it re-runs on the fresh pages. The
       // scratchpad-import affordances are position-derived too.
       if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
       if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
@@ -479,8 +479,8 @@ const WriteSysRenderer = {
     const flush = () => {
       if (openP !== null) {
         out.push(openP.cls
-          ? `<p class="${openP.cls}">${openP.spans.join(' ')}</p>`
-          : `<p>${openP.spans.join(' ')}</p>`);
+          ? `<p class="${openP.cls}">${openP.spans.join(SENT_SEP)}</p>`
+          : `<p>${openP.spans.join(SENT_SEP)}</p>`);
         openP = null;
       }
     };
@@ -1087,26 +1087,6 @@ const WriteSysRenderer = {
           }, 300);
         }
       });
-    });
-  },
-
-  // Re-insert single spaces between adjacent sentence spans (Paged.js
-  // strips the whitespace text nodes).
-  insertSpacesBetweenSentences(container) {
-    const paragraphs = container.querySelectorAll('p');
-
-    paragraphs.forEach(p => {
-      const children = Array.from(p.childNodes);
-
-      for (let i = children.length - 1; i > 0; i--) {
-        const current = children[i];
-        const prev = children[i - 1];
-
-        if (current.nodeType === 1 && current.classList?.contains('sentence') &&
-            prev.nodeType === 1 && prev.classList?.contains('sentence')) {
-          p.insertBefore(document.createTextNode(' '), current);
-        }
-      }
     });
   },
 

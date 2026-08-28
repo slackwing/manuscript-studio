@@ -44,12 +44,12 @@
           }
         });
 
-        // Re-insert spaces between sentence spans (Paged.js strips whitespace
-        // text nodes during pagination) and re-bind handlers on the new spans.
+        // Re-bind handlers on the new spans. (Inter-sentence spaces live in
+        // .sent-sp separator SPANS baked in at render time — elements survive
+        // pagination, so no post-hoc space insertion that would re-wrap
+        // already-fragmented pages.)
         const pagedContent = document.querySelector('.pagedjs_pages');
         if (pagedContent && window.WriteSysRenderer) {
-          window.WriteSysRenderer.insertSpacesBetweenSentences(pagedContent);
-
           window.WriteSysRenderer.setupSentenceHover();
           window.WriteSysRenderer.addRainbowBars();
           if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
