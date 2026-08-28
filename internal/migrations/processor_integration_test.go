@@ -25,6 +25,7 @@ import (
 
 	"github.com/slackwing/manuscript-studio/internal/database"
 	"github.com/slackwing/manuscript-studio/internal/models"
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 const defaultTestDBURL = "postgres://manuscript_dev:manuscript_dev@localhost:5433/manuscript_studio_dev"
@@ -673,13 +674,12 @@ func TestMigration_SuggestionsCopyOnExactMatch(t *testing.T) {
 	}
 }
 
-// A suggestion whose text matches its sentence's current text is a no-op —
-// nothing to suggest — and should be pruned by the migration so the UI never
-// shows a "ghost" dotted underline with empty diff. Carry-forward across an
-// unchanged sentence preserves the suggestion, but if normalized texts now
-// match, the row gets cleaned up. Whitespace/punctuation/case differences
-// don't save it: normalization is the same one the matcher uses.
-func TestMigration_NoOpSuggestionsPrunedFromCurrentMigration(t *testing.T) {
+// Applied suggestions settle by GROUP REVIEW STATE (SUGGESTION_REVIEW_RULES
+// .md): an ACCEPTED, fully-reviewed no-op is consummated — retired at the
+// migration (normalization is the matcher's own, so whitespace/punctuation
+// differences don't save it). An UNREVIEWED no-op is still a pending group
+// and must migrate untouched — the reviewer decides its fate, not the sweep.
+func TestMigration_SettleRetiresAcceptedNoOpKeepsPendingOne(t *testing.T) {
 	f := newFixture(t)
 
 	src := "Stable sentence one. Stable sentence two."
@@ -688,14 +688,17 @@ func TestMigration_NoOpSuggestionsPrunedFromCurrentMigration(t *testing.T) {
 	oneID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence one")
 	twoID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence two")
 
-	// Suggestion that matches sentence text exactly (a no-op).
-	if _, err := f.db.UpsertSuggestion(f.ctx, oneID1, f.username, "Stable sentence one."); err != nil {
-		t.Fatalf("upsert exact no-op suggestion: %v", err)
+	// ACCEPTED no-op (matches under normalization) → consummation retires it.
+	if _, err := f.db.UpsertSuggestion(f.ctx, oneID1, f.username, "  Stable   sentence   one  "); err != nil {
+		t.Fatalf("upsert accepted no-op suggestion: %v", err)
 	}
-	// Suggestion that matches under normalization only (different whitespace
-	// and trailing punctuation; same normalized form).
-	if _, err := f.db.UpsertSuggestion(f.ctx, twoID1, f.username, "  Stable   sentence   two  "); err != nil {
-		t.Fatalf("upsert normalized no-op suggestion: %v", err)
+	acc := "accepted"
+	if _, err := f.db.SetSuggestionReview(f.ctx, oneID1, f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	// UNREVIEWED no-op → pending group, carries forward whole.
+	if _, err := f.db.UpsertSuggestion(f.ctx, twoID1, f.username, "Stable sentence two."); err != nil {
+		t.Fatalf("upsert pending no-op suggestion: %v", err)
 	}
 
 	// Re-migrate at an unchanged source: exact-match pairings carry forward.
@@ -705,8 +708,11 @@ func TestMigration_NoOpSuggestionsPrunedFromCurrentMigration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get suggestions for m2: %v", err)
 	}
-	if len(rows) != 0 {
-		t.Errorf("expected no-op suggestions to be pruned from current migration, got %d row(s): %+v", len(rows), rows)
+	if len(rows) != 1 || sentence.NormalizeText(rows[0].Text) != sentence.NormalizeText("Stable sentence two.") {
+		t.Errorf("expected ONLY the pending no-op to carry, got %d row(s): %+v", len(rows), rows)
+	}
+	if len(rows) == 1 && rows[0].ReviewStatus != nil {
+		t.Errorf("pending no-op should still be unreviewed, got %v", *rows[0].ReviewStatus)
 	}
 
 	// Old migration is audit data and stays put.
@@ -725,8 +731,9 @@ func TestMigration_NoOpSuggestionsPrunedFromCurrentMigration(t *testing.T) {
 // forward — where it used to survive forever, because the single-sentence
 // no-op check never saw it as applied. Every later push then minted ANOTHER
 // copy of the command (this actually happened: the thrice-duplicated
-// "salvia night" anchor). The neighbor-window prune must kill it.
-func TestMigration_AppliedMultiSentenceSuggestionPruned(t *testing.T) {
+// "salvia night" anchor). The neighbor-window match must consummate it once
+// its group is fully reviewed.
+func TestMigration_AppliedMultiSentenceSuggestionRetired(t *testing.T) {
 	f := newFixture(t)
 
 	src1 := "We probably recounted tales of that night."
@@ -736,6 +743,11 @@ func TestMigration_AppliedMultiSentenceSuggestionPruned(t *testing.T) {
 	sugg := "&anchor{The night.}\nWe probably recounted tales of that night."
 	if _, err := f.db.UpsertSuggestion(f.ctx, proseID1, f.username, sugg); err != nil {
 		t.Fatalf("upsert multi-sentence suggestion: %v", err)
+	}
+	// Accepted + sole row = fully reviewed, so the window match consummates.
+	acc := "accepted"
+	if _, err := f.db.SetSuggestionReview(f.ctx, proseID1, f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
 	}
 
 	// v2 = the suggestion applied: the anchor is now its own committed
@@ -748,7 +760,7 @@ func TestMigration_AppliedMultiSentenceSuggestionPruned(t *testing.T) {
 		t.Fatalf("get suggestions for m2: %v", err)
 	}
 	if len(rows) != 0 {
-		t.Errorf("fully-applied multi-sentence suggestion should be pruned, got %d row(s): %+v", len(rows), rows)
+		t.Errorf("fully-applied accepted multi-sentence suggestion should be retired, got %d row(s): %+v", len(rows), rows)
 	}
 
 	// Old migration is audit data and stays put.
