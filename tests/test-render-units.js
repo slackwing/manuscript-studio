@@ -436,7 +436,9 @@ const { suggestEditor } = require('./test-utils');
     check('S2: rejected-only sentence leaves the nav space', out.orderSkipsRejected);
   }
 
-  // ---- S3: review button — ✓✗ pair, reviewed/total counter ---------------
+  // ---- S3: review button — ✓✗ pair, SENTENCE-level reviewed/total;
+  // acceptedCount counts only PUSHABLE acceptances (fully-reviewed
+  // sentences), mirroring the server's push gate. ------------------------
   {
     const out = await page.evaluate(() => {
       const S = window.WriteSysSuggestions;
@@ -447,14 +449,19 @@ const { suggestEditor } = require('./test-utils');
         S.viewer = S.viewer || 'unit';
         S.canReview = true;
         S.rows = [
-          { sentence_id: 'v1', user_id: S.viewer, text: 'a', review_status: 'accepted', stale: false },
-          { sentence_id: 'v2', user_id: S.viewer, text: 'b', review_status: 'rejected', stale: false },
-          { sentence_id: 'v3', user_id: S.viewer, text: 'c', review_status: null, stale: false },
-          { sentence_id: 'v4', user_id: 'someone-else', text: 'd', review_status: 'rejected', stale: false },
+          // w1: fully reviewed (accepted mine + rejected other) → pushable
+          { sentence_id: 'w1', user_id: S.viewer, text: 'a', review_status: 'accepted', stale: false },
+          { sentence_id: 'w1', user_id: 'someone-else', text: 'b', review_status: 'rejected', stale: false },
+          // w2: accepted BUT an unreviewed sibling → pending, not pushable
+          { sentence_id: 'w2', user_id: S.viewer, text: 'c', review_status: 'accepted', stale: false },
+          { sentence_id: 'w2', user_id: 'someone-else', text: 'd', review_status: null, stale: false },
+          // w3: sole pending
+          { sentence_id: 'w3', user_id: S.viewer, text: 'e', review_status: null, stale: false },
         ];
         S.rebuildMaps();
-        r.own = S.reviewedCount('own');
-        r.all = S.reviewedCount('all');
+        r.sentences = S.reviewedSentences();
+        r.accOwn = S.acceptedCount('own');
+        r.accAll = S.acceptedCount('all');
         P.refresh();
         const btn = document.getElementById('accept-btn');
         r.count = btn && btn.querySelector('.mc-count') ? btn.querySelector('.mc-count').textContent : null;
@@ -467,9 +474,11 @@ const { suggestEditor } = require('./test-utils');
       }
       return r;
     });
-    check('S3: reviewedCount(own) counts accepted + rejected', out.own === 2, String(out.own));
-    check('S3: reviewedCount(all) includes others', out.all === 3, String(out.all));
-    check('S3: button counter reads reviewed/total', out.count === '2/3', String(out.count));
+    check('S3: reviewedSentences counts fully-reviewed sentences only',
+      out.sentences.reviewed === 1 && out.sentences.total === 3, JSON.stringify(out.sentences));
+    check('S3: acceptedCount skips sentences with pending siblings',
+      out.accOwn === 1 && out.accAll === 1, `own=${out.accOwn} all=${out.accAll}`);
+    check('S3: button counter reads reviewedSentences/total', out.count === '1/3', String(out.count));
     check('S3: icon is ONE green check + ONE red x', out.greens === 1 && out.reds === 1, JSON.stringify(out));
   }
 

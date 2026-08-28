@@ -209,34 +209,43 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 	return out, rows.Err()
 }
 
-// PruneNoOpSuggestionsForMigration deletes suggestions on sentences in the
-// given migration whose text is already fully present in the committed
-// document. Two shapes qualify (both compared under NormalizeText):
+// SettleSuggestionsForMigration applies the post-carry GROUP rules to the
+// migration's suggestion groups (SUGGESTION_REVIEW_RULES.md). "Applied"
+// below means the suggestion's text is already present in the committed
+// document, compared under NormalizeText — either matching its own
+// sentence, or matching its sentence JOINED WITH adjacent committed
+// sentences (a multi-sentence suggestion re-segments on apply; the window
+// is capped at 3 neighbors each side).
 //
-//  1. the suggestion matches its own sentence's text — the classic no-op,
-//     left behind when a suggestion's text gets incorporated into the
-//     source by a later commit and carried forward across exact-match
-//     pairings;
-//  2. the suggestion matches its sentence JOINED WITH adjacent committed
-//     sentences — the multi-sentence twin of (1). A suggestion that
-//     prepends a block command ("&anchor{...} We probably recounted...")
-//     is applied as TWO committed sentences; the prose half then pairs
-//     exact-match with the old sentence, the suggestion carries forward
-//     forever, and every subsequent push mints ANOTHER copy of the
-//     anchor. This rule breaks that loop.
+// Per sentence, over ALL of its suggestion rows (stale included):
 //
-// Scoped to current migration so old migrations remain untouched audit data.
-// Returns the count deleted.
+//  A. CONSUMMATION — every row carries a verdict AND an accepted row is
+//     applied: the whole group is retired (deleted). The verdicts live on
+//     in suggestion_review_event.
+//  B. BROKEN ACCEPTANCE — an accepted row arrived STALE (its sentence's
+//     text changed underneath it) and it is NOT applied: the acceptance no
+//     longer describes reality, so it resets to unreviewed and the reset
+//     is logged to history (status 'unaccepted', reviewer 'migration').
+//  C. Anything else carries untouched. In particular a group with ANY
+//     unreviewed row survives WHOLE — applied rows included, which render
+//     diff-less under the suggestion underline until reviewed.
+//
+// This replaces the old no-op pruner: unreviewed applied rows are no
+// longer deleted. The re-minting loop that pruner broke is now prevented
+// by the push gate instead (only fully-reviewed sentences push).
+//
+// Scoped to the current migration so old migrations remain untouched audit
+// data. Returns (groups retired as rows deleted, acceptances reset).
 //
 // orderedIDs is the migration's sentence order. The processor passes it
-// directly because it prunes BEFORE MarkMigrationDone stores
+// directly because settling runs BEFORE MarkMigrationDone stores
 // sentence_id_array; pass nil to fall back to the stored array.
-func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID int, orderedIDs []string) (int, error) {
+func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int, orderedIDs []string) (int, int, error) {
 	// Document order + texts, for the neighbor-window rule.
 	if len(orderedIDs) == 0 {
 		mig, err := db.GetMigrationByID(ctx, migrationID)
 		if err != nil {
-			return 0, fmt.Errorf("load migration for prune: %w", err)
+			return 0, 0, fmt.Errorf("load migration for settle: %w", err)
 		}
 		if mig != nil {
 			orderedIDs = mig.SentenceIDArray
@@ -248,20 +257,20 @@ func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID 
 		textRows, err := db.Pool.Query(ctx,
 			`SELECT sentence_id, text FROM sentence WHERE migration_id = $1`, migrationID)
 		if err != nil {
-			return 0, fmt.Errorf("scan sentences for prune: %w", err)
+			return 0, 0, fmt.Errorf("scan sentences for settle: %w", err)
 		}
 		textByID := map[string]string{}
 		for textRows.Next() {
 			var id, text string
 			if err := textRows.Scan(&id, &text); err != nil {
 				textRows.Close()
-				return 0, fmt.Errorf("scan sentence row: %w", err)
+				return 0, 0, fmt.Errorf("scan sentence row: %w", err)
 			}
 			textByID[id] = text
 		}
 		textRows.Close()
 		if err := textRows.Err(); err != nil {
-			return 0, fmt.Errorf("iter sentence rows: %w", err)
+			return 0, 0, fmt.Errorf("iter sentence rows: %w", err)
 		}
 		orderedTexts = make([]string, 0, len(orderedIDs))
 		for _, id := range orderedIDs {
@@ -270,27 +279,14 @@ func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID 
 		}
 	}
 
-	rows, err := db.Pool.Query(ctx, `
-		SELECT sc.suggestion_id, sc.text, s.sentence_id, s.text
-		FROM suggested_change sc
-		JOIN sentence s ON s.sentence_id = sc.sentence_id
-		WHERE s.migration_id = $1
-	`, migrationID)
-	if err != nil {
-		return 0, fmt.Errorf("scan suggestions for prune: %w", err)
-	}
-	defer rows.Close()
-	var noOpIDs []int
 	// windowApplied: does the suggestion equal some contiguous run of
-	// committed sentences that includes its own (index j)? Window is
-	// capped at 3 neighbors each side — a suggestion rarely segments into
-	// more, and the cap keeps this O(1) per suggestion.
+	// committed sentences that includes its own (index j)? See doc comment.
 	windowApplied := func(normSugg string, j int) bool {
 		const w = 3
 		for start := max(0, j-w); start <= j; start++ {
 			for end := j; end <= min(len(orderedTexts)-1, j+w); end++ {
 				if start == j && end == j {
-					continue // that's rule (1), already checked
+					continue // own-sentence match is checked separately
 				}
 				joined := strings.Join(orderedTexts[start:end+1], "\n")
 				if sentence.NormalizeText(joined) == normSugg {
@@ -300,40 +296,106 @@ func (db *DB) PruneNoOpSuggestionsForMigration(ctx context.Context, migrationID 
 		}
 		return false
 	}
+
+	type row struct {
+		id      int
+		userID  string
+		text    string
+		status  *string
+		stale   bool
+		applied bool
+	}
+	groups := map[string][]row{}     // sentence_id → its suggestion rows
+	sentTextByID := map[string]string{}
+	rows, err := db.Pool.Query(ctx, `
+		SELECT sc.suggestion_id, sc.user_id, sc.text, sc.review_status, sc.stale,
+		       s.sentence_id, s.text
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		WHERE s.migration_id = $1
+	`, migrationID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("scan suggestions for settle: %w", err)
+	}
+	defer rows.Close()
 	for rows.Next() {
-		var id int
-		var suggText, sentenceID, sentText string
-		if err := rows.Scan(&id, &suggText, &sentenceID, &sentText); err != nil {
-			return 0, fmt.Errorf("scan suggestion row: %w", err)
+		var r row
+		var sentenceID, sentText string
+		if err := rows.Scan(&r.id, &r.userID, &r.text, &r.status, &r.stale, &sentenceID, &sentText); err != nil {
+			return 0, 0, fmt.Errorf("scan suggestion row: %w", err)
 		}
-		normSugg := sentence.NormalizeText(suggText)
+		normSugg := sentence.NormalizeText(r.text)
 		if normSugg == sentence.NormalizeText(sentText) {
-			noOpIDs = append(noOpIDs, id)
-			continue
+			r.applied = true
+		} else if normSugg != "" { // empty carries no comparable content
+			if j, ok := orderByID[sentenceID]; ok && windowApplied(normSugg, j) {
+				r.applied = true
+			}
 		}
-		// An empty normalized suggestion carries no comparable content —
-		// never window-prune those.
-		if normSugg == "" {
-			continue
-		}
-		if j, ok := orderByID[sentenceID]; ok && windowApplied(normSugg, j) {
-			noOpIDs = append(noOpIDs, id)
-		}
+		groups[sentenceID] = append(groups[sentenceID], r)
+		sentTextByID[sentenceID] = sentText
 	}
 	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("iter suggestion rows: %w", err)
+		return 0, 0, fmt.Errorf("iter suggestion rows: %w", err)
 	}
-	if len(noOpIDs) == 0 {
-		return 0, nil
+
+	var retireIDs, unacceptIDs []int
+	type evt struct{ sentenceID, owner, committed, suggested string }
+	var evts []evt
+	for sentenceID, g := range groups {
+		fullyReviewed := true
+		acceptedApplied := false
+		for _, r := range g {
+			if r.status == nil {
+				fullyReviewed = false
+			}
+			if r.status != nil && *r.status == models.ReviewAccepted && r.applied {
+				acceptedApplied = true
+			}
+		}
+		if fullyReviewed && acceptedApplied {
+			for _, r := range g { // rule A: the whole group retires
+				retireIDs = append(retireIDs, r.id)
+			}
+			continue
+		}
+		for _, r := range g { // rule B: stale, unapplied acceptances reset
+			if r.status != nil && *r.status == models.ReviewAccepted && r.stale && !r.applied {
+				unacceptIDs = append(unacceptIDs, r.id)
+				evts = append(evts, evt{sentenceID, r.userID, sentTextByID[sentenceID], r.text})
+			}
+		}
 	}
-	tag, err := db.Pool.Exec(ctx,
-		`DELETE FROM suggested_change WHERE suggestion_id = ANY($1)`,
-		noOpIDs,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("delete no-op suggestions: %w", err)
+
+	if len(retireIDs) > 0 {
+		if _, err := db.Pool.Exec(ctx,
+			`DELETE FROM suggested_change WHERE suggestion_id = ANY($1)`, retireIDs); err != nil {
+			return 0, 0, fmt.Errorf("retire consummated groups: %w", err)
+		}
 	}
-	return int(tag.RowsAffected()), nil
+	if len(unacceptIDs) > 0 {
+		if _, err := db.Pool.Exec(ctx, `
+			UPDATE suggested_change
+			SET review_status = NULL, reviewed_by = NULL, reviewed_at = NULL
+			WHERE suggestion_id = ANY($1)`, unacceptIDs); err != nil {
+			return 0, 0, fmt.Errorf("reset broken acceptances: %w", err)
+		}
+		var manuscriptID int
+		if err := db.Pool.QueryRow(ctx,
+			`SELECT manuscript_id FROM migration WHERE migration_id = $1`, migrationID).Scan(&manuscriptID); err != nil {
+			return 0, 0, fmt.Errorf("manuscript for settle events: %w", err)
+		}
+		for _, e := range evts {
+			if _, err := db.Pool.Exec(ctx, `
+				INSERT INTO suggestion_review_event
+					(manuscript_id, sentence_id, owner_id, reviewer_id, status, committed_text, suggested_text)
+				VALUES ($1, $2, $3, 'migration', 'unaccepted', $4, $5)`,
+				manuscriptID, e.sentenceID, e.owner, e.committed, e.suggested); err != nil {
+				return 0, 0, fmt.Errorf("log unaccepted event: %w", err)
+			}
+		}
+	}
+	return len(retireIDs), len(unacceptIDs), nil
 }
 
 // CopySuggestionsForward duplicates rows from one sentence to another (used

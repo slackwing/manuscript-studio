@@ -83,6 +83,21 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.keyboard.press('Escape');
   await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
   check('Escape closes the history dialog', true);
+  // 'unaccepted' (migration reset): amber rail, NO verdict wash.
+  await page.evaluate(() => window.WriteSysSuggestions.openHistoryDialog({
+    owner_id: 'alice', reviewer_id: 'migration', status: 'unaccepted',
+    committed_text: 'New external text.', suggested_text: 'What was accepted.',
+    created_at: new Date().toISOString(),
+  }));
+  await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
+  check('unaccepted dialog: colored rail, no accept/reject wash', await page.evaluate(() => {
+    const host = document.querySelector('#suggestion-modal .sgm-left');
+    const b = document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn');
+    return !!b && b.classList.contains('pw-colored')
+      && !host.classList.contains('rv-accepted') && !host.classList.contains('rv-rejected');
+  }));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
 
   // --- Categories: reminder is non-task; tasks hold the built-ins ---
   const ttNames = await page.locator('#tt-chips .tt-chip > span:first-child').allInnerTexts();
@@ -360,7 +375,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.locator('.na-row.na-points .na-points-input').press('Enter');
   await page.waitForTimeout(700);
   check('zero unawards (event hard-deleted)', psql(`SELECT count(*) FROM point_event WHERE note_id=${noteId}`).trim() === '0');
-  check('all three rows undone (table empty)', await page.locator('.na-row').count() === 0);
+  check('all three rows undone (table empty)', await page.locator('#na-rows .na-row').count() === 0);
 
   // Back into the pad for the sketch checks below.
   await page.goto(HOME_URL);

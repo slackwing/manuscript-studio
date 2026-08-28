@@ -22,6 +22,7 @@ function cleanup() {
   try { psql(`DELETE FROM note_version WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
   try { psql(`DELETE FROM note WHERE sentence_id LIKE '${SLUG}-%';`); } catch (e) {}
   try { psql(`DELETE FROM suggested_change WHERE sentence_id LIKE '${SLUG}-%';`); } catch (e) {}
+  try { psql(`DELETE FROM suggestion_review_event WHERE manuscript_id IN (SELECT manuscript_id FROM manuscript WHERE name = '${SLUG}');`); } catch (e) {}
   try { psql(`DELETE FROM people_order WHERE manuscript_id IN (SELECT manuscript_id FROM manuscript WHERE name = '${SLUG}');`); } catch (e) {}
   try { psql(`DELETE FROM role WHERE manuscript_id IN (SELECT manuscript_id FROM manuscript WHERE name = '${SLUG}');`); } catch (e) {}
   try { psql(`DELETE FROM manuscript WHERE name = '${SLUG}';`); } catch (e) {}
@@ -259,11 +260,24 @@ async function loginAs(browser, username, password) {
     r = await api(r3Page, 'GET', `api/notes/sentence/${encodeURIComponent(titleSid)}`);
     check('reader sees no others\' notes', r.json.notes.length === 0, `count ${r.json.notes.length}`);
 
-    // ---- push accepted-only + stale carry -------------------------------
-    // editor2's accepted suggestion is the only accepted one → commit lands
-    // it; the owner's unreviewed revision must survive the migration STALE.
+    // ---- push gate + group settling (SUGGESTION_REVIEW_RULES.md) --------
+    // titleSid still holds the owner's UNREVIEWED revision beside editor2's
+    // accepted one → the sentence is not fully reviewed and must not push.
     r = await api(e2Page, 'POST', `api/manuscripts/${mid}/migrations/${latest.migration_id}/push-suggestions`, {});
-    check('editor2 commits all-accepted', r.status === 200, `status ${r.status} ${JSON.stringify(r.json).slice(0, 120)}`);
+    check('push refuses while a sibling edit is unreviewed', r.status === 400, `status ${r.status}`);
+
+    // A pending suggestion on an untouched sentence must migrate as-is.
+    const metaSid = manu.json.sentences[1].id;
+    r = await api(ownerPage, 'PUT', `api/sentences/${encodeURIComponent(metaSid)}/suggestion`,
+      { text: '&meta{chapter-align}{left}' });
+    check('owner files a pending suggestion on another sentence', r.status === 200, `status ${r.status}`);
+
+    // Reject the sibling → title fully reviewed → its accepted edit pushes.
+    r = await api(e2Page, 'POST', `api/sentences/${encodeURIComponent(titleSid)}/suggestion/review`,
+      { username: TEST_USERNAME, status: 'rejected' });
+    check('editor2 rejects the sibling revision', r.status === 204, `status ${r.status}`);
+    r = await api(e2Page, 'POST', `api/manuscripts/${mid}/migrations/${latest.migration_id}/push-suggestions`, {});
+    check('fully-reviewed sentence commits', r.status === 200, `status ${r.status} ${JSON.stringify(r.json).slice(0, 120)}`);
     let latest2 = null;
     for (let i = 0; i < 30; i++) {
       const lr = await api(ownerPage, 'GET', `api/migrations/latest?manuscript_id=${mid}`);
@@ -272,9 +286,60 @@ async function loginAs(browser, username, password) {
     }
     check('commit migrated to a new done migration', !!latest2);
     r = await api(ownerPage, 'GET', `api/migrations/${latest2.migration_id}/suggestions`);
-    const carried = r.json.suggestions.find(s => s.user_id === TEST_USERNAME);
-    check('owner\'s pending suggestion carried across the migration', !!carried);
-    check('…and arrived STALE (its sentence text changed)', carried && carried.stale === true);
+    // CONSUMMATION: the fully-reviewed title group (applied accepted +
+    // rejected sibling) retires wholesale; the meta sentence's pending
+    // suggestion carries FRESH (its sentence text never changed).
+    const titleRows = r.json.suggestions.filter(s => s.text.startsWith('&title'));
+    check('consummated title group fully retired', titleRows.length === 0,
+      JSON.stringify(titleRows.map(x => [x.user_id, x.review_status])));
+    const metaCarried = r.json.suggestions.find(
+      s => s.user_id === TEST_USERNAME && s.text === '&meta{chapter-align}{left}');
+    check('pending suggestion on an untouched sentence carries', !!metaCarried);
+    check('…and stays FRESH (its sentence text is unchanged)', metaCarried && metaCarried.stale === false);
+
+    // ---- unrelated external commit: broken acceptance --------------------
+    // Accept the carried meta suggestion (sole row → fully reviewed), then
+    // rewrite THAT sentence in the repo directly — the "unrelated deploy".
+    // The acceptance no longer matches the new text: it must carry, reset
+    // to unreviewed, arrive stale, and log an 'unaccepted' history event.
+    const metaSid2 = metaCarried.sentence_id;
+    r = await api(e2Page, 'POST', `api/sentences/${encodeURIComponent(metaSid2)}/suggestion/review`,
+      { username: TEST_USERNAME, status: 'accepted' });
+    check('editor2 accepts the carried suggestion', r.status === 204, `status ${r.status}`);
+
+    const { execSync } = require('child_process');
+    const mfile = fs.readdirSync(LOCAL_REPO_DIR).find(f => f.endsWith('.manuscript'));
+    const mpath = path.join(LOCAL_REPO_DIR, mfile);
+    fs.writeFileSync(mpath, fs.readFileSync(mpath, 'utf8')
+      .replace('&meta{chapter-align}{center}', '&meta{chapter-align}{right}'));
+    execSync(`git -C "${LOCAL_REPO_DIR}" -c user.email=t@e.com -c user.name=T commit -am "external edit"`);
+    const extHash = execSync(`git -C "${LOCAL_REPO_DIR}" rev-parse HEAD`, { encoding: 'utf8' }).trim();
+    const sync = await fetch(`${API_BASE_URL}/admin/sync`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SYSTEM_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manuscript_name: SLUG, commit_hash: extHash }),
+    });
+    check('external commit syncs', sync.ok, `status ${sync.status}`);
+    let latest3 = null;
+    for (let i = 0; i < 40; i++) {
+      const lr = await api(ownerPage, 'GET', `api/migrations/latest?manuscript_id=${mid}`);
+      if (lr.status === 200 && lr.json.commit_hash === extHash) { latest3 = lr.json; break; }
+      await new Promise(res => setTimeout(res, 500));
+    }
+    check('external commit migrated', !!latest3);
+    r = await api(ownerPage, 'GET', `api/migrations/${latest3.migration_id}/suggestions`);
+    const broken = r.json.suggestions.find(
+      s => s.user_id === TEST_USERNAME && s.text === '&meta{chapter-align}{left}');
+    check('broken acceptance carries across the external migration', !!broken);
+    check('…reset to UNREVIEWED', broken && broken.review_status === null,
+      broken && String(broken.review_status));
+    check('…and arrived STALE (its sentence text changed)', broken && broken.stale === true);
+    r = await api(ownerPage, 'GET', 'api/suggestion-history');
+    const unacc = ((r.json && r.json.events) || []).filter(e => e.manuscript_id === mid && e.status === 'unaccepted');
+    check('history logs the unaccepted event (reviewer: migration)',
+      unacc.length === 1 && unacc[0].reviewer_id === 'migration'
+      && unacc[0].suggested_text === '&meta{chapter-align}{left}',
+      JSON.stringify(unacc.map(e => [e.reviewer_id, e.suggested_text])));
 
     // People endpoint shape.
     r = await api(ownerPage, 'GET', `api/manuscripts/${mid}/people`);

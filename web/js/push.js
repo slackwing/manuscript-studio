@@ -122,9 +122,11 @@ const WriteSysPush = {
       </span>`;
     }
     if (canReview) {
-      // The OWN button wears its progress ON the button, right of the
-      // ✓✗ — reviewed/total of YOUR live suggestions.
-      const ownCount = `<span class="mc-count">${S.reviewedCount ? S.reviewedCount('own') : 0}/${S.suggestionTotal ? S.suggestionTotal('own') : 0}</span>`;
+      // The button wears its progress right of the ✓✗ — reviewed/total of
+      // the SENTENCES carrying suggestions (a sentence is reviewed only
+      // when every suggested edit on it has a verdict).
+      const rs = S.reviewedSentences ? S.reviewedSentences() : { reviewed: 0, total: 0 };
+      const ownCount = `<span class="mc-count">${rs.reviewed}/${rs.total}</span>`;
       html += this._pairHTML('accept', pend, { base: ICON_CHECKX },
         { own: 'Accept my uncontested', all: "Accept everyone's uncontested" },
         { own: ownCount });

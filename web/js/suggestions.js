@@ -125,17 +125,32 @@ const WriteSysSuggestions = {
     });
   },
 
-  // Fresh accepted rows ('all' | 'own') — the push button's live count.
+  // Sentences with any UNREVIEWED suggestion row (stale included) — those
+  // sentences are still pending: they neither push nor count as reviewed.
+  _pendingSentences() {
+    const pending = new Set();
+    this.rows.forEach(s => { if (!s.review_status) pending.add(s.sentence_id); });
+    return pending;
+  },
+
+  // PUSHABLE accepted rows ('all' | 'own') — fresh, accepted, and on a
+  // fully-reviewed sentence (SUGGESTION_REVIEW_RULES.md). The push
+  // button's live count; mirrors the server's push gate exactly.
   acceptedCount(scope) {
+    const pending = this._pendingSentences();
     return this.rows.filter(s => !s.stale && s.review_status === 'accepted'
+      && !pending.has(s.sentence_id)
       && (scope !== 'own' || s.user_id === this.viewer)).length;
   },
 
-  // Fresh REVIEWED rows (accepted or rejected) — the review button's
-  // progress numerator.
-  reviewedCount(scope) {
-    return this.rows.filter(s => !s.stale && !!s.review_status
-      && (scope !== 'own' || s.user_id === this.viewer)).length;
+  // reviewedSentences: {reviewed, total} over sentences carrying ANY
+  // suggestion row — a sentence counts reviewed only when EVERY row on it
+  // (stale included) has a verdict. The ✓✗ button's progress readout.
+  reviewedSentences() {
+    const all = new Set();
+    this.rows.forEach(s => all.add(s.sentence_id));
+    const pending = this._pendingSentences();
+    return { reviewed: all.size - pending.size, total: all.size };
   },
 
   // suggestionTotal: ALL fresh (non-stale) suggestions in scope — the
@@ -756,7 +771,8 @@ const WriteSysSuggestions = {
     overlay.id = 'suggestion-modal-overlay';
     const modal = document.createElement('div');
     modal.id = 'suggestion-modal';
-    const color = ev.status === 'accepted' ? '#2e7d32' : '#b03030';
+    const color = ev.status === 'accepted' ? '#2e7d32'
+      : ev.status === 'rejected' ? '#b03030' : '#c77d00'; // 'unaccepted' by a migration
     const committed = ev.committed_text || '';
     const suggested = ev.suggested_text || '';
     let leftCtl = null, rightCtl = null;
@@ -781,7 +797,9 @@ const WriteSysSuggestions = {
 
     w.leftContent.innerHTML = '<div class="sgm-left"></div>';
     const leftHost = w.leftContent.querySelector('.sgm-left');
-    leftHost.classList.add(ev.status === 'accepted' ? 'rv-accepted' : 'rv-rejected');
+    if (ev.status === 'accepted' || ev.status === 'rejected') {
+      leftHost.classList.add(ev.status === 'accepted' ? 'rv-accepted' : 'rv-rejected');
+    }
 
     const mkMono = (value) => {
       const p = window.WriteSysEditPane.createMonoEditor({

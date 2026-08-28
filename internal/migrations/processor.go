@@ -189,9 +189,9 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
 
-	suggestionsPruned, err := db.PruneNoOpSuggestionsForMigration(ctx, migrationID, newSentenceIDs)
+	suggestionsRetired, suggestionsUnaccepted, err := db.SettleSuggestionsForMigration(ctx, migrationID, newSentenceIDs)
 	if err != nil {
-		return nil, fmt.Errorf("prune no-op suggestions: %w", err)
+		return nil, fmt.Errorf("settle suggestion groups: %w", err)
 	}
 
 	// "Changes" = sentences that were tracked to a successor but whose text
@@ -230,7 +230,8 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		slog.Int("sentences", len(newSentences)),
 		slog.Int("notes_migrated", notesMigrated),
 		slog.Int("suggestions_migrated", suggestionsMigrated),
-		slog.Int("suggestions_pruned_noop", suggestionsPruned),
+		slog.Int("suggestions_retired", suggestionsRetired),
+		slog.Int("suggestions_unaccepted", suggestionsUnaccepted),
 		slog.Int("unresolved_references", len(unresolved)),
 	)
 	return &MigrationResult{

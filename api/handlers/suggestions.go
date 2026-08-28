@@ -566,24 +566,33 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
-	var suggestions []models.SuggestedChange
-	if pushBody.Scope == "own-accepted" {
-		suggestions, err = h.DB.GetSuggestionsForMigration(ctx, migrationID, session.Username)
-	} else {
-		suggestions, err = h.DB.GetAllSuggestionsForMigration(ctx, migrationID)
-	}
+	// The push applies EXACTLY the accepted set, and only on FULLY-REVIEWED
+	// sentences — every suggested edit there (stale included) must carry a
+	// verdict before the sentence commits (SUGGESTION_REVIEW_RULES.md).
+	// Review state needs the WHOLE group, so all rows load regardless of
+	// scope; scope only filters WHOSE acceptances apply. Defensive dedupe
+	// for pre-v3.2 data: earliest review wins, and we log the anomaly.
+	allRows, err := h.DB.GetAllSuggestionsForMigration(ctx, migrationID)
 	if err != nil {
 		http.Error(w, "Failed to load suggestions", http.StatusInternalServerError)
 		return
 	}
-	// Accepted + fresh only — the push applies EXACTLY the accepted set
-	// (v3.2): accepting is exclusive per sentence, so there is nothing to
-	// resolve here. Defensive dedupe for pre-v3.2 data: earliest review
-	// wins, and we log the anomaly.
-	accepted := suggestions[:0]
+	unreviewed := map[string]bool{}
+	for _, s := range allRows {
+		if s.ReviewStatus == nil {
+			unreviewed[s.SentenceID] = true
+		}
+	}
+	var suggestions []models.SuggestedChange
 	seenSentence := map[string]bool{}
-	for _, s := range suggestions {
+	for _, s := range allRows {
 		if s.Stale || s.ReviewStatus == nil || *s.ReviewStatus != models.ReviewAccepted {
+			continue
+		}
+		if unreviewed[s.SentenceID] {
+			continue // still pending — the group migrates whole instead
+		}
+		if pushBody.Scope == "own-accepted" && s.UserID != session.Username {
 			continue
 		}
 		if seenSentence[s.SentenceID] {
@@ -591,11 +600,10 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 			continue
 		}
 		seenSentence[s.SentenceID] = true
-		accepted = append(accepted, s)
+		suggestions = append(suggestions, s)
 	}
-	suggestions = accepted
 	if len(suggestions) == 0 {
-		http.Error(w, "No accepted suggestions to push (accept your edits first)", http.StatusBadRequest)
+		http.Error(w, "Nothing to push — an accepted edit pushes only once ALL suggested edits on its sentence are reviewed", http.StatusBadRequest)
 		return
 	}
 	// Rebuild the WHOLE manuscript in canonical form from the migration's

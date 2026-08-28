@@ -138,7 +138,7 @@ func TestGetSuggestionsForMigration_UserScoped(t *testing.T) {
 // #21 (the ✗ leg of the #19–#22 prune battery): a suggestion whose NORMALIZED
 // text is empty (punctuation/whitespace only) carries no comparable content
 // and must never be window-pruned.
-func TestPruneNoOp_EmptyNormalizedSuggestionSurvives(t *testing.T) {
+func TestSettle_EmptyNormalizedSuggestionSurvives(t *testing.T) {
 	f := newITFixture(t)
 	migID, sids := f.makeDoneMigration(t, "c1", "Real prose sentence here.", "Second sentence.")
 
@@ -149,12 +149,12 @@ func TestPruneNoOp_EmptyNormalizedSuggestionSurvives(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	n, err := f.db.PruneNoOpSuggestionsForMigration(f.ctx, migID, sids)
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
 	if err != nil {
-		t.Fatalf("prune: %v", err)
+		t.Fatalf("settle: %v", err)
 	}
-	if n != 0 {
-		t.Errorf("pruned %d suggestions, want 0", n)
+	if retired != 0 {
+		t.Errorf("retired %d suggestions, want 0", retired)
 	}
 	rows, err := f.db.GetSuggestionsForMigration(f.ctx, migID, f.username)
 	if err != nil {
@@ -165,49 +165,58 @@ func TestPruneNoOp_EmptyNormalizedSuggestionSurvives(t *testing.T) {
 	}
 }
 
-// #23: with nil orderedIDs the prune falls back to the migration's STORED
+// #23: with nil orderedIDs the settle falls back to the migration's STORED
 // sentence_id_array — proven via the window rule, which needs document order.
-func TestPruneNoOp_NilOrderedIDsFallsBack(t *testing.T) {
+func TestSettle_NilOrderedIDsFallsBack(t *testing.T) {
 	f := newITFixture(t)
 	migID, sids := f.makeDoneMigration(t, "c1", "First half here.", "Second half here.")
 
 	// Suggestion == its own sentence joined with the next one → only the
-	// neighbor-window rule (which requires ordering) catches it.
+	// neighbor-window rule (which requires ordering) catches it. Accepted +
+	// sole row = fully reviewed, so the window match consummates the group.
 	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username,
 		"First half here.\nSecond half here."); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-
-	n, err := f.db.PruneNoOpSuggestionsForMigration(f.ctx, migID, nil)
-	if err != nil {
-		t.Fatalf("prune: %v", err)
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("pruned %d, want 1 (stored sentence_id_array should drive the window)", n)
+
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, nil)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 1 {
+		t.Errorf("retired %d, want 1 (stored sentence_id_array should drive the window)", retired)
 	}
 }
 
-// #24: the prune is scoped to the given migration — an identical no-op on an
+// #24: the settle is scoped to the given migration — an identical no-op on an
 // older migration's sentence is audit data and stays.
-func TestPruneNoOp_ScopedToMigration(t *testing.T) {
+func TestSettle_ScopedToMigration(t *testing.T) {
 	f := newITFixture(t)
 	_, oldSids := f.makeDoneMigration(t, "c-old", "Shared sentence text.")
 	newMigID, newSids := f.makeDoneMigration(t, "c-new", "Shared sentence text.")
 
-	// Both are classic exact no-ops against their own sentence.
+	// Both are exact applied acceptances (sole rows → fully reviewed).
 	if _, err := f.db.UpsertSuggestion(f.ctx, oldSids[0], f.username, "Shared sentence text."); err != nil {
 		t.Fatalf("old upsert: %v", err)
 	}
 	if _, err := f.db.UpsertSuggestion(f.ctx, newSids[0], f.username, "Shared sentence text."); err != nil {
 		t.Fatalf("new upsert: %v", err)
 	}
-
-	n, err := f.db.PruneNoOpSuggestionsForMigration(f.ctx, newMigID, newSids)
-	if err != nil {
-		t.Fatalf("prune: %v", err)
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, newSids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept new: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("pruned %d, want exactly 1 (current migration only)", n)
+
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, newMigID, newSids)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 1 {
+		t.Errorf("retired %d, want exactly 1 (current migration only)", retired)
 	}
 	var oldCount int
 	if err := f.pool.QueryRow(f.ctx,
@@ -216,6 +225,109 @@ func TestPruneNoOp_ScopedToMigration(t *testing.T) {
 	}
 	if oldCount != 1 {
 		t.Errorf("older migration's suggestion was pruned")
+	}
+}
+
+// Group rules (SUGGESTION_REVIEW_RULES.md): an unreviewed sibling keeps the
+// WHOLE group alive — even an applied, accepted row is not retired.
+func TestSettle_UnreviewedSiblingKeepsGroupWhole(t *testing.T) {
+	f := newITFixture(t)
+	other := f.newUser(t)
+	migID, sids := f.makeDoneMigration(t, "c1", "Committed text.")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "Committed text."); err != nil {
+		t.Fatalf("mine: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], other, "Something pending."); err != nil {
+		t.Fatalf("theirs: %v", err)
+	}
+
+	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 0 || unaccepted != 0 {
+		t.Errorf("settle = (%d retired, %d unaccepted), want (0, 0)", retired, unaccepted)
+	}
+	var n int
+	if err := f.pool.QueryRow(f.ctx,
+		`SELECT count(*) FROM suggested_change WHERE sentence_id = $1`, sids[0]).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("group shrank to %d rows, want 2 (ALL migrate while any is unreviewed)", n)
+	}
+}
+
+// Broken acceptance: a STALE accepted row whose text is NOT in the document
+// resets to unreviewed, and the reset is logged as an 'unaccepted' event.
+func TestSettle_BrokenAcceptanceResetsAndLogs(t *testing.T) {
+	f := newITFixture(t)
+	migID, sids := f.makeDoneMigration(t, "c1", "The externally rewritten sentence.")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "What the reviewer accepted."); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	// Simulate the carry marking it stale (its sentence changed underneath).
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE suggested_change SET stale = TRUE WHERE sentence_id = $1`, sids[0]); err != nil {
+		t.Fatalf("mark stale: %v", err)
+	}
+
+	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 0 || unaccepted != 1 {
+		t.Errorf("settle = (%d retired, %d unaccepted), want (0, 1)", retired, unaccepted)
+	}
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, migID, f.username)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ReviewStatus != nil {
+		t.Errorf("rows = %+v, want one UNREVIEWED row", rows)
+	}
+	var evts int
+	if err := f.pool.QueryRow(f.ctx, `
+		SELECT count(*) FROM suggestion_review_event
+		WHERE sentence_id = $1 AND status = 'unaccepted' AND reviewer_id = 'migration'`,
+		sids[0]).Scan(&evts); err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if evts != 1 {
+		t.Errorf("unaccepted events = %d, want 1", evts)
+	}
+}
+
+// A fully-reviewed, all-rejected group has no consummation event — it
+// simply carries (rejections are at rest already; history holds them).
+func TestSettle_AllRejectedGroupCarries(t *testing.T) {
+	f := newITFixture(t)
+	migID, sids := f.makeDoneMigration(t, "c1", "Committed text.")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "Rejected idea."); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	rej := models.ReviewRejected
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &rej, f.username); err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+
+	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 0 || unaccepted != 0 {
+		t.Errorf("settle = (%d, %d), want (0, 0)", retired, unaccepted)
 	}
 }
 
