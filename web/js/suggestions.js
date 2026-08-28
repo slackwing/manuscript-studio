@@ -312,12 +312,14 @@ const WriteSysSuggestions = {
         label: ownChanged() || me ? ownLetter : '0',
         title: ownChanged() || me ? 'Your suggestion' : 'Committed text — type to suggest',
         color: reviewColor(me),
+        ts: (me && me.updated_at) || (ownChanged() ? Date.now() : undefined),
       }];
       others.forEach((r) => list.push({
         key: 'u:' + r.user_id, kind: 'other', row: r,
         label: (r.user_id[0] || '?').toUpperCase(),
         title: `${r.user_id}'s suggestion`,
         color: reviewColor(r),
+        ts: r.updated_at,
       }));
       stale.forEach((r, i) => list.push({
         key: 'st:' + i, kind: 'stale', row: r,
@@ -325,6 +327,7 @@ const WriteSysSuggestions = {
         title: `${r.user_id}'s STALE suggestion (from an earlier commit — review or reject)`,
         className: 'stale',
         color: reviewColor(r),
+        ts: r.updated_at,
       }));
       return list;
     };
@@ -410,7 +413,10 @@ const WriteSysSuggestions = {
     };
 
     const histEntries = () => versions.map((v) => {
-      if (v.k === 0) return { key: 0, label: '0', title: 'Committed text (current) — click again to collapse', data: { ver: '0' } };
+      // Only the CURRENT commit carries a timestamp — the shell's NEW badge
+      // fires when it postdates the suggestion shown on the left.
+      if (v.k === 0) return { key: 0, label: '0', title: 'Committed text (current) — click again to collapse', data: { ver: '0' },
+        ts: (window.WriteSysRenderer && window.WriteSysRenderer.currentMigration || {}).processed_at };
       const prev = versions[v.k - 1].text;
       const plural = v.k > 1 ? 's' : '';
       const dis = v.text == null || v.text === prev;
@@ -423,6 +429,7 @@ const WriteSysSuggestions = {
 
     const w = window.WriteSysPaneWidget.create({
       className: 'sgm-widget',
+      newBadgeTitle: 'Committed after this suggested edit',
       headerHTML: '<span class="sn-status" title="Your edit auto-saves as you type. Closing flushes first — nothing is lost.">Suggest edit</span>',
       left: {
         rail: leftEntries,
@@ -551,7 +558,8 @@ const WriteSysSuggestions = {
         // (rows too — an edit resets review/stale server-side, v3).
         this.rows = this.rows.filter(r => !(r.sentence_id === sentenceId && r.user_id === this.viewer));
         if (newText !== original) {
-          this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText, review_status: null, stale: false });
+          this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText,
+            review_status: null, stale: false, updated_at: new Date().toISOString() });
         }
         this.rebuildMaps();
         syncReviewShade();

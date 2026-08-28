@@ -50,6 +50,7 @@ const WriteSysRenderer = {
 
       const migration = await fetchJSON(`${this.apiBaseUrl}/migrations/latest?manuscript_id=${this.manuscriptId}`, {}, false);
       this.currentMigrationID = migration.migration_id;
+      this.currentMigration = migration; // processed_at feeds the modal's NEW badge
       this.currentCommitHash = migration.commit_hash;
       this.currentSegmenter = migration.segmenter;
 

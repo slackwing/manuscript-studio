@@ -213,6 +213,24 @@ function psql(sql) {
     }));
     assert2('no "+ sentence after" link anywhere in the modal', await page.evaluate(() =>
       !document.querySelector('#suggestion-modal .sgm-insert-after')));
+    assert2('no NEW badge when the edit postdates the commit', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-new').hidden));
+    // Shell-level NEW badge law: shown iff BOTH selected entries carry a ts
+    // and the right one is strictly newer.
+    const pwNew = await page.evaluate(() => {
+      const hiddenFor = (lts, rts) => window.WriteSysPaneWidget.create({
+        left: { rail: () => [{ key: 'a', label: 'A', ts: lts }] },
+        right: { rail: () => [{ key: 0, label: '0', ts: rts }], openByDefault: true, defaultKey: 0 },
+      }).el.querySelector('.pw-new').hidden;
+      return {
+        newer: hiddenFor(1000, 2000),
+        older: hiddenFor(2000, 1000),
+        equal: hiddenFor(1000, 1000),
+        missing: hiddenFor(undefined, 2000),
+      };
+    });
+    assert2('pw NEW badge: right-newer only (never older/equal/ts-less)',
+      pwNew.newer === false && pwNew.older && pwNew.equal && pwNew.missing, JSON.stringify(pwNew));
     // Nav appears once the autosaved suggestion lands in the model.
     await page.waitForFunction(() => {
       const nav = document.querySelector('#suggestion-modal .pw-nav');
@@ -323,6 +341,25 @@ function psql(sql) {
     }
     assert2('revert + close leaves no suggestion row on this sentence',
       (rejRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '0', `rows=${rejRows}`);
+
+    // NEW badge wiring: the helper suggestion, backdated before the current
+    // commit, wears the badge against the committed pane.
+    await page.evaluate(() => {
+      const S = window.WriteSysSuggestions;
+      const row = S.rows.find(r => /OTHER\.$/.test(r.text));
+      row.updated_at = '1970-01-01T00:00:00Z';
+      S.openModal(row.sentence_id);
+    });
+    await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
+    assert2('NEW badge when the commit postdates the suggested edit', await page.evaluate(() => {
+      const el = document.querySelector('#suggestion-modal .pw-new');
+      return !!el && !el.hidden && el.textContent === 'NEW';
+    }));
+    await page.locator('#suggestion-modal .pw-rail-right .sn-rail-btn[data-key="0"]').click();
+    assert2('collapsing the committed pane hides the NEW badge', await page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-new').hidden));
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
 
 
   } catch (e) {

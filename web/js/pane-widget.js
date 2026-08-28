@@ -23,7 +23,12 @@
  * - Rail entries are re-derived by lambdas on every refresh(), so labels
  *   (0↔letter), state colors, and disabled-ness stay live.
  *
- * Entry:  { key, label, title, className, color, disabled }
+ * Entry:  { key, label, title, className, color, disabled, ts }
+ * - ts (optional, any Date-parseable value) timestamps what the entry
+ *   SHOWS. When both selected entries carry one and the right's is newer,
+ *   the right pane wears a red corner NEW — "what you're comparing
+ *   against postdates the thing you're viewing." Supplying timestamps IS
+ *   the enable switch; cfg.newBadgeTitle overrides its hover title.
  * Button: { icon, title, className, color, active(), onClick, disabled }
  * Both content hosts belong to the CALLER — the widget never touches what
  * is inside leftContent / rightContent, it only shows/hides the right one.
@@ -89,6 +94,7 @@ window.WriteSysPaneWidget = {
         </div>
         <div class="sn-pane pw-right">
           <div class="sn-main pw-main">
+            <span class="pw-new" hidden>NEW</span>
             <div class="sn-actionrow pw-actionrow pw-actionrow-right" hidden>
               <span class="pw-row-title"></span><span class="sn-actions"></span>
             </div>
@@ -209,6 +215,18 @@ window.WriteSysPaneWidget = {
 
       const rightEntries = (cfg.right && cfg.right.rail ? cfg.right.rail() : []);
       fillRail(rightRailEl, rightEntries, w.rightKey, (entry) => toggleRight(entry.key));
+
+      // NEW badge — see the Entry doc above. Both sides must opt in with a
+      // ts; comparison is strict (equal stamps show nothing).
+      const tsOf = (entries, key) => {
+        const e = entries.find((x) => x.key === key);
+        return e && e.ts != null ? +new Date(e.ts) : NaN;
+      };
+      const lts = tsOf(leftEntries, w.leftKey);
+      const rts = tsOf(rightEntries, w.rightKey);
+      const newEl = el.querySelector('.pw-new');
+      newEl.hidden = !(isFinite(lts) && isFinite(rts) && rts > lts);
+      if (!newEl.hidden) newEl.title = cfg.newBadgeTitle || 'Newer';
 
       // Collapse state. Actions stay pinned to their panes either way.
       const open = w.rightKey != null;

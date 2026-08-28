@@ -3471,6 +3471,17 @@ body.range-delete-mode .pagedjs_pages {
   overflow-y: auto;
 }
 .sgm-other-view.stale { background: #f5f2ea; color: #6b6558; }
+/* Pane NEW badge (pane-widget entries with ts): the right pane's content
+   postdates what the left pane shows. */
+.pw .pw-main { position: relative; }
+.pw-new {
+  position: absolute; top: 2px; right: 2px; z-index: 3;
+  background: #b03030; color: #fff;
+  font: 700 8px/1 "Helvetica", sans-serif; letter-spacing: 0.5px;
+  padding: 2px 3px; border-radius: 2px;
+}
+.pw-new[hidden] { display: none; }
+
 /* Accept/Reject are pw-actbtn STATE buttons (pane-widget.css) now. */
 
 /* Hidden notes (per-viewer): dimmed, sorted below by the margin code. */
