@@ -69,6 +69,11 @@ function cleanup() {
     }, mid);
     check('creator holds admin + author out of the box',
       roles.includes('admin') && roles.includes('author'), roles.join(','));
+    // The strip name lands via renderer's setName retry loop (waits for the
+    // session bootstrap, up to ~5s) — poll for it rather than racing it.
+    await page.waitForFunction(() =>
+      (document.getElementById('mc-name') || {}).textContent.trim().length > 0,
+      { timeout: 10000 }).catch(() => {});
     const title = await page.textContent('#mc-name');
     check('title strip shows the display name', title === TITLE, title);
     // v3.3: the seed is &title{...} — it must render as the H1 title page,
