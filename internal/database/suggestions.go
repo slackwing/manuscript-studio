@@ -87,6 +87,21 @@ func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser st
 	if err != nil {
 		return false, fmt.Errorf("set suggestion review: %w", err)
 	}
+	// Verdicts (not clears) land in the append-only history, snapshotting
+	// both texts so the event outlives migrations of the sentence.
+	if tag.RowsAffected() > 0 && status != nil {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO suggestion_review_event
+				(manuscript_id, sentence_id, owner_id, reviewer_id, status, committed_text, suggested_text)
+			SELECT mg.manuscript_id, sc.sentence_id, sc.user_id, $3, $4, s.text, sc.text
+			FROM suggested_change sc
+			JOIN sentence s ON s.sentence_id = sc.sentence_id
+			JOIN migration mg ON mg.migration_id = s.migration_id
+			WHERE sc.sentence_id = $1 AND sc.user_id = $2`,
+			sentenceID, targetUser, reviewer, *status); err != nil {
+			return false, fmt.Errorf("set suggestion review: history event: %w", err)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("set suggestion review: commit: %w", err)
 	}
@@ -100,22 +115,33 @@ func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser st
 // live suggestion is unreviewed, whoever wrote it. Returns the count.
 func (db *DB) AcceptUncontested(ctx context.Context, migrationID int, reviewer, scope string) (int, error) {
 	ownOnly := scope == "own"
+	// The CTE both accepts and logs: every updated row becomes a history
+	// event (same snapshot columns as the single-review path), so the
+	// INSERT's row count is the accept count.
 	tag, err := db.Pool.Exec(ctx, `
-		UPDATE suggested_change sc
-		SET review_status = 'accepted', reviewed_by = $2, reviewed_at = NOW()
-		FROM sentence s
-		WHERE s.sentence_id = sc.sentence_id
-		  AND s.migration_id = $1
-		  AND ($3::boolean = FALSE OR sc.user_id = $2)
-		  AND sc.stale = FALSE
-		  AND sc.review_status IS NULL
-		  AND NOT EXISTS (
-			SELECT 1 FROM suggested_change other
-			WHERE other.sentence_id = sc.sentence_id
-			  AND other.user_id <> sc.user_id
-			  AND other.stale = FALSE
-			  AND (other.review_status IS NULL OR other.review_status = 'accepted')
-		  )`, migrationID, reviewer, ownOnly)
+		WITH upd AS (
+			UPDATE suggested_change sc
+			SET review_status = 'accepted', reviewed_by = $2, reviewed_at = NOW()
+			FROM sentence s
+			WHERE s.sentence_id = sc.sentence_id
+			  AND s.migration_id = $1
+			  AND ($3::boolean = FALSE OR sc.user_id = $2)
+			  AND sc.stale = FALSE
+			  AND sc.review_status IS NULL
+			  AND NOT EXISTS (
+				SELECT 1 FROM suggested_change other
+				WHERE other.sentence_id = sc.sentence_id
+				  AND other.user_id <> sc.user_id
+				  AND other.stale = FALSE
+				  AND (other.review_status IS NULL OR other.review_status = 'accepted')
+			  )
+			RETURNING sc.sentence_id, sc.user_id, sc.text, s.text AS committed
+		)
+		INSERT INTO suggestion_review_event
+			(manuscript_id, sentence_id, owner_id, reviewer_id, status, committed_text, suggested_text)
+		SELECT mg.manuscript_id, u.sentence_id, u.user_id, $2, 'accepted', u.committed, u.text
+		FROM upd u, migration mg
+		WHERE mg.migration_id = $1`, migrationID, reviewer, ownOnly)
 	if err != nil {
 		return 0, fmt.Errorf("accept uncontested (%s): %w", scope, err)
 	}
@@ -351,4 +377,33 @@ func (db *DB) CarrySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []
 		return 0, fmt.Errorf("carry suggestions forward: %w", err)
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+// GetSuggestionReviewEvents: newest-first history events the caller may
+// see. seeAllIDs = manuscripts where the caller holds see-others-edits
+// (every event shows); ownIDs = other memberships (only events the caller
+// wrote or reviewed). The handler builds both sets from the caller's roles.
+func (db *DB) GetSuggestionReviewEvents(ctx context.Context, seeAllIDs, ownIDs []int, username string, limit int) ([]models.SuggestionReviewEvent, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT event_id, manuscript_id, sentence_id, owner_id, reviewer_id,
+		       status, committed_text, suggested_text, created_at
+		FROM suggestion_review_event
+		WHERE manuscript_id = ANY($1)
+		   OR (manuscript_id = ANY($2) AND (owner_id = $3 OR reviewer_id = $3))
+		ORDER BY event_id DESC
+		LIMIT $4`, seeAllIDs, ownIDs, username, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get suggestion review events: %w", err)
+	}
+	defer rows.Close()
+	var out []models.SuggestionReviewEvent
+	for rows.Next() {
+		var e models.SuggestionReviewEvent
+		if err := rows.Scan(&e.EventID, &e.ManuscriptID, &e.SentenceID, &e.OwnerID,
+			&e.ReviewerID, &e.Status, &e.CommittedText, &e.SuggestedText, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan suggestion review event: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

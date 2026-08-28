@@ -49,8 +49,40 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
 
   // --- Copy: bare section heads (non-task first), no descriptions ---
   const heads = await page.locator('.home-section-head h2').allInnerTexts();
-  check('sections: non-task, task, daily rules, note actions',
-    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Daily task rules|Note actions', heads.join('|'));
+  check('sections: non-task, task, daily rules, note actions, suggested edits',
+    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Daily task rules|Note actions|Suggested edits', heads.join('|'));
+
+  // --- Suggested-edit history: section loads; read-only dialog reuses the
+  // manuscript modal's shell + diff (suggestions.js openHistoryDialog) ---
+  check('suggested-edit history loads', await page.evaluate(() => {
+    const st = document.getElementById('se-status');
+    return !!st && !/Failed/.test(st.textContent);
+  }));
+  await page.evaluate(() => window.WriteSysSuggestions.openHistoryDialog({
+    owner_id: 'alice', reviewer_id: 'bob', status: 'rejected',
+    committed_text: 'The quick brown fox.', suggested_text: 'The slow brown fox.',
+    created_at: new Date().toISOString(),
+  }));
+  await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
+  check('history dialog shows the word diff', await page.evaluate(() => {
+    const f = document.querySelector('#suggestion-modal .sgm-fmt-left');
+    return !!f && /<del>/.test(f.innerHTML) && /<strong>/.test(f.innerHTML)
+      && /slow/.test(f.textContent) && /quick/.test(f.textContent);
+  }));
+  check('history dialog rail wears the owner letter, verdict-colored', await page.evaluate(() => {
+    const b = document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn');
+    return !!b && b.textContent.trim() === 'A' && b.classList.contains('pw-colored');
+  }));
+  check('history dialog wears the rejected wash', await page.evaluate(() =>
+    !!document.querySelector('#suggestion-modal .sgm-left.rv-rejected')));
+  check('history dialog is read-only (no review/revert, textareas locked)', await page.evaluate(() => {
+    const m = document.querySelector('#suggestion-modal');
+    return [...m.querySelectorAll('textarea')].every(t => t.readOnly)
+      && !m.querySelector('.sgm-accept, .sgm-reject, .sgm-revert, .sgm-redo');
+  }));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
+  check('Escape closes the history dialog', true);
 
   // --- Categories: reminder is non-task; tasks hold the built-ins ---
   const ttNames = await page.locator('#tt-chips .tt-chip > span:first-child').allInnerTexts();

@@ -787,3 +787,57 @@ func canonicalSuggestionsBranch(commitHash, username string) string {
 	return fmt.Sprintf("suggestions-%s-%s", commitShort, sanitizeBranchComponent(username))
 }
 
+
+// HandleSuggestionHistory: GET /api/suggestion-history?limit=N — recent
+// accept/reject verdicts across the caller's manuscripts (the settings
+// page's suggested-edit history). Visibility mirrors the live suggestion
+// rules: manuscripts where the caller holds see-others-edits show
+// everyone's events; elsewhere only events the caller wrote or reviewed.
+func (h *SuggestionHandlers) HandleSuggestionHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	limit := 20
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 200 {
+		limit = v
+	}
+	options, err := userManuscriptOptions(ctx, h.DB, h.Config, session.Username)
+	if err != nil {
+		http.Error(w, "Failed to load manuscripts", http.StatusInternalServerError)
+		return
+	}
+	names := map[int]string{}
+	var seeAll, ownOnly []int
+	for _, o := range options {
+		names[o.ManuscriptID] = o.DisplayName
+		canSee := false
+		for _, a := range o.Actions {
+			if a == "see-others-edits" {
+				canSee = true
+				break
+			}
+		}
+		if canSee {
+			seeAll = append(seeAll, o.ManuscriptID)
+		} else {
+			ownOnly = append(ownOnly, o.ManuscriptID)
+		}
+	}
+	events, err := h.DB.GetSuggestionReviewEvents(ctx, seeAll, ownOnly, session.Username, limit)
+	if err != nil {
+		log.Printf("suggestions: history for %s: %v", session.Username, err)
+		http.Error(w, "Failed to load history", http.StatusInternalServerError)
+		return
+	}
+	if events == nil {
+		events = []models.SuggestionReviewEvent{}
+	}
+	for i := range events {
+		events[i].ManuscriptName = names[events[i].ManuscriptID]
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"events": events})
+}

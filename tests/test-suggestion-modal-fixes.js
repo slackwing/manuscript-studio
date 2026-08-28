@@ -281,6 +281,33 @@ function psql(sql) {
     await page.locator('#suggestion-modal .pw-rail-right .sn-rail-btn[data-key="0"]').click();
     assert2('clicking 0 again reopens it', await page.evaluate(() =>
       !document.querySelector('#suggestion-modal .pw-right').classList.contains('pw-collapsed')));
+    // Nav wraps: › past the last suggested edit lands on the first, ‹ from
+    // the first lands on the last (2 edits live: this one + the helper).
+    const navCount = () => page.evaluate(() =>
+      document.querySelector('#suggestion-modal .pw-nav-count').textContent.trim());
+    const waitCount = (want) => page.waitForFunction((w) => {
+      const c = document.querySelector('#suggestion-modal .pw-nav-count');
+      return c && c.textContent.trim() === w;
+    }, want, { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const c = document.querySelector('#suggestion-modal .pw-nav-count');
+      return c && /^\d+ \/ 2$/.test(c.textContent.trim());
+    }, null, { timeout: 10000 });
+    if ((await navCount()) !== '2 / 2') {
+      await page.locator('#suggestion-modal .pw-nav-next').click();
+      await waitCount('2 / 2');
+    }
+    await page.locator('#suggestion-modal .pw-nav-next').click();
+    await waitCount('1 / 2');
+    assert2('nav › wraps from the last edit to the first', true);
+    await page.locator('#suggestion-modal .pw-nav-prev').click();
+    await waitCount('2 / 2');
+    assert2('nav ‹ wraps from the first edit to the last', true);
+    // Back to the sentence under test for the discard flow below.
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
+    await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), first.id);
+    await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
     // Revert (discard) empties the suggestion; close leaves no row.
     await page.locator('#suggestion-modal .sgm-revert').click();
     await page.waitForTimeout(400);
@@ -304,6 +331,7 @@ function psql(sql) {
   } finally {
     await browser.close();
     psql(`DELETE FROM suggested_change WHERE user_id = '${TEST_USERNAME}'`);
+    psql(`DELETE FROM suggestion_review_event WHERE owner_id = '${TEST_USERNAME}' OR reviewer_id = '${TEST_USERNAME}'`);
     await cleanupTestAnnotations();
   }
 

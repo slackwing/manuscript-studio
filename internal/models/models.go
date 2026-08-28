@@ -176,6 +176,23 @@ type SuggestedChange struct {
 	Stale bool `json:"stale"`
 }
 
+// SuggestionReviewEvent: one append-only history row per accept/reject
+// verdict. Texts are snapshots taken at review time — the event stays
+// readable after migrations rewrite or drop the sentence. ManuscriptName
+// is display-only, filled by the handler from config (not stored).
+type SuggestionReviewEvent struct {
+	EventID        int64     `json:"event_id"`
+	ManuscriptID   int       `json:"manuscript_id"`
+	ManuscriptName string    `json:"manuscript_name,omitempty"`
+	SentenceID     string    `json:"sentence_id"`
+	OwnerID        string    `json:"owner_id"`
+	ReviewerID     string    `json:"reviewer_id"`
+	Status         string    `json:"status"`
+	CommittedText  string    `json:"committed_text"`
+	SuggestedText  string    `json:"suggested_text"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type NoteVersion struct {
 	NoteID              int       `json:"note_id"`
 	Version             int       `json:"version"`

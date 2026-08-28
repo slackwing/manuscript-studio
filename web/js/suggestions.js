@@ -105,15 +105,17 @@ const WriteSysSuggestions = {
       (this.rowsBySentence[s.sentence_id] = this.rowsBySentence[s.sentence_id] || []).push(s);
       if (s.user_id === this.viewer) this.bySentenceId[s.sentence_id] = s.text;
     }
-    // Winner per sentence: fresh, not-rejected first (a rejected suggestion
-    // stays visible to its OWNER, wearing the ✗), then People rank.
+    // Winner per sentence: an ACCEPTED suggestion always wins (accepting is
+    // exclusive per sentence); otherwise the first non-rejected by People
+    // rank. Rejected suggestions never render in the manuscript — they stay
+    // reachable through the modal's left rail.
     Object.keys(this.rowsBySentence).forEach(sid => {
       const cands = this.rowsBySentence[sid]
-        .filter(s => s.review_status !== 'rejected' || s.user_id === this.viewer)
+        .filter(s => s.review_status !== 'rejected')
         .sort((a, b) => {
-          const ra = a.review_status === 'rejected' ? 1 : 0;
-          const rb = b.review_status === 'rejected' ? 1 : 0;
-          if (ra !== rb) return ra - rb;
+          const aa = a.review_status === 'accepted' ? 0 : 1;
+          const ab = b.review_status === 'accepted' ? 0 : 1;
+          if (aa !== ab) return aa - ab;
           return rankOf(a.user_id) - rankOf(b.user_id);
         });
       if (cands.length) {
@@ -126,6 +128,13 @@ const WriteSysSuggestions = {
   // Fresh accepted rows ('all' | 'own') — the push button's live count.
   acceptedCount(scope) {
     return this.rows.filter(s => !s.stale && s.review_status === 'accepted'
+      && (scope !== 'own' || s.user_id === this.viewer)).length;
+  },
+
+  // Fresh REVIEWED rows (accepted or rejected) — the review button's
+  // progress numerator.
+  reviewedCount(scope) {
+    return this.rows.filter(s => !s.stale && !!s.review_status
       && (scope !== 'own' || s.user_id === this.viewer)).length;
   },
 
@@ -172,7 +181,7 @@ const WriteSysSuggestions = {
     const R = window.WriteSysRenderer;
     if (!R || !R.currentSentences) return [];
     return R.currentSentences.map(s => s.id).filter(id => {
-      const rows = this.rowsBySentence[id] || [];
+      const rows = (this.rowsBySentence[id] || []).filter(r => r.review_status !== 'rejected');
       if (!rows.length) return false;
       // 'pending': only sentences still awaiting a verdict.
       if (filter === 'pending') return rows.some(r => !r.review_status);
@@ -196,7 +205,7 @@ const WriteSysSuggestions = {
       i = step > 0
         ? list.findIndex(id => order.indexOf(id) > pos)
         : (() => { let k = -1; list.forEach((id, j) => { if (order.indexOf(id) < pos) k = j; }); return k; })();
-      if (i < 0) return;
+      if (i < 0) i = step > 0 ? 0 : list.length - 1; // nothing in that direction — wrap
       const target = list[i];
       if (!this._activeClose || await this._activeClose()) {
         if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
@@ -206,8 +215,7 @@ const WriteSysSuggestions = {
       }
       return;
     }
-    const j = i + step;
-    if (j < 0 || j >= list.length) return;
+    const j = (i + step + list.length) % list.length; // the tour wraps
     const target = list[j];
     if (!this._activeClose || await this._activeClose()) {
       // The page follows the tour — the flipped-to edit scrolls into view
@@ -736,6 +744,103 @@ const WriteSysSuggestions = {
       modal.querySelector('.sn-save').textContent = 'restored unsaved draft';
       saver.poke();
     }
+  },
+
+  // Read-only viewer for a suggested-edit HISTORY event (the settings
+  // page's audit table): the manuscript modal's shell (pane-widget), mono
+  // editors (edit-pane) and word-diff pipeline (renderDiffHTML), fed from
+  // the event's snapshots — no editing, autosave, review, or nav.
+  openHistoryDialog(ev) {
+    if (document.getElementById('suggestion-modal')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'suggestion-modal-overlay';
+    const modal = document.createElement('div');
+    modal.id = 'suggestion-modal';
+    const color = ev.status === 'accepted' ? '#2e7d32' : '#b03030';
+    const committed = ev.committed_text || '';
+    const suggested = ev.suggested_text || '';
+    let leftCtl = null, rightCtl = null;
+
+    const w = window.WriteSysPaneWidget.create({
+      className: 'sgm-widget',
+      headerHTML: '<span class="sn-status">Suggested edit</span>',
+      left: {
+        rail: () => [{ key: 'sug', label: (ev.owner_id[0] || '?').toUpperCase(),
+          title: `${ev.owner_id}'s suggestion`, color }],
+        title: () => `${ev.owner_id} · ${ev.status} by ${ev.reviewer_id}`,
+      },
+      right: {
+        rail: () => [{ key: 0, label: '0', title: 'Committed text at review time — click again to collapse' }],
+        onChange: () => { if (leftCtl) leftCtl.sync(); if (rightCtl) rightCtl.sync(); },
+        openByDefault: true,
+        defaultKey: 0,
+        title: () => 'committed at review time',
+      },
+    });
+    modal.appendChild(w.el);
+
+    w.leftContent.innerHTML = '<div class="sgm-left"></div>';
+    const leftHost = w.leftContent.querySelector('.sgm-left');
+    leftHost.classList.add(ev.status === 'accepted' ? 'rv-accepted' : 'rv-rejected');
+
+    const mkMono = (value) => {
+      const p = window.WriteSysEditPane.createMonoEditor({
+        value, overlayHTML: window.WriteSysEditPane.tabMarkupHTML });
+      p.textarea.readOnly = true;
+      p.textarea.spellcheck = false;
+      return p;
+    };
+    const leftPane = mkMono(suggested);
+    leftPane.textarea.classList.add('suggestion-modal-textarea');
+    leftHost.appendChild(leftPane.wrap);
+    const rightPane = mkMono(committed);
+    rightPane.textarea.classList.add('suggestion-modal-original', 'sgm-version-text');
+    w.rightContent.appendChild(rightPane.wrap);
+
+    const leftFmt = document.createElement('div');
+    leftFmt.className = 'sgm-fmt sgm-fmt-left sgm-fmt-ro';
+    leftFmt.title = 'Click for the raw source';
+    leftHost.appendChild(leftFmt);
+    const rightFmt = document.createElement('div');
+    rightFmt.className = 'sgm-fmt sgm-fmt-right';
+    rightFmt.title = 'Click for the raw source';
+    w.rightContent.appendChild(rightFmt);
+
+    const dmp = (typeof diff_match_patch !== 'undefined') ? new diff_match_patch() : null;
+    const paint = (host, html) => {
+      if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderHTML(host, html);
+      else host.innerHTML = html;
+    };
+    leftCtl = window.WriteSysPaneWidget.formattedMono({
+      fmtEl: leftFmt,
+      render: () => paint(leftFmt, suggested === committed
+        ? escapeHTML(suggested)
+        : renderDiffHTML(committed, suggested, dmp)),
+      showMono: () => { leftPane.wrap.hidden = false; leftPane.autoGrow(); },
+      hideMono: () => { leftPane.wrap.hidden = true; },
+      focusMono: () => leftPane.textarea.focus(),
+    });
+    rightCtl = window.WriteSysPaneWidget.formattedMono({
+      fmtEl: rightFmt,
+      render: () => paint(rightFmt, escapeHTML(committed)),
+      showMono: () => { rightPane.wrap.hidden = false; rightPane.autoGrow(); },
+      hideMono: () => { rightPane.wrap.hidden = true; },
+      focusMono: () => rightPane.textarea.focus(),
+    });
+    leftPane.textarea.addEventListener('blur', () => leftCtl.exitMono());
+    rightPane.textarea.addEventListener('blur', () => rightCtl.exitMono());
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+    const close = () => {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      modal.remove();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    w.refresh();
   },
 };
 

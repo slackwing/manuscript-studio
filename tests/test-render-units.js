@@ -383,6 +383,96 @@ const { suggestEditor } = require('./test-utils');
     check('S1: missing suggestions field → empty map', out.noField === '{}', out.noField);
   }
 
+  // ---- S2: winner selection — rejected never renders; accepted wins ------
+  {
+    const out = await page.evaluate(() => {
+      const S = window.WriteSysSuggestions;
+      const prev = { rows: S.rows, viewer: S.viewer, rank: S.peopleRank };
+      const r = {};
+      try {
+        S.viewer = 'me';
+        S.peopleRank = { alice: 0, me: 1, zed: 2 };
+        // Own rejected suggestion: nothing renders (no owner exception).
+        S.rows = [{ sentence_id: 'w1', user_id: 'me', text: 'M', review_status: 'rejected', stale: false }];
+        S.rebuildMaps();
+        r.ownRejectedHidden = !('w1' in S.renderRowBySentence);
+        // A rejected suggestion loses to ANY live one, rank regardless.
+        S.rows = [
+          { sentence_id: 'w1', user_id: 'alice', text: 'A', review_status: 'rejected', stale: false },
+          { sentence_id: 'w1', user_id: 'zed', text: 'Z', review_status: null, stale: false },
+        ];
+        S.rebuildMaps();
+        r.rejectedLoses = S.renderRowBySentence.w1 && S.renderRowBySentence.w1.user_id === 'zed';
+        // Accepted beats a better People rank.
+        S.rows = [
+          { sentence_id: 'w1', user_id: 'alice', text: 'A', review_status: null, stale: false },
+          { sentence_id: 'w1', user_id: 'zed', text: 'Z', review_status: 'accepted', stale: false },
+        ];
+        S.rebuildMaps();
+        r.acceptedWins = S.renderRowBySentence.w1 && S.renderRowBySentence.w1.user_id === 'zed';
+        // No verdicts: People order picks.
+        S.rows = [
+          { sentence_id: 'w1', user_id: 'zed', text: 'Z', review_status: null, stale: false },
+          { sentence_id: 'w1', user_id: 'alice', text: 'A', review_status: null, stale: false },
+        ];
+        S.rebuildMaps();
+        r.rankPicks = S.renderRowBySentence.w1 && S.renderRowBySentence.w1.user_id === 'alice';
+        // suggestedOrder: a rejected-only sentence leaves the nav space.
+        S.rows = [{ sentence_id: 'w1', user_id: 'me', text: 'M', review_status: 'rejected', stale: false }];
+        S.rebuildMaps();
+        const R = window.WriteSysRenderer;
+        const hadW1 = R.currentSentences.some(x => x.id === 'w1');
+        r.orderSkipsRejected = hadW1 || !S.suggestedOrder().includes('w1');
+      } finally {
+        S.rows = prev.rows; S.viewer = prev.viewer; S.peopleRank = prev.rank;
+        S.rebuildMaps();
+      }
+      return r;
+    });
+    check('S2: own rejected suggestion never renders', out.ownRejectedHidden);
+    check('S2: rejected loses to any live suggestion', out.rejectedLoses);
+    check('S2: accepted wins over People rank', out.acceptedWins);
+    check('S2: no verdicts → People order picks', out.rankPicks);
+    check('S2: rejected-only sentence leaves the nav space', out.orderSkipsRejected);
+  }
+
+  // ---- S3: review button — ✓✗ pair, reviewed/total counter ---------------
+  {
+    const out = await page.evaluate(() => {
+      const S = window.WriteSysSuggestions;
+      const P = window.WriteSysPush;
+      const prev = { rows: S.rows, canReview: S.canReview, viewer: S.viewer };
+      const r = {};
+      try {
+        S.viewer = S.viewer || 'unit';
+        S.canReview = true;
+        S.rows = [
+          { sentence_id: 'v1', user_id: S.viewer, text: 'a', review_status: 'accepted', stale: false },
+          { sentence_id: 'v2', user_id: S.viewer, text: 'b', review_status: 'rejected', stale: false },
+          { sentence_id: 'v3', user_id: S.viewer, text: 'c', review_status: null, stale: false },
+          { sentence_id: 'v4', user_id: 'someone-else', text: 'd', review_status: 'rejected', stale: false },
+        ];
+        S.rebuildMaps();
+        r.own = S.reviewedCount('own');
+        r.all = S.reviewedCount('all');
+        P.refresh();
+        const btn = document.getElementById('accept-btn');
+        r.count = btn && btn.querySelector('.mc-count') ? btn.querySelector('.mc-count').textContent : null;
+        r.greens = btn ? btn.querySelectorAll('path[stroke="#2e7d32"]').length : -1;
+        r.reds = btn ? btn.querySelectorAll('path[stroke="#b03030"]').length : -1;
+      } finally {
+        S.rows = prev.rows; S.canReview = prev.canReview; S.viewer = prev.viewer;
+        S.rebuildMaps();
+        P.refresh();
+      }
+      return r;
+    });
+    check('S3: reviewedCount(own) counts accepted + rejected', out.own === 2, String(out.own));
+    check('S3: reviewedCount(all) includes others', out.all === 3, String(out.all));
+    check('S3: button counter reads reviewed/total', out.count === '2/3', String(out.count));
+    check('S3: icon is ONE green check + ONE red x', out.greens === 1 && out.reds === 1, JSON.stringify(out));
+  }
+
   // ---- R16: patchSentenceInPlace guards ---------------------------------
   // Uses a REAL rendered sentence; suggestions are set only in the local map
   // (never PUT) and removed again, with a final restoring patch.

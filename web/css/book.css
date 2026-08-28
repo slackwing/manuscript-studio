@@ -3454,11 +3454,6 @@ body.range-delete-mode .pagedjs_pages {
 .people-name { font: 12px "Helvetica", sans-serif; color: #333; }
 .people-roles { margin-left: auto; font: 9px "Helvetica", sans-serif; color: #a29a8b; text-align: right; }
 
-/* Review marker: superscript ✓/✗ right after a suggestion's diff. */
-sup.sg-review { font-size: 9px; margin-left: 1px; }
-sup.sg-review.accepted { color: #2e7d32; }
-sup.sg-review.rejected { color: #b03030; }
-
 /* Stale-suggestion affordance: dotted underline on the sentence. */
 .sentence.has-stale-sugg { border-bottom: 1px dotted #b3ac9c; }
 

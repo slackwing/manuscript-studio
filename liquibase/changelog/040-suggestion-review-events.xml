@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Suggested-edit history (2026-08-28): append-only log of review
+         verdicts (accepted/rejected), written when a verdict is set. Text
+         columns SNAPSHOT the committed sentence and the suggestion at
+         review time so events stay readable after migrations rewrite or
+         drop the sentence — hence no FK to sentence. -->
+    <changeSet id="040-suggestion-review-events" author="claude">
+        <createTable tableName="suggestion_review_event">
+            <column name="event_id" type="BIGSERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="manuscript_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sentence_id" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="owner_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reviewer_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="committed_text" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="suggested_text" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+            constraintName="fk_sre_manuscript"
+            baseTableName="suggestion_review_event"
+            baseColumnNames="manuscript_id"
+            referencedTableName="manuscript"
+            referencedColumnNames="manuscript_id"
+            onDelete="CASCADE"/>
+        <createIndex tableName="suggestion_review_event" indexName="idx_sre_manuscript_event">
+            <column name="manuscript_id"/>
+            <column name="event_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

@@ -490,9 +490,9 @@ const WriteSysRenderer = {
     };
 
     const cmdLib = window.WriteSysCommand;
-    // v3 multi-user: the RENDERED suggestion per sentence is the People-order
-    // winner (renderBySentenceId), not necessarily your own; sugRows carries
-    // attribution + review status for the ✓/✗ marker, staleMap the
+    // v3 multi-user: the RENDERED suggestion per sentence is the winner
+    // (renderBySentenceId: accepted, else People-order first non-rejected),
+    // not necessarily your own; sugRows carries attribution, staleMap the
     // dotted-underline affordance for suggestions from earlier commits.
     const sugMap = (window.WriteSysSuggestions && window.WriteSysSuggestions.renderBySentenceId) || {};
     const sugRows = (window.WriteSysSuggestions && window.WriteSysSuggestions.renderRowBySentence) || {};
@@ -659,12 +659,6 @@ const WriteSysRenderer = {
           deletedLeadGlyph = '';
         }
         const sugRow = sugRows[id];
-        // Review marker: superscript ✓/✗ immediately after the diff (v3).
-        // Accepted edits carry no marker — accepted is the quiet default
-        // outcome; only a REJECTED (but still shown) suggestion flags ✗.
-        if (suggestion !== undefined && sugRow && sugRow.review_status === 'rejected' && f.kind === 'prose') {
-          inner += `<sup class="sg-review rejected" title="${escapeHTML(sugRow.user_id)}: rejected">✗</sup>`;
-        }
         const sugClass = (suggestion !== undefined ? ' has-suggestion' : '')
           + (isDeleteProposal ? ' suggested-delete' : '')
           + (suggestion !== undefined && sugRow && sugRow.user_id !== viewer ? ' suggestion-others' : '')

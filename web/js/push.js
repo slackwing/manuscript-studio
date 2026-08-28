@@ -2,7 +2,7 @@
  * Manuscript action buttons (v3.3 — Slackwing's spec, 2026-08-21):
  * a uniform icon-button row in the chrome's controls strip:
  *
- *   [⚙ settings] [✓✓✓ accept ▾] [push/commit ▾] [view]
+ *   [⚙ settings] [✓✗ accept ▾] [push/commit ▾] [view]
  *
  *   - ACCEPT pair: batch-accept is ALWAYS uncontested-only (contested
  *     sentences take manual verdicts in the suggest modal). Variants: my /
@@ -22,8 +22,9 @@ const ICON_GITHUB = `<svg class="mc-ic-github" viewBox="0 0 16 16" width="14" he
 const ICON_SPINNER = `<svg class="push-btn-spinner" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.3"/><path d="M14 8a6 6 0 0 0-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 // Git commit glyph (dot on a line) for LOCAL manuscripts.
 const ICON_COMMIT = `<svg class="mc-ic-commit" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 5.25a2.75 2.75 0 0 1 2.646 2H14.25a.75.75 0 0 1 0 1.5h-3.604a2.751 2.751 0 0 1-5.292 0H1.75a.75.75 0 0 1 0-1.5h3.604A2.75 2.75 0 0 1 8 5.25zm0 1.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z"/></svg>`;
-// Three green checkmarks — the accept-uncontested batch.
-const ICON_CHECKS3 = `<svg viewBox="0 0 34 16" width="30" height="14" aria-hidden="true"><g fill="none" stroke="#2e7d32" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l3 3 5-6"/><path d="M13 9l3 3 5-6"/><path d="M24 9l3 3 5-6"/></g></svg>`;
+// Green ✓ + red ✗ — the review pair (the accept-uncontested batch button;
+// its counter reads reviewed/total, verdicts of both kinds).
+const ICON_CHECKX = `<svg viewBox="0 0 24 16" width="21" height="14" aria-hidden="true"><g fill="none" stroke-width="2.2" stroke-linecap="round"><path stroke="#2e7d32" stroke-linejoin="round" d="M2 9l3 3 5-6"/><path stroke="#b03030" d="M15 5.5l6 6M21 5.5l-6 6"/></g></svg>`;
 // Three person silhouettes — the "everyone's" variant marker.
 const ICON_PERSONS3 = `<svg viewBox="0 0 34 16" width="26" height="13" aria-hidden="true"><g fill="currentColor"><circle cx="6" cy="5" r="2.6"/><path d="M1.5 14c0-2.8 2-4.6 4.5-4.6S10.5 11.2 10.5 14z"/><circle cx="17" cy="5" r="2.6"/><path d="M12.5 14c0-2.8 2-4.6 4.5-4.6s4.5 1.8 4.5 4.6z"/><circle cx="28" cy="5" r="2.6"/><path d="M23.5 14c0-2.8 2-4.6 4.5-4.6s4.5 1.8 4.5 4.6z"/></g></svg>`;
 
@@ -122,9 +123,9 @@ const WriteSysPush = {
     }
     if (canReview) {
       // The OWN button wears its progress ON the button, right of the
-      // checks — accepted/total of YOUR live suggestions.
-      const ownCount = `<span class="mc-count">${acc.own}/${S.suggestionTotal ? S.suggestionTotal('own') : 0}</span>`;
-      html += this._pairHTML('accept', pend, { base: ICON_CHECKS3 },
+      // ✓✗ — reviewed/total of YOUR live suggestions.
+      const ownCount = `<span class="mc-count">${S.reviewedCount ? S.reviewedCount('own') : 0}/${S.suggestionTotal ? S.suggestionTotal('own') : 0}</span>`;
+      html += this._pairHTML('accept', pend, { base: ICON_CHECKX },
         { own: 'Accept my uncontested', all: "Accept everyone's uncontested" },
         { own: ownCount });
     }

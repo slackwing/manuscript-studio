@@ -148,6 +148,24 @@ async function loginAs(browser, username, password) {
     r = await api(ownerPage, 'POST', `api/migrations/${latest.migration_id}/accept-uncontested`, { scope: 'all' });
     check('accept-uncontested(all) also skips contested sentences', r.json.accepted === 0, `accepted ${r.json.accepted}`);
 
+    // ---- suggested-edit history (040): verdicts logged with snapshots ---
+    r = await api(ownerPage, 'GET', 'api/suggestion-history');
+    check('owner can list suggestion history', r.status === 200, `status ${r.status}`);
+    const evts = ((r.json && r.json.events) || []).filter(e => e.manuscript_id === mid);
+    check('history holds the reject and the accept',
+      evts.some(e => e.status === 'rejected' && e.owner_id === TEST_USERNAME && e.reviewer_id === EDITOR2)
+      && evts.some(e => e.status === 'accepted' && e.owner_id === EDITOR2 && e.reviewer_id === EDITOR2),
+      JSON.stringify(evts.map(e => [e.owner_id, e.status])));
+    const rejEvt = evts.find(e => e.status === 'rejected' && e.owner_id === TEST_USERNAME);
+    check('history snapshots the suggested text at verdict time',
+      !!rejEvt && rejEvt.suggested_text === '&title{MU Book (owner rewrite)}',
+      rejEvt && rejEvt.suggested_text);
+    check('history snapshots the committed text',
+      !!rejEvt && rejEvt.committed_text.includes('MU Book'), rejEvt && rejEvt.committed_text);
+    check('history events carry the manuscript display name',
+      !!rejEvt && typeof rejEvt.manuscript_name === 'string' && rejEvt.manuscript_name.length > 0,
+      rejEvt && rejEvt.manuscript_name);
+
     // ---- reader isolation ----------------------------------------------
     const r3Page = await loginAs(browser, READER3, 'test');
     r = await api(r3Page, 'GET', `api/migrations/${latest.migration_id}/suggestions`);
@@ -167,6 +185,10 @@ async function loginAs(browser, username, password) {
     check('reader cannot batch-accept', r.status === 403, `status ${r.status}`);
     r = await api(r3Page, 'PATCH', `api/manuscripts/${mid}/meta`, { word_goal: 1234 });
     check('reader cannot edit settings', r.status === 403, `status ${r.status}`);
+    r = await api(r3Page, 'GET', 'api/suggestion-history');
+    check('reader sees NO history events on the manuscript (no see-others-edits)',
+      r.status === 200 && ((r.json && r.json.events) || []).filter(e => e.manuscript_id === mid).length === 0,
+      JSON.stringify(r.json && r.json.events));
     // Cleanup reader's suggestion so the editor2 push below is deterministic.
     await api(r3Page, 'DELETE', `api/sentences/${encodeURIComponent(titleSid)}/suggestion`);
 
@@ -188,6 +210,30 @@ async function loginAs(browser, username, password) {
     check('reader UI hides outline/stats/people/gear/push',
       gates.outline === 'none' && gates.stats === 'none' && gates.people === 'none'
       && gates.gear === 'none' && gates.push === 'none', JSON.stringify(gates));
+
+    // ---- modal: revert/redo is OWNERSHIP-gated, review power or not ------
+    await ownerPage.goto(`${BASE_URL}/?manuscript_id=${mid}`);
+    await waitForPagination(ownerPage);
+    await ownerPage.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), titleSid);
+    await ownerPage.waitForSelector('#suggestion-modal', { timeout: 5000 });
+    const railTitles = await ownerPage.evaluate(() =>
+      [...document.querySelectorAll('#suggestion-modal .pw-rail-left .sn-rail-btn')].map(b => b.title));
+    check('owner modal rail lists editor2\'s suggestion',
+      railTitles.some(t => t.startsWith(EDITOR2)), railTitles.join('|'));
+    await ownerPage.evaluate((who) => {
+      const btn = [...document.querySelectorAll('#suggestion-modal .pw-rail-left .sn-rail-btn')]
+        .find(b => b.title.startsWith(who));
+      btn.click();
+    }, EDITOR2);
+    await ownerPage.waitForTimeout(200);
+    check('no revert/redo on another user\'s suggestion pane', await ownerPage.evaluate(() =>
+      !document.querySelector('#suggestion-modal .sgm-revert')
+      && !document.querySelector('#suggestion-modal .sgm-redo')));
+    check('review icons still offered there (review power is separate)', await ownerPage.evaluate(() =>
+      !!document.querySelector('#suggestion-modal .sgm-accept')
+      && !!document.querySelector('#suggestion-modal .sgm-reject')));
+    await ownerPage.keyboard.press('Escape');
+    await ownerPage.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 10000 });
 
     // ---- notes: visibility, manage-others, hide -------------------------
     r = await api(ownerPage, 'POST', 'api/notes',

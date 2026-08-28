@@ -17,7 +17,8 @@ const WriteSysSettings = {
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.tt-chip')) this.disarmAll();
     });
-    await Promise.all([this.reload(), this.reloadActions(), this.initRules()]);
+    await Promise.all([this.reload(), this.reloadActions(), this.initRules(),
+      this.reloadSuggestionHistory()]);
   },
 
   csrf() {
@@ -440,3 +441,57 @@ WriteSysSettings.reloadActions = async function () {
 if (typeof window !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => WriteSysSettings.init());
 }
+
+// ---- Suggested-edit history: recent accept/reject verdicts across the
+// user's manuscripts. A row opens the read-only two-pane dialog
+// (suggestions.js openHistoryDialog — the manuscript modal's components)
+// so the edit is reviewable without opening the manuscript.
+WriteSysSettings.SE_ICONS = {
+  accepted: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.5 3.5L13 4.5"/></svg>',
+  rejected: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 4l8 8M12 4l-8 8"/></svg>',
+};
+
+WriteSysSettings.reloadSuggestionHistory = async function () {
+  const status = document.getElementById('se-status');
+  let events;
+  try {
+    const r = await fetch('api/suggestion-history', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    events = (await r.json()).events || [];
+  } catch (e) {
+    status.textContent = 'Failed to load suggested-edit history.';
+    return;
+  }
+  const rows = document.getElementById('se-rows');
+  rows.innerHTML = '';
+  status.textContent = events.length ? '' : 'No reviews yet.';
+  events.forEach((ev) => {
+    const tr = document.createElement('tr');
+    tr.className = `na-row se-row se-${ev.status}`;
+    const d = new Date(ev.created_at);
+    const when = document.createElement('td');
+    when.className = 'na-when';
+    when.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    tr.appendChild(when);
+    const manu = document.createElement('td');
+    manu.className = 'se-manu';
+    manu.textContent = ev.manuscript_name || '';
+    tr.appendChild(manu);
+    const who = document.createElement('td');
+    who.className = 'se-who';
+    who.textContent = ev.owner_id;
+    who.title = `${ev.status} by ${ev.reviewer_id}`;
+    tr.appendChild(who);
+    const icon = document.createElement('td');
+    icon.className = `na-icon se-icon-${ev.status}`;
+    icon.innerHTML = this.SE_ICONS[ev.status] || '';
+    tr.appendChild(icon);
+    const prev = document.createElement('td');
+    prev.className = 'na-prev';
+    prev.textContent = ev.suggested_text || '(deletion)';
+    tr.appendChild(prev);
+    tr.addEventListener('click', () => window.WriteSysSuggestions.openHistoryDialog(ev));
+    rows.appendChild(tr);
+  });
+};
