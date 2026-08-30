@@ -20,6 +20,32 @@ func TestComputeSimilarity(t *testing.T) {
 			maxSim: 1.0,
 		},
 		{
+			// REGRESSION (2026-08-30): command args used to normalize into
+			// ONE glued token ("metachapteraligncenter"), so an arg change
+			// scored 0.0, the pairing fell to the ordinal fallback, and the
+			// suggestion got carried onto an unrelated sentence — a title
+			// was overwritten by a meta line. Args must tokenize apart.
+			name:   "Command arg change stays similar",
+			text1:  "&meta{chapter-align}{center}",
+			text2:  "&meta{chapter-align}{right}",
+			minSim: 0.60,
+			maxSim: 0.90,
+		},
+		{
+			name:   "Command slug + label edit stays similar",
+			text1:  "&sketch#abc123{The keg party}",
+			text2:  "&sketch#abc123{The salvia night}",
+			minSim: 0.40,
+			maxSim: 0.90,
+		},
+		{
+			name:   "Unrelated command and prose stay dissimilar",
+			text1:  "&meta{chapter-align}{center}",
+			text2:  "A hush would come over the patrons of the bar.",
+			minSim: 0.0,
+			maxSim: 0.20,
+		},
+		{
 			name:   "Minor edit",
 			text1:  "The quick brown fox jumps",
 			text2:  "The quick brown fox leaps",
