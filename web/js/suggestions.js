@@ -190,16 +190,24 @@ const WriteSysSuggestions = {
     });
   },
 
-  // suggestedOrder: sentence ids carrying a live (fresh, non-rejected)
-  // suggestion, in book order — the ‹ i/n › nav space.
+  // suggestedOrder: sentence ids carrying ANY suggestion row (fresh OR
+  // stale, verdicted or not), in book order — the ‹ i/n › nav space. This
+  // is EXACTLY the set the ✓✗ counter counts (reviewedSentences), so the
+  // readout and the tour always agree; rejected/stale edits don't render
+  // in the manuscript, but the tour still stops there and the modal opens
+  // on the edit in question.
   suggestedOrder(filter) {
     const R = window.WriteSysRenderer;
     if (!R || !R.currentSentences) return [];
     return R.currentSentences.map(s => s.id).filter(id => {
-      const rows = (this.rowsBySentence[id] || []).filter(r => r.review_status !== 'rejected');
-      if (!rows.length) return false;
-      // 'pending': only sentences still awaiting a verdict.
-      if (filter === 'pending') return rows.some(r => !r.review_status);
+      const fresh = this.rowsBySentence[id] || [];
+      const stale = this.staleBySentence[id] || [];
+      if (!fresh.length && !stale.length) return false;
+      // 'pending': only sentences still awaiting a verdict (stale rows
+      // included — they demand review too; the counter's complement).
+      if (filter === 'pending') {
+        return fresh.some(r => !r.review_status) || stale.some(r => !r.review_status);
+      }
       return true;
     });
   },
@@ -684,11 +692,13 @@ const WriteSysSuggestions = {
     };
     textarea.addEventListener('input', () => { redoText = null; updateTitle(); w.refresh(); });
     updateTitle();
-    // A sentence whose ONLY suggestions are STALE opens on the stale entry —
-    // opening on your empty pane made the dotted underline read as a phantom
-    // ("underlined, but no suggested edit anywhere I can see").
-    if (!mineRow() && !ownChanged() && !others.length && stale.length) {
-      w.selectLeft('st:0');
+    // When YOU have nothing here, open on the thing to look at: another
+    // user's edit if one exists, else the stale one — opening on your empty
+    // pane made underlined sentences read as phantoms ("underlined, but no
+    // suggested edit anywhere I can see").
+    if (!mineRow() && !ownChanged()) {
+      if (others.length) w.selectLeft('u:' + others[0].user_id);
+      else if (stale.length) w.selectLeft('st:0');
     }
     w.refresh();
 

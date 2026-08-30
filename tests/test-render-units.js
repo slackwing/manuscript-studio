@@ -417,12 +417,25 @@ const { suggestEditor } = require('./test-utils');
         ];
         S.rebuildMaps();
         r.rankPicks = S.renderRowBySentence.w1 && S.renderRowBySentence.w1.user_id === 'alice';
-        // suggestedOrder: a rejected-only sentence leaves the nav space.
-        S.rows = [{ sentence_id: 'w1', user_id: 'me', text: 'M', review_status: 'rejected', stale: false }];
-        S.rebuildMaps();
+        // suggestedOrder = the ✓✗ counter's exact sentence set: rejected-only
+        // and stale-only sentences STAY in the tour (they don't render in
+        // the manuscript, but the flip-through must reach them — the counter
+        // counts them). 'pending' = not fully reviewed, stale included.
         const R = window.WriteSysRenderer;
-        const hadW1 = R.currentSentences.some(x => x.id === 'w1');
-        r.orderSkipsRejected = hadW1 || !S.suggestedOrder().includes('w1');
+        const real = R.currentSentences.slice(0, 2).map(x => x.id);
+        if (real.length === 2) {
+          S.rows = [
+            { sentence_id: real[0], user_id: 'me', text: 'M', review_status: 'rejected', stale: false },
+            { sentence_id: real[1], user_id: 'me', text: 'N', review_status: null, stale: true },
+          ];
+          S.rebuildMaps();
+          const order = S.suggestedOrder();
+          const pending = S.suggestedOrder('pending');
+          r.orderHasRejectedOnly = order.includes(real[0]);
+          r.orderHasStaleOnly = order.includes(real[1]);
+          r.pendingSkipsVerdicted = !pending.includes(real[0]);
+          r.pendingHasStalePending = pending.includes(real[1]);
+        }
       } finally {
         S.rows = prev.rows; S.viewer = prev.viewer; S.peopleRank = prev.rank;
         S.rebuildMaps();
@@ -433,7 +446,10 @@ const { suggestEditor } = require('./test-utils');
     check('S2: rejected loses to any live suggestion', out.rejectedLoses);
     check('S2: accepted wins over People rank', out.acceptedWins);
     check('S2: no verdicts → People order picks', out.rankPicks);
-    check('S2: rejected-only sentence leaves the nav space', out.orderSkipsRejected);
+    check('S2: rejected-only sentence stays in the nav space (counter parity)', out.orderHasRejectedOnly);
+    check('S2: stale-only sentence stays in the nav space', out.orderHasStaleOnly);
+    check('S2: pending filter skips fully-verdicted sentences', out.pendingSkipsVerdicted);
+    check('S2: pending filter reaches stale pending edits', out.pendingHasStalePending);
   }
 
   // ---- S3: review button — ✓✗ pair, SENTENCE-level reviewed/total;
