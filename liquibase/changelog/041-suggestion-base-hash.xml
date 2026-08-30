@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- NEW-badge basis (2026-08-30): sha256 hex of the committed sentence
+         text a suggestion was WRITTEN AGAINST. Set on upsert/edit, carried
+         verbatim across migrations, refreshed on accept (freshening =
+         "judged against the current text"). The modal's committed pane
+         wears NEW only when this doesn't match the current text — a
+         migration that left the sentence untouched no longer lights it.
+         Nullable, no backfill: legacy rows read as unknown basis → NEW. -->
+    <changeSet id="041-suggestion-base-hash" author="claude">
+        <addColumn tableName="suggested_change">
+            <column name="base_text_hash" type="VARCHAR(64)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

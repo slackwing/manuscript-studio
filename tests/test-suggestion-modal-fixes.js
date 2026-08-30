@@ -213,24 +213,30 @@ function psql(sql) {
     }));
     assert2('no "+ sentence after" link anywhere in the modal', await page.evaluate(() =>
       !document.querySelector('#suggestion-modal .sgm-insert-after')));
-    assert2('no NEW badge when the edit postdates the commit', await page.evaluate(() =>
+    // The edit was just written against the CURRENT text — no badge (the
+    // basis hash matches; the old timestamp logic lit up on EVERY
+    // migration, changed text or not).
+    await page.waitForTimeout(300); // committedHash lands async
+    assert2('no NEW badge on an edit written against the current text', await page.evaluate(() =>
       document.querySelector('#suggestion-modal .pw-new').hidden));
-    // Shell-level NEW badge law: shown iff BOTH selected entries carry a ts
-    // and the right one is strictly newer.
+    // Shell-level NEW badge law: shown iff the left entry DECLARES a basis
+    // (null = unknown), the right carries a content, and they differ.
     const pwNew = await page.evaluate(() => {
-      const hiddenFor = (lts, rts) => window.WriteSysPaneWidget.create({
-        left: { rail: () => [{ key: 'a', label: 'A', ts: lts }] },
-        right: { rail: () => [{ key: 0, label: '0', ts: rts }], openByDefault: true, defaultKey: 0 },
+      const hiddenFor = (leftEntry, rightEntry) => window.WriteSysPaneWidget.create({
+        left: { rail: () => [leftEntry] },
+        right: { rail: () => [rightEntry], openByDefault: true, defaultKey: 0 },
       }).el.querySelector('.pw-new').hidden;
       return {
-        newer: hiddenFor(1000, 2000),
-        older: hiddenFor(2000, 1000),
-        equal: hiddenFor(1000, 1000),
-        missing: hiddenFor(undefined, 2000),
+        mismatch: hiddenFor({ key: 'a', label: 'A', basis: 'aaa' }, { key: 0, label: '0', content: 'bbb' }),
+        match: hiddenFor({ key: 'a', label: 'A', basis: 'aaa' }, { key: 0, label: '0', content: 'aaa' }),
+        unknownBasis: hiddenFor({ key: 'a', label: 'A', basis: null }, { key: 0, label: '0', content: 'aaa' }),
+        noBasisField: hiddenFor({ key: 'a', label: 'A' }, { key: 0, label: '0', content: 'aaa' }),
+        noContent: hiddenFor({ key: 'a', label: 'A', basis: 'aaa' }, { key: 0, label: '0' }),
       };
     });
-    assert2('pw NEW badge: right-newer only (never older/equal/ts-less)',
-      pwNew.newer === false && pwNew.older && pwNew.equal && pwNew.missing, JSON.stringify(pwNew));
+    assert2('pw NEW badge: mismatch or unknown basis only',
+      pwNew.mismatch === false && pwNew.unknownBasis === false
+      && pwNew.match && pwNew.noBasisField && pwNew.noContent, JSON.stringify(pwNew));
     // Nav appears once the autosaved suggestion lands in the model.
     await page.waitForFunction(() => {
       const nav = document.querySelector('#suggestion-modal .pw-nav');
@@ -372,16 +378,17 @@ function psql(sql) {
     assert2('revert + close leaves no suggestion row on this sentence',
       (rejRows.match(/^\s*(\d+)\s*$/m) || [])[1] === '0', `rows=${rejRows}`);
 
-    // NEW badge wiring: the helper suggestion, backdated before the current
-    // commit, wears the badge against the committed pane.
+    // NEW badge wiring: a suggestion whose stored BASIS no longer matches
+    // the committed text wears the badge against the committed pane.
     await page.evaluate(() => {
       const S = window.WriteSysSuggestions;
       const row = S.rows.find(r => /OTHER\.$/.test(r.text));
-      row.updated_at = '1970-01-01T00:00:00Z';
+      row.base_text_hash = '0'.repeat(64); // written against something else
       S.openModal(row.sentence_id);
     });
     await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
-    assert2('NEW badge when the commit postdates the suggested edit', await page.evaluate(() => {
+    await page.waitForTimeout(300); // committedHash lands async
+    assert2('NEW badge when the edit was written against different text', await page.evaluate(() => {
       const el = document.querySelector('#suggestion-modal .pw-new');
       return !!el && !el.hidden && el.textContent === 'NEW';
     }));

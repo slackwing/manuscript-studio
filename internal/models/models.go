@@ -174,6 +174,9 @@ type SuggestedChange struct {
 	// Stale: carried across a migration onto a sentence whose text changed
 	// — kept visible for review, but never rendered as a live diff.
 	Stale bool `json:"stale"`
+	// BaseTextHash: sha256 hex of the committed text this suggestion was
+	// written against (nil on pre-041 rows = unknown basis → NEW badge).
+	BaseTextHash *string `json:"base_text_hash,omitempty"`
 }
 
 // SuggestionReviewEvent: one append-only history row per accept/reject

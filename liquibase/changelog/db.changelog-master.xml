@@ -47,5 +47,6 @@
     <include file="changelog/038-roles-multiuser.xml"/>
     <include file="changelog/039-signup-invites.xml"/>
     <include file="changelog/040-suggestion-review-events.xml"/>
+    <include file="changelog/041-suggestion-base-hash.xml"/>
 
 </databaseChangeLog>

@@ -301,6 +301,16 @@ const WriteSysSuggestions = {
     // RIGHT pane: committed history (0..3), open by default at 0; re-click
     // the selected version to collapse it. Accept ✓ / Reject ✗ are STATE
     // icon buttons on the left pane's action row, colored when active.
+    // NEW-badge basis: sha256 of the CURRENT committed text, computed once
+    // per open (async — entries read null until it lands, which just keeps
+    // the badge dark for a frame).
+    let committedHash = null;
+    if (window.crypto && crypto.subtle) {
+      crypto.subtle.digest('SHA-256', new TextEncoder().encode(original)).then((d) => {
+        committedHash = [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
+        if (w) w.refresh();
+      }).catch(() => {});
+    }
     const others = (this.rowsBySentence[sentenceId] || []).filter(r => r.user_id !== this.viewer);
     const stale = this.staleBySentence[sentenceId] || [];
     const mineRow = () => (this.rowsBySentence[sentenceId] || []).find(r => r.user_id === this.viewer);
@@ -320,14 +330,16 @@ const WriteSysSuggestions = {
         label: ownChanged() || me ? ownLetter : '0',
         title: ownChanged() || me ? 'Your suggestion' : 'Committed text — type to suggest',
         color: reviewColor(me),
-        ts: (me && me.updated_at) || (ownChanged() ? Date.now() : undefined),
+        // Your basis: the stored one, or — while typing something new —
+        // the current text itself (you are writing against it right now).
+        basis: me ? (me.base_text_hash || null) : committedHash,
       }];
       others.forEach((r) => list.push({
         key: 'u:' + r.user_id, kind: 'other', row: r,
         label: (r.user_id[0] || '?').toUpperCase(),
         title: `${r.user_id}'s suggestion`,
         color: reviewColor(r),
-        ts: r.updated_at,
+        basis: r.base_text_hash || null,
       }));
       stale.forEach((r, i) => list.push({
         key: 'st:' + i, kind: 'stale', row: r,
@@ -335,7 +347,7 @@ const WriteSysSuggestions = {
         title: `${r.user_id}'s STALE suggestion (from an earlier commit — review or reject)`,
         className: 'stale',
         color: reviewColor(r),
-        ts: r.updated_at,
+        basis: r.base_text_hash || null,
       }));
       return list;
     };
@@ -372,8 +384,12 @@ const WriteSysSuggestions = {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         row.review_status = next;
         // Accepting FRESHENS a stale row (server does the same): it becomes
-        // a live accepted edit of the sentence as it now reads.
-        if (next === 'accepted') row.stale = false;
+        // a live accepted edit of the sentence as it now reads — and its
+        // badge basis rebases to the current text.
+        if (next === 'accepted') {
+          row.stale = false;
+          if (committedHash) row.base_text_hash = committedHash;
+        }
         this.rebuildMaps();
         syncReviewShade();
         w.refresh();
@@ -428,10 +444,11 @@ const WriteSysSuggestions = {
     };
 
     const histEntries = () => versions.map((v) => {
-      // Only the CURRENT commit carries a timestamp — the shell's NEW badge
-      // fires when it postdates the suggestion shown on the left.
+      // Only the CURRENT commit carries a content fingerprint — the shell's
+      // NEW badge fires when the shown edit was written against DIFFERENT
+      // text than this (a no-op migration keeps them equal: no badge).
       if (v.k === 0) return { key: 0, label: '0', title: 'Committed text (current) — click again to collapse', data: { ver: '0' },
-        ts: (window.WriteSysRenderer && window.WriteSysRenderer.currentMigration || {}).processed_at };
+        content: committedHash };
       const prev = versions[v.k - 1].text;
       const plural = v.k > 1 ? 's' : '';
       const dis = v.text == null || v.text === prev;
@@ -444,7 +461,7 @@ const WriteSysSuggestions = {
 
     const w = window.WriteSysPaneWidget.create({
       className: 'sgm-widget',
-      newBadgeTitle: 'Committed after this suggested edit',
+      newBadgeTitle: 'The committed text changed after this edit was written',
       headerHTML: '<span class="sn-status" title="Your edit auto-saves as you type. Closing flushes first — nothing is lost.">Suggest edit</span>',
       left: {
         rail: leftEntries,
@@ -574,7 +591,8 @@ const WriteSysSuggestions = {
         this.rows = this.rows.filter(r => !(r.sentence_id === sentenceId && r.user_id === this.viewer));
         if (newText !== original) {
           this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText,
-            review_status: null, stale: false, updated_at: new Date().toISOString() });
+            review_status: null, stale: false, updated_at: new Date().toISOString(),
+            base_text_hash: committedHash });
         }
         this.rebuildMaps();
         syncReviewShade();
