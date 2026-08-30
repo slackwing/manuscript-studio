@@ -34,10 +34,12 @@ is prevented by Rule 1 instead.)
 
 ## Rule 3 — consummation retires the group
 
-If a group is fully reviewed AND its accepted row is applied, the whole
-group (acceptance and rejections alike) is deleted at that migration. The
-verdicts live on in `suggestion_review_event` (the settings page's
-"Suggested edits" history).
+If a group is fully reviewed AND its accepted row is applied — OR it is
+fully reviewed with no accepted row at all (all rejected) — the whole
+group is deleted at that migration. The verdicts live on in
+`suggestion_review_event` (the settings page's "Suggested edits"
+history). (All-rejected retirement added 2026-08-30: carrying dead
+rejections forever kept them haunting the ‹ › tour.)
 
 ## Rule 4 — broken acceptances reset
 
@@ -51,9 +53,17 @@ committed text.
 ## Rule 5 — rejections need no extra rules
 
 Rejected rows simply ride their group: hidden from the manuscript render,
-reachable in the modal rail, carried by Rules 2, retired by Rule 3. An
-all-rejected fully-reviewed group has no consummation event, so it carries
-until its rows are edited (which resets them to pending) or deleted.
+reachable in the modal rail, carried by Rule 2, retired by Rule 3 —
+including the all-rejected case, at the next migration.
+
+## Rule 6 — accepting a stale edit freshens it
+
+A ✓ on a STALE row clears its staleness: the reviewer judged the edit in
+the modal against the CURRENT committed text, so acceptance means "make
+this the sentence as it now reads" — the row becomes a live accepted
+edit (pushable, consummatable). Without this, stale acceptances were
+zombies: pushes skip stale, then Rule 4 reset the verdict after every
+migration — accept, push, unaccept, forever.
 
 ## Counters
 

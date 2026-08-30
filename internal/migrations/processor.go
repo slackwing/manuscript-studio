@@ -184,7 +184,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("note migration: %w", err)
 	}
 
-	suggestionsMigrated, err := migrateSuggestions(ctx, db, plan)
+	suggestionsMigrated, suggestionsOrphaned, err := migrateSuggestions(ctx, db, manuscriptID, plan)
 	if err != nil {
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
@@ -232,6 +232,7 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		slog.Int("suggestions_migrated", suggestionsMigrated),
 		slog.Int("suggestions_retired", suggestionsRetired),
 		slog.Int("suggestions_unaccepted", suggestionsUnaccepted),
+		slog.Int("suggestions_orphaned", suggestionsOrphaned),
 		slog.Int("unresolved_references", len(unresolved)),
 	)
 	return &MigrationResult{
@@ -298,19 +299,27 @@ type plannedMove struct {
 	Confidence    float64
 }
 
-// migrateSuggestions carries suggested_change rows forward on EVERY pairing
-// (v3, PERMISSIONS_PLAN §4 — suggestions are never destroyed by a
-// migration). Exact-match pairings (Confidence == 1.0) stay fresh; fuzzy/
-// fallback pairings have changed text, so those arrive STALE — kept for
-// review, excluded from live diff rendering. Sentences with no successor
-// keep their old attachment (OPEN_QUESTIONS #2). Returns the total number
-// of suggestion rows inserted — a useful "did we move anything?" signal.
-func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]plannedMove) (int, error) {
+// migrateSuggestions carries suggested_change rows forward on REAL pairings
+// only (v3, PERMISSIONS_PLAN §4). Exact matches (Confidence == 1.0) stay
+// fresh; similarity matches arrive STALE — kept for review, excluded from
+// live diff rendering. Confidence-0 ORDINAL FALLBACKS never carry: a
+// fallback target is just "the nearest mapped neighbor", and a suggestion
+// glued to an unrelated sentence is worse than one left behind — accepting
+// it would overwrite the WRONG sentence (this actually happened: a title
+// replaced by a meta line). Rows on fallback pairings stay attached to
+// their old sentence as audit data, and each gets an 'orphaned' history
+// event so the settings page shows what fell off and why.
+func migrateSuggestions(ctx context.Context, db *database.DB, manuscriptID int, plan map[string]plannedMove) (int, int, error) {
 	// All pairings in one statement — not a round-trip each.
 	var fromIDs, toIDs []string
 	var fuzzy []bool
+	var fallbackFrom []string
 	for oldID, move := range plan {
 		if move.NewSentenceID == "" {
+			continue
+		}
+		if move.Confidence == 0 {
+			fallbackFrom = append(fallbackFrom, oldID)
 			continue
 		}
 		fromIDs = append(fromIDs, oldID)
@@ -319,9 +328,13 @@ func migrateSuggestions(ctx context.Context, db *database.DB, plan map[string]pl
 	}
 	moved, err := db.CarrySuggestionsForwardBulk(ctx, fromIDs, toIDs, fuzzy)
 	if err != nil {
-		return 0, fmt.Errorf("carry suggestions forward: %w", err)
+		return 0, 0, fmt.Errorf("carry suggestions forward: %w", err)
 	}
-	return moved, nil
+	orphaned, err := db.OrphanSuggestionEvents(ctx, manuscriptID, fallbackFrom)
+	if err != nil {
+		return 0, 0, fmt.Errorf("orphan suggestion events: %w", err)
+	}
+	return moved, orphaned, nil
 }
 
 // RecomputePreviousByNew returns newID → bestOldID via the live pairing logic.

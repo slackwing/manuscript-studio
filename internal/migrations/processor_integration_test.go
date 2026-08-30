@@ -817,10 +817,13 @@ func TestMigration_DuplicateCommitConflicts(t *testing.T) {
 	}
 }
 
-// v3.1 review round 2 (#2): a DELETED sentence's suggestion is not stranded —
-// planMigration's fallback attaches it to a surviving neighbor's new
-// sentence, and the fallback pairing (confidence 0) arrives STALE.
-func TestMigration_DeletedSentenceSuggestionCarriesToNeighborStale(t *testing.T) {
+// 2026-08-30 (reverses v3.1 #2): a DELETED sentence's suggestion is
+// ORPHANED, not glued to a neighbor. The confidence-0 fallback target is
+// just "the nearest mapped sentence" — carrying the suggestion there put
+// edits on unrelated sentences, and accepting one overwrote the WRONG
+// sentence. The row stays on its old sentence as audit data and an
+// 'orphaned' history event (reviewer 'migration') records what fell off.
+func TestMigration_DeletedSentenceSuggestionOrphans(t *testing.T) {
 	f := newFixture(t)
 
 	v1 := "Alpha stays put here. Bravo will be deleted. Charlie stays put here."
@@ -837,16 +840,67 @@ func TestMigration_DeletedSentenceSuggestionCarriesToNeighborStale(t *testing.T)
 	if err != nil {
 		t.Fatalf("get suggestions for m2: %v", err)
 	}
+	for _, r := range rows {
+		if r.Text == "Bravo, rewritten." {
+			t.Errorf("deleted sentence's suggestion was glued to %s — fallback pairings must not carry", r.SentenceID)
+		}
+	}
+	// The row survives on its OLD sentence (audit data)…
+	var oldCount int
+	if err := f.pool.QueryRow(f.ctx,
+		`SELECT count(*) FROM suggested_change WHERE sentence_id = $1`, bravoOld).Scan(&oldCount); err != nil {
+		t.Fatalf("count old: %v", err)
+	}
+	if oldCount != 1 {
+		t.Errorf("orphaned row should stay on its old sentence, got %d", oldCount)
+	}
+	// …and the drop is on the record.
+	var evts int
+	if err := f.pool.QueryRow(f.ctx, `
+		SELECT count(*) FROM suggestion_review_event
+		WHERE sentence_id = $1 AND status = 'orphaned' AND reviewer_id = 'migration'`,
+		bravoOld).Scan(&evts); err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if evts != 1 {
+		t.Errorf("orphaned events = %d, want 1", evts)
+	}
+}
+
+// Command-arg edits stay PAIRED: "&meta{chapter-align}{center}" →
+// "…{right}" must match by similarity (the args tokenize apart), so a
+// suggestion on the old command rides to its true successor instead of
+// falling to the ordinal fallback.
+func TestMigration_CommandArgChangeKeepsSuggestionPaired(t *testing.T) {
+	f := newFixture(t)
+
+	v1 := "Alpha stays put here.\n\n&meta{chapter-align}{center}"
+	v2 := "Alpha stays put here.\n\n&meta{chapter-align}{right}"
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", v1)
+	metaOld := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "&meta")
+	if _, err := f.db.UpsertSuggestion(f.ctx, metaOld, f.username, "&meta{chapter-align}{left}"); err != nil {
+		t.Fatalf("upsert suggestion: %v", err)
+	}
+
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", v2)
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
 	var carried *models.SuggestedChange
 	for i := range rows {
-		if rows[i].Text == "Bravo, rewritten." {
+		if rows[i].Text == "&meta{chapter-align}{left}" {
 			carried = &rows[i]
 		}
 	}
 	if carried == nil {
-		t.Fatalf("deleted sentence's suggestion must carry to a neighbor, got %d rows", len(rows))
+		t.Fatalf("command suggestion should ride the arg-change pairing, got %d rows", len(rows))
+	}
+	if !strings.Contains(carried.SentenceID, "meta") {
+		t.Errorf("carried onto %s — should sit on the new &meta sentence", carried.SentenceID)
 	}
 	if !carried.Stale {
-		t.Errorf("fallback-attached suggestion must arrive STALE (landed on %s)", carried.SentenceID)
+		t.Errorf("changed-text pairing must arrive STALE")
 	}
 }

@@ -24,9 +24,16 @@ type SentenceDiff struct {
 
 // ComputeSimilarity returns 1 − wordLevenshtein(norm1, norm2) / maxLen.
 // Using a word tokenization avoids over-penalizing minor edits within words.
+// similarityTokens breaks command syntax open BEFORE normalizing: without
+// it, "&meta{chapter-align}{center}" normalizes to ONE glued word, so any
+// arg change scored 0.0 similarity and the pairing fell to the ordinal
+// fallback — which is how suggestions ended up carried onto unrelated
+// sentences ("So, anyway…" wearing an edit of the hush sentence).
+var similarityTokens = strings.NewReplacer("{", " ", "}", " ", "#", " ", "&", " ", "-", " ")
+
 func ComputeSimilarity(text1, text2 string) float64 {
-	norm1 := NormalizeText(text1)
-	norm2 := NormalizeText(text2)
+	norm1 := NormalizeText(similarityTokens.Replace(text1))
+	norm2 := NormalizeText(similarityTokens.Replace(text2))
 
 	words1 := strings.Fields(norm1)
 	words2 := strings.Fields(norm2)

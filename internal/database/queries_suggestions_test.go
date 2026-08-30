@@ -308,9 +308,10 @@ func TestSettle_BrokenAcceptanceResetsAndLogs(t *testing.T) {
 	}
 }
 
-// A fully-reviewed, all-rejected group has no consummation event — it
-// simply carries (rejections are at rest already; history holds them).
-func TestSettle_AllRejectedGroupCarries(t *testing.T) {
+// A fully-reviewed, all-rejected group RETIRES at the next migration —
+// the verdicts live in history; carrying dead rejections forever kept
+// them haunting the ‹ › tour (2026-08-30).
+func TestSettle_AllRejectedGroupRetires(t *testing.T) {
 	f := newITFixture(t)
 	migID, sids := f.makeDoneMigration(t, "c1", "Committed text.")
 
@@ -326,8 +327,63 @@ func TestSettle_AllRejectedGroupCarries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
-	if retired != 0 || unaccepted != 0 {
-		t.Errorf("settle = (%d, %d), want (0, 0)", retired, unaccepted)
+	if retired != 1 || unaccepted != 0 {
+		t.Errorf("settle = (%d, %d), want (1, 0)", retired, unaccepted)
+	}
+	var n int
+	if err := f.pool.QueryRow(f.ctx,
+		`SELECT count(*) FROM suggested_change WHERE sentence_id = $1`, sids[0]).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("rejected group survived the migration (%d rows)", n)
+	}
+}
+
+// Rule 6: accepting a STALE row freshens it — a live accepted edit of the
+// sentence as it now reads (pushable; no more accept/unaccept zombie loop).
+func TestReview_AcceptFreshensStaleRow(t *testing.T) {
+	f := newITFixture(t)
+	_, sids := f.makeDoneMigration(t, "c1", "Committed text.")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "Carried old edit."); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE suggested_change SET stale = TRUE WHERE sentence_id = $1`, sids[0]); err != nil {
+		t.Fatalf("mark stale: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, 0, f.username)
+	_ = rows
+	_ = err
+	var stale bool
+	var status *string
+	if err := f.pool.QueryRow(f.ctx,
+		`SELECT stale, review_status FROM suggested_change WHERE sentence_id = $1`, sids[0]).Scan(&stale, &status); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if stale || status == nil || *status != models.ReviewAccepted {
+		t.Errorf("row = stale:%v status:%v, want fresh accepted", stale, status)
+	}
+	// Rejecting must NOT freshen.
+	rej := models.ReviewRejected
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE suggested_change SET stale = TRUE WHERE sentence_id = $1`, sids[0]); err != nil {
+		t.Fatalf("re-stale: %v", err)
+	}
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &rej, f.username); err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	if err := f.pool.QueryRow(f.ctx,
+		`SELECT stale FROM suggested_change WHERE sentence_id = $1`, sids[0]).Scan(&stale); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if !stale {
+		t.Errorf("reject freshened the row — only accept should")
 	}
 }
 

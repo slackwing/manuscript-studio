@@ -371,6 +371,9 @@ const WriteSysSuggestions = {
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         row.review_status = next;
+        // Accepting FRESHENS a stale row (server does the same): it becomes
+        // a live accepted edit of the sentence as it now reads.
+        if (next === 'accepted') row.stale = false;
         this.rebuildMaps();
         syncReviewShade();
         w.refresh();
@@ -803,7 +806,8 @@ const WriteSysSuggestions = {
     const modal = document.createElement('div');
     modal.id = 'suggestion-modal';
     const color = ev.status === 'accepted' ? '#2e7d32'
-      : ev.status === 'rejected' ? '#b03030' : '#c77d00'; // 'unaccepted' by a migration
+      : ev.status === 'rejected' ? '#b03030'
+      : ev.status === 'orphaned' ? '#8a8378' : '#c77d00'; // unaccepted/orphaned by a migration
     const committed = ev.committed_text || '';
     const suggested = ev.suggested_text || '';
     let leftCtl = null, rightCtl = null;

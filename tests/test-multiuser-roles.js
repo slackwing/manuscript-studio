@@ -17,6 +17,7 @@ const READER3 = `mu3${TEST_USERNAME}`;
 const LOCAL_REPO_DIR = path.join(os.homedir(), '.config', 'manuscript-studio-dev', 'repos', 'git', 'local', SLUG);
 
 function cleanup() {
+  if (process.env.KEEP_STATE) { console.log('[KEEP_STATE] skipping cleanup'); return; }
   try { psql(`DELETE FROM note_hide WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
   try { psql(`DELETE FROM note_tag WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
   try { psql(`DELETE FROM note_version WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
@@ -340,6 +341,29 @@ async function loginAs(browser, username, password) {
       unacc.length === 1 && unacc[0].reviewer_id === 'migration'
       && unacc[0].suggested_text === '&meta{chapter-align}{left}',
       JSON.stringify(unacc.map(e => [e.reviewer_id, e.suggested_text])));
+
+    // ---- Rule 6: accepting the STALE row FRESHENS it — pushable, no
+    // accept/unaccept zombie loop. ----------------------------------------
+    r = await api(e2Page, 'POST', `api/sentences/${encodeURIComponent(broken.sentence_id)}/suggestion/review`,
+      { username: TEST_USERNAME, status: 'accepted' });
+    check('accepting the stale row succeeds', r.status === 204, `status ${r.status}`);
+    r = await api(ownerPage, 'GET', `api/migrations/${latest3.migration_id}/suggestions`);
+    const freshened = r.json.suggestions.find(s => s.text === '&meta{chapter-align}{left}');
+    check('…and FRESHENS it (stale cleared, accepted)',
+      !!freshened && freshened.stale === false && freshened.review_status === 'accepted',
+      JSON.stringify(freshened && { stale: freshened.stale, review: freshened.review_status }));
+    r = await api(e2Page, 'POST', `api/manuscripts/${mid}/migrations/${latest3.migration_id}/push-suggestions`, {});
+    check('freshened acceptance pushes', r.status === 200, `status ${r.status} ${JSON.stringify(r.json).slice(0, 300)}`);
+    let latest4 = null;
+    for (let i = 0; i < 40; i++) {
+      const lr = await api(ownerPage, 'GET', `api/migrations/latest?manuscript_id=${mid}`);
+      if (lr.status === 200 && lr.json.migration_id !== latest3.migration_id) { latest4 = lr.json; break; }
+      await new Promise(res => setTimeout(res, 500));
+    }
+    check('freshened push migrated', !!latest4);
+    r = await api(ownerPage, 'GET', `api/migrations/${latest4.migration_id}/suggestions`);
+    const leftover = r.json.suggestions.filter(s => s.text === '&meta{chapter-align}{left}');
+    check('consummated after applying (no zombie row)', leftover.length === 0, JSON.stringify(leftover));
 
     // People endpoint shape.
     r = await api(ownerPage, 'GET', `api/manuscripts/${mid}/people`);

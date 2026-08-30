@@ -77,11 +77,17 @@ func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser st
 		}
 	}
 
+	// Accepting FRESHENS a stale row: "yes, I still want this text here,
+	// against the sentence as it now reads" — the reviewer judged it in the
+	// modal against the CURRENT committed text. A stale accepted row was a
+	// zombie otherwise: pushes skip stale, then the next migration reset the
+	// acceptance (rule B) — accept, push, unaccept, forever.
 	tag, err := tx.Exec(ctx, `
 		UPDATE suggested_change
 		SET review_status = $3::varchar,
 		    reviewed_by = CASE WHEN $3::varchar IS NULL THEN NULL ELSE $4 END,
-		    reviewed_at = CASE WHEN $3::varchar IS NULL THEN NULL ELSE NOW() END
+		    reviewed_at = CASE WHEN $3::varchar IS NULL THEN NULL ELSE NOW() END,
+		    stale = CASE WHEN $3::varchar = 'accepted' THEN FALSE ELSE stale END
 		WHERE sentence_id = $1 AND user_id = $2`,
 		sentenceID, targetUser, status, reviewer)
 	if err != nil {
@@ -353,8 +359,19 @@ func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int
 				acceptedApplied = true
 			}
 		}
-		if fullyReviewed && acceptedApplied {
-			for _, r := range g { // rule A: the whole group retires
+		hasAccepted := false
+		for _, r := range g {
+			if r.status != nil && *r.status == models.ReviewAccepted {
+				hasAccepted = true
+			}
+		}
+		// Rule A: a fully-reviewed group retires when its accepted edit is
+		// applied — OR when it has no accepted edit at all (all rejected):
+		// the verdicts live in history, and carrying dead rejections forever
+		// kept them haunting the tour ("rejected it, pushed, migrated, still
+		// there").
+		if fullyReviewed && (acceptedApplied || !hasAccepted) {
+			for _, r := range g {
 				retireIDs = append(retireIDs, r.id)
 			}
 			continue
@@ -468,4 +485,26 @@ func (db *DB) GetSuggestionReviewEvents(ctx context.Context, seeAllIDs, ownIDs [
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// OrphanSuggestionEvents logs an 'orphaned' history event (reviewer
+// 'migration') for every suggestion row sitting on the given OLD sentences —
+// pairings that fell to the confidence-0 ordinal fallback, whose rows stay
+// behind rather than riding onto an unrelated sentence. Snapshots keep the
+// event readable forever. Returns the number of events written.
+func (db *DB) OrphanSuggestionEvents(ctx context.Context, manuscriptID int, fromSentenceIDs []string) (int, error) {
+	if len(fromSentenceIDs) == 0 {
+		return 0, nil
+	}
+	tag, err := db.Pool.Exec(ctx, `
+		INSERT INTO suggestion_review_event
+			(manuscript_id, sentence_id, owner_id, reviewer_id, status, committed_text, suggested_text)
+		SELECT $1, sc.sentence_id, sc.user_id, 'migration', 'orphaned', s.text, sc.text
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		WHERE sc.sentence_id = ANY($2)`, manuscriptID, fromSentenceIDs)
+	if err != nil {
+		return 0, fmt.Errorf("orphan suggestion events: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }

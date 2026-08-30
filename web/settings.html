@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings — Manuscript Studio</title>
-  <link rel="stylesheet" href="css/book.css?v=191">
+  <link rel="stylesheet" href="css/book.css?v=192">
   <link rel="stylesheet" href="css/chrome.css?v=4">
-  <link rel="stylesheet" href="css/home.css?v=30">
+  <link rel="stylesheet" href="css/home.css?v=31">
   <!-- Pane-widget layout (sn-cols/rails) for the suggested-edit history
        dialog — same sheet the book page loads. -->
   <link rel="stylesheet" href="scratchpad/scratchpad.css?v=64">
@@ -80,7 +80,7 @@
   <script src="js/text-markers.js?v=4"></script>
   <script src="js/pane-widget.js?v=10"></script>
   <script src="js/edit-pane.js?v=7"></script>
-  <script src="js/suggestions.js?v=59"></script>
+  <script src="js/suggestions.js?v=60"></script>
   <script>
     (async function () {
       const session = await checkAuth();
@@ -88,6 +88,6 @@
       if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
     })();
   </script>
-  <script src="js/settings.js?v=11"></script>
+  <script src="js/settings.js?v=12"></script>
 </body>
 </html>

@@ -2922,7 +2922,7 @@ p.section-break {
     top: 40px;
     left: 0 !important;          /* beat the inline left JS sets for desktop */
     width: 33.333%;
-    height: 200px;               /* tall enough for the STACKED buttons */
+    height: 200px;               /* room for name + info + control rows */
     box-sizing: border-box;
     padding: 6px 8px;
     flex-direction: column;
@@ -2945,19 +2945,19 @@ p.section-break {
   #manuscript-chrome .mc-left { align-items: center; text-align: center; }
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
   #mc-info { font-size: 9px; text-align: center; }
-  /* Each control on ITS OWN ROW — the horizontal row clipped at the cell
-     edge (only ~1.5 buttons visible on a phone). */
+  /* Controls flow in a CENTERED WRAP — pairs share a row when they fit,
+     then wrap (the old horizontal row clipped at the cell edge; strict
+     one-per-row wasted height). display:contents lets each split join the
+     wrap directly; menus anchor to .mc-split (position:relative), not the
+     container, so nothing moves. */
   #manuscript-chrome .mc-controls-row {
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 6px;
   }
   #manuscript-chrome #push-button-container {
     margin-top: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+    display: contents;
   }
   /* Updated-line: drop the dot, commit hash on its own line. */
   #mc-info .mc-info-sep { display: none; }
