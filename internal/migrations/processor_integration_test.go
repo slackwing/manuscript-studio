@@ -856,6 +856,61 @@ func TestMigration_DeletedSentenceSuggestionCarriesToNeighborStale(t *testing.T)
 	}
 }
 
+// APPLIED-REWRITE pairing (2026-08-30, the "Understand what has
+// happened." incident): a push applies an accepted edit that rewrites its
+// sentence beyond the 0.40 text-similarity floor — to the matcher the old
+// sentence looks DELETED, and its just-applied suggestion used to ride
+// the ordinal fallback onto a NEIGHBOR as an immortal ghost. The matcher
+// has the answer in hand: the new sentence IS the suggestion's own text —
+// suggestions vote on pairing before the fallback sticks, so the edit
+// lands on its true successor and settle consummates it.
+func TestMigration_AppliedRewritePairsBySuggestion(t *testing.T) {
+	f := newFixture(t)
+
+	v1 := "Alpha stays put here. Understand what I have just been through. Charlie stays put here."
+	v2 := "Alpha stays put here. Understand what has happened. Charlie stays put here."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", v1)
+	oldMid := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Understand what I have")
+	if _, err := f.db.UpsertSuggestion(f.ctx, oldMid, f.username, "Understand what has happened."); err != nil {
+		t.Fatalf("upsert suggestion: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, oldMid, f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+
+	// v2 = the acceptance applied (what a push produces).
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", v2)
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mID2, f.username)
+	if err != nil {
+		t.Fatalf("get suggestions for m2: %v", err)
+	}
+	// The applied, fully-reviewed edit must land on its true successor and
+	// be consummated there — NOT haunt a neighbor.
+	for _, r := range rows {
+		if r.Text == "Understand what has happened." {
+			t.Errorf("applied edit survived as a ghost on %s (stale=%v status=%v)",
+				r.SentenceID, r.Stale, r.ReviewStatus)
+		}
+	}
+	// And the pairing chain reflects the rewrite: the new middle sentence's
+	// previous_sentence_id walks back to the old one.
+	var prev *string
+	if err := f.pool.QueryRow(f.ctx, `
+		SELECT previous_sentence_id FROM sentence
+		WHERE migration_id = $1 AND text LIKE 'Understand what has happened%'`, mID2).Scan(&prev); err != nil {
+		t.Fatalf("read successor: %v", err)
+	}
+	if prev == nil || *prev != oldMid {
+		got := "<nil>"
+		if prev != nil {
+			got = *prev
+		}
+		t.Errorf("successor's previous_sentence_id = %s, want %s (suggestion-vote pairing)", got, oldMid)
+	}
+}
+
 // Command-arg edits stay PAIRED: "&meta{chapter-align}{center}" →
 // "…{right}" must match by similarity (the args tokenize apart), so a
 // suggestion on the old command rides to its true successor instead of

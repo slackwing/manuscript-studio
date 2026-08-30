@@ -150,6 +150,42 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 	diff := sentence.ComputeSentenceDiff(oldSentenceMap, newSentenceMap, oldSentenceIDs, newSentenceIDs)
 	plan := planMigration(oldSentences, sentence.ComputeMigrationMap(diff))
 
+	// APPLIED-REWRITE pairing: an old sentence rewritten beyond the text-
+	// similarity floor looks DELETED to the matcher — but if the rewrite IS
+	// one of its own suggestions applied (the push case: "Understand what
+	// I've just been through." → its accepted edit), the matcher has the
+	// answer in hand. Before the ordinal fallback's positional guess
+	// sticks, each fallback-paired old sentence's SUGGESTIONS vote against
+	// the added sentences; a strong match (≥0.8) overrides the plan, so the
+	// edit rides to its true successor (where settle can consummate it)
+	// instead of haunting a neighbor.
+	if len(diff.Added) > 0 {
+		suggestions, err := db.GetAllSuggestionsForMigration(ctx, parent.MigrationID)
+		if err != nil {
+			return nil, fmt.Errorf("suggestions for applied-rewrite pairing: %w", err)
+		}
+		suggTexts := make(map[string][]string)
+		for _, sg := range suggestions {
+			suggTexts[sg.SentenceID] = append(suggTexts[sg.SentenceID], sg.Text)
+		}
+		for oldID, texts := range suggTexts {
+			if mv, ok := plan[oldID]; ok && mv.Confidence > 0 {
+				continue // a real text match already won
+			}
+			bestID, bestSim := "", 0.0
+			for _, newID := range diff.Added {
+				for _, t := range texts {
+					if sim := sentence.ComputeSimilarity(t, newSentenceMap[newID]); sim > bestSim {
+						bestSim, bestID = sim, newID
+					}
+				}
+			}
+			if bestSim >= 0.8 {
+				plan[oldID] = plannedMove{NewSentenceID: bestID, Confidence: bestSim}
+			}
+		}
+	}
+
 	log.Info("migrate: segmented and diffed",
 		slog.Int("old_sentences", len(oldSentences)),
 		slog.Int("new_sentences", len(newSentences)),
