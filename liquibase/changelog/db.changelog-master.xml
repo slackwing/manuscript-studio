@@ -48,5 +48,6 @@
     <include file="changelog/039-signup-invites.xml"/>
     <include file="changelog/040-suggestion-review-events.xml"/>
     <include file="changelog/041-suggestion-base-hash.xml"/>
+    <include file="changelog/042-suggestion-base-text.xml"/>
 
 </databaseChangeLog>

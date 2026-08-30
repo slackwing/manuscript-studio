@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 041 follow-up (2026-08-30, same day): store the ORIGINAL SENTENCE
+         TEXT the suggestion was written against, not its sha256 — the
+         sentence is often shorter than the 64-hex digest, needs no client
+         crypto to compare, and the raw text is displayable later ("what it
+         read when you wrote this"). 041's hash column had minutes of life;
+         drop it, no backfill (unknown basis → NEW once, as designed). -->
+    <changeSet id="042-suggestion-base-text" author="claude">
+        <dropColumn tableName="suggested_change" columnName="base_text_hash"/>
+        <addColumn tableName="suggested_change">
+            <column name="base_text" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

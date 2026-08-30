@@ -17,13 +17,13 @@ import (
 // suggestionCols is the canonical SELECT list for suggested_change (v3);
 // suggestionColsSC is the sc.-qualified twin for JOINed queries.
 const suggestionCols = `suggestion_id, sentence_id, user_id, text, created_at, updated_at,
-	review_status, COALESCE(reviewed_by, ''), reviewed_at, stale, base_text_hash`
+	review_status, COALESCE(reviewed_by, ''), reviewed_at, stale, base_text`
 const suggestionColsSC = `sc.suggestion_id, sc.sentence_id, sc.user_id, sc.text, sc.created_at, sc.updated_at,
-	sc.review_status, COALESCE(sc.reviewed_by, ''), sc.reviewed_at, sc.stale, sc.base_text_hash`
+	sc.review_status, COALESCE(sc.reviewed_by, ''), sc.reviewed_at, sc.stale, sc.base_text`
 
 func scanSuggestion(row interface{ Scan(...any) error }, s *models.SuggestedChange) error {
 	return row.Scan(&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt,
-		&s.ReviewStatus, &s.ReviewedBy, &s.ReviewedAt, &s.Stale, &s.BaseTextHash)
+		&s.ReviewStatus, &s.ReviewedBy, &s.ReviewedAt, &s.Stale, &s.BaseText)
 }
 
 // UpsertSuggestion stores text as-given; collapsing empty / original-equals-text
@@ -31,19 +31,20 @@ func scanSuggestion(row interface{ Scan(...any) error }, s *models.SuggestedChan
 // state and staleness — a changed suggestion is a new proposal against the
 // current sentence (PERMISSIONS_PLAN §4).
 func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text string) (*models.SuggestedChange, error) {
-	// base_text_hash records what the author WROTE AGAINST — the committed
-	// sentence text at this moment (the modal's right pane). The NEW badge
-	// compares it to the CURRENT committed text; a migration that leaves
-	// the sentence untouched keeps them equal, so no badge.
+	// base_text records what the author WROTE AGAINST — the committed
+	// sentence text at this moment (the modal's right pane), stored RAW so
+	// it stays displayable. The NEW badge compares it to the CURRENT
+	// committed text; a migration that leaves the sentence untouched keeps
+	// them equal, so no badge.
 	query := `
-		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at, base_text_hash)
-		SELECT s.sentence_id, $2, $3, NOW(), NOW(), encode(sha256(convert_to(s.text, 'UTF8')), 'hex')
+		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at, base_text)
+		SELECT s.sentence_id, $2, $3, NOW(), NOW(), s.text
 		FROM sentence s WHERE s.sentence_id = $1
 		ON CONFLICT (sentence_id, user_id) DO UPDATE
 			SET text = EXCLUDED.text, updated_at = NOW(),
 			    review_status = NULL, reviewed_by = NULL, reviewed_at = NULL,
 			    stale = FALSE,
-			    base_text_hash = EXCLUDED.base_text_hash
+			    base_text = EXCLUDED.base_text
 		RETURNING ` + suggestionCols
 	var s models.SuggestedChange
 	if err := scanSuggestion(db.Pool.QueryRow(ctx, query, sentenceID, userID, text), &s); err != nil {
@@ -105,7 +106,7 @@ func (db *DB) SetSuggestionReview(ctx context.Context, sentenceID, targetUser st
 	if tag.RowsAffected() > 0 && status != nil && *status == models.ReviewAccepted {
 		if _, err := tx.Exec(ctx, `
 			UPDATE suggested_change sc
-			SET base_text_hash = encode(sha256(convert_to(s.text, 'UTF8')), 'hex')
+			SET base_text = s.text
 			FROM sentence s
 			WHERE s.sentence_id = sc.sentence_id AND sc.sentence_id = $1 AND sc.user_id = $2`,
 			sentenceID, targetUser); err != nil {
@@ -464,9 +465,9 @@ func (db *DB) CarrySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []
 	}
 	tag, err := db.Pool.Exec(ctx, `
 		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at,
-		                              review_status, reviewed_by, reviewed_at, stale, base_text_hash)
+		                              review_status, reviewed_by, reviewed_at, stale, base_text)
 		SELECT m.to_id, sc.user_id, sc.text, NOW(), NOW(),
-		       sc.review_status, sc.reviewed_by, sc.reviewed_at, (sc.stale OR m.fuzzy), sc.base_text_hash
+		       sc.review_status, sc.reviewed_by, sc.reviewed_at, (sc.stale OR m.fuzzy), sc.base_text
 		FROM unnest($1::text[], $2::text[], $3::boolean[]) AS m(from_id, to_id, fuzzy)
 		JOIN suggested_change sc ON sc.sentence_id = m.from_id
 		ON CONFLICT (sentence_id, user_id) DO NOTHING

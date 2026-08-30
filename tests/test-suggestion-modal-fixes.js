@@ -216,7 +216,6 @@ function psql(sql) {
     // The edit was just written against the CURRENT text — no badge (the
     // basis hash matches; the old timestamp logic lit up on EVERY
     // migration, changed text or not).
-    await page.waitForTimeout(300); // committedHash lands async
     assert2('no NEW badge on an edit written against the current text', await page.evaluate(() =>
       document.querySelector('#suggestion-modal .pw-new').hidden));
     // Shell-level NEW badge law: shown iff the left entry DECLARES a basis
@@ -383,11 +382,10 @@ function psql(sql) {
     await page.evaluate(() => {
       const S = window.WriteSysSuggestions;
       const row = S.rows.find(r => /OTHER\.$/.test(r.text));
-      row.base_text_hash = '0'.repeat(64); // written against something else
+      row.base_text = 'Entirely different committed text.'; // written against something else
       S.openModal(row.sentence_id);
     });
     await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
-    await page.waitForTimeout(300); // committedHash lands async
     assert2('NEW badge when the edit was written against different text', await page.evaluate(() => {
       const el = document.querySelector('#suggestion-modal .pw-new');
       return !!el && !el.hidden && el.textContent === 'NEW';

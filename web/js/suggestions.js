@@ -301,16 +301,6 @@ const WriteSysSuggestions = {
     // RIGHT pane: committed history (0..3), open by default at 0; re-click
     // the selected version to collapse it. Accept ✓ / Reject ✗ are STATE
     // icon buttons on the left pane's action row, colored when active.
-    // NEW-badge basis: sha256 of the CURRENT committed text, computed once
-    // per open (async — entries read null until it lands, which just keeps
-    // the badge dark for a frame).
-    let committedHash = null;
-    if (window.crypto && crypto.subtle) {
-      crypto.subtle.digest('SHA-256', new TextEncoder().encode(original)).then((d) => {
-        committedHash = [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
-        if (w) w.refresh();
-      }).catch(() => {});
-    }
     const others = (this.rowsBySentence[sentenceId] || []).filter(r => r.user_id !== this.viewer);
     const stale = this.staleBySentence[sentenceId] || [];
     const mineRow = () => (this.rowsBySentence[sentenceId] || []).find(r => r.user_id === this.viewer);
@@ -332,14 +322,14 @@ const WriteSysSuggestions = {
         color: reviewColor(me),
         // Your basis: the stored one, or — while typing something new —
         // the current text itself (you are writing against it right now).
-        basis: me ? (me.base_text_hash || null) : committedHash,
+        basis: me ? (me.base_text != null ? me.base_text : null) : original,
       }];
       others.forEach((r) => list.push({
         key: 'u:' + r.user_id, kind: 'other', row: r,
         label: (r.user_id[0] || '?').toUpperCase(),
         title: `${r.user_id}'s suggestion`,
         color: reviewColor(r),
-        basis: r.base_text_hash || null,
+        basis: r.base_text != null ? r.base_text : null,
       }));
       stale.forEach((r, i) => list.push({
         key: 'st:' + i, kind: 'stale', row: r,
@@ -347,7 +337,7 @@ const WriteSysSuggestions = {
         title: `${r.user_id}'s STALE suggestion (from an earlier commit — review or reject)`,
         className: 'stale',
         color: reviewColor(r),
-        basis: r.base_text_hash || null,
+        basis: r.base_text != null ? r.base_text : null,
       }));
       return list;
     };
@@ -388,7 +378,7 @@ const WriteSysSuggestions = {
         // badge basis rebases to the current text.
         if (next === 'accepted') {
           row.stale = false;
-          if (committedHash) row.base_text_hash = committedHash;
+          row.base_text = original;
         }
         this.rebuildMaps();
         syncReviewShade();
@@ -448,7 +438,7 @@ const WriteSysSuggestions = {
       // NEW badge fires when the shown edit was written against DIFFERENT
       // text than this (a no-op migration keeps them equal: no badge).
       if (v.k === 0) return { key: 0, label: '0', title: 'Committed text (current) — click again to collapse', data: { ver: '0' },
-        content: committedHash };
+        content: original };
       const prev = versions[v.k - 1].text;
       const plural = v.k > 1 ? 's' : '';
       const dis = v.text == null || v.text === prev;
@@ -592,7 +582,7 @@ const WriteSysSuggestions = {
         if (newText !== original) {
           this.rows.push({ sentence_id: sentenceId, user_id: this.viewer, text: newText,
             review_status: null, stale: false, updated_at: new Date().toISOString(),
-            base_text_hash: committedHash });
+            base_text: original });
         }
         this.rebuildMaps();
         syncReviewShade();
