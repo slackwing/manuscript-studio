@@ -2922,7 +2922,7 @@ p.section-break {
     top: 40px;
     left: 0 !important;          /* beat the inline left JS sets for desktop */
     width: 33.333%;
-    height: 135px;               /* was 104px; +30% breathing room */
+    height: 200px;               /* tall enough for the STACKED buttons */
     box-sizing: border-box;
     padding: 6px 8px;
     flex-direction: column;
@@ -2945,7 +2945,23 @@ p.section-break {
   #manuscript-chrome .mc-left { align-items: center; text-align: center; }
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
   #mc-info { font-size: 9px; text-align: center; }
-  #manuscript-chrome #push-button-container { margin-top: 2px; }
+  /* Each control on ITS OWN ROW — the horizontal row clipped at the cell
+     edge (only ~1.5 buttons visible on a phone). */
+  #manuscript-chrome .mc-controls-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  #manuscript-chrome #push-button-container {
+    margin-top: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  /* Updated-line: drop the dot, commit hash on its own line. */
+  #mc-info .mc-info-sep { display: none; }
+  #mc-info .mc-commit { display: block; }
   /* Pane tabs leave the chrome cell and become REAL TABS capping the right
      two-thirds: a fixed strip between the top bar and the outline/stats
      content. (position:fixed escapes the chrome's overflow:hidden.) */
@@ -2984,8 +3000,8 @@ p.section-break {
     top: 66px;                   /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
-    height: 109px;               /* 135 bar − 26 tabs */
-    max-height: 109px;
+    height: 174px;               /* 200 bar − 26 tabs */
+    max-height: 174px;
     box-sizing: border-box;
     padding: 6px 10px 6px 10px;
     background: #fff;
@@ -3008,8 +3024,8 @@ p.section-break {
     top: 66px;                   /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
-    height: 109px;               /* 135 bar − 26 tabs */
-    max-height: 109px;
+    height: 174px;               /* 200 bar − 26 tabs */
+    max-height: 174px;
     box-sizing: border-box;
     padding: 6px 10px;
     background: #fff;
@@ -3031,7 +3047,7 @@ p.section-break {
              version stripped all of these to "maximize" width — that made the
              pages stop looking like pages. Don't do that again; a dedicated
              mobile UI comes later.) --- */
-  #app-container { padding-top: 175px; }   /* 40 top bar + 135 second bar */
+  #app-container { padding-top: 240px; }   /* 40 top bar + 200 second bar */
   .pagedjs_pages {
     margin-top: 0 !important;
     /* small top/bottom breathing room; the horizontal fit is handled by the
@@ -3431,6 +3447,23 @@ body.range-delete-mode .pagedjs_pages {
 }
 #people-margin::-webkit-scrollbar { width: 0; height: 0; display: none; }
 #people-margin.pane-on { display: block; }
+/* Mobile: People joins the second-bar slot under the tabs, like stats —
+   without this it kept its desktop gutter-band geometry and floated as a
+   detached piece. (Lives here, after the base rules, to win source order.) */
+@media (max-width: 1239px) {
+  #people-margin.pane-on {
+    top: 66px;                   /* 40 top bar + 26 tab strip */
+    left: 33.333% !important;    /* beat the inline left JS sets for desktop */
+    width: 66.667%;
+    height: 174px;               /* 200 bar − 26 tabs */
+    max-height: 174px;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    background: #fff;
+    border-bottom: 1px solid #e3e0d8;
+    overflow-y: auto;
+  }
+}
 .people-row {
   display: flex;
   align-items: center;

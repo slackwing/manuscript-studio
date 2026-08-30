@@ -26,7 +26,10 @@ const WriteSysRenderer = {
     console.log('WriteSys Renderer initialized');
 
     // Bind once at init, not per-render — saves trigger re-renders.
-    window.addEventListener('resize', () => this.applyResponsiveScaling());
+    window.addEventListener('resize', () => {
+      this.applyResponsiveScaling();
+      this.fitChromeTitle();
+    });
 
     const urlParams = new URLSearchParams(window.location.search);
     const idStr = urlParams.get('manuscript_id');
@@ -71,7 +74,11 @@ const WriteSysRenderer = {
         const list = (window.currentSession && window.currentSession.accessible_manuscripts) || [];
         const mine = list.find(m => m.manuscript_id === this.manuscriptId);
         const nameEl = document.getElementById('mc-name');
-        if (mine && nameEl) { nameEl.textContent = mine.display_name || mine.name; return; }
+        if (mine && nameEl) {
+          nameEl.textContent = mine.display_name || mine.name;
+          this.fitChromeTitle();
+          return;
+        }
         if (tries < 20) setTimeout(() => setName(tries + 1), 250);
       };
       setName(0);
@@ -110,11 +117,65 @@ const WriteSysRenderer = {
     const time = processedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
     const parts = processedAt.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ');
     const tz = parts[parts.length - 1] || '';
-    const bits = [
-      `Updated ${monthDay}, ${time}${tz ? ' ' + tz : ''}`,
-      (migration.commit_hash || '').substring(0, 7),
-    ].filter(Boolean);
-    el.textContent = bits.join(' · ');
+    el.textContent = '';
+    const updated = document.createElement('span');
+    updated.className = 'mc-updated';
+    updated.textContent = `Updated ${monthDay}, ${time}${tz ? ' ' + tz : ''}`;
+    el.appendChild(updated);
+    const hash = (migration.commit_hash || '').substring(0, 7);
+    if (hash) {
+      // Separate spans so mobile can drop the dot and stack the hash on its
+      // own line (the one-liner clipped in the narrow chrome cell).
+      const sep = document.createElement('span');
+      sep.className = 'mc-info-sep';
+      sep.textContent = ' · ';
+      const commit = document.createElement('span');
+      commit.className = 'mc-commit';
+      commit.textContent = hash;
+      el.appendChild(sep);
+      el.appendChild(commit);
+    }
+  },
+
+  // Mobile: scale the display name to fill ~90% of the chrome cell on one
+  // line — long titles used to clip at the fixed cell width. Desktop clears
+  // the overrides. Re-run on resize (bound in init).
+  fitChromeTitle() {
+    const nameEl = document.getElementById('mc-name');
+    if (!nameEl || !nameEl.textContent) return;
+    if (!window.matchMedia('(max-width: 1239px)').matches) {
+      nameEl.style.fontSize = '';
+      nameEl.style.whiteSpace = '';
+      nameEl.style.display = '';
+      return;
+    }
+    nameEl.style.whiteSpace = 'nowrap';
+    nameEl.style.display = 'inline-block';
+    // Measure with an offscreen probe: the live span's scrollWidth clamps
+    // to (elastic) flex parents, so it lies for overflowing titles. The
+    // budget is the FIXED chrome cell, not the parent — the parent grows
+    // with its content, which made the measurement circular.
+    const cell = document.getElementById('manuscript-chrome');
+    const avail = cell ? (cell.getBoundingClientRect().width - 16) * 0.9 : 0;
+    const probe = document.createElement('span');
+    probe.textContent = nameEl.textContent;
+    probe.style.cssText =
+      'position:absolute;left:-9999px;visibility:hidden;white-space:nowrap;font-size:13px;';
+    probe.style.font = getComputedStyle(nameEl).font;
+    probe.style.fontSize = '13px';
+    document.body.appendChild(probe);
+    const w = probe.getBoundingClientRect().width;
+    probe.remove();
+    if (w > 0 && avail > 0) {
+      const size = (13 * avail) / w;
+      if (size >= 9) {
+        nameEl.style.fontSize = Math.min(18, size).toFixed(1) + 'px';
+      } else {
+        // Even 9px can't fit on one line — wrap instead of going unreadable.
+        nameEl.style.whiteSpace = 'normal';
+        nameEl.style.fontSize = '11px';
+      }
+    }
   },
 
   // Poll /migrations/latest so a webhook-driven migration that arrives while

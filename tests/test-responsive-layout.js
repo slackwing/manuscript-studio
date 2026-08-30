@@ -143,6 +143,49 @@ function overlaps(a, b) {
     check('top bar is short (≤52px)', m.controls && m.controls.h <= 52, `h=${m.controls && m.controls.h}`);
     check('wordmark on one line', m.brandLines <= 1, `lines=${m.brandLines}`);
     check('no horizontal overflow', m.docWidth <= m.winWidth + 1, `doc=${m.docWidth} win=${m.winWidth}`);
+
+    // ---- Mobile chrome ergonomics (2026-08-30 report) ------------------
+    const erg = await page.evaluate(() => {
+      const R = window.WriteSysRenderer;
+      const cell = document.getElementById('manuscript-chrome').getBoundingClientRect();
+      // Each control on its own row: distinct vertical positions.
+      const rows = [...document.querySelectorAll('#manuscript-chrome .mc-controls-row .mc-btn, #manuscript-chrome .mc-split')]
+        .filter(el => !el.closest('.mc-split') || el.classList.contains('mc-split'))
+        .map(el => Math.round(el.getBoundingClientRect().top));
+      const stacked = new Set(rows).size === rows.length;
+      // Commit hash on its own line (dot separator hidden).
+      R.renderInfoLine({ processed_at: '2026-08-01T15:30:00Z', commit_hash: 'abcdef1234' });
+      const sep = document.querySelector('#mc-info .mc-info-sep');
+      const commit = document.querySelector('#mc-info .mc-commit');
+      const hashOwnLine = !!commit && getComputedStyle(commit).display === 'block'
+        && (!sep || getComputedStyle(sep).display === 'none');
+      // Title fit: short scales up to ~90% of the cell; unfittable wraps.
+      const n = document.getElementById('mc-name');
+      const prevName = n.textContent;
+      n.textContent = 'Ash';
+      R.fitChromeTitle();
+      const shortGrew = parseFloat(n.style.fontSize) > 13;
+      n.textContent = 'The Extraordinarily Long Manuscript Title of Doom';
+      R.fitChromeTitle();
+      const doomWraps = n.style.whiteSpace === 'normal'
+        && n.getBoundingClientRect().width <= cell.width;
+      n.textContent = prevName;
+      R.fitChromeTitle();
+      // People pane lands in the second-bar slot.
+      document.querySelector('#pane-tabs .pane-tab[data-pane="people"]').click();
+      const pm = document.getElementById('people-margin');
+      const pr = pm.getBoundingClientRect();
+      const peopleInSlot = getComputedStyle(pm).display !== 'none'
+        && Math.abs(pr.left - window.innerWidth / 3) < 8 && Math.abs(pr.top - 66) < 4
+        && pr.width < window.innerWidth * 0.75;
+      document.querySelector('#pane-tabs .pane-tab[data-pane="outline"]').click();
+      return { rows, stacked, hashOwnLine, shortGrew, doomWraps, peopleInSlot, cellW: Math.round(cell.width) };
+    });
+    check('controls stack one per row', erg.stacked, JSON.stringify(erg.rows));
+    check('commit hash sits on its own line, no dot', erg.hashOwnLine, '');
+    check('short title scales up toward 90% width', erg.shortGrew, '');
+    check('unfittable title wraps instead of clipping', erg.doomWraps, '');
+    check('People pane fills the second-bar slot (no floating piece)', erg.peopleInSlot, JSON.stringify(erg));
   }
 
   await browser.close();

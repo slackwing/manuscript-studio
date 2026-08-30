@@ -684,6 +684,12 @@ const WriteSysSuggestions = {
     };
     textarea.addEventListener('input', () => { redoText = null; updateTitle(); w.refresh(); });
     updateTitle();
+    // A sentence whose ONLY suggestions are STALE opens on the stale entry —
+    // opening on your empty pane made the dotted underline read as a phantom
+    // ("underlined, but no suggested edit anywhere I can see").
+    if (!mineRow() && !ownChanged() && !others.length && stale.length) {
+      w.selectLeft('st:0');
+    }
     w.refresh();
 
     // Closing ALWAYS flushes first; a failing save keeps the modal open with

@@ -391,6 +391,28 @@ function psql(sql) {
     await page.keyboard.press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
 
+    // Stale-only sentence: the modal opens ON the stale entry, review icons
+    // ready — opening on the empty "you" pane made the dotted underline read
+    // as a phantom ("underlined, but no suggested edit I can see").
+    const staleSid = await page.evaluate(() =>
+      window.WriteSysSuggestions.rows.find(r => /OTHER\.$/.test(r.text)).sentence_id);
+    psql(`UPDATE suggested_change SET stale = TRUE WHERE sentence_id = '${staleSid}' AND user_id = '${TEST_USERNAME}'`);
+    await page.evaluate(async (sid) => {
+      await window.WriteSysSuggestions.loadForMigration(window.WriteSysRenderer.currentMigrationID);
+      window.WriteSysSuggestions.openModal(sid);
+    }, staleSid);
+    await page.waitForSelector('#suggestion-modal', { timeout: 5000 });
+    assert2('stale-only sentence opens ON the stale entry', await page.evaluate(() =>
+      !!document.querySelector('#suggestion-modal .pw-rail-left .sn-rail-btn.stale.active')));
+    await page.waitForFunction(() => {
+      const f = document.querySelector('#suggestion-modal .sgm-fmt-left');
+      // ScratchRender paints into a SHADOW root — light-DOM reads see ''.
+      return !!f && !!f.shadowRoot && /OTHER/.test(f.shadowRoot.textContent);
+    }, null, { timeout: 8000 });
+    assert2('stale pane shows the suggestion (not the empty you-pane)', true);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
+
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}`);
