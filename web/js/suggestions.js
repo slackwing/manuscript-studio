@@ -814,8 +814,7 @@ const WriteSysSuggestions = {
     const modal = document.createElement('div');
     modal.id = 'suggestion-modal';
     const color = ev.status === 'accepted' ? '#2e7d32'
-      : ev.status === 'rejected' ? '#b03030'
-      : ev.status === 'orphaned' ? '#8a8378' : '#c77d00'; // unaccepted/orphaned by a migration
+      : ev.status === 'rejected' ? '#b03030' : '#c77d00'; // 'unaccepted' by a migration
     const committed = ev.committed_text || '';
     const suggested = ev.suggested_text || '';
     let leftCtl = null, rightCtl = null;

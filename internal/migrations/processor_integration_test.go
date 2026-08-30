@@ -817,13 +817,15 @@ func TestMigration_DuplicateCommitConflicts(t *testing.T) {
 	}
 }
 
-// 2026-08-30 (reverses v3.1 #2): a DELETED sentence's suggestion is
-// ORPHANED, not glued to a neighbor. The confidence-0 fallback target is
-// just "the nearest mapped sentence" — carrying the suggestion there put
-// edits on unrelated sentences, and accepting one overwrote the WRONG
-// sentence. The row stays on its old sentence as audit data and an
-// 'orphaned' history event (reviewer 'migration') records what fell off.
-func TestMigration_DeletedSentenceSuggestionOrphans(t *testing.T) {
+// v3.1 review round 2 (#2), REAFFIRMED 2026-08-30: a truly DELETED
+// sentence's suggestion is not stranded — planMigration's fallback
+// attaches it to a surviving neighbor's new sentence, arriving STALE
+// (confidence 0) for the human to judge there. The fallback briefly got
+// disabled when the glued-token similarity bug made it fire for
+// still-existing sentences; the SIMILARITY fix (similarityTokens +
+// TestMigration_CommandArgChangeKeepsSuggestionPaired below) was the real
+// cure, and the neighbor carry is intended behavior.
+func TestMigration_DeletedSentenceSuggestionCarriesToNeighborStale(t *testing.T) {
 	f := newFixture(t)
 
 	v1 := "Alpha stays put here. Bravo will be deleted. Charlie stays put here."
@@ -840,30 +842,17 @@ func TestMigration_DeletedSentenceSuggestionOrphans(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get suggestions for m2: %v", err)
 	}
-	for _, r := range rows {
-		if r.Text == "Bravo, rewritten." {
-			t.Errorf("deleted sentence's suggestion was glued to %s — fallback pairings must not carry", r.SentenceID)
+	var carried *models.SuggestedChange
+	for i := range rows {
+		if rows[i].Text == "Bravo, rewritten." {
+			carried = &rows[i]
 		}
 	}
-	// The row survives on its OLD sentence (audit data)…
-	var oldCount int
-	if err := f.pool.QueryRow(f.ctx,
-		`SELECT count(*) FROM suggested_change WHERE sentence_id = $1`, bravoOld).Scan(&oldCount); err != nil {
-		t.Fatalf("count old: %v", err)
+	if carried == nil {
+		t.Fatalf("deleted sentence's suggestion must carry to a neighbor, got %d rows", len(rows))
 	}
-	if oldCount != 1 {
-		t.Errorf("orphaned row should stay on its old sentence, got %d", oldCount)
-	}
-	// …and the drop is on the record.
-	var evts int
-	if err := f.pool.QueryRow(f.ctx, `
-		SELECT count(*) FROM suggestion_review_event
-		WHERE sentence_id = $1 AND status = 'orphaned' AND reviewer_id = 'migration'`,
-		bravoOld).Scan(&evts); err != nil {
-		t.Fatalf("count events: %v", err)
-	}
-	if evts != 1 {
-		t.Errorf("orphaned events = %d, want 1", evts)
+	if !carried.Stale {
+		t.Errorf("fallback-attached suggestion must arrive STALE (landed on %s)", carried.SentenceID)
 	}
 }
 

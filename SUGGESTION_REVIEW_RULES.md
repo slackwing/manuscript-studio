@@ -27,6 +27,11 @@ still pending: none of its edits commit, whoever accepted what.
 At any migration, a group with any unreviewed row carries forward intact —
 statuses ride along, rows arrive stale when their sentence's text changed
 (fuzzy pairing), **even rows whose text matches the new committed text**.
+A truly deleted sentence's edits ride the ordinal fallback to a NEARBY
+sentence (arriving stale) rather than going nowhere — trustworthy because
+the matcher recognizes real successors (command args tokenize apart in
+similarity; the glued-token bug that glued edits onto unrelated sentences
+is fixed and regression-pinned).
 Matching rows render diff-less; the suggestion underline is the affordance
 that a group lives there. (This retires the old no-op pruner: unreviewed
 applied rows are no longer deleted. The re-minting loop that pruner broke

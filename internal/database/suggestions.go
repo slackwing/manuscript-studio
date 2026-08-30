@@ -506,25 +506,3 @@ func (db *DB) GetSuggestionReviewEvents(ctx context.Context, seeAllIDs, ownIDs [
 	}
 	return out, rows.Err()
 }
-
-// OrphanSuggestionEvents logs an 'orphaned' history event (reviewer
-// 'migration') for every suggestion row sitting on the given OLD sentences —
-// pairings that fell to the confidence-0 ordinal fallback, whose rows stay
-// behind rather than riding onto an unrelated sentence. Snapshots keep the
-// event readable forever. Returns the number of events written.
-func (db *DB) OrphanSuggestionEvents(ctx context.Context, manuscriptID int, fromSentenceIDs []string) (int, error) {
-	if len(fromSentenceIDs) == 0 {
-		return 0, nil
-	}
-	tag, err := db.Pool.Exec(ctx, `
-		INSERT INTO suggestion_review_event
-			(manuscript_id, sentence_id, owner_id, reviewer_id, status, committed_text, suggested_text)
-		SELECT $1, sc.sentence_id, sc.user_id, 'migration', 'orphaned', s.text, sc.text
-		FROM suggested_change sc
-		JOIN sentence s ON s.sentence_id = sc.sentence_id
-		WHERE sc.sentence_id = ANY($2)`, manuscriptID, fromSentenceIDs)
-	if err != nil {
-		return 0, fmt.Errorf("orphan suggestion events: %w", err)
-	}
-	return int(tag.RowsAffected()), nil
-}

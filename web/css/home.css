@@ -333,7 +333,6 @@ body.home-page {
 .se-icon-accepted { color: #2e7d32; }
 .se-icon-rejected { color: #b03030; }
 .se-icon-unaccepted { color: #c77d00; } /* acceptance undone by a migration */
-.se-icon-orphaned { color: #8a8378; } /* its sentence left; the edit stayed behind */
 /* Manuscript card: "daily tasks" link — bottom right, above the meta row. */
 .ms-daily-row { display: flex; justify-content: flex-end; margin: 0 0 12px; }
 .ms-daily-link { font: 700 12px "Helvetica", sans-serif; color: #2a6fb0; cursor: pointer; }
