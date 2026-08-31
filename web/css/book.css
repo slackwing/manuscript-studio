@@ -3114,7 +3114,9 @@ p.section-break {
     margin: 0 0 12px;
   }
   /* The sentence's notes below the modal — each card its own island, the
-     backdrop showing through the gaps. Empty stack (no notes) shows nothing. */
+     backdrop showing through the gaps. Never truly empty anymore: the
+     create affordance (grey first-note UI / gradient + card) always rides
+     at the bottom, same as the desktop margin. */
   #sgm-notes-stack {
     flex: none;
     width: 94vw;

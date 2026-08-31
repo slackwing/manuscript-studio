@@ -59,6 +59,34 @@ const BODY = `Mobile stack note (${TEST_USERNAME})`;
   await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
   check('backdrop click closes modal + stack',
     (await page.locator('#sgm-notes-stack').count()) === 0);
+
+  // ---- create affordance: a NOTE-LESS sentence still offers the same
+  // grey first-note card the desktop margin shows; typing births a real
+  // note and the gradient + card takes its place below. ----
+  const bare = await page.evaluate(() => {
+    const R = window.WriteSysRenderer;
+    const noted = new Set((R.currentNotes || []).map(n => n.sentence_id));
+    const s = R.currentSentences.find(x => !/[&#\n]/.test(x.text) && x.text.length > 60 && !noted.has(x.id));
+    window.WriteSysSuggestions.openModal(s.id);
+    return s.id;
+  });
+  await page.waitForSelector('#suggestion-modal', { timeout: 8000 });
+  check('note-less sentence: stack shows the first-note create card',
+    (await page.locator('#sgm-notes-stack .sticky-note.first-uncreated .note-input').count()) === 1);
+  await page.locator('#sgm-notes-stack .note-input').first().click();
+  await page.keyboard.type('Stack-born note');
+  await page.waitForFunction(() =>
+    document.querySelectorAll('#sgm-notes-stack .sticky-note:not(.uncreated-note)').length === 1,
+    null, { timeout: 10000 });
+  check('typing in the create card births a real note in the stack', true);
+  check('…and the gradient + card follows it', await page.evaluate(() =>
+    !!document.querySelector('#sgm-notes-stack .sticky-note.uncreated-note:not(.first-uncreated)')));
+  await page.evaluate(() => {
+    const n = (window.WriteSysNotes.notes || []).find(x => (x.body || '').startsWith('Stack-born'));
+    if (n) return fetch(`api/notes/${n.note_id}`, { method: 'DELETE', headers: { 'X-CSRF-Token': localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token') || '' }, credentials: 'same-origin' });
+  });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
   await page.close();
 
   // ---- desktop viewport: no stack, margin untouched ----
