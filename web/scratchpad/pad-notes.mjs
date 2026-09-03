@@ -11,8 +11,8 @@
  * (setEditorTearingDown(true) strictly around view.destroy()) keeps its exact
  * old semantics.
  */
-import { getCurrentScratchpadId } from './api.mjs?v=1';
-import { holdScroll } from './scroll.mjs?v=1';
+import { getCurrentScratchpadId } from './api.mjs?v=2';
+import { holdScroll } from './scroll.mjs?v=2';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic

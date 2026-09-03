@@ -120,8 +120,9 @@ func TestBasePathStrip_ExactAndPrefix(t *testing.T) {
 
 func TestStatic_CachePolicyMatrix(t *testing.T) {
 	chdirTempWeb(t, map[string]string{
-		"index.html": "<html><head></head><body>x</body></html>",
-		"js/app.js":  "// js",
+		"index.html":           "<html><head></head><body>x</body></html>",
+		"js/app.js":            "// js",
+		"scratchpad/menus.mjs": "// mjs",
 	})
 	s := newTestServer(t, testConfig(), nil)
 
@@ -136,6 +137,11 @@ func TestStatic_CachePolicyMatrix(t *testing.T) {
 		{"/js/app.js?v=abc123", http.StatusOK, "public, max-age=31536000, immutable"}, // busted asset
 		{"/js/app.js", http.StatusOK, "no-cache"},                                     // plain asset: revalidate
 		{"/index.html?v=abc123", http.StatusMovedPermanently, "no-store"},             // html wins over ?v=
+		// ES modules ALWAYS revalidate, pinned or not: menus.mjs?v=1 changed
+		// twice without a bump and browsers held the pre-fix module
+		// immutably for a year (the sketch menu's stolen first click).
+		{"/scratchpad/menus.mjs?v=1", http.StatusOK, "no-cache"},
+		{"/scratchpad/menus.mjs", http.StatusOK, "no-cache"},
 	}
 	for _, tc := range cases {
 		rec := serve(s, httptest.NewRequest(http.MethodGet, tc.path, nil))

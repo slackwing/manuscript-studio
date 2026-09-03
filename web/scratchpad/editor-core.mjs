@@ -30,29 +30,29 @@ import {
   tableEditing, columnResizing, goToNextCell,
   addRowAfter, deleteRow, addColumnAfter, deleteColumn, deleteTable,
 } from './vendor/prosemirror.mjs';
-import { schema, modernizeDoc } from './schema.mjs?v=1';
-import { csrf, bookData, variationApi, uploadImage } from './api.mjs?v=1';
-import { scrollDiag } from './scroll.mjs?v=1';
+import { schema, modernizeDoc } from './schema.mjs?v=2';
+import { csrf, bookData, variationApi, uploadImage } from './api.mjs?v=2';
+import { scrollDiag } from './scroll.mjs?v=2';
 import {
   SketchView, variationFlushers, dirtyVariations, refreshSketchSiblings,
-} from './sketch-view.mjs?v=3';
+} from './sketch-view.mjs?v=4';
 import {
   NoteRefView, buildNoteColorBar, noteColorGroups, noteCache, closeNoteFloat,
   setActiveView, getActiveView, setEditorTearingDown,
-} from './pad-notes.mjs?v=1';
+} from './pad-notes.mjs?v=2';
 import {
   insertBlockSafely, markActive, headingActive, inTable, inBlockquote,
   toggleBlockquote, buildTablePicker, buildSketchMenu,
-} from './menus.mjs?v=1';
+} from './menus.mjs?v=2';
 
 // Re-exports: the one public surface (modal.mjs and the unit tests import
 // ONLY from this module; the sibling modules are an internal layout).
-export { schema, modernizeDoc } from './schema.mjs?v=1';
-export { apiCall, bookData, variationApi, setCurrentScratchpadId } from './api.mjs?v=1';
-export { suspendScrollHolds } from './scroll.mjs?v=1';
-export { letterOf, parseVariationRef } from './sketch-view.mjs?v=3';
-export { findNormalized } from './pad-notes.mjs?v=1';
-export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=1';
+export { schema, modernizeDoc } from './schema.mjs?v=2';
+export { apiCall, bookData, variationApi, setCurrentScratchpadId } from './api.mjs?v=2';
+export { suspendScrollHolds } from './scroll.mjs?v=2';
+export { letterOf, parseVariationRef } from './sketch-view.mjs?v=4';
+export { findNormalized } from './pad-notes.mjs?v=2';
+export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=2';
 
 // ---------------------------------------------------------------- helpers
 

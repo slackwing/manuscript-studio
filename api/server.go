@@ -420,6 +420,15 @@ func (s *Server) setupRouter() {
 		//  - everything else: no-cache (revalidate).
 		if strings.HasSuffix(path, ".html") {
 			w.Header().Set("Cache-Control", "no-store")
+		} else if strings.HasSuffix(path, ".mjs") {
+			// ES modules ALWAYS revalidate, ?v= or not. Their import graph
+			// carries hand-written pins that history proves get forgotten:
+			// menus.mjs?v=1 was changed twice (including the eager-clipboard
+			// fix) without a bump, so browsers held the pre-fix module
+			// IMMUTABLY for a year — "we fixed this twice and it's still
+			// broken" (the sketch menu's stolen first click). no-cache costs
+			// one conditional request per module; a 304 keeps it cheap.
+			w.Header().Set("Cache-Control", "no-cache")
 		} else if req.URL.Query().Get("v") != "" {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
