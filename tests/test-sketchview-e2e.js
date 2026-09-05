@@ -53,7 +53,7 @@ function psql(sql) {
       await api(() => {
         const ed = window.WriteSysScratchpad;
         const v = ed.view;
-        v.dispatch(v.state.tr.insert(0, ed.schema.nodes.snippet.create({ variationId: 99999999 })));
+        v.dispatch(v.state.tr.insert(0, ed.schema.nodes.sketch.create({ variationId: 99999999 })));
       });
       await page.waitForFunction(() =>
         [...document.querySelectorAll('.sn-status')].some(s => /unavailable/.test(s.textContent)));
@@ -231,7 +231,7 @@ function psql(sql) {
     await api((vid) => {
       const ed = window.WriteSysScratchpad;
       const v = ed.view;
-      v.dispatch(v.state.tr.insert(0, ed.schema.nodes.snippet.create({ variationId: vid })));
+      v.dispatch(v.state.tr.insert(0, ed.schema.nodes.sketch.create({ variationId: vid })));
     }, homeless.a);
     await w(homeless.a).locator('.sn-rail-peer').first().waitFor();
     await w(homeless.a).locator('.sn-rail-peer').first().click();
@@ -253,7 +253,7 @@ function psql(sql) {
       const v = ed.view;
       let pos = null, size = 0;
       v.state.doc.descendants((n, p) => {
-        if (n.type.name === 'snippet' && n.attrs.variationId === vid) { pos = p; size = n.nodeSize; return false; }
+        if (n.type.name === 'sketch' && n.attrs.variationId === vid) { pos = p; size = n.nodeSize; return false; }
       });
       if (pos != null) v.dispatch(v.state.tr.delete(pos, pos + size));
     }, homeless.a);

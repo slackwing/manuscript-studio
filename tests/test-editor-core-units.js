@@ -104,28 +104,46 @@ const EDITOR_CORE_V = 78;
       return false;
     };
 
-    // ---- modernize-idless-snippet-drop (editor-core:191–192) --------------
+    // ---- modernize-idless-sketch-drop (editor-core:191–192) --------------
     {
       const out = modernizeDoc({
         type: 'doc',
         content: [
           { type: 'book_content' },
-          { type: 'snippet' },                            // no attrs at all
-          { type: 'snippet', attrs: { variationId: 0 } }, // idless
-          { type: 'snippet', attrs: { variationId: 5 } }, // keep
+          { type: 'sketch' },                            // no attrs at all
+          { type: 'sketch', attrs: { variationId: 0 } }, // idless
+          { type: 'sketch', attrs: { variationId: 5 } }, // keep
           { type: 'blockquote', content: [{ type: 'book_content' }, { type: 'paragraph' }] },
           { type: 'paragraph', content: [{ type: 'text', text: 'prose' }] },
         ],
       });
       const kinds = out.content.map((n) => n.type);
-      t('modernize: book_content and idless snippets dropped (nested too)',
-        kinds.join(',') === 'snippet,blockquote,paragraph'
+      t('modernize: book_content and idless sketches dropped (nested too)',
+        kinds.join(',') === 'sketch,blockquote,paragraph'
           && out.content[1].content.length === 1,
         kinds.join(','));
-      t('modernize: snippet with a real variationId survives',
+      t('modernize: sketch with a real variationId survives',
         out.content[0].attrs.variationId === 5);
       try { loads(out); t('modernize: result is schema-valid', true); }
       catch (e) { t('modernize: result is schema-valid', false, e.message); }
+    }
+
+    // ---- modernize-legacy-snippet-node (pre-043 docs retype to sketch) ----
+    {
+      const out = modernizeDoc({
+        type: 'doc',
+        content: [
+          { type: 'snippet', attrs: { variationId: 7 } },  // pre-rename node
+          { type: 'snippet', attrs: { variationId: 0 } },  // idless legacy → drop
+          { type: 'paragraph', content: [{ type: 'text', text: 'prose' }] },
+        ],
+      });
+      const kinds = out.content.map((n) => n.type);
+      t('modernize: legacy snippet node retypes to sketch (idless still dropped)',
+        kinds.join(',') === 'sketch,paragraph' && out.content[0].attrs.variationId === 7,
+        kinds.join(','));
+      try { loads(out); t('modernize: retyped doc is schema-valid', true); }
+      catch (e) { t('modernize: retyped doc is schema-valid', false, e.message); }
     }
 
     // ---- modernize-orphan-highlight (:179–182, :175) ----------------------
@@ -234,7 +252,7 @@ const EDITOR_CORE_V = 78;
           { type: 'blockquote', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'quoted' }] }] },
           { type: 'horizontal_rule' },
           { type: 'image', attrs: { imageId: 'abc123', alt: 'pic' } },
-          { type: 'snippet', attrs: { variationId: 42 } },
+          { type: 'sketch', attrs: { variationId: 42 } },
           { type: 'bullet_list', content: [
             { type: 'list_item', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'item' }] }] },
           ] },
@@ -255,7 +273,7 @@ const EDITOR_CORE_V = 78;
         t('roundtrip: second pass stable and node-equal', again.eq(node)
           && JSON.stringify(again.toJSON()) === JSON.stringify(json));
         const seen = typesIn(json);
-        const want = ['paragraph', 'heading', 'blockquote', 'horizontal_rule', 'image', 'snippet',
+        const want = ['paragraph', 'heading', 'blockquote', 'horizontal_rule', 'image', 'sketch',
           'noteRef', 'text', 'hard_break', 'bullet_list', 'ordered_list', 'list_item',
           'table', 'table_row', 'table_cell', 'table_header'];
         t('roundtrip: every schema node type exercised',
@@ -408,16 +426,16 @@ const EDITOR_CORE_V = 78;
         type: 'doc',
         content: [
           { type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
-          { type: 'snippet', attrs: { variationId: 1 } },
+          { type: 'sketch', attrs: { variationId: 1 } },
           { type: 'paragraph', content: [{ type: 'text', text: 'after' }] },
         ],
       });
-      const snippetPos = 8; // paragraph "before" occupies 0..8
-      t('insertBlock: setup — pos 8 is the snippet atom',
-        doc.nodeAt(snippetPos) && doc.nodeAt(snippetPos).type.name === 'snippet');
+      const sketchPos = 8; // paragraph "before" occupies 0..8
+      t('insertBlock: setup — pos 8 is the sketch atom',
+        doc.nodeAt(sketchPos) && doc.nodeAt(sketchPos).type.name === 'sketch');
 
       const run = (node) => {
-        const state = EditorState.create({ doc, selection: NodeSelection.create(doc, snippetPos) });
+        const state = EditorState.create({ doc, selection: NodeSelection.create(doc, sketchPos) });
         let out = null;
         const ok = insertBlockSafely(state, (tr) => { out = state.apply(tr); }, node);
         return { ok, doc: out ? out.doc : null };
@@ -427,7 +445,7 @@ const EDITOR_CORE_V = 78;
       t('insertBlock: hr insert returns true and dispatches', hr.ok && !!hr.doc);
       t('insertBlock: hr lands AFTER the node-selected atom — atom survives',
         hr.doc && hr.doc.childCount === 4
-          && hr.doc.child(1).type.name === 'snippet' && hr.doc.child(1).attrs.variationId === 1
+          && hr.doc.child(1).type.name === 'sketch' && hr.doc.child(1).attrs.variationId === 1
           && hr.doc.child(2).type.name === 'horizontal_rule',
         hr.doc && Array.from({ length: hr.doc.childCount }, (_, i) => hr.doc.child(i).type.name).join(','));
 
@@ -438,18 +456,18 @@ const EDITOR_CORE_V = 78;
       ]);
       const tb = run(table);
       t('insertBlock: table insert also goes AFTER the atom',
-        tb.ok && tb.doc && tb.doc.child(1).type.name === 'snippet' && tb.doc.child(2).type.name === 'table',
+        tb.ok && tb.doc && tb.doc.child(1).type.name === 'sketch' && tb.doc.child(2).type.name === 'table',
         tb.doc && Array.from({ length: tb.doc.childCount }, (_, i) => tb.doc.child(i).type.name).join(','));
 
       // Contrast: a TEXT selection takes the replaceSelectionWith path.
       const tstate = EditorState.create({ doc, selection: TextSelection.create(doc, 4) });
       let tout = null;
       const tok = insertBlockSafely(tstate, (tr) => { tout = tstate.apply(tr); }, schema.nodes.horizontal_rule.create());
-      t('insertBlock: text selection uses replaceSelectionWith (hr appears, snippet intact)',
+      t('insertBlock: text selection uses replaceSelectionWith (hr appears, sketch intact)',
         tok && tout && JSON.stringify(tout.doc.toJSON()).includes('horizontal_rule')
-          && JSON.stringify(tout.doc.toJSON()).includes('"snippet"'));
+          && JSON.stringify(tout.doc.toJSON()).includes('"sketch"'));
 
-      const nstate = EditorState.create({ doc, selection: NodeSelection.create(doc, snippetPos) });
+      const nstate = EditorState.create({ doc, selection: NodeSelection.create(doc, sketchPos) });
       let dispatched = false;
       t('insertBlock: null node → false, nothing dispatched',
         insertBlockSafely(nstate, () => { dispatched = true; }, null) === false && !dispatched);

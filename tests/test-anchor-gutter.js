@@ -35,10 +35,10 @@ async function runIn(browserType, name, width) {
         if (sibs.length >= 3 && s === sibs[sibs.length - 1] && s.parentElement.nextElementSibling) { target = s; break; }
       }
       const id = target.dataset.sentenceId;
-      // Tight canonize form: trailing inline &snippet promoted to a margin
+      // Tight canonize form: trailing inline &sketch promoted to a margin
       // glyph on the (indented) region paragraph.
       const text = r.sentenceMap[id].replace(/\s+$/, '') +
-        '\n&snippet#gutterprobe1{}\n\tGutter probe region paragraph.\n&end#gutterprobe1';
+        '\n&sketch#gutterprobe1{}\n\tGutter probe region paragraph.\n&end#gutterprobe1';
       const csrf = localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token');
       await fetch(`api/sentences/${encodeURIComponent(id)}/suggestion`, { method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },

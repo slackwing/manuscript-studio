@@ -49,5 +49,6 @@
     <include file="changelog/040-suggestion-review-events.xml"/>
     <include file="changelog/041-suggestion-base-hash.xml"/>
     <include file="changelog/042-suggestion-base-text.xml"/>
+    <include file="changelog/043-snippet-to-sketch.xml"/>
 
 </databaseChangeLog>

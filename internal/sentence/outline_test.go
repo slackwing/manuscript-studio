@@ -69,7 +69,7 @@ func TestBuildOutlineTopLevel(t *testing.T) {
 	}
 }
 
-// No label = not outline-worthy: unlabeled anchors and snippets are skipped
+// No label = not outline-worthy: unlabeled anchors and sketches are skipped
 // (the placeholder rule, applied uniformly — an unlabeled anchor used to
 // list as a bare #slug and read as noise).
 func TestBuildOutlineSkipsUnlabeledAnchors(t *testing.T) {
@@ -78,8 +78,8 @@ func TestBuildOutlineSkipsUnlabeledAnchors(t *testing.T) {
 		"c1": "&chapter#c1{1.}{Smoke}",
 		"a1": "&anchor#bare{}",             // unlabeled — skipped
 		"a2": "&anchor#named{kept anchor}", // labeled — kept
-		"s1": "&snippet#sn1{}",             // unlabeled canonized snippet — skipped
-		"s2": "&snippet#sn2{kept snippet}", // labeled — kept
+		"s1": "&sketch#sn1{}",             // unlabeled canonized sketch — skipped
+		"s2": "&sketch#sn2{kept sketch}", // labeled — kept
 	}
 	o := BuildOutline(ids, textByID)
 	if len(o.TopChapters) != 1 {

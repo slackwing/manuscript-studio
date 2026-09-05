@@ -1,6 +1,6 @@
 /* Scratchpad editor styles (HOME_PLAN.md): loaded on demand by the modal.
    The chrome AND the writing surface are sans-serif (Helvetica) — a scratchpad
-   is a working space, deliberately CONTRASTING with the serif book/snippet
+   is a working space, deliberately CONTRASTING with the serif book/sketch
    font so the two read as different kinds of text. Book content inside widgets
    renders in a shadow root with book.css (serif), so that contrast holds and
    book styles never leak out here. */
@@ -41,7 +41,7 @@
 }
 .spm-title {
   /* Size the title input to its CONTENT so the link chip sits right after the
-     text (snippet-linker style), not after a fixed-width input box. A flex
+     text (sketch-linker style), not after a fixed-width input box. A flex
      spacer then pushes status/buttons to the right. field-sizing:content is the
      shrink-to-fit; the width fallback keeps older engines reasonable. */
   flex: 0 1 auto;
@@ -221,11 +221,11 @@
 }
 .ProseMirror.resize-cursor { cursor: col-resize; }
 
-/* ---- Manuscript Snippet widget ---- */
+/* ---- Manuscript Sketch widget ---- */
 .sn-widget {
   border: 1px solid #c9c2b2;
   background: #fbfaf7;
-  /* Inset left & right so a snippet doesn't run the full scratchpad width —
+  /* Inset left & right so a sketch doesn't run the full scratchpad width —
      it reads as a distinct block within the prose. */
   margin: 0 66px 0.9em;
   /* The editor surface is white-space: pre-wrap — without this, the
@@ -492,7 +492,7 @@ textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
   box-shadow: inset 0 1px 2px rgba(176, 64, 56, 0.3);
 }
 
-/* ⧉ Snippet ▾ insert menu */
+/* ⧉ Sketch ▾ insert menu */
 .sn-insertpop {
   position: absolute;
   top: calc(100% + 4px);
@@ -577,7 +577,7 @@ textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
 .sn-open { font-size: 11px; color: #2a6fb0; text-decoration: none; margin-right: 4px; }
 .sn-open:hover { text-decoration: underline; }
 .sn-body { padding: 0; }
-/* The snippet editor: a textarea on top of a mirror overlay that visualizes
+/* The sketch editor: a textarea on top of a mirror overlay that visualizes
    tabs. Both share identical box metrics + tab-size so glyphs align exactly.
    The editor never scrolls internally (auto-grows to fit — see renderEdit), so
    there is no scroll position to sync. */
@@ -854,10 +854,10 @@ textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
 }
 
 /* Standalone note square (026) — the SAME component as the inline ref,
-   minus text: fronts a snippet widget's header, left of the status. */
+   minus text: fronts a sketch widget's header, left of the status. */
 .sn-note-solo { display: inline-flex; align-items: center; margin-right: 7px; }
 .sn-note-solo .sn-note-ref-sq { cursor: pointer; }
-/* Completed snippet note: the square turns into a small green check. */
+/* Completed sketch note: the square turns into a small green check. */
 .sn-note-solo.sn-note-done .sn-note-done-sq {
   display: inline-flex; align-items: center; justify-content: center;
   width: 11px; height: 11px; border-radius: 50%;

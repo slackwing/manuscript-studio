@@ -18,7 +18,7 @@ import (
 //	&anchor#slug{label?}{details?}                       // details reserved, unrendered
 //	&reference#slug{notes?}                              // inline only
 //	&placeholder#slug{unit}{size?}{label?}{details?}     // see ParsePlaceholder
-//	&snippet#id{label}                                   // canon region opener (VARIATIONS_PLAN.md)
+//	&sketch#id{label}                                   // canon region opener (VARIATIONS_PLAN.md)
 //	&end#slug                                            // region terminator (SCRATCHPAD_PLAN.md)
 //
 // Argument vocabulary: {text} renders in the book, {label} shows in the
@@ -40,7 +40,7 @@ const (
 	CmdReference   CommandKind = "reference"
 	CmdMeta        CommandKind = "meta"
 	CmdPlaceholder CommandKind = "placeholder"
-	CmdSnippet     CommandKind = "snippet"
+	CmdSketch     CommandKind = "sketch"
 	CmdEnd         CommandKind = "end"
 )
 
@@ -56,7 +56,7 @@ var blockCommandKinds = map[CommandKind]bool{
 	CmdAnchor:      true,
 	CmdMeta:        true,
 	CmdPlaceholder: true, // block iff sole line content, same as anchor (segman's call)
-	CmdSnippet:     true, // block iff sole line content; canon region opener (VARIATIONS_PLAN.md)
+	CmdSketch:     true, // block iff sole line content; canon region opener (VARIATIONS_PLAN.md)
 	CmdEnd:         true, // block iff sole line content; invisible region terminator
 }
 
@@ -74,7 +74,7 @@ var (
 	// slugPattern: a static slug is lowercase letters, digits, and dashes.
 	slugPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 	// commandNames matched at the start of a token.
-	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder, CmdSnippet, CmdEnd}
+	commandNames = []CommandKind{CmdTitle, CmdPart, CmdChapter, CmdAnchor, CmdReference, CmdMeta, CmdPlaceholder, CmdSketch, CmdEnd}
 )
 
 // PlaceholderSpec is the interpreted argument list of a &placeholder command:
@@ -328,15 +328,14 @@ func matchKeyword(runes []rune) (CommandKind, int) {
 			return name, end
 		}
 	}
-	// '&sketch' is the successor spelling of '&snippet' (the snippet→sketch
-	// rename); it parses as the SAME command. Normalized here so every
-	// consumer (outline, canonicalize, regions, …) keeps a single kind —
-	// CmdSnippet stays the internal name (legacy, like the &snippet
-	// spelling itself, which remains valid forever).
-	const sketchAlias = "sketch"
-	end := 1 + len(sketchAlias)
-	if end < len(runes) && string(runes[1:end]) == sketchAlias && (runes[end] == '#' || runes[end] == '{') {
-		return CmdSnippet, end
+	// '&snippet' is the legacy spelling of '&sketch' (the snippet→sketch
+	// rename); it parses as the SAME command and remains valid input
+	// forever. Normalized here so every consumer (outline, canonicalize,
+	// regions, …) keeps a single kind — CmdSketch / "sketch".
+	const legacySnippetAlias = "snippet"
+	end := 1 + len(legacySnippetAlias)
+	if end < len(runes) && string(runes[1:end]) == legacySnippetAlias && (runes[end] == '#' || runes[end] == '{') {
+		return CmdSketch, end
 	}
 	return "", 0
 }

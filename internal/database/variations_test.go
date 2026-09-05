@@ -1106,7 +1106,7 @@ func TestCreatePlacedSketchFromSelection_FullStroke(t *testing.T) {
 			t.Fatalf("pad doc type = %q, want doc", doc.Type)
 		}
 		for i, n := range doc.Content {
-			if n.Type == "snippet" {
+			if n.Type == "sketch" {
 				widgetIDs = append(widgetIDs, n.Attrs.VariationID)
 				lastIsWidget = i == len(doc.Content)-1
 			}

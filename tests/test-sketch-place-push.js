@@ -75,7 +75,7 @@ function setupBareRemote() {
     return null;
   });
   check('found a paragraph-start range', !!range, range && range.firstRaw.slice(0, 30));
-  const origSnippet = range.firstRaw.slice(2, 42); // distinctive original text
+  const origSketch = range.firstRaw.slice(2, 42); // distinctive original text
 
   await page.locator(`.sentence[data-sentence-id="${range.aId}"]`).first().click();
   await page.waitForTimeout(300);
@@ -163,7 +163,7 @@ function setupBareRemote() {
   check('first placed paragraph starts right after the opener line',
     new RegExp(`^&sketch#${slug}\\{\\}\\n\\t?PLACEDMARK alpha`, 'm').test(f));
   check('original region text replaced (gone from the file)',
-    !f.includes(origSnippet), origSnippet.slice(0, 25));
+    !f.includes(origSketch), origSketch.slice(0, 25));
 
   // Second push: force-push same branch — content must be IDENTICAL (no
   // anchor duplication from suggestions surviving a push).

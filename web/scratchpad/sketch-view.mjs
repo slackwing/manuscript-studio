@@ -1,6 +1,6 @@
 /**
  * SketchView (split out of editor-core.mjs — CODE_REVIEW_AUG_2026.md §1): the
- * NodeView for the sketch PLACEMENT atom (PM node type 'snippet' — legacy
+ * NodeView for the sketch PLACEMENT atom (PM node type 'sketch' — legacy
  * storage name, frozen), plus its registries (variationFlushers /
  * dirtyVariations / liveSketchViews), sibling refresh, the book-pipeline
  * preview renderer, and the small shared formatters (esc, letterOf,
@@ -724,7 +724,7 @@ export class SketchView {
       const pos = this.getPos();
       if (pos != null) {
         this.view.dispatch(this.view.state.tr.insert(pos + this.node.nodeSize,
-          this.view.state.schema.nodes.snippet.create({ variationId: ctx.variation.variation_id })));
+          this.view.state.schema.nodes.sketch.create({ variationId: ctx.variation.variation_id })));
       }
       await this.refresh();
       await refreshSketchSiblings(this.ctx.sketch.sketch_id, this.variationId);
@@ -805,7 +805,7 @@ export class SketchView {
   }
 
   // Canon truth derives from the manuscript (VARIATIONS_PLAN §2): resolve
-  // the &snippet#id … &end#id region (legacy syntax name) from the effective manuscript; the
+  // the &sketch#id … &end#id region from the effective manuscript; the
   // canon variation's text is the immutable as-canonized snapshot, used as
   // fallback and via the in-body toggle.
   async renderCanon(showSnapshot, pane) {
@@ -864,7 +864,7 @@ export class SketchView {
       const pos = this.getPos();
       if (pos != null) {
         this.view.dispatch(this.view.state.tr.insert(pos + this.node.nodeSize,
-          this.view.state.schema.nodes.snippet.create({ variationId: ctx.variation.variation_id })));
+          this.view.state.schema.nodes.sketch.create({ variationId: ctx.variation.variation_id })));
       }
       await this.refresh();
     } catch (e) { alert('Could not sketch from the placed text: ' + e.message); }

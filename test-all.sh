@@ -63,9 +63,9 @@ FAST_TESTS=(
   test-mobile-scale-affordances
   test-sketch-navigate
   test-sketch-restore
-  test-snippet-editor
+  test-sketch-editor
   test-sketch-sibling-refresh
-  test-snippet-no-scroll-jump
+  test-sketch-no-scroll-jump
   test-scratchpad-notes
   test-stats-pane
   # CODE_REVIEW_AUG_2026 coverage — unit batteries
@@ -92,13 +92,13 @@ SLOW_TESTS=(
   test-save-resilience
   test-session-guard
   test-sketch-rail-compare
-  test-snippet-caret
-  test-snippet-edit-scroll
-  test-snippet-edit-anchor
-  test-snippet-leading-indent
-  test-snippet-save-race
+  test-sketch-caret
+  test-sketch-edit-scroll
+  test-sketch-edit-anchor
+  test-sketch-leading-indent
+  test-sketch-save-race
   test-suggest-edit-pane
-  test-trailing-snippet-caret
+  test-trailing-sketch-caret
   test-scratchpad-canonize
   test-history-bars
   test-suggested-edits

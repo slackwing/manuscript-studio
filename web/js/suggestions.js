@@ -558,7 +558,7 @@ const WriteSysSuggestions = {
 
     // LEFT pane: the SHARED edit component (edit-pane.js) — the same
     // autosave-as-you-type, retry ladder, dirty tracking, tab overlay and
-    // flush-or-refuse close that snippet widgets use.
+    // flush-or-refuse close that sketch widgets use.
     let staleAlerted = false;
     // Draft safety net: restore a fresh unsaved draft (failed saves / crash).
     const draftKey = `ms-draft-suggest-${sentenceId}`;

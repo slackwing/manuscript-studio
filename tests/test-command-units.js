@@ -27,21 +27,21 @@ check('"R&D" is not a command', cmd.parse('R&D') === null);
 check('&chapterX{...} — keyword must be followed by # or {', cmd.parse('&chapterX{one}') === null);
 check('"A &chapter of accidents" is literal prose', cmd.parse('&chapter of accidents') === null);
 check('bare &end (nothing after keyword) is null', cmd.parse('&end') === null);
-for (const kw of ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'snippet']) {
+for (const kw of ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'sketch']) {
   const brace = cmd.parse(`&${kw}{x}`);
   check(`&${kw}{x} parses`, !!brace && brace.args.length === 1 && brace.args[0] === 'x');
   const hash = cmd.parse(`&${kw}#s1{x}`);
   check(`&${kw}#s1{x} parses with slug`, !!hash && hash.slug === 's1');
 }
-check('&sketch{x} parses (successor spelling)', !!cmd.parse('&sketch{x}'));
+check('&snippet{x} parses (legacy spelling)', !!cmd.parse('&snippet{x}'));
 check('&end#slug parses', !!cmd.parse('&end#slug'));
 
-// ---- C2: sketch normalizes to snippet ---------------------------------
-console.log('=== C2 parse-sketch-normalizes-to-snippet ===');
+// ---- C2: legacy snippet normalizes to sketch --------------------------
+console.log('=== C2 parse-snippet-normalizes-to-sketch ===');
 {
-  const p = cmd.parse('&sketch#a{x}');
-  check('kind is snippet', !!p && p.kind === 'snippet');
-  check('raw keeps the sketch spelling', !!p && p.raw === '&sketch#a{x}');
+  const p = cmd.parse('&snippet#a{x}');
+  check('kind is sketch', !!p && p.kind === 'sketch');
+  check('raw keeps the snippet spelling', !!p && p.raw === '&snippet#a{x}');
   check('slug and args intact', !!p && p.slug === 'a' && p.args[0] === 'x');
 }
 
@@ -113,32 +113,32 @@ console.log('=== C8 segmentFragments-leading-anchor-newline-form ===');
   check('whitespace-only trailing prose dropped', alone.length === 1 && alone[0].kind === 'command');
 }
 
-// ---- C9: snippet/sketch newline form splits like anchor (FIXED) --------
-console.log('=== C9 segmentFragments-snippet-newline-symmetry ===');
+// ---- C9: sketch/sketch newline form splits like anchor (FIXED) --------
+console.log('=== C9 segmentFragments-sketch-newline-symmetry ===');
 {
   // RESOLVED (CODE_REVIEW_AUG_2026.md §3.4 C9, §3.1): the leading-command
   // split (command.js segmentFragments) now matches canonicalize
-  // (canonicalize.js:45–47 / canonicalize.go): &snippet — and its &sketch
-  // spelling, which parse() normalizes to kind 'snippet' — splits into
+  // (canonicalize.js:45–47 / canonicalize.go): &sketch — and its legacy
+  // &snippet spelling, which parse() normalizes to kind 'sketch' — splits into
   // [command, prose] exactly like &anchor (C8). The former asymmetry (the
-  // snippet form staying one prose fragment) is gone.
-  const sn = cmd.segmentFragments('&snippet#ab{}\nprose');
-  check('snippet newline form splits into [command:snippet, prose]',
-    sn.length === 2 && sn[0].kind === 'command' && sn[0].cmd.kind === 'snippet'
+  // sketch form staying one prose fragment) is gone.
+  const sn = cmd.segmentFragments('&sketch#ab{}\nprose');
+  check('sketch newline form splits into [command:sketch, prose]',
+    sn.length === 2 && sn[0].kind === 'command' && sn[0].cmd.kind === 'sketch'
     && sn[1].kind === 'prose' && sn[1].text === 'prose');
-  const sk = cmd.segmentFragments('&sketch#ab{}\nprose');
-  check('sketch spelling splits the same (kind normalized to snippet)',
-    sk.length === 2 && sk[0].kind === 'command' && sk[0].cmd.kind === 'snippet'
-    && sk[0].cmd.raw === '&sketch#ab{}' && sk[1].kind === 'prose');
+  const sk = cmd.segmentFragments('&snippet#ab{}\nprose');
+  check('legacy snippet spelling splits the same (kind normalized to sketch)',
+    sk.length === 2 && sk[0].kind === 'command' && sk[0].cmd.kind === 'sketch'
+    && sk[0].cmd.raw === '&snippet#ab{}' && sk[1].kind === 'prose');
   check('block marker rides the PROSE fragment (like C8 anchors)', (() => {
-    const m = cmd.segmentFragments('\n\t&snippet#ab{}\nprose');
+    const m = cmd.segmentFragments('\n\t&sketch#ab{}\nprose');
     return m.length === 2 && m[0].marker === '' && m[1].marker === '\n\t';
   })());
   // Contrast case, guaranteed by C8: anchor splits identically.
   check('anchor newline form splits (symmetry)', cmd.segmentFragments('&anchor#ab{lbl}\nprose').length === 2);
-  // A snippet mid-prose is untouched — the split is leading-command only.
-  const inline = cmd.segmentFragments('The fire &snippet#s{} spread.');
-  check('inline snippet mid-prose stays one prose fragment',
+  // A sketch mid-prose is untouched — the split is leading-command only.
+  const inline = cmd.segmentFragments('The fire &sketch#s{} spread.');
+  check('inline sketch mid-prose stays one prose fragment',
     inline.length === 1 && inline[0].kind === 'prose');
 }
 
@@ -198,9 +198,9 @@ console.log('=== C13 findInline-kinds-and-offsets ===');
   check('codepoint end offset (start + raw cp length)', out[0].end === 2 + Array.from('&reference#tgt{n}').length);
   check('notes = first arg', out[0].notes === 'n');
 
-  const kinds = cmd.findInline('a &reference#r{n} b &anchor#a{} c &placeholder#p{sentences}{s} d &snippet#s{} e &end#z f');
+  const kinds = cmd.findInline('a &reference#r{n} b &anchor#a{} c &placeholder#p{sentences}{s} d &sketch#s{} e &end#z f');
   eq('all five inline kinds reported in order',
-    kinds.map((c) => c.kind), ['reference', 'anchor', 'placeholder', 'snippet', 'end']);
+    kinds.map((c) => c.kind), ['reference', 'anchor', 'placeholder', 'sketch', 'end']);
   check('placeholder args carried', kinds[2].args.length === 2 && kinds[2].args[0] === 'sentences');
 
   // A block-only command mid-text is skipped WHOLE — nothing inside its
@@ -224,8 +224,8 @@ console.log('=== C14 structuralForm-all-kinds ===');
   check('anchor → div glyph, label not visible text', !!anchor && anchor.tag === 'div'
     && anchor.cls === 'cmd-anchor' && anchor.glyph === true && anchor.visible === ''
     && anchor.label === 'The salvia night');
-  const snip = cmd.structuralForm('&snippet#s{lbl}');
-  check('snippet → cmd-anchor cmd-snippet glyph', !!snip && snip.cls === 'cmd-anchor cmd-snippet' && snip.glyph === true);
+  const snip = cmd.structuralForm('&sketch#s{lbl}');
+  check('sketch → cmd-anchor cmd-sketch glyph', !!snip && snip.cls === 'cmd-anchor cmd-sketch' && snip.glyph === true);
   check('meta → null', cmd.structuralForm('&meta{font}{Georgia}') === null);
   check('placeholder → null', cmd.structuralForm('&placeholder#p{sentences}') === null);
   check('end → null', cmd.structuralForm('&end#z') === null);

@@ -287,9 +287,9 @@ const PNG_1PX = Buffer.from(
     });
     const padSnip = await seedPad([
       { type: 'paragraph', content: [{ type: 'text', text: 'before the widget' }] },
-      { type: 'snippet', attrs: { variationId: sk } },
+      { type: 'sketch', attrs: { variationId: sk } },
     ]);
-    check('trailing-snippet pad seeded via API', padSnip > 0, `pad=${padSnip}`);
+    check('trailing-sketch pad seeded via API', padSnip > 0, `pad=${padSnip}`);
     await page.evaluate((id) => window.WriteSysScratchpadModal.open(id), padSnip);
     await page.waitForSelector('.spm-overlay .sn-widget');
     const shapeSnip = await page.evaluate(() => {

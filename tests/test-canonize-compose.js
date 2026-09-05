@@ -1,6 +1,6 @@
 // Canonize onto a boundary sentence that ALREADY has a pending suggestion:
 // the + must appear (no longer suppressed) and the canonize must COMPOSE —
-// one suggestion carrying the user's prose edit AND the &snippet region.
+// one suggestion carrying the user's prose edit AND the &sketch region.
 const { chromium } = require('playwright');
 const { TEST_URL, TEST_USERNAME, loginAsTestUser, cleanupTestAnnotations, cleanupTestNotes } = require('./test-utils');
 const { execSync } = require('child_process');

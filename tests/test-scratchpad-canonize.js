@@ -219,7 +219,7 @@ function noisyPng(w, h) {
         outlineRow: !!outlineRow,
       };
     }, sketchId);
-    check('&snippet region opener renders in book (suggested)', book.openerFound);
+    check('&sketch region opener renders in book (suggested)', book.openerFound);
     check('sketch label lists in the outline', book.outlineRow);
     check('canonized prose renders in book', book.content === true);
     check('&end NEVER visible in the book (raw-text only)', !book.endVisibleWhileSuggested);

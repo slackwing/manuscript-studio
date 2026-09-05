@@ -1,7 +1,7 @@
 // Package scratchpad handles the server side of scratchpads: walking a
-// stored ProseMirror doc JSON. Since VARIATIONS_PLAN.md, a snippet node in
+// stored ProseMirror doc JSON. Since VARIATIONS_PLAN.md, a sketch node in
 // the doc is only a PLACEMENT marker — attrs {variationId} — and all
-// content lives in the snippet/variation tables (internal/database).
+// content lives in the sketch/variation tables (internal/database).
 package scratchpad
 
 import (
@@ -11,15 +11,17 @@ import (
 
 type pmNode map[string]interface{}
 
-// isSnippetNode matches the snippet placement node. (Legacy "book_content"
+// isSketchNode matches the sketch placement node. (Legacy "book_content"
 // nodes from before the variations rearchitecture no longer exist — the
-// author deleted all snippets before Liquibase 015.)
-func isSnippetNode(n pmNode) bool {
+// author deleted all sketches before Liquibase 015.)
+func isSketchNode(n pmNode) bool {
 	t, _ := n["type"].(string)
-	return t == "snippet"
+	// "snippet" is the pre-rename node type; changeset 043 rewrites stored
+	// docs, but tolerate stragglers (e.g. docs restored from old exports).
+	return t == "sketch" || t == "snippet"
 }
 
-// walk visits every node in a PM doc depth-first (snippet placements can
+// walk visits every node in a PM doc depth-first (sketch placements can
 // sit inside list items, table cells, etc.).
 func walk(node pmNode, visit func(pmNode)) {
 	visit(node)
@@ -46,7 +48,7 @@ func attrInt(attrs map[string]interface{}, key string) int {
 	return 0
 }
 
-// ExtractVariationIDs returns every snippet placement's variationId, in
+// ExtractVariationIDs returns every sketch placement's variationId, in
 // document order (0s from malformed nodes are dropped).
 func ExtractVariationIDs(doc json.RawMessage) ([]int, error) {
 	var root map[string]interface{}
@@ -55,7 +57,7 @@ func ExtractVariationIDs(doc json.RawMessage) ([]int, error) {
 	}
 	var out []int
 	walk(root, func(n pmNode) {
-		if !isSnippetNode(n) {
+		if !isSketchNode(n) {
 			return
 		}
 		attrs, _ := n["attrs"].(map[string]interface{})
@@ -70,7 +72,7 @@ func ExtractVariationIDs(doc json.RawMessage) ([]int, error) {
 }
 
 // Summary derives a card-friendly view of a doc (HOME_PLAN.md): a plain-text
-// snippet of the first n runes of prose (paragraph/heading text — snippet
+// sketch of the first n runes of prose (paragraph/heading text — sketch
 // placements carry no text here), plus the placed variation IDs (the caller
 // resolves counts/canon against the variation tables).
 func Summary(doc json.RawMessage, n int) (preview string, variationIDs []int, err error) {
@@ -80,7 +82,7 @@ func Summary(doc json.RawMessage, n int) (preview string, variationIDs []int, er
 	}
 	var runes []rune
 	walk(root, func(node pmNode) {
-		if isSnippetNode(node) {
+		if isSketchNode(node) {
 			if attrs, _ := node["attrs"].(map[string]interface{}); attrs != nil {
 				if id := attrInt(attrs, "variationId"); id > 0 {
 					variationIDs = append(variationIDs, id)

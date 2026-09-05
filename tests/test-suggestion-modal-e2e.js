@@ -8,7 +8,7 @@
  *       skips render; net change → scroll_to + optimistic patch + selection
  *       + re-render + push refresh)
  *   S15 Tab inserts literal \t; Shift-Tab escapes the field (extends the
- *       snippet-editor-only Shift-Tab coverage to THIS modal)
+ *       sketch-editor-only Shift-Tab coverage to THIS modal)
  *   S16 mobile (390x844): modal + note stack inside the overlay, textarea
  *       NOT autofocused; desktop autofocuses
  *   S17 apostrophe diff stability (diff-before-smartquotes invariant):

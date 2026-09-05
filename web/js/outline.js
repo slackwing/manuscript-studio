@@ -59,14 +59,14 @@ const WriteSysOutline = {
       const eff = canon(rawEff);
       for (const f of cmd.segmentFragments(eff)) {
         if (f.kind !== 'command') {
-          // INLINE anchors/snippets (mid-prose, e.g. the tight canonize form
-          // "prev.\n&snippet#id{label}\n\tcontent") outline exactly like
+          // INLINE anchors/sketches (mid-prose, e.g. the tight canonize form
+          // "prev.\n&sketch#id{label}\n\tcontent") outline exactly like
           // their block twins.
           if (f.kind === 'prose' && cmd.findInline) {
             for (const ic of cmd.findInline(f.text)) {
               const inlineLabel = (ic.args && ic.args[0]) || '';
               // No label = not outline-worthy (same rule as the block twins).
-              if ((ic.kind === 'anchor' || ic.kind === 'snippet') && ic.slug && inlineLabel.trim()) {
+              if ((ic.kind === 'anchor' || ic.kind === 'sketch') && ic.slug && inlineLabel.trim()) {
                 pushAnchor({ description: inlineLabel, slug: ic.slug, sentence_id: s.id });
               }
             }
@@ -85,7 +85,7 @@ const WriteSysOutline = {
           const ch = { label, description: desc, slug: c.slug, sentence_id: s.id, anchors: [] };
           if (curPart >= 0) { o.parts[curPart].chapters.push(ch); curChapter = o.parts[curPart].chapters.length - 1; }
           else { o.top_chapters.push(ch); curChapter = o.top_chapters.length - 1; }
-        } else if (c.kind === 'anchor' || c.kind === 'placeholder' || c.kind === 'snippet') {
+        } else if (c.kind === 'anchor' || c.kind === 'placeholder' || c.kind === 'sketch') {
           // A placeholder lists exactly like an anchor — indistinguishable in
           // the outline — using its {label}; mis-syntaxed placeholders render
           // as prose and stay out of the outline (mirrors Go BuildOutline).
@@ -96,7 +96,7 @@ const WriteSysOutline = {
             description = spec.label;
           }
           // No label = not outline-worthy — one rule for anchors,
-          // placeholders, and snippets alike (mirrors Go BuildOutline).
+          // placeholders, and sketches alike (mirrors Go BuildOutline).
           if (!description.trim()) continue;
           pushAnchor({ description, slug: c.slug, sentence_id: s.id });
         }

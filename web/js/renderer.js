@@ -524,7 +524,7 @@ const WriteSysRenderer = {
 
     const out = [];
     let openP = null; // { cls, spans } — current open paragraph
-    // Anchor-family glyphs (⚓ for &anchor/&snippet) NEVER interrupt prose
+    // Anchor-family glyphs (⚓ for &anchor/&sketch) NEVER interrupt prose
     // flow: they defer to the NEXT paragraph's LEFT MARGIN (across sentence
     // boundaries — post-push an anchor is its own sentence row). The anchor's
     // own structural marker carries over so \n\n before an anchor still
@@ -600,14 +600,14 @@ const WriteSysRenderer = {
       // red/green at all (the "placed section shows no diff" bug).
       if (suggestion !== undefined && !isDeleteProposal && cmdLib
           && frags.length > 1 && frags.every((x) => x.kind === 'prose')
-          // OWN-LINE region tokens (\n-adjacent &anchor/&snippet/&end —
+          // OWN-LINE region tokens (\n-adjacent &anchor/&sketch/&end —
           // the tight compose form) keep the fragment path for its
           // margin-glyph promotion and real paragraph grouping. An
           // INLINE-joined opener ("&sketch#x{} prose", mid-paragraph
           // starts) is ordinary prose — it collapses and diffs.
           && !(cmdLib.findInline ? cmdLib.findInline(effective) : [])
             .some((c) => {
-              if (c.kind !== 'anchor' && c.kind !== 'snippet' && c.kind !== 'end') return false;
+              if (c.kind !== 'anchor' && c.kind !== 'sketch' && c.kind !== 'end') return false;
               const chars = Array.from(effective);
               const before = chars.slice(0, c.start).join('');
               const after = chars.slice(c.end).join('');
@@ -652,10 +652,10 @@ const WriteSysRenderer = {
         // the author knows to click it to see the change.
         const changed = suggestion !== undefined;
         if (f.kind === 'command') {
-          // Anchor family (&anchor / &snippet): ALWAYS a margin glyph on the
+          // Anchor family (&anchor / &sketch): ALWAYS a margin glyph on the
           // next paragraph — never a flow-breaking block line. The marker it
           // carried transfers to that paragraph's break class.
-          if (f.cmd.kind === 'anchor' || f.cmd.kind === 'snippet') {
+          if (f.cmd.kind === 'anchor' || f.cmd.kind === 'sketch') {
             pendingMarginGlyphs.push({ cmd: f.cmd, id, changed });
             pendingCarriedCls = strongestCls(pendingCarriedCls, this.markerClass(f.marker));
             continue;
@@ -671,8 +671,8 @@ const WriteSysRenderer = {
           if (html) out.push(html);
           continue;
         }
-        // Prose fragment. TRAILING inline anchors/snippets (the tight
-        // canonize form leaves "…prev.\n&snippet#id{label}" at a piece's end)
+        // Prose fragment. TRAILING inline anchors/sketches (the tight
+        // canonize form leaves "…prev.\n&sketch#id{label}" at a piece's end)
         // introduce what FOLLOWS — promote them to the next paragraph's
         // margin glyph instead of letting them dangle (and wrap) at the tail
         // of the previous line. Trailing &end tokens just vanish.
@@ -686,7 +686,7 @@ const WriteSysRenderer = {
             const chars = Array.from(pieceText);
             const tail = chars.slice(last.end).join('');
             if (tail.trim() !== '') break; // genuinely mid-text — leave inline
-            if (last.kind === 'anchor' || last.kind === 'snippet') {
+            if (last.kind === 'anchor' || last.kind === 'sketch') {
               promotedGlyphs.push({ cmd: last, id, changed: suggestion !== undefined });
             } else if (last.kind !== 'end') {
               break; // references/placeholders stay in the flow
@@ -730,7 +730,7 @@ const WriteSysRenderer = {
         // in the left margin aligned to its top; the carried break class wins
         // over the prose's own weaker one.
         // A carried marker (from a command line) never overrides an explicit
-        // indent: "\n\n&snippet{}\n\tPara" is an INDENTED paragraph — the \n\n
+        // indent: "\n\n&sketch{}\n\tPara" is an INDENTED paragraph — the \n\n
         // was breathing room around the command, not a section break.
         cls = cls === 'indented' ? cls : strongestCls(cls, pendingCarriedCls);
         pendingCarriedCls = '';
@@ -922,7 +922,7 @@ const WriteSysRenderer = {
     const slugAttr = cmd.slug ? ` data-slug="${escapeHTML(cmd.slug)}"` : '';
     // A placed sketch region's opener wears the SKETCH icon (click →
     // navigate to the group's widget); plain anchors keep the ⚓.
-    if (cmd.kind === 'snippet') {
+    if (cmd.kind === 'sketch') {
       const icon = window.WriteSysIcons && window.WriteSysIcons.goto ? window.WriteSysIcons.goto(11) : '↗';
       return `<span class="sentence cmd-anchor-glyph cmd-sketch-glyph${marginCls}${chCls}" data-sentence-id="${escapeHTML(id)}"${slugAttr}${titleAttr} aria-label="sketch">${icon}</span>`;
     }
@@ -984,7 +984,7 @@ const WriteSysRenderer = {
       }
       return lib.inlineHTML(spec, c.slug);
     }
-    if (c.kind === 'anchor' || c.kind === 'snippet') {
+    if (c.kind === 'anchor' || c.kind === 'sketch') {
       const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
       const label = (c.args && c.args[0]) || c.slug || '';
       const titleAttr = label ? ` title="${escapeHTML(label)}"` : '';
@@ -993,7 +993,7 @@ const WriteSysRenderer = {
       // on each side, and the icon sits between the two (2026-08-22: how
       // inline starts to anchored sections work). A placed sketch region
       // wears the SKETCH icon (click → its widget); plain anchors keep ⚓.
-      const isSketch = c.kind === 'snippet';
+      const isSketch = c.kind === 'sketch';
       const icon = isSketch && window.WriteSysIcons && window.WriteSysIcons.goto
         ? window.WriteSysIcons.goto(11) : (isSketch ? '↗' : '⚓');
       const extraCls = isSketch ? ' cmd-sketch-glyph' : '';
@@ -1019,16 +1019,16 @@ const WriteSysRenderer = {
     // Match an escaped command token: &amp;(keyword)(#slug)?{...}{...}...
     // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
     // Args are plain (no nested braces in the escaped stream we care about).
-    // 'sketch' is the successor spelling of 'snippet' — same command kind.
+    // 'snippet' is the legacy spelling of 'sketch' — same command kind.
     //
     // TODO(CODE_REVIEW_AUG_2026.md §3.1/#15): this regex hand-duplicates the
     // command grammar that command.js parse() owns (keyword list, ≤4 brace
-    // groups, slug charset, sketch→snippet aliasing) — adding a command
+    // groups, slug charset, snippet→sketch aliasing) — adding a command
     // keyword there without updating this regex silently breaks diff
     // rendering. Deliberately NOT unified this pass (rewriting the escaped-
     // HTML scan over the real parser is risky); test-render-units R14 pins
     // the current behavior. Unify when the renderer is next rewritten.
-    const re = /&amp;(reference|anchor|placeholder|snippet|sketch)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
+    const re = /&amp;(reference|anchor|placeholder|sketch|snippet)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -1042,7 +1042,7 @@ const WriteSysRenderer = {
       const args = [];
       groups.replace(/\{([^{}]*)\}/g, (_, g) => { args.push(unescape(g)); return ''; });
       const raw = '&' + kw + (hashSlug || '') + args.map(a => '{' + a + '}').join('');
-      return this.renderInlineCommand({ kind: kw === 'sketch' ? 'snippet' : kw, slug, notes: args[0] || '', args, raw });
+      return this.renderInlineCommand({ kind: kw === 'snippet' ? 'sketch' : kw, slug, notes: args[0] || '', args, raw });
     });
   },
 

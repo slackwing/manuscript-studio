@@ -64,7 +64,7 @@ const psql = (sql) => execSync(
   const aMatch = psql(`SELECT position('${pair.aText.replace(/'/g, "''")}' in text) > 0 FROM variation WHERE sketch_id='${slug}' AND ordinal=1`);
   check('A carries the selected text', aMatch === 't', aMatch);
   const pad = psql(`SELECT scratchpad_id FROM variation WHERE sketch_id='${slug}' AND ordinal=1`);
-  const nodes = psql(`SELECT (LENGTH(doc::text) - LENGTH(REPLACE(doc::text, '"snippet"', ''))) / LENGTH('"snippet"') FROM scratchpad WHERE scratchpad_id=${pad}`);
+  const nodes = psql(`SELECT (LENGTH(doc::text) - LENGTH(REPLACE(doc::text, '"sketch"', ''))) / LENGTH('"sketch"') FROM scratchpad WHERE scratchpad_id=${pad}`);
   check('exactly ONE widget appended to the pad doc', nodes === '1', nodes);
   const sugAnchors = psql(`SELECT count(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND (text LIKE '%&sketch#${slug}%' OR text LIKE '%&end#${slug}%')`);
   check('selection wrapped in &sketch anchors (2 suggestions)', sugAnchors === '2', sugAnchors);

@@ -53,9 +53,9 @@ const coreNodes = {
   },
   // A sketch PLACEMENT (VARIATIONS_PLAN.md): atom marker for one variation.
   // All content/state lives server-side; the NodeView fetches its context.
-  // LEGACY STORAGE NAME: the sketch widget's PM node is still typed
-  // 'snippet' — every saved pad doc embeds it; renaming would break them.
-  snippet: {
+  // Stored docs were typed 'snippet' before changeset 043 rewrote them;
+  // modernizeDoc still heals any straggler on load.
+  sketch: {
     group: 'block', atom: true, selectable: true,
     attrs: { variationId: { default: 0 } },
     parseDOM: [{
@@ -115,7 +115,7 @@ const withTables = withLists.append(tableNodes({
 export const schema = new Schema({ nodes: withTables, marks: base.spec.marks });
 
 // Bring a stored doc up to the current schema so it always opens:
-//  - drop pre-variations sketch nodes ("book_content", or "snippet" without a
+//  - drop pre-variations sketch nodes ("book_content", or "sketch" without a
 //    positive variationId).
 //  - CONVERT the pre-atomic note representation (a `noteAnchor` inline node +
 //    a `noteHighlight` mark on the following text, both tagged with noteId)
@@ -159,7 +159,8 @@ export function modernizeDoc(json) {
   const clean = (n) => {
     if (!n || typeof n !== 'object') return null;
     if (n.type === 'book_content') return null;
-    if (n.type === 'snippet' && !(n.attrs && n.attrs.variationId > 0)) return null;
+    if (n.type === 'snippet') n.type = 'sketch'; // pre-043 node type
+    if (n.type === 'sketch' && !(n.attrs && n.attrs.variationId > 0)) return null;
     if (Array.isArray(n.content)) {
       // Convert legacy note representation within this node's inline content
       // first, then recurse into children.

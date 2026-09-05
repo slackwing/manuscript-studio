@@ -1,6 +1,6 @@
 /**
  * WriteSysEditPane — the SHARED monospace edit pane machinery, used by BOTH
- * the scratchpad snippet widget (mode SNIPPET) and the manuscript's
+ * the scratchpad sketch widget (mode SKETCH) and the manuscript's
  * suggest-edit modal (mode SUGGESTED_EDIT). One implementation of the things
  * that must never diverge again:
  *
@@ -11,7 +11,7 @@
  *   - the auto-growing monospace textarea (never scrolls internally).
  *
  * Mode differences stay in the HOSTS as thin wiring (Tab-inserts-\t and the
- * tab-glyph overlay for snippets; §/¶ glyph conversion for suggest-edit) —
+ * tab-glyph overlay for sketches; §/¶ glyph conversion for suggest-edit) —
  * the pane takes callbacks, not flags, wherever practical.
  */
 (function () {
@@ -144,7 +144,7 @@
   // createMonoEditor({ value, placeholder, onInput, overlayHTML }):
   //   builds .sn-text-wrap > [.sn-text-overlay?, textarea.sn-text]; the
   //   textarea auto-grows (never scrolls internally — the host scrolls).
-  //   overlayHTML(value) → mirror markup (the snippet tab-glyph overlay);
+  //   overlayHTML(value) → mirror markup (the sketch tab-glyph overlay);
   //   omit for no overlay (suggest-edit shows glyphs as literal chars).
   // returns { wrap, textarea, autoGrow, insertAtCaret }
   function createMonoEditor(opts) {

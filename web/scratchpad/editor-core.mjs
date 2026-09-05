@@ -66,9 +66,9 @@ export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=2';
 function breathingRoomInserts(doc, sc, atOpen) {
   const inserts = [];
   doc.forEach((node, offset, index) => {
-    if (node.type !== sc.nodes.snippet) return;
+    if (node.type !== sc.nodes.sketch) return;
     const next = doc.maybeChild(index + 1);
-    if (!next || next.type === sc.nodes.snippet) inserts.push(offset + node.nodeSize);
+    if (!next || next.type === sc.nodes.sketch) inserts.push(offset + node.nodeSize);
   });
   if (atOpen && (!doc.lastChild || doc.lastChild.type !== sc.nodes.paragraph)) {
     if (!inserts.includes(doc.content.size)) inserts.push(doc.content.size);
@@ -298,9 +298,9 @@ export async function createScratchpadEditor(els, scratchpadId) {
   view = new EditorView(els.editorEl, {
     state,
     nodeViews: {
-      // keyed by the PM node's LEGACY STORAGE NAME ('snippet' — see the
+      // keyed by the PM node's LEGACY STORAGE NAME ('sketch' — see the
       // schema def), not the UI term.
-      snippet: (node, v, getPos) => new SketchView(node, v, getPos),
+      sketch: (node, v, getPos) => new SketchView(node, v, getPos),
       noteRef: (node, v, getPos) => new NoteRefView(node, v, getPos),
     },
     dispatchTransaction(tr) {
@@ -389,14 +389,14 @@ export async function createScratchpadEditor(els, scratchpadId) {
     insertSketch: async () => {
       const ctx = await variationApi.createNew();
       insertBlockSafely(view.state, view.dispatch,
-        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+        schema.nodes.sketch.create({ variationId: ctx.variation.variation_id }));
       return ctx;
     },
     // Based-on: mint a new sibling variation (next letter) and place it.
     insertVariationOf: async (sourceId) => {
       const ctx = await variationApi.createFrom(sourceId);
       insertBlockSafely(view.state, view.dispatch,
-        schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+        schema.nodes.sketch.create({ variationId: ctx.variation.variation_id }));
       // Existing siblings must show the new variation in their tab bar now.
       const sketchId = (ctx.sketch && ctx.sketch.sketch_id)
         || (ctx.variation && ctx.variation.sketch_id);

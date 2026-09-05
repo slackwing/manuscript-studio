@@ -455,7 +455,7 @@ func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Reque
 		if wantEnd {
 			return cmd.Kind == sentence.CmdEnd
 		}
-		return cmd.Kind == sentence.CmdAnchor || cmd.Kind == sentence.CmdSnippet
+		return cmd.Kind == sentence.CmdAnchor || cmd.Kind == sentence.CmdSketch
 	}
 	// joinOf normalizes the whitespace between a region command and its
 	// neighboring prose — the join must survive re-placement byte-shape
@@ -478,7 +478,7 @@ func (h *VariationHandlers) HandlePlacePlan(w http.ResponseWriter, r *http.Reque
 	leadingOpener := func(text string) (string, string, string, bool) {
 		trimmed := strings.TrimSpace(text)
 		cmd, ok := sentence.ParseCommand(trimmed)
-		if !ok || cmd.Slug != sketchID || (cmd.Kind != sentence.CmdAnchor && cmd.Kind != sentence.CmdSnippet) {
+		if !ok || cmd.Slug != sketchID || (cmd.Kind != sentence.CmdAnchor && cmd.Kind != sentence.CmdSketch) {
 			return "", "", "", false
 		}
 		if len(trimmed) <= len(cmd.Raw) {

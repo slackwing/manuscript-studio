@@ -1,6 +1,6 @@
 /**
  * Book-side Canonize (VARIATIONS_PLAN.md): a + rule between paragraphs
- * (and a "Fill" affordance on placeholders) that dubs a snippet VARIATION
+ * (and a "Fill" affordance on placeholders) that dubs a sketch VARIATION
  * canon — ONE suggested edit wrapping its text in
  * &sketch#<sketch-id>{label} … &end#<sketch-id> (formerly &snippet# — the
  * legacy spelling parses forever; new placements write &sketch#).
@@ -430,7 +430,7 @@ const WriteSysImportScratchpad = {
           'Delete the suggestion or retry canonize from a fresh modal.');
       }
 
-      // Now that this snippet is canonized, offer to freeze all its variations
+      // Now that this sketch is canonized, offer to freeze all its variations
       // (they're no longer a work-in-progress). Individual ones can be
       // unfrozen later. Best-effort — a failure here doesn't undo the canonize.
       if (window.confirm('Freeze all variations? (You can unfreeze select ones individually.)')) {

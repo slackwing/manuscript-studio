@@ -21,7 +21,7 @@ const WriteSysRegion = {
     const items = [];
     let state = 'before';
     // The opener/end may sit INLINE inside a prose fragment (the tight
-    // canonize form: "prev.\n&snippet#id{label}\n\tcontent\n&end#id") —
+    // canonize form: "prev.\n&sketch#id{label}\n\tcontent\n&end#id") —
     // find them mid-text, not just as block fragments. Indices from
     // findInline are code-point offsets (match with Array.from).
     const findTok = (text, kinds) => {
@@ -37,12 +37,12 @@ const WriteSysRegion = {
       const eff = canon(raw);
       for (const f of cmdLib.segmentFragments(eff)) {
         if (state === 'before') {
-          if (f.kind === 'command' && (f.cmd.kind === 'anchor' || f.cmd.kind === 'snippet') && f.cmd.slug === slug) {
+          if (f.kind === 'command' && (f.cmd.kind === 'anchor' || f.cmd.kind === 'sketch') && f.cmd.slug === slug) {
             state = 'inside';
             continue;
           }
           if (f.kind === 'prose') {
-            const open = findTok(f.text, ['anchor', 'snippet']);
+            const open = findTok(f.text, ['anchor', 'sketch']);
             if (open) {
               state = 'inside';
               const rest = slicePts(f.text, open.end);
@@ -78,7 +78,7 @@ const WriteSysRegion = {
   },
 
   // replacePlan computes the suggested edits that RE-PLACE a region: the
-  // text between the &sketch/&snippet opener and its &end is replaced by
+  // text between the &sketch (or legacy &snippet) opener and its &end is replaced by
   // newText, anchors untouched. Returns { status, plan: [{id, text}] } —
   // one suggestion per affected sentence (interior sentences suggest '',
   // the standard delete). Works on RAW effective text (committed text or
@@ -103,7 +103,7 @@ const WriteSysRegion = {
       const eff = (sugMap && sugMap[s.id] !== undefined) ? sugMap[s.id] : s.text;
       if (state === 'before') {
         const toks = tokensOf(eff);
-        const open = toks.find((c) => (c.kind === 'anchor' || c.kind === 'snippet') && c.slug === slug);
+        const open = toks.find((c) => (c.kind === 'anchor' || c.kind === 'sketch') && c.slug === slug);
         if (!open) continue;
         const after = toks.find((c) => c.kind === 'end' && c.slug === slug && c.start >= open.end);
         // An INLINE region start ("&sketch#x{} prose", 2026-08-22) keeps

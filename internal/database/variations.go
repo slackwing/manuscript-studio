@@ -102,7 +102,7 @@ type PickerVariation struct {
 const sketchIDAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 // newSketchID generates the globally-unique, slug-shaped sketch ID that also
-// appears in the manuscript as &snippet#<id> (LEGACY SYNTAX NAME in book text) (10 base36 chars ≈ 52 bits —
+// appears in the manuscript as &sketch#<id> (10 base36 chars ≈ 52 bits —
 // collision-free at any personal scale, retried on conflict anyway).
 func newSketchID() (string, error) {
 	buf := make([]byte, 10)
@@ -573,7 +573,7 @@ func (db *DB) LinkSketch(ctx context.Context, userID, sketchID string, manuscrip
 // letter, permanently frozen, text = the immutable as-canonized snapshot), sets
 // the group's canon pointer, and auto-links the group to the manuscript. The
 // manuscript text itself is inserted client-side as a suggestion wrapping the
-// text in &snippet#<sketch-id>{label} … &end#<sketch-id> (legacy syntax name) (canon truth stays
+// text in &sketch#<sketch-id>{label} … &end#<sketch-id> (canon truth stays
 // in the manuscript — VARIATIONS_PLAN.md §2).
 func (db *DB) CanonizeVariation(ctx context.Context, userID string, variationID, manuscriptID int, manuscriptName string) (*VariationContext, error) {
 	tx, err := db.Pool.Begin(ctx)
@@ -761,7 +761,7 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 		`, manuscriptID, userID, sketchID); err != nil {
 			return fmt.Errorf("create sketch note: %w", err)
 		}
-		// Append the widget node to the pad doc (PM node type 'snippet' —
+		// Append the widget node to the pad doc (PM node type 'sketch' —
 		// legacy storage name; every saved doc embeds it).
 		var docJSON []byte
 		if err := tx.QueryRow(ctx, `SELECT doc FROM scratchpad WHERE scratchpad_id = $1 FOR UPDATE`, scratchpadID).Scan(&docJSON); err != nil {
@@ -773,7 +773,7 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 		}
 		content, _ := doc["content"].([]interface{})
 		content = append(content, map[string]interface{}{
-			"type":  "snippet",
+			"type":  "sketch",
 			"attrs": map[string]interface{}{"variationId": aID},
 		})
 		doc["content"] = content

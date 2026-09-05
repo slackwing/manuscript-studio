@@ -22,7 +22,7 @@ console.log('=== region replacePlan + resolve units ===\n');
 {
   const sentences = [
     { id: 'z', text: 'Zero sentence.' },
-    { id: 'p', text: 'Prose before. &snippet#keg{x} old inner &end#keg tail after.' },
+    { id: 'p', text: 'Prose before. &sketch#keg{x} old inner &end#keg tail after.' },
     { id: 'q', text: 'Never reached.' },
   ];
   const res = region.replacePlan(sentences, {}, 'keg', cmd, 'NEW');
@@ -30,12 +30,12 @@ console.log('=== region replacePlan + resolve units ===\n');
   check('inline same-sentence: single suggestion', res.plan.length === 1, String(res.plan.length));
   check('inline same-sentence: targets the host sentence', res.plan[0] && res.plan[0].id === 'p');
   check('inline same-sentence: space joins preserved (inline region form)',
-    res.plan[0] && res.plan[0].text === 'Prose before. &snippet#keg{x} NEW &end#keg tail after.',
+    res.plan[0] && res.plan[0].text === 'Prose before. &sketch#keg{x} NEW &end#keg tail after.',
     JSON.stringify(res.plan[0] && res.plan[0].text));
 }
 
 // ---- replaceplan-block-opener (:109–113) + interior delete + unchanged
-// omitted (:89, :123–130). Also: the 'sketch' successor spelling parses as
+// omitted (:89, :123–130). Also: the legacy 'snippet' spelling parses as
 // the same opener kind.
 {
   const sentences = [
@@ -66,7 +66,7 @@ console.log('=== region replacePlan + resolve units ===\n');
 // pre-end run deleted, the &end onward kept) (:123–130).
 {
   const sentences = [
-    { id: 'a', text: '&snippet#keg{x}' },
+    { id: 'a', text: '&sketch#keg{x}' },
     { id: 'b', text: '\n\nDoomed middle.' },
     { id: 'c', text: 'Tail start &end#keg and after.' },
   ];
@@ -84,7 +84,7 @@ console.log('=== region replacePlan + resolve units ===\n');
 {
   const sentences = [
     { id: 'a', text: 'No commands at all.' },
-    { id: 'b', text: '&snippet#keg{x}' },
+    { id: 'b', text: '&sketch#keg{x}' },
     { id: 'c', text: '\n\nContent but no end.' },
   ];
   let res = region.replacePlan(sentences, {}, 'nope', cmd, 'X');
@@ -99,11 +99,11 @@ console.log('=== region replacePlan + resolve units ===\n');
 // base, so the plan composes with an in-flight edit.
 {
   const sentences = [{ id: 's1', text: 'Committed text without any region.' }];
-  const sug = { s1: 'Lead. &snippet#keg{x} old &end#keg tail.' };
+  const sug = { s1: 'Lead. &sketch#keg{x} old &end#keg tail.' };
   const res = region.replacePlan(sentences, sug, 'keg', cmd, 'NEW');
   check('sugMap composes: status ok', res.status === 'ok', res.status);
   check('sugMap composes: plan built on the suggestion, not the committed text',
-    res.plan.length === 1 && res.plan[0].text === 'Lead. &snippet#keg{x} NEW &end#keg tail.',
+    res.plan.length === 1 && res.plan[0].text === 'Lead. &sketch#keg{x} NEW &end#keg tail.',
     JSON.stringify(res.plan[0] && res.plan[0].text));
 }
 
@@ -112,13 +112,13 @@ console.log('=== region replacePlan + resolve units ===\n');
 // from findInline). Any code-UNIT slicing would corrupt the exact strings.
 {
   const sentences = [
-    { id: 'u', text: '𝔘𝔫𝔦 😀 &snippet#keg{a😀b} old &end#keg 🎉 tail.' },
+    { id: 'u', text: '𝔘𝔫𝔦 😀 &sketch#keg{a😀b} old &end#keg 🎉 tail.' },
   ];
   const res = region.replacePlan(sentences, {}, 'keg', cmd, 'NEW✨');
   check('codepoints: status ok', res.status === 'ok', res.status);
   check('codepoints: astral prefix/label/suffix survive exactly',
     res.plan.length === 1
-      && res.plan[0].text === '𝔘𝔫𝔦 😀 &snippet#keg{a😀b} NEW✨ &end#keg 🎉 tail.',
+      && res.plan[0].text === '𝔘𝔫𝔦 😀 &sketch#keg{a😀b} NEW✨ &end#keg 🎉 tail.',
     JSON.stringify(res.plan[0] && res.plan[0].text));
 }
 
@@ -143,7 +143,7 @@ console.log('=== region replacePlan + resolve units ===\n');
 // one prose fragment → exactly one inner item, boundaries excluded.
 {
   const sentences = [
-    { id: 'q', text: 'Boundary. &snippet#keg{x} the inner bit &end#keg afterwards.' },
+    { id: 'q', text: 'Boundary. &sketch#keg{x} the inner bit &end#keg afterwards.' },
   ];
   const res = region.resolve(sentences, {}, 'keg', cmd, null);
   check('inline open+end: status ok', res.status === 'ok', res.status);

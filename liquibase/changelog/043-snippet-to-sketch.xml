@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- snippet→sketch rename backfill (2026-09-05). The command has spelled
+         itself &sketch in book text since 2026-08; this finishes the rename
+         in stored data so 'snippet' survives only as a legacy INPUT spelling:
+         - command_slug.kind rows written as 'snippet' become 'sketch'
+         - the ProseMirror placement node type inside stored scratchpad docs
+           (scratchpad.doc + scratchpad_revision.doc) is retyped. The regexp
+           targets the JSON key/value pair `"type": "snippet"` only — prose
+           lives in "text" values and cannot match the quoted-key form.
+         Idempotent: both statements are no-ops once applied. -->
+    <changeSet id="043-snippet-to-sketch" author="claude">
+        <sql>
+            UPDATE command_slug SET kind = 'sketch' WHERE kind = 'snippet';
+        </sql>
+        <sql>
+            UPDATE scratchpad
+            SET doc = regexp_replace(doc::text, '"type"(\s*):(\s*)"snippet"', '"type"\1:\2"sketch"', 'g')::jsonb
+            WHERE doc::text ~ '"type"\s*:\s*"snippet"';
+        </sql>
+        <sql>
+            UPDATE scratchpad_revision
+            SET doc = regexp_replace(doc::text, '"type"(\s*):(\s*)"snippet"', '"type"\1:\2"sketch"', 'g')::jsonb
+            WHERE doc::text ~ '"type"\s*:\s*"snippet"';
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

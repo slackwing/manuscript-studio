@@ -53,7 +53,7 @@ function psql(sql) {
           title: 'pad A',
           doc: { type: 'doc', content: [
             { type: 'paragraph', content: [{ type: 'text', text: 'pad A prose' }] },
-            { type: 'snippet', attrs: { variationId: sk.variation.variation_id } },
+            { type: 'sketch', attrs: { variationId: sk.variation.variation_id } },
             { type: 'paragraph' },
           ] },
         }),

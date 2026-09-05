@@ -159,7 +159,7 @@ const { suggestEditor } = require('./test-utils');
 
   // ---- R8: carried marker strength --------------------------------------
   {
-    const indent = await render([{ id: 'r8a', text: 'x' }], { r8a: '\n\n&snippet#ab{}\n\tPara' });
+    const indent = await render([{ id: 'r8a', text: 'x' }], { r8a: '\n\n&sketch#ab{}\n\tPara' });
     check('R8: explicit \\n\\t indent beats carried \\n\\n section',
       /<p class="indented has-anchor-margin"/.test(indent) && !indent.includes('section-break'), indent);
     const carry = await render([
@@ -259,7 +259,7 @@ const { suggestEditor } = require('./test-utils');
         phValid: R.renderInlineCommand({ kind: 'placeholder', slug: 'p', notes: '', args: ['sentences', 's'], raw: '&placeholder#p{sentences}{s}' }),
         phInvalid: R.renderInlineCommand({ kind: 'placeholder', slug: 'p', notes: '', args: ['paragraphs'], raw: '&placeholder#p{paragraphs}' }),
         anchor: R.renderInlineCommand({ kind: 'anchor', slug: 's', notes: '', args: [], raw: '&anchor#s{}' }),
-        snippet: R.renderInlineCommand({ kind: 'snippet', slug: 's', notes: '', args: [], raw: '&snippet#s{}' }),
+        sketch: R.renderInlineCommand({ kind: 'sketch', slug: 's', notes: '', args: [], raw: '&sketch#s{}' }),
         refOk: R.renderInlineCommand({ kind: 'reference', slug: 'tgt', notes: 'see here', args: ['see here'], raw: '&reference#tgt{see here}' }),
         refBroken: R.renderInlineCommand({ kind: 'reference', slug: 'nope', notes: '', args: [], raw: '&reference#nope{}' }),
       };
@@ -271,7 +271,7 @@ const { suggestEditor } = require('./test-utils');
       out.phInvalid === '&amp;placeholder#p{paragraphs}', out.phInvalid);
     check('R13: inline anchor → ⚓ aria-label anchor',
       out.anchor.includes('⚓') && out.anchor.includes('aria-label="anchor"') && out.anchor.includes('inline-anchor'), out.anchor);
-    check('R13: inline snippet → sketch glyph', out.snippet.includes('cmd-sketch-glyph') && out.snippet.includes('aria-label="sketch"'), out.snippet);
+    check('R13: inline sketch → sketch glyph', out.sketch.includes('cmd-sketch-glyph') && out.sketch.includes('aria-label="sketch"'), out.sketch);
     check('R13: resolvable reference → link with target',
       out.refOk === '<a class="inline-ref" data-ref-target="sent-9" title="tgt">see here</a>', out.refOk);
     check('R13: dangling reference → broken marker with ↪ slug fallback',
@@ -288,6 +288,7 @@ const { suggestEditor } = require('./test-utils');
       const r = {
         ref: R.renderInlineCommandsInHtml('foo &amp;reference#tgt{see} bar'),
         sketch: R.renderInlineCommandsInHtml('x &amp;sketch#ab{lbl} y'),
+        legacySnippet: R.renderInlineCommandsInHtml('x &amp;snippet#ab{lbl} y'),
         straddle: R.renderInlineCommandsInHtml('x &amp;refer<del>ence#a{n}</del>'),
         end: R.renderInlineCommandsInHtml('x &amp;end#zz y'),
         ph: R.renderInlineCommandsInHtml('&amp;placeholder#p{sentences}{s}'),
@@ -297,7 +298,8 @@ const { suggestEditor } = require('./test-utils');
     });
     check('R14: escaped reference token → link',
       out.ref.includes('<a class="inline-ref" data-ref-target="sent-9"') && out.ref.startsWith('foo '), out.ref);
-    check('R14: sketch alias → snippet kind (sketch glyph)', out.sketch.includes('cmd-sketch-glyph'), out.sketch);
+    check('R14: sketch token → sketch glyph', out.sketch.includes('cmd-sketch-glyph'), out.sketch);
+    check('R14: legacy snippet spelling → sketch kind (same glyph)', out.legacySnippet.includes('cmd-sketch-glyph'), out.legacySnippet);
     check('R14: token straddling a <del> boundary left as text',
       out.straddle === 'x &amp;refer<del>ence#a{n}</del>', out.straddle);
     check('R14: escaped &end#slug form → inline-end', out.end.includes('inline-end') && out.end.includes('data-slug="zz"'), out.end);

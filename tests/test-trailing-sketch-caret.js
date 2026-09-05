@@ -29,9 +29,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const shape = () => page.evaluate(() =>
     window.WriteSysScratchpad.view.state.doc.content.content.map(n => n.type.name));
   let types = await shape();
-  check('sketch inserted', types.includes('snippet' /* legacy PM node name */), JSON.stringify(types));
+  check('sketch inserted', types.includes('sketch'), JSON.stringify(types));
   check('doc auto-ends with a paragraph after the sketch',
-    types[types.length - 1] === 'paragraph' && types[types.indexOf('snippet' /* legacy PM node name */) - 0 + 1] !== undefined,
+    types[types.length - 1] === 'paragraph' && types[types.indexOf('sketch') + 1] !== undefined,
     JSON.stringify(types));
 
   // The trailing paragraph is CLICKABLE: click it and type.

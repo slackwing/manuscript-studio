@@ -44,9 +44,9 @@ const WriteSysCanonicalize = (function () {
       // space/tab join → INLINE form ("&anchor{...} prose", one space) — a
       // mid-paragraph region start; the renderer shows the go-to icon
       // between the two spaces. Idempotent both ways.
-      if (trimmed.startsWith('&anchor') || trimmed.startsWith('&snippet') || trimmed.startsWith('&sketch')) {
+      if (trimmed.startsWith('&anchor') || trimmed.startsWith('&sketch') || trimmed.startsWith('&snippet')) {
         const a = cmd.parse(trimmed);
-        if (a && (a.kind === 'anchor' || a.kind === 'snippet')) {
+        if (a && (a.kind === 'anchor' || a.kind === 'sketch')) {
           const restRaw = trimmed.slice(a.raw.length);
           const rest = restRaw.replace(/^[ \t\n]+/, '');
           if (rest !== '') {
@@ -74,10 +74,10 @@ const WriteSysCanonicalize = (function () {
   function leadingAnchorNewline(body) {
     if (!body.startsWith('\n')) return false;
     const rest = body.replace(/^[ \t\n]+/, '');
-    if (!(rest.startsWith('&anchor') || rest.startsWith('&snippet') || rest.startsWith('&sketch'))) return false;
+    if (!(rest.startsWith('&anchor') || rest.startsWith('&sketch') || rest.startsWith('&snippet'))) return false;
     const cmd = cmdLib();
     const a = cmd && cmd.parse(rest);
-    return !!(a && (a.kind === 'anchor' || a.kind === 'snippet'));
+    return !!(a && (a.kind === 'anchor' || a.kind === 'sketch'));
   }
 
   function canonicalize(text) {

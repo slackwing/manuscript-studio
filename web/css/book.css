@@ -2296,7 +2296,7 @@ p.section-break {
   color: #777;
 }
 
-/* The edit pane itself wears the snippet widget's .sn-text styles
+/* The edit pane itself wears the sketch widget's .sn-text styles
    (scratchpad.css, shared) — .suggestion-modal-textarea stays as a hook only.
    The read-only version pane copies .sn-text's EXACT metrics (12px/1.55
    Monaco, tab-size 4, same padding) so the panes align char-for-char. */

@@ -21,14 +21,14 @@
  */
 
 const WriteSysCommand = {
-  // 'sketch' is the successor spelling of 'snippet' (the snippet→sketch
-  // rename) — parsed as the SAME command; parse() normalizes the kind to
-  // 'snippet' (the internal legacy name) so every consumer stays single-kind.
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'snippet', 'sketch', 'end'],
+  // 'snippet' is the legacy spelling of 'sketch' (the snippet→sketch
+  // rename) — parsed as the SAME command and valid input forever; parse()
+  // normalizes the kind to 'sketch' so every consumer stays single-kind.
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'sketch', 'snippet', 'end'],
   // Block commands stand alone as their own sentence when on their own line.
   // &meta is block but renders as nothing (it carries a setting). anchor,
   // placeholder, and end are block only when sole line content (segman).
-  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, snippet: true, sketch: true, end: true },
+  BLOCK: { title: true, part: true, chapter: true, anchor: true, meta: true, placeholder: true, sketch: true, snippet: true, end: true },
 
   // Placeholder t-shirt sizes. Sentences double-ish; paragraphs are
   // Fibonacci. The asymmetry is deliberate (PLACEHOLDER_PLAN.md).
@@ -52,7 +52,7 @@ const WriteSysCommand = {
       if (chars[end] === '#' || chars[end] === '{') { kind = kw; i = end; break; }
     }
     if (kind === null) return null;
-    if (kind === 'sketch') kind = 'snippet'; // successor spelling — one internal kind
+    if (kind === 'snippet') kind = 'sketch'; // legacy spelling — one internal kind
 
     let slug = '';
     if (i < chars.length && chars[i] === '#') {
@@ -154,9 +154,9 @@ const WriteSysCommand = {
         continue;
       }
       // Leading-command block form (canonicalize output): "&anchor{...}\nprose"
-      // or "&snippet#x{...}\nprose" (sketch spelling included — parse()
-      // normalizes it to kind 'snippet'). canonicalize joins a leading block
-      // anchor/snippet to its paragraph with a single \n (canonicalize.js:45–47
+      // or "&sketch#x{...}\nprose" (sketch spelling included — parse()
+      // normalizes it to kind 'sketch'). canonicalize joins a leading block
+      // anchor/sketch to its paragraph with a single \n (canonicalize.js:45–47
       // / canonicalize.go — the same kinds, kept in lockstep), and segman
       // splits it into its own sentence. Mirror that split here so the render
       // preview matches the pushed/segmented result: emit the command as a
@@ -167,7 +167,7 @@ const WriteSysCommand = {
       // (e.g. a paragraph after a placeholder keeps its \n\t indent). The anchor
       // glyph is just a left-margin decoration on that paragraph and carries no
       // marker of its own.
-      if (cmd && (cmd.kind === 'anchor' || cmd.kind === 'snippet')) {
+      if (cmd && (cmd.kind === 'anchor' || cmd.kind === 'sketch')) {
         const after = trimmed.slice(cmd.raw.length);
         if (after.startsWith('\n')) {
           const prose = after.slice(1);
@@ -251,7 +251,7 @@ const WriteSysCommand = {
       const cmd = this.parse(chars.slice(i).join(''));
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
-      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'snippet' || cmd.kind === 'end') {
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'sketch' || cmd.kind === 'end') {
         out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end });
       }
       i = end;
@@ -283,10 +283,10 @@ const WriteSysCommand = {
         // A block anchor renders as a glyph (⚓), NOT its label text. The label
         // is outline metadata and shows on hover (title) + in the outline nav.
         return { tag: 'div', cls: 'cmd-anchor', visible: '', description: '', glyph: true, label: cmd.args[0] || '' };
-      case 'snippet':
+      case 'sketch':
         // A canon-region opener (VARIATIONS_PLAN.md) renders exactly like a
         // block anchor — the extra class is a styling/selection hook.
-        return { tag: 'div', cls: 'cmd-anchor cmd-snippet', visible: '', description: '', glyph: true, label: cmd.args[0] || '' };
+        return { tag: 'div', cls: 'cmd-anchor cmd-sketch', visible: '', description: '', glyph: true, label: cmd.args[0] || '' };
       default:
         return null;
     }

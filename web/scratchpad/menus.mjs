@@ -171,7 +171,7 @@ export function buildSketchMenu(toolbarEl, getView) {
   const insertVariation = (ctx) => {
     const view = getView();
     insertBlockSafely(view.state, view.dispatch,
-      schema.nodes.snippet.create({ variationId: ctx.variation.variation_id }));
+      schema.nodes.sketch.create({ variationId: ctx.variation.variation_id }));
     close();
     view.focus();
     // A new sibling changes the group's variation list, so every EXISTING widget of

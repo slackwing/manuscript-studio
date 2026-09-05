@@ -50,9 +50,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       await fetch(`api/variations/${b.variation.variation_id}`, { method: 'PUT', headers: H, body: JSON.stringify({ text: 'Bottom widget text. '.repeat(30) }) });
       const para = (i) => ({ type: 'paragraph', content: [{ type: 'text', text: `Filler paragraph ${i}: the quick brown fox jumps over the lazy dog again and again.` }] });
       const content = [
-        { type: 'snippet', attrs: { variationId: a.variation.variation_id } },
+        { type: 'sketch', attrs: { variationId: a.variation.variation_id } },
         ...Array.from({ length: 40 }, (_, i) => para(i)),
-        { type: 'snippet', attrs: { variationId: b.variation.variation_id } },
+        { type: 'sketch', attrs: { variationId: b.variation.variation_id } },
         { type: 'paragraph' },
       ];
       await fetch(`api/scratchpads/${pad}`, { method: 'PUT', headers: H, body: JSON.stringify({ title: 'scroll pad', doc: { type: 'doc', content } }) });

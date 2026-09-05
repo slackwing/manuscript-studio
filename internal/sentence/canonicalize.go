@@ -66,11 +66,11 @@ func leadingAnchorNewline(body string) bool {
 		return false
 	}
 	rest := strings.TrimLeft(body, " \t\n")
-	if !(strings.HasPrefix(rest, "&anchor") || strings.HasPrefix(rest, "&snippet") || strings.HasPrefix(rest, "&sketch")) {
+	if !(strings.HasPrefix(rest, "&anchor") || strings.HasPrefix(rest, "&sketch") || strings.HasPrefix(rest, "&snippet")) {
 		return false
 	}
 	cmd, ok := ParseCommand(rest)
-	return ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSnippet)
+	return ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSketch)
 }
 
 func canonicalizeBody(body string, hasMarker bool) string {
@@ -90,8 +90,8 @@ func canonicalizeBody(body string, hasMarker bool) string {
 	// paragraph, one space — a mid-paragraph region start (2026-08-22:
 	// inline starts to anchored sections; the renderer shows the go-to icon
 	// between the two spaces). Idempotent both ways.
-	if strings.HasPrefix(trimmed, "&anchor") || strings.HasPrefix(trimmed, "&snippet") || strings.HasPrefix(trimmed, "&sketch") {
-		if cmd, ok := ParseCommand(trimmed); ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSnippet) {
+	if strings.HasPrefix(trimmed, "&anchor") || strings.HasPrefix(trimmed, "&sketch") || strings.HasPrefix(trimmed, "&sketch") {
+		if cmd, ok := ParseCommand(trimmed); ok && (cmd.Kind == CmdAnchor || cmd.Kind == CmdSketch) {
 			rest := trimmed[len(cmd.Raw):]
 			restTrimmed := strings.TrimLeft(rest, " \t\n")
 			if restTrimmed != "" {

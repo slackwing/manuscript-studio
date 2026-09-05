@@ -95,10 +95,10 @@ func BuildOutline(ids []string, textByID map[string]string) *Outline {
 				curChapter = len(o.TopChapters) - 1
 			}
 
-		case CmdAnchor, CmdPlaceholder, CmdSnippet:
+		case CmdAnchor, CmdPlaceholder, CmdSketch:
 			// A block anchor's outline text is its {label} (first arg). A
 			// placeholder lists exactly like an anchor — indistinguishable in
-			// the outline — using its own {label} field; a &snippet (canon
+			// the outline — using its own {label} field; a &sketch (canon
 			// region opener) also lists via its {label}; a mis-syntaxed
 			// placeholder renders as prose and stays out of the outline.
 			if cmd.Kind == CmdPlaceholder {
@@ -109,7 +109,7 @@ func BuildOutline(ids []string, textByID map[string]string) *Outline {
 				}
 			}
 			// No label = not outline-worthy — one rule for anchors,
-			// placeholders, and snippets alike (an unlabeled anchor listed
+			// placeholders, and sketches alike (an unlabeled anchor listed
 			// as a bare #slug and read as noise).
 			if strings.TrimSpace(label) == "" {
 				continue
