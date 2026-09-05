@@ -132,14 +132,18 @@ function psql(sql) {
     await page.locator('.spm-dialog').dispatchEvent('mousedown', { bubbles: true });
     await page.waitForTimeout(300);
     check('mousedown INSIDE the dialog does not close', (await page.locator('.spm-overlay').count()) === 1);
-    // The expander became the PIN (tabs feature): clicking pins the pad as
-    // a tab under the top bar; clicking again unpins.
+    // The expander became the PIN (stateful tabs): clicking turns the modal
+    // into a live tab panel — the modal closes, the tab + iframe appear.
     await page.click('#spm-pin');
-    check('pin adds the pad to the tab row',
+    await page.waitForSelector('#ms-tab-panels iframe[src*="pad.html"].active', { timeout: 15000 });
+    check('pin converts the modal into a live panel + tab',
       await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 1
-      && await page.locator('#spm-pin.pinned').count() === 1);
-    await page.click('#spm-pin');
-    check('re-click unpins (pad tab gone; Home stays — the bar is permanent)',
+      && await page.locator('.spm-overlay').count() === 0);
+    // × on the tab tears the panel down; the permanent bar keeps Home.
+    await page.hover('#ms-tabs .ms-tab-scratchpad');
+    await page.click('#ms-tabs .ms-tab-scratchpad .ms-tab-x');
+    await page.waitForFunction(() => !document.querySelector('#ms-tab-panels iframe[src*="pad.html"]'));
+    check('tab × destroys the panel (pad tab gone; Home stays — the bar is permanent)',
       await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 0
       && await page.locator('#ms-tabs .ms-tab-home').count() === 1
       && await page.locator('#ms-tabs[hidden]').count() === 0)

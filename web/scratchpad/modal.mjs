@@ -68,32 +68,34 @@ export const ScratchpadModal = {
     document.body.appendChild(overlay);
     this.overlay = overlay;
 
+    // pad.html hosts this same machinery AS A PAGE (inside a live tab
+    // panel): no close ×, no backdrop-close, no Escape — the shell's tab ×
+    // is the only way out, and it flushes the editor first.
+    const PAGE_MODE = document.documentElement.classList.contains('pad-page');
     overlay.querySelector('#spm-close').addEventListener('click', () => this.close());
-    // Clicking the backdrop closes too (the guard below still flushes —
-    // and refuses to close — before anything is lost).
-    overlay.addEventListener('mousedown', (e) => {
-      if (e.target === overlay) this.close();
-    });
-    // Pin as tab (was the fullscreen expander): the pad joins the tab row
-    // under the top bar AND takes over the screen — a pinned pad is a tab's
-    // page (spm-full), an unpinned one stays a windowed modal.
+    if (!PAGE_MODE) {
+      // Clicking the backdrop closes too (the guard below still flushes —
+      // and refuses to close — before anything is lost).
+      overlay.addEventListener('mousedown', (e) => {
+        if (e.target === overlay) this.close();
+      });
+    }
+    // Pin = TURN INTO A TAB: the pad leaves the modal and opens as a live,
+    // kept-alive panel in the shell (window.top when we're inside a
+    // manuscript panel's own frame).
     const pinBtn = overlay.querySelector('#spm-pin');
-    const dialog = overlay.querySelector('.spm-dialog');
-    const syncPin = () => {
-      const pinned = !!(window.WriteSysTabs && window.WriteSysTabs.isPinned('scratchpad', scratchpadId));
-      pinBtn.classList.toggle('pinned', pinned);
-      dialog.classList.toggle('spm-full', pinned);
-      overlay.classList.toggle('spm-tabbed', pinned); // below the tab strip
-    };
-    pinBtn.addEventListener('click', () => {
-      if (!window.WriteSysTabs) return;
+    pinBtn.addEventListener('click', async () => {
+      let tabs = null;
+      try { tabs = (window.top && window.top.WriteSysTabs) || window.WriteSysTabs; } catch (e) { tabs = window.WriteSysTabs; }
+      if (!tabs) return;
       const name = (overlay.querySelector('#spm-title').value || 'Untitled').trim();
-      window.WriteSysTabs.toggle('scratchpad', scratchpadId, name);
-      syncPin();
+      await this.close(); // flush; refuses (keeps the modal) if a save is failing
+      if (!this.overlay) tabs.openPad(scratchpadId, name);
     });
-    syncPin();
-    this._esc = (e) => { if (e.key === 'Escape') this.close(); };
-    document.addEventListener('keydown', this._esc);
+    if (!PAGE_MODE) {
+      this._esc = (e) => { if (e.key === 'Escape') this.close(); };
+      document.addEventListener('keydown', this._esc);
+    }
 
     try {
       this.editor = await createScratchpadEditor({

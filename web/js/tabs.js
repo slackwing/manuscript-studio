@@ -1,19 +1,28 @@
-// The tab bar — the row under the top bar, on every logged-in page, ALWAYS
-// visible: Home first (uncloseable — it's the landing page, not a pin),
-// then one tab per pin, each with its own ×. A pinned pad renders as that
-// tab's page — filling the space BELOW the header and strip (spm-tabbed;
-// there is no full-screen mode). Manuscripts auto-pin on open. Pinning
-// happens from the pad modal's pin button and the book strip's pin button
-// (manuscripts and scratchpads only; notes' "See all" is a landing view,
-// not a place). Pins live in localStorage: switching between tabs never
-// routes through a card grid.
+// The tab bar + its LIVE PANELS — real, stateful tabs.
 //
-// chrome.js renders the empty #ms-tabs shell right under #controls; this
-// file (loaded after it on every page) owns state + rendering. The row
-// occupies layout only when pins exist: html.has-ms-tabs flips the shared
-// --tabs-h variable that every fixed-top rule adds on.
+// home.html is the SHELL: Home is the landing page itself, and every pin
+// (manuscript or scratchpad) gets a PANEL — a same-origin iframe below the
+// chrome that is created on first activation and then KEPT ALIVE. Switching
+// tabs only flips which panel is visible; nothing reloads, scroll and
+// editor state survive. Panels host the existing pages (./?manuscript_id=N,
+// pad.html?scratchpad_id=N); framed pages detect the embed and hide their
+// own chrome (html.embedded — see book.css) and skip auto-pin.
+//
+// Outside the shell (a standalone book page from an old link, settings),
+// the bar still renders but tab clicks travel to the shell
+// (home.html#tab=<key>) — state lives in ONE place.
+//
+// The bar is ALWAYS visible: Home first (uncloseable — it's the landing
+// page, not a pin), then one tab per pin, each with its own ×. × closes
+// what it shows: the panel is destroyed (pads flush their save first).
+// Pins live in localStorage. Manuscripts auto-pin on a standalone visit;
+// pads pin from the modal's pin button (pinning turns the modal into a
+// panel). There is no full-screen mode.
 window.WriteSysTabs = (function () {
   const KEY = 'ms_pinned_tabs';
+  // Inside a panel iframe: no bar, no auto-pin, page hides its own chrome.
+  const EMBED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+  if (EMBED) document.documentElement.classList.add('embedded');
 
   const read = () => {
     try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
@@ -25,6 +34,8 @@ window.WriteSysTabs = (function () {
 
   const bookId = () => parseInt(new URLSearchParams(location.search).get('manuscript_id'), 10) || null;
   const onHomePage = () => /home\.html$/.test(location.pathname);
+  const SHELL = !EMBED && onHomePage();
+  const keyOf = (p) => p.type[0] + p.id; // 'm42' / 's7877'
   // WriteSysScratchpadModal starts as a lazy-loader shim (scratchpad-modal.js)
   // that only grows currentId/close once the real module loads — and nothing
   // can be open before that.
@@ -38,6 +49,7 @@ window.WriteSysTabs = (function () {
     if (m && typeof m.close === 'function') m.close();
   };
   const isPinned = (type, id) => read().some((p) => p.type === type && p.id === id);
+  const findPin = (type, id) => read().find((p) => p.type === type && p.id === id);
 
   const pin = (type, id, name) => {
     if (!id || isPinned(type, id)) return;
@@ -45,40 +57,110 @@ window.WriteSysTabs = (function () {
   };
   const unpin = (type, id) => write(read().filter((p) => !(p.type === type && p.id === id)));
   const toggle = (type, id, name) => (isPinned(type, id) ? unpin(type, id) : pin(type, id, name));
+  const rename = (type, id, name) => {
+    const tabs = read();
+    const t = tabs.find((p) => p.type === type && p.id === id);
+    if (t && name && t.name !== name) { t.name = name; write(tabs); }
+  };
+
+  // ---- panels (shell only): one kept-alive iframe per activated pin ------
+  let activeKey = null; // null = Home
+  const panels = new Map(); // key → iframe
+
+  const panelsHost = () => {
+    let host = document.getElementById('ms-tab-panels');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'ms-tab-panels';
+      host.hidden = true;
+      document.body.appendChild(host);
+    }
+    return host;
+  };
+
+  const panelSrc = (p) => (p.type === 'manuscript'
+    ? './?manuscript_id=' + p.id
+    : 'pad.html?scratchpad_id=' + p.id);
+
+  const activate = (key) => {
+    if (!SHELL) return;
+    if (openPadId()) closePad(); // a windowed modal never sits over a panel
+    activeKey = key || null;
+    const host = panelsHost();
+    if (activeKey) {
+      const p = read().find((q) => keyOf(q) === activeKey);
+      if (!p) { activeKey = null; host.hidden = true; render(); return; }
+      let frame = panels.get(activeKey);
+      if (!frame) {
+        frame = document.createElement('iframe');
+        frame.className = 'ms-panel';
+        frame.src = panelSrc(p);
+        panels.set(activeKey, frame);
+        host.appendChild(frame);
+      }
+      host.hidden = false;
+      panels.forEach((f, k) => f.classList.toggle('active', k === activeKey));
+    } else {
+      host.hidden = true;
+    }
+    const url = new URL(location.href);
+    url.hash = activeKey ? 'tab=' + activeKey : '';
+    history.replaceState(null, '', url);
+    render();
+  };
+
+  // Destroy a panel; a live pad flushes its save first (same-origin reach-in).
+  const destroyPanel = async (key) => {
+    const frame = panels.get(key);
+    if (!frame) return;
+    panels.delete(key);
+    try {
+      const ed = frame.contentWindow && frame.contentWindow.WriteSysScratchpad;
+      if (ed && typeof ed.saveNow === 'function') await ed.saveNow();
+    } catch (e) { /* cross-frame teardown races are non-fatal */ }
+    frame.remove();
+  };
+
+  // ---- opening things as tabs --------------------------------------------
+  const openTab = (type, id, name) => {
+    pin(type, id, name);
+    if (SHELL) activate(type[0] + id);
+    else location.href = 'home.html#tab=' + type[0] + id;
+  };
+  const openManuscript = (id, name) => openTab('manuscript', id, name);
+  const openPad = (id, name) => openTab('scratchpad', id, name);
 
   const goHome = () => {
-    if (!onHomePage()) { location.href = 'home.html'; return; }
-    if (openPadId()) closePad();
+    if (SHELL) { activate(null); return; }
+    location.href = 'home.html';
   };
 
   const go = (p) => {
-    if (p.type === 'manuscript') {
-      if (p.id === bookId()) { if (openPadId()) closePad(); return; }
-      location.href = './?manuscript_id=' + p.id;
-    } else if (modal()) {
-      if (p.id === openPadId()) return; // already looking at it
-      modal().open(p.id);
-    } else {
-      location.href = 'home.html#scratchpad=' + p.id;
-    }
+    if (SHELL) { activate(keyOf(p)); return; }
+    if (p.type === 'manuscript' && p.id === bookId()) { if (openPadId()) closePad(); return; }
+    location.href = 'home.html#tab=' + keyOf(p);
   };
 
-  // Closing a tab (×) closes what it shows: an open pad's modal closes with
-  // its tab; the manuscript you're reading sends you back to the landing page.
+  // Closing a tab (×) closes what it shows: its panel is destroyed (pads
+  // flush first); on a standalone book page, closing your own tab goes home.
   const closeTab = (p) => {
-    const wasOpenPad = p.type === 'scratchpad' && p.id === openPadId();
-    const wasCurrentBook = p.type === 'manuscript' && p.id === bookId();
+    const k = keyOf(p);
     unpin(p.type, p.id);
-    if (wasOpenPad) closePad();
-    if (wasCurrentBook) location.href = 'home.html';
+    if (SHELL) {
+      destroyPanel(k);
+      if (activeKey === k) activate(null);
+      return;
+    }
+    if (p.type === 'scratchpad' && p.id === openPadId()) closePad();
+    if (p.type === 'manuscript' && p.id === bookId()) location.href = 'home.html';
   };
 
   const render = () => {
+    if (EMBED) return; // panels have no bar of their own
     const host = document.getElementById('ms-tabs');
     if (!host) return;
     const pins = read();
-    // The tab bar is ALWAYS there (Home anchors it, uncloseable) — no
-    // appearing/disappearing chrome, no full-screen anything.
+    // The tab bar is ALWAYS there (Home anchors it, uncloseable).
     document.documentElement.classList.add('has-ms-tabs');
     host.hidden = false;
     host.replaceChildren();
@@ -86,8 +168,8 @@ window.WriteSysTabs = (function () {
     if (controls) {
       const h = Math.round(controls.getBoundingClientRect().height);
       host.style.top = h + 'px';
-      // Where the fixed chrome ends — a pinned pad's page starts here so the
-      // header and strip always stay visible (CSS carries a static fallback).
+      // Where the fixed chrome ends — panels start here (CSS has a static
+      // fallback so a late measurement can never swallow the header).
       document.documentElement.style.setProperty('--ms-chrome-b', (h + 30) + 'px'); // 30 = strip height (chrome.css)
     }
 
@@ -105,14 +187,13 @@ window.WriteSysTabs = (function () {
       return tab;
     };
 
-    // The landing page anchors the row (not itself a pin — no ×): active
-    // when nothing else is on top of it.
-    mkTab('ms-tab-home', 'Home', onHomePage() && !openPadId(), goHome);
+    const homeActive = SHELL ? (!activeKey && !openPadId()) : onHomePage();
+    mkTab('ms-tab-home', 'Home', homeActive, goHome);
 
     pins.forEach((p) => {
-      const active = p.type === 'manuscript'
-        ? (p.id === bookId() && !openPadId())
-        : p.id === openPadId();
+      const active = SHELL
+        ? activeKey === keyOf(p)
+        : (p.type === 'manuscript' ? p.id === bookId() && !openPadId() : p.id === openPadId());
       const tab = mkTab('ms-tab-' + p.type, p.name, active, () => go(p));
       const x = document.createElement('span');
       x.className = 'ms-tab-x';
@@ -123,18 +204,36 @@ window.WriteSysTabs = (function () {
     });
   };
 
-  // Cross-tab sync + late layout (fonts can nudge the header height) +
-  // active-tab tracking as pads open and close.
-  window.addEventListener('storage', (e) => { if (e.key === KEY) render(); });
-  window.addEventListener('resize', render);
-  window.addEventListener('scratchpad-modal-opened', render);
-  window.addEventListener('scratchpad-modal-closed', render);
+  if (!EMBED) {
+    // Cross-tab sync + late layout (fonts can nudge the header height) +
+    // active-tab tracking as (unpinned, windowed) pads open and close.
+    window.addEventListener('storage', (e) => { if (e.key === KEY) render(); });
+    window.addEventListener('resize', render);
+    window.addEventListener('scratchpad-modal-opened', render);
+    window.addEventListener('scratchpad-modal-closed', render);
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
-    // Manuscripts don't open in a modal — opening one IS opening a tab,
-    // so the visit pins it (no book-strip pin button: it would only ever
-    // un-pin the page you're on, which the tab's × already does). The
-    // display name lands async (renderer's setName retry loop); follow it.
+    if (EMBED) return;
+    if (SHELL) {
+      // Manuscript cards open IN PLACE as live panels — never a navigation.
+      document.addEventListener('click', (e) => {
+        const card = e.target.closest && e.target.closest('a.card-manuscript');
+        if (!card) return;
+        const id = parseInt((new URL(card.href, location.href)).searchParams.get('manuscript_id'), 10);
+        if (!id) return;
+        e.preventDefault();
+        const name = (card.querySelector('.card-title') || {}).textContent || 'Manuscript';
+        openManuscript(id, name.trim());
+      }, true);
+      // Restore the active tab across reloads (#tab=m42 / #tab=s7877).
+      const m = (location.hash || '').match(/[#&]tab=([ms]\d+)/);
+      if (m && read().some((p) => keyOf(p) === m[1])) activate(m[1]);
+      return;
+    }
+    // Standalone book page (old link): opening a manuscript IS opening a
+    // tab, so the visit pins it. The display name lands async (renderer's
+    // setName retry loop); follow it.
     const id = bookId();
     const nameEl = document.getElementById('mc-name');
     if (id && nameEl) {
@@ -150,5 +249,5 @@ window.WriteSysTabs = (function () {
   });
   render();
 
-  return { pin, unpin, toggle, isPinned, render };
+  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, activate };
 })();

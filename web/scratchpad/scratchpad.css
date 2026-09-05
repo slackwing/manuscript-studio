@@ -26,22 +26,19 @@
   box-shadow: 0 24px 80px -24px rgba(20, 16, 8, 0.6);
   overflow: hidden;
 }
-/* A PINNED pad is a tab's page, not a floating modal: the overlay starts
-   below the top bar + tab strip (--ms-chrome-b, measured by tabs.js) so the
-   header and tabs ALWAYS stay visible — there is no full-screen mode. The
-   85px fallback covers the beat before the first measurement lands; it must
-   never be 0 (a 0 top would swallow the header). */
-.spm-overlay.spm-tabbed {
-  top: var(--ms-chrome-b, 85px);
-  background: #f7f6f3;
-}
-.spm-dialog.spm-full {
-  width: 100vw;
+/* pad.html (html.pad-page): the pad AS A PAGE — a pinned pad's live tab
+   panel hosts this chrome-less page in an iframe; the modal machinery runs
+   with the overlay pinned open, filling the frame, no modal dressing and
+   no close/pin buttons (the shell's tab × is the close). */
+html.pad-page .spm-overlay { background: #f7f6f3; }
+html.pad-page .spm-dialog {
+  width: 100%;
   height: 100%;
   border: none;
   border-radius: 0;
   box-shadow: none;
 }
+html.pad-page #spm-close, html.pad-page #spm-pin { display: none; }
 .spm-header {
   display: flex;
   align-items: center;

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" class="pad-page">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scratchpad</title>
+
+  <!-- Caveat — handwriting font for note-input textareas. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- book.css: sketch widgets render book text in shadow roots against it. -->
+  <link rel="stylesheet" href="css/book.css?v=196">
+</head>
+<body>
+  <!-- The scratchpad AS A PAGE: a live tab panel (tabs.js) frames this
+       chrome-less page; the shared modal machinery mounts the pad with the
+       overlay pinned open (html.pad-page — scratchpad.css). The shell owns
+       header, tab bar, and closing (its × flushes the editor first). -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/smartquotes/2.3.2/smartquotes.min.js"></script>
+  <script src="js/auth.js?v=3"></script>
+  <script src="js/session-guard.js?v=3"></script>
+  <script src="js/edit-pane.js?v=8"></script>
+  <script src="js/icons.js?v=5"></script>
+  <script src="js/manuscript-chip.js?v=8"></script>
+  <script src="js/text-markers.js?v=4"></script>
+  <script src="js/command.js?v=19"></script>
+  <script src="js/canonicalize.js?v=7"></script>
+  <script src="js/placeholder.js?v=3"></script>
+  <script src="js/renderer.js?v=120"></script>
+  <script src="scratchpad/region.js?v=6"></script>
+  <script src="scratchpad/scratch-render.js?v=17"></script>
+  <script src="notes/note-api.js?v=5"></script>
+  <script src="notes/note-widget.js?v=25"></script>
+  <script src="js/scratchpad-modal.js?v=76"></script>
+  <script>
+    (async function () {
+      const session = await checkAuth();
+      if (!session) return; // redirects to login
+      window.currentSession = session;
+      if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
+      const id = parseInt(new URLSearchParams(location.search).get('scratchpad_id'), 10);
+      if (!id) return;
+      await WriteSysScratchpadModal.open(id);
+      // The pad's title IS its tab's label — follow edits up to the shell.
+      const title = document.getElementById('spm-title');
+      if (title) {
+        title.addEventListener('input', () => {
+          try {
+            const tabs = window.top && window.top.WriteSysTabs;
+            if (tabs) tabs.rename('scratchpad', id, (title.value || 'Untitled').trim());
+          } catch (e) { /* shell gone — standalone open, nothing to sync */ }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
