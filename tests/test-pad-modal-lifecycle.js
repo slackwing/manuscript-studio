@@ -139,9 +139,10 @@ function psql(sql) {
       await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 1
       && await page.locator('#spm-pin.pinned').count() === 1);
     await page.click('#spm-pin');
-    check('re-click unpins (row empties and hides)',
-      await page.locator('#ms-tabs .ms-tab').count() === 0
-      && await page.locator('#ms-tabs[hidden]').count() === 1)
+    check('re-click unpins (pad tab gone; Home stays — the bar is permanent)',
+      await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 0
+      && await page.locator('#ms-tabs .ms-tab-home').count() === 1
+      && await page.locator('#ms-tabs[hidden]').count() === 0)
 
     // ---- hash-lifecycle ---------------------------------------------------
     {
