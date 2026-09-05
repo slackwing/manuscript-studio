@@ -1,11 +1,12 @@
-// Pinned tabs — the row under the top bar, on every logged-in page.
-// The row is a real tab bar: as soon as anything is pinned it shows a Home
-// tab (the landing page) followed by one tab per pin, each with its own ×.
-// Pinning a pad makes it a fullscreen page (spm-full) behind its tab;
-// manuscripts auto-pin on open. Pinning happens from the pad modal's pin
-// button and the book strip's pin button (manuscripts and scratchpads only;
-// notes' "See all" is a landing view, not a place). Pins live in
-// localStorage: switching between tabs never routes through a card grid.
+// The tab bar — the row under the top bar, on every logged-in page, ALWAYS
+// visible: Home first (uncloseable — it's the landing page, not a pin),
+// then one tab per pin, each with its own ×. A pinned pad renders as that
+// tab's page — filling the space BELOW the header and strip (spm-tabbed;
+// there is no full-screen mode). Manuscripts auto-pin on open. Pinning
+// happens from the pad modal's pin button and the book strip's pin button
+// (manuscripts and scratchpads only; notes' "See all" is a landing view,
+// not a place). Pins live in localStorage: switching between tabs never
+// routes through a card grid.
 //
 // chrome.js renders the empty #ms-tabs shell right under #controls; this
 // file (loaded after it on every page) owns state + rendering. The row
@@ -76,16 +77,17 @@ window.WriteSysTabs = (function () {
     const host = document.getElementById('ms-tabs');
     if (!host) return;
     const pins = read();
-    document.documentElement.classList.toggle('has-ms-tabs', pins.length > 0);
-    host.hidden = !pins.length;
+    // The tab bar is ALWAYS there (Home anchors it, uncloseable) — no
+    // appearing/disappearing chrome, no full-screen anything.
+    document.documentElement.classList.add('has-ms-tabs');
+    host.hidden = false;
     host.replaceChildren();
-    if (!pins.length) return;
     const controls = document.getElementById('controls');
     if (controls) {
       const h = Math.round(controls.getBoundingClientRect().height);
       host.style.top = h + 'px';
-      // Where the fixed chrome ends — the fullscreen ("tabbed") pad overlay
-      // starts here so the strip stays clickable above it.
+      // Where the fixed chrome ends — a pinned pad's page starts here so the
+      // header and strip always stay visible (CSS carries a static fallback).
       document.documentElement.style.setProperty('--ms-chrome-b', (h + 30) + 'px'); // 30 = strip height (chrome.css)
     }
 
@@ -103,8 +105,8 @@ window.WriteSysTabs = (function () {
       return tab;
     };
 
-    // The landing page anchors the row whenever pins exist (not itself a
-    // pin — no ×): active when nothing else is on top of it.
+    // The landing page anchors the row (not itself a pin — no ×): active
+    // when nothing else is on top of it.
     mkTab('ms-tab-home', 'Home', onHomePage() && !openPadId(), goHome);
 
     pins.forEach((p) => {

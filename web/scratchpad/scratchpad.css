@@ -27,11 +27,12 @@
   overflow: hidden;
 }
 /* A PINNED pad is a tab's page, not a floating modal: the overlay starts
-   below the top bar + tab strip (--ms-chrome-b, set by tabs.js) so the tabs
-   stay clickable, and the dialog fills the remaining viewport with no
-   modal dressing. */
+   below the top bar + tab strip (--ms-chrome-b, measured by tabs.js) so the
+   header and tabs ALWAYS stay visible — there is no full-screen mode. The
+   85px fallback covers the beat before the first measurement lands; it must
+   never be 0 (a 0 top would swallow the header). */
 .spm-overlay.spm-tabbed {
-  top: var(--ms-chrome-b, 0px);
+  top: var(--ms-chrome-b, 85px);
   background: #f7f6f3;
 }
 .spm-dialog.spm-full {

@@ -22,10 +22,15 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.reload();
   await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]');
 
-  // ---- empty state: no row, no layout claim ----
-  check('no pins → row hidden', await page.locator('#ms-tabs[hidden]').count() === 1);
-  check('no pins → no layout claim (--tabs-h 0)', await page.evaluate(() =>
-    !document.documentElement.classList.contains('has-ms-tabs')));
+  // ---- empty state: the bar is ALWAYS there — Home alone, active ----
+  await page.waitForSelector('#ms-tabs .ms-tab-home', { timeout: 8000 });
+  check('no pins → bar shows Home alone, active, no ×', await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('#ms-tabs .ms-tab')];
+    return tabs.length === 1 && tabs[0].classList.contains('ms-tab-home')
+      && tabs[0].classList.contains('active') && !tabs[0].querySelector('.ms-tab-x');
+  }));
+  check('layout claim is permanent (has-ms-tabs)', await page.evaluate(() =>
+    document.documentElement.classList.contains('has-ms-tabs')));
 
   // ---- ghost cards: translucent at rest, card face on hover ----
   const ghost = page.locator('.card-ghost[data-ghost="manuscript"]');
@@ -174,10 +179,13 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('#ms-tabs .ms-tab-scratchpad', { timeout: 8000 });
   await page.hover('#ms-tabs .ms-tab-scratchpad');
   await page.click('#ms-tabs .ms-tab-scratchpad .ms-tab-x');
-  check('closing the last pin hides the row (Home goes with it)',
-    await page.locator('#ms-tabs[hidden]').count() === 1);
-  check('…and releases the layout claim', await page.evaluate(() =>
-    !document.documentElement.classList.contains('has-ms-tabs')));
+  check('closing the last pin leaves Home alone, still visible', await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('#ms-tabs .ms-tab')];
+    return !document.getElementById('ms-tabs').hidden
+      && tabs.length === 1 && tabs[0].classList.contains('ms-tab-home');
+  }));
+  check('…and the layout claim stays', await page.evaluate(() =>
+    document.documentElement.classList.contains('has-ms-tabs')));
 
   await page.evaluate(() => localStorage.removeItem('ms_pinned_tabs'));
   await browser.close();

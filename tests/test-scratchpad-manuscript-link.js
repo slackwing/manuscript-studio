@@ -76,8 +76,11 @@ async function makeNote(page, text) {
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
   await page.waitForTimeout(150);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
-  await page.waitForTimeout(700);
-  const floatChip = await page.locator('.sn-note-float .manuscript-chip.linked').count();
+  // The float opens as soon as the create POST resolves — wait for the chip,
+  // don't count after a fixed beat.
+  const floatChip = await page.waitForFunction(
+    () => document.querySelectorAll('.sn-note-float .manuscript-chip.linked').length === 1,
+    null, { timeout: 10000 }).then(() => 1).catch(() => 0);
   check('first note after linking shows its manuscript chip immediately (float)', floatChip === 1, `chips=${floatChip}`);
   const postNote = await page.locator('.sn-note-ref').last().getAttribute('data-note-id');
   await page.locator('.spm-title').click(); await page.waitForTimeout(200); // close float
