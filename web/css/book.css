@@ -372,7 +372,10 @@ body {
 #app-container {
   position: relative;
   z-index: 1;
-  padding-top: var(--tabs-h, 0px);
+  /* NO padding-top here: .pagedjs_pages' margin-top collapses through this
+     container and carries the fixed-chrome clearance (incl. the tabs strip).
+     Non-zero padding would stop the collapse and pull the container's own
+     top edge under the fixed bars (breaks background-click deselect). */
 }
 
 /* Manuscript content container */
@@ -390,8 +393,8 @@ body {
   /* Plain grey around the pages — no photo here: reading the manuscript
      should have zero distractions. */
   background: #f5f5f5;
-  min-height: calc(100vh - 60px);
-  margin-top: 60px !important; /* Space for fixed controls */
+  min-height: calc(100vh - 60px - var(--tabs-h, 0px));
+  margin-top: calc(60px + var(--tabs-h, 0px)) !important; /* Space for fixed controls + tabs strip */
 }
 
 /* Paged.js page styling - force exact dimensions to match reference */
