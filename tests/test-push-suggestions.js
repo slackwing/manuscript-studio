@@ -24,7 +24,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const {
   TEST_URL,
-  cleanupTestAnnotations, resetTestManuscript,
+  cleanupTestAnnotations, resetTestManuscript, ensureWorkerUniquified,
   loginAsTestUser,
   TEST_USERNAME, TEST_MANUSCRIPT_NAME,
 } = require('./test-utils');
@@ -58,6 +58,9 @@ function setupBareRemote() {
   const initialCommit = uniq || execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
   execSync(`git -C "${REPO_DIR}" reset --hard ${initialCommit} 2>/dev/null`);
   execSync(`git -C "${REPO_DIR}" clean -fd 2>/dev/null`);
+  // A rewind that lost the uniquify commit would collide this worker's
+  // sentence IDs with worker 1's — put it back before anything syncs.
+  ensureWorkerUniquified(REPO_DIR);
 
   // Clean up stray suggestions-* branches so the test starts from a known
   // state, and nuke the server's clone so it re-clones the rewound fixture.

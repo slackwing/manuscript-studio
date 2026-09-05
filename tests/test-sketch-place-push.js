@@ -17,7 +17,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, TEST_MANUSCRIPT_NAME, loginAsTestUser, waitForPagination, cleanupTestNotes, resetTestManuscript } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, TEST_MANUSCRIPT_NAME, loginAsTestUser, waitForPagination, cleanupTestNotes, resetTestManuscript, ensureWorkerUniquified } = require('./test-utils');
 
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -37,6 +37,9 @@ function setupBareRemote() {
   const initial = uniq || execSync(`git -C "${REPO_DIR}" log --reverse --format=%H | head -1`, { encoding: 'utf-8' }).trim();
   execSync(`git -C "${REPO_DIR}" reset --hard ${initial} 2>/dev/null`);
   execSync(`git -C "${REPO_DIR}" clean -fd 2>/dev/null`);
+  // A rewind that lost the uniquify commit would collide this worker's
+  // sentence IDs with worker 1's — put it back before anything syncs.
+  ensureWorkerUniquified(REPO_DIR);
   execSync(`git -C "${REPO_DIR}" branch --list 'suggestions-*'`, { encoding: 'utf-8' })
     .split('\n').map(s => s.replace('*', '').trim()).filter(Boolean)
     .forEach(b => { try { git(`branch -D "${b}"`); } catch (_) {} });

@@ -287,8 +287,32 @@ async function suggestEditor(page) {
   return page.locator('.suggestion-modal-textarea');
 }
 
+/**
+ * Guarantee a worker fixture repo (workers >= 2) carries its uniquifying
+ * commit — sentence IDs hash (text + ordinal + COMMIT + segmenter), so a
+ * repo byte-identical to worker 1's collides on every bootstrap
+ * (sentence_pkey). Rewind-style tests (setupBareRemote) can reset PAST the
+ * uniquify commit and permanently de-uniquify the copy; call this after
+ * any hard reset to put it back. Mirrors tests/provision-workers.sh.
+ */
+function ensureWorkerUniquified(repoDir) {
+  if (WORKER < 2) return;
+  const { execSync } = require('child_process');
+  const last = execSync(
+    `git -C "${repoDir}" log -1 --format=%s -- test.manuscript 2>/dev/null || true`,
+    { encoding: 'utf-8' }).trim();
+  if (last.includes('worker fixture')) return;
+  const fs = require('fs');
+  fs.writeFileSync(`${repoDir}/.workerid`, `${WORKER}\n`);
+  fs.appendFileSync(`${repoDir}/test.manuscript`, '\n');
+  execSync(`git -C "${repoDir}" -c user.name=fixture -c user.email=fixture@dev add .workerid test.manuscript`);
+  execSync(`git -C "${repoDir}" -c user.name=fixture -c user.email=fixture@dev commit -q -m "worker fixture ${WORKER} (uniquifies sentence-id commit hash)"`);
+  console.log(`[fixture] re-uniquified worker ${WORKER} repo (uniquify commit was lost)`);
+}
+
 module.exports = {
   suggestEditor,
+  ensureWorkerUniquified,
   get TEST_MANUSCRIPT_ID() { return TEST_MANUSCRIPT_ID; },
   TEST_MANUSCRIPT_NAME,
   get TEST_URL() { return TEST_URL; },
