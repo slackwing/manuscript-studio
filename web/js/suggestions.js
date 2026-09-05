@@ -938,9 +938,15 @@ function renderDiffHTML(oldText, newText, dmp) {
   // the interleaved word diff reads as noise — a rewritten block (e.g. a
   // placed sketch region) renders as ONE solid strike + ONE solid green
   // block instead, so "replaced entirely" looks replaced entirely.
+  // BUT only when a substantial share of the OLD text was actually
+  // deleted: a pure extension (splitting one sentence into two, appending
+  // a clause) keeps the old text intact — striking it and repeating it in
+  // green would misread as a rewrite when only the addition is new.
   const eqChars = segs.reduce((n, sg) => n + (sg[0] === 0 ? sg[1].length : 0), 0);
+  const delChars = segs.reduce((n, sg) => n + (sg[0] === -1 ? sg[1].length : 0), 0);
   const maxLen = Math.max(oldText.length, newText.length);
-  if (maxLen > 60 && eqChars / maxLen < 0.4) {
+  if (maxLen > 60 && eqChars / maxLen < 0.4
+      && oldText.length > 0 && delChars / oldText.length > 0.4) {
     return renderStructuralMarkers(pairItalicsAcrossInserts(
       (oldText ? `<del>${escapeHTML(oldText)}</del>` : '')
       + (newText ? `<strong>${escapeHTML(newText)}</strong>` : '')));
@@ -1120,9 +1126,13 @@ function renderStructuralMarkers(html) {
 // flow, and the visual result is the intended italics.
 function pairItalicsAcrossInserts(html) {
   // Find positions of `*` outside <del>...</del> and outside any tag.
+  // Each records whether it sits inside a <strong> (an INSERTED marker):
+  // those stay VISIBLE — the user just added emphasis and must see the
+  // green markers — while pre-existing (EQ) markers swap into pure <em>.
   const stars = [];
   const scores = []; // underscore positions — pair only with underscores
   let inDel = false;
+  let inStrong = false;
   let inTag = false;
   for (let i = 0; i < html.length; i++) {
     const c = html[i];
@@ -1131,19 +1141,21 @@ function pairItalicsAcrossInserts(html) {
       // Detect <del ...> open and </del> close.
       if (html.startsWith('<del', i)) inDel = true;
       else if (html.startsWith('</del>', i)) inDel = false;
+      else if (html.startsWith('<strong', i)) inStrong = true;
+      else if (html.startsWith('</strong>', i)) inStrong = false;
       continue;
     }
     if (inTag) {
       if (c === '>') inTag = false;
       continue;
     }
-    if (c === '*' && !inDel) stars.push(i);
+    if (c === '*' && !inDel) stars.push({ i, ins: inStrong });
     if (c === '_' && !inDel) {
       // Underscore emphasis is never intraword: require a non-word char (or
       // edge/tag boundary) on at least the OUTER side of the would-be pair.
       const prev = html[i - 1], next = html[i + 1];
       const w = (ch) => ch !== undefined && /\w/.test(ch) && ch !== '_';
-      if (!(w(prev) && w(next))) scores.push(i);
+      if (!(w(prev) && w(next))) scores.push({ i, ins: inStrong });
     }
   }
   // Pair greedily: 0+1, 2+3, etc. Replace from the right so earlier
@@ -1158,15 +1170,19 @@ function pairItalicsAcrossInserts(html) {
   // Crossing/nested star-vs-underscore pairs would corrupt the index math
   // of the right-to-left replacement below — keep only non-overlapping
   // pairs, earliest-start wins.
-  pairs.sort((a, b) => a[0] - b[0]);
+  pairs.sort((a, b) => a[0].i - b[0].i);
   let lastEnd = -1;
   for (let i = 0; i < pairs.length; i++) {
-    if (pairs[i][0] <= lastEnd) { pairs.splice(i, 1); i--; continue; }
-    lastEnd = pairs[i][1];
+    if (pairs[i][0].i <= lastEnd) { pairs.splice(i, 1); i--; continue; }
+    lastEnd = pairs[i][1].i;
   }
   for (let p = pairs.length - 1; p >= 0; p--) {
     const [a, b] = pairs[p];
-    html = html.slice(0, a) + '<em>' + html.slice(a + 1, b) + '</em>' + html.slice(b + 1);
+    // Inserted marker (inside <strong>): KEEP the character so the added
+    // `*`/`_` shows green; pre-existing marker: swap it for the tag.
+    const closeRep = b.ins ? '</em>' + html[b.i] : '</em>';
+    const openRep = a.ins ? html[a.i] + '<em>' : '<em>';
+    html = html.slice(0, a.i) + openRep + html.slice(a.i + 1, b.i) + closeRep + html.slice(b.i + 1);
   }
   // A pairing that consumed a marker living alone inside an md-marker
   // wrapper leaves the wrapper holding only the inserted <em>/</em> tag —

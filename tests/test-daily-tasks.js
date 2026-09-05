@@ -142,6 +142,18 @@ function psql(sql) {
   await page.waitForSelector('.card-note', { timeout: 8000 });
   check('deleting rules restores the plain 16', (await page.locator('.card-note').count()) === 16);
 
+  // Book strip: the daily-tasks button (right of settings) routes to this view.
+  await page.goto(TEST_URL);
+  await page.waitForSelector('#mc-daily', { timeout: 30000 });
+  check('daily button sits right of settings', await page.evaluate(() => {
+    const s = document.getElementById('mc-settings');
+    const d = document.getElementById('mc-daily');
+    return !!s && !!d && s.nextElementSibling === d;
+  }));
+  await page.click('#mc-daily');
+  await page.waitForURL(/home\.html\?view=daily&manuscript_id=\d+/, { timeout: 15000 });
+  check('daily button lands on the daily view for this manuscript', true);
+
   await cleanupTestNotes();
   await browser.close();
   process.exit(failed ? 1 : 0);

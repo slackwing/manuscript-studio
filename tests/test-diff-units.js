@@ -163,13 +163,15 @@ console.log('=== S8 structural-markers-4-rules ===');
 // ---- S9: italics pairing across inserts --------------------------------
 console.log('=== S9 italics-pairing-across-inserts ===');
 {
+  // INSERTED markers (inside <strong>) stay VISIBLE — the user added the
+  // emphasis and must see the green asterisks, not just the italic result.
   const paired = pairItalicsAcrossInserts('<strong>*A</strong> tesselated <strong>away*</strong>');
-  check('pair spans two <strong> blocks',
-    paired === '<strong><em>A</strong> tesselated <strong>away</em></strong>', paired);
+  check('pair spans two <strong> blocks; added stars stay visible',
+    paired === '<strong>*<em>A</strong> tesselated <strong>away</em>*</strong>', paired);
 
   const delMix = pairItalicsAcrossInserts('<del>*x*</del><strong>*y*</strong>');
-  check('in-del asterisks excluded from pairing',
-    delMix === '<del>*x*</del><strong><em>y</em></strong>', delMix);
+  check('in-del asterisks excluded from pairing; inserted pair keeps stars',
+    delMix === '<del>*x*</del><strong>*<em>y</em>*</strong>', delMix);
 
   const odd = pairItalicsAcrossInserts('a * b');
   check('odd count: unpaired star untouched', odd === 'a * b', odd);
@@ -190,8 +192,8 @@ console.log('=== S10-md markdown-aware diffs ===');
   const h = renderDiffHTML('*So it was*—the epidemic of silence.', '*So it was—the epidemic of silence.*', dmp());
   check('moved star: no whole word struck', !/<del[^>]*>[^<]*[a-zA-Z]{2}/.test(h), h);
   check('moved star: old marker is a subdued del', /<del class="md-marker">\*<\/del>/.test(h), h);
-  check('moved star: whole new range italicized, no husk',
-    /<em>So it was<del class="md-marker">\*<\/del>—the epidemic of silence\.<\/em>/.test(h), h);
+  check('moved star: whole new range italicized, new marker visible (green)',
+    /<em>So it was<del class="md-marker">\*<\/del>—the epidemic of silence\.<strong class="md-marker"><\/em>\*<\/strong>/.test(h), h);
   const h2 = renderDiffHTML('the red cat', 'the blue cat', dmp());
   check('word change has no md-marker class', !/md-marker/.test(h2), h2);
   const h3 = renderDiffHTML('the *red* cat', 'the blue cat', dmp());
@@ -199,12 +201,34 @@ console.log('=== S10-md markdown-aware diffs ===');
 }
 {
   const h = renderDiffHTML('plain words here.', '_plain words here._', dmp());
-  check('underscore pair renders <em>', /<em>/.test(h) && !/md-marker">\s*<\//.test(h), h);
+  check('underscore pair renders <em> with both added _ visible',
+    /<em>/.test(h) && (h.replace(/<[^>]*>/g, '').match(/_/g) || []).length === 2, h);
   const h2 = renderDiffHTML('use snake_case here', 'use snake_case there', dmp());
   check('snake_case never italicizes', !/<em>/.test(h2), h2);
   const h3 = renderDiffHTML('a b c', '*a _b* c_', dmp());
   check('crossing pairs leave well-formed HTML',
     !/<[a-z]*</.test(h3) && (h3.match(/<em>/g) || []).length === (h3.match(/<\/em>/g) || []).length, h3);
+}
+
+// ---- S11: the two 2026-09-05 reports ------------------------------------
+console.log('=== S11 emphasis-add-visible + split-not-wholesale ===');
+{
+  // (a) Wrapping an existing word in asterisks must SHOW two green stars
+  //     (they render inside <strong>/md-marker context), plus the italics.
+  const h = renderDiffHTML('some word here.', 'some *word* here.', dmp());
+  const visibleStars = (h.replace(/<[^>]*>/g, '').match(/\*/g) || []).length;
+  check('adding emphasis: both new asterisks visible', visibleStars === 2, h);
+  check('adding emphasis: content italicized', /<em>word<\/em>|<em>/.test(h), h);
+  check('adding emphasis: word itself not struck', !/<del[^>]*>[^<]*word/.test(h), h);
+
+  // (b) Splitting one sentence into two (pure extension) must NOT wholesale:
+  //     the surviving first sentence stays plain, only the addition is green.
+  const oldT = 'The fire moved through the canyon.';
+  const newT = 'The fire moved through the canyon. It did not stop for the houses or the orchards or the long-abandoned mill by the creek.';
+  const h2 = renderDiffHTML(oldT, newT, dmp());
+  check('split: old sentence not struck', !/<del/.test(h2), h2.slice(0, 120));
+  check('split: old sentence not repeated in green', !new RegExp('<strong>[^<]*canyon').test(h2), h2.slice(0, 120));
+  check('split: the addition is one green block', /<strong>[^<]*mill by the creek\./.test(h2), h2.slice(-120));
 }
 
 console.log('');

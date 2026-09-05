@@ -343,6 +343,17 @@ if (typeof window !== 'undefined') {
       const id = new URLSearchParams(window.location.search).get('manuscript_id');
       if (id) WriteSysManuscriptModal.openSettings(parseInt(id, 10));
     });
+    // Daily tasks lives on the landing page (home.js view=daily) — leave
+    // the book at the TOP window so a framed panel doesn't nest the shell.
+    const daily = document.getElementById('mc-daily');
+    if (daily) {
+      daily.addEventListener('click', () => {
+        const id = new URLSearchParams(window.location.search).get('manuscript_id');
+        if (!id) return;
+        let top = window; try { top = window.top || window; } catch (e) { /* keep window */ }
+        top.location.href = 'home.html?view=daily&manuscript_id=' + id;
+      });
+    }
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', wireGear);
