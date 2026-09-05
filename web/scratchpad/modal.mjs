@@ -34,6 +34,14 @@ export const ScratchpadModal = {
 
   async _open(scratchpadId, opts) {
     opts = opts || {};
+    // Re-opening the pad that's already showing is a FOCUS, not a reload —
+    // the tab bar (and any card/deep-link path) must not tear down and
+    // rebuild the editor. Honor a note deep-link into the open pad, though.
+    if (this.overlay && this._currentId === scratchpadId) {
+      if (opts.noteId) this.scrollToNoteAnchor(opts.noteId);
+      window.dispatchEvent(new CustomEvent('scratchpad-modal-opened', { detail: { scratchpadId } }));
+      return;
+    }
     await this.close();
     // close() refuses when a save keeps failing — don't stack a second pad.
     if (this.overlay) return;

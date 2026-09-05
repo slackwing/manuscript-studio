@@ -93,6 +93,16 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
   check('pad tab reopens the pad FULLSCREEN',
     await page.locator('.spm-dialog.spm-full').count() === 1);
+  // Re-opening the pad that's already showing is a FOCUS: same editor, no
+  // teardown (card clicks and tab clicks converge here).
+  check('re-opening the open pad focuses, not reloads', await page.evaluate(async () => {
+    const overlay = document.querySelector('.spm-overlay');
+    overlay.dataset.probe = 'kept';
+    await window.WriteSysScratchpadModal.open(
+      JSON.parse(localStorage.getItem('ms_pinned_tabs'))[0].id);
+    const now = document.querySelector('.spm-overlay');
+    return now === overlay && now.dataset.probe === 'kept';
+  }));
   await page.keyboard.press('Escape');
   await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 }).catch(() => {});
 
