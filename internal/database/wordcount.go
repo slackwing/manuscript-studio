@@ -9,6 +9,9 @@ import (
 	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
+// THE COUNTING RULES LIVE IN WORDCOUNT_RULES.md (repo root) — read it
+// before touching any counting logic here; the two change together.
+//
 // WordcountRow is one day's wordcount for one manuscript, aggregated across
 // ALL users (only authors can suggest or link sketches, so this is the
 // combined progress of everyone writing toward the book). The rate columns
