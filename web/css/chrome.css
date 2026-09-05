@@ -169,5 +169,4 @@ html.has-ms-tabs { --tabs-h: 30px; }
 .ms-tab:hover .ms-tab-x { visibility: visible; }
 .ms-tab-x:hover { color: #b03030; background: #eee9dd; }
 /* Pin buttons (pad header + book strip) read pressed when pinned. */
-#spm-pin.pinned, #mc-pin.pinned { color: #2a6fb0; }
-#mc-pin.pinned { border-color: #2a6fb0; }
+#spm-pin.pinned { color: #2a6fb0; }

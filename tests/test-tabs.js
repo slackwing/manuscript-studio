@@ -140,8 +140,8 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       && tabs[2].classList.contains('ms-tab-manuscript')
       && tabs[2].classList.contains('active');
   }));
-  await page.waitForSelector('#mc-pin.pinned', { timeout: 8000 });
-  check('book pin button reads pinned', true);
+  check('no pin button on the book strip (auto-pin owns it)',
+    await page.locator('#mc-pin').count() === 0);
   await page.waitForFunction(() => {
     const t = document.querySelector('#ms-tabs .ms-tab-manuscript .ms-tab-label');
     return !!t && t.textContent.length > 0 && t.textContent !== 'Manuscript';

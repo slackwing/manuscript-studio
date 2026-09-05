@@ -121,9 +121,6 @@ window.WriteSysTabs = (function () {
       x.addEventListener('click', (e) => { e.stopPropagation(); closeTab(p); });
       tab.appendChild(x);
     });
-    // Book-page pin button reflects the current manuscript's pin state.
-    const pinBtn = document.getElementById('mc-pin');
-    if (pinBtn) pinBtn.classList.toggle('pinned', isPinned('manuscript', bookId()));
   };
 
   // Cross-tab sync + late layout (fonts can nudge the header height) +
@@ -133,17 +130,10 @@ window.WriteSysTabs = (function () {
   window.addEventListener('scratchpad-modal-opened', render);
   window.addEventListener('scratchpad-modal-closed', render);
 
-  // Book strip pin button (present on index.html only).
   document.addEventListener('DOMContentLoaded', () => {
-    const pinBtn = document.getElementById('mc-pin');
-    if (pinBtn) {
-      pinBtn.addEventListener('click', () => {
-        const name = (document.getElementById('mc-name') || {}).textContent || 'Manuscript';
-        toggle('manuscript', bookId(), name.trim());
-      });
-    }
     // Manuscripts don't open in a modal — opening one IS opening a tab,
-    // so the visit pins it (pads pin explicitly from their modal). The
+    // so the visit pins it (no book-strip pin button: it would only ever
+    // un-pin the page you're on, which the tab's × already does). The
     // display name lands async (renderer's setName retry loop); follow it.
     const id = bookId();
     const nameEl = document.getElementById('mc-name');
