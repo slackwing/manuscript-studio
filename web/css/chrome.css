@@ -114,3 +114,59 @@ a#brand, a#brand:visited { color: inherit; }
   cursor: pointer;
 }
 #controls #logout-btn:hover { color: #222; border-color: #999; background: #f7f6f3; }
+
+
+/* ---- Pinned tabs: the row under the top bar (tabs.js). Layout space is
+   claimed only when pins exist: html.has-ms-tabs flips --tabs-h, and every
+   fixed-top rule in book.css/home.css adds it on. ---- */
+:root { --tabs-h: 0px; }
+html.has-ms-tabs { --tabs-h: 30px; }
+#ms-tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 30px;
+  box-sizing: border-box;
+  z-index: 9999;
+  background: #fff;
+  border-bottom: 1px solid #e3e0d8;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#ms-tabs[hidden] { display: none; }
+.ms-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  border: none;
+  background: none;
+  padding: 0 10px;
+  font: 12px "Helvetica", sans-serif;
+  color: #6f6a60;
+  cursor: pointer;
+  border-top: 2px solid transparent;
+  white-space: nowrap;
+}
+.ms-tab-manuscript { border-top-color: #57503f; }
+.ms-tab-scratchpad { border-top-color: #2a6fb0; }
+.ms-tab:hover { background: #f6f4ee; color: #333; }
+.ms-tab.active { color: #222; font-weight: 700; background: #f6f4ee; }
+.ms-tab-label { overflow: hidden; text-overflow: ellipsis; }
+.ms-tab-x {
+  color: #c4bdae;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 3px;
+  visibility: hidden;
+}
+.ms-tab:hover .ms-tab-x { visibility: visible; }
+.ms-tab-x:hover { color: #b03030; background: #eee9dd; }
+/* Pin buttons (pad header + book strip) read pressed when pinned. */
+#spm-pin.pinned, #mc-pin.pinned { color: #2a6fb0; }
+#mc-pin.pinned { border-color: #2a6fb0; }

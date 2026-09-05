@@ -192,7 +192,6 @@ const WriteSysHome = {
     const label = kind === 'manuscript' ? 'New manuscript' : 'New scratchpad';
     return `<button type="button" class="card card-ghost" data-ghost="${kind}" title="${label}">
       <span class="ghost-plus">+</span>
-      <span class="ghost-label">${label}</span>
     </button>`;
   },
 

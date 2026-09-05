@@ -50,7 +50,7 @@ export const ScratchpadModal = {
           <span id="spm-link" tabindex="0" role="button"></span>
           <span class="spm-header-spacer"></span>
           <span id="spm-status" class="spm-status">Saved</span>
-          <button type="button" id="spm-expand" title="Expand">⤢</button>
+          <button type="button" id="spm-pin" title="Pin as tab"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M9.5 1.5 14.5 6.5 13 8l-.5-.5-3 3 .2 2.3-1.2 1.2-3-3L2 14.5 1.5 14l3.5-3.5-3-3L3.2 6.3 5.5 6.5l3-3L8 3z"/></svg></button>
           <button type="button" id="spm-close" title="Close (Esc)">×</button>
         </div>
         <div id="spm-toolbar" class="sp-toolbar spm-toolbar"></div>
@@ -66,8 +66,18 @@ export const ScratchpadModal = {
     overlay.addEventListener('mousedown', (e) => {
       if (e.target === overlay) this.close();
     });
-    overlay.querySelector('#spm-expand').addEventListener('click', () =>
-      overlay.querySelector('.spm-dialog').classList.toggle('spm-full'));
+    // Pin as tab (was the fullscreen expander): the pad joins the tab row
+    // under the top bar, so book↔pad switching skips the landing page.
+    const pinBtn = overlay.querySelector('#spm-pin');
+    const syncPin = () => pinBtn.classList.toggle('pinned',
+      !!(window.WriteSysTabs && window.WriteSysTabs.isPinned('scratchpad', scratchpadId)));
+    pinBtn.addEventListener('click', () => {
+      if (!window.WriteSysTabs) return;
+      const name = (overlay.querySelector('#spm-title').value || 'Untitled').trim();
+      window.WriteSysTabs.toggle('scratchpad', scratchpadId, name);
+      syncPin();
+    });
+    syncPin();
     this._esc = (e) => { if (e.key === 'Escape') this.close(); };
     document.addEventListener('keydown', this._esc);
 

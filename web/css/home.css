@@ -17,7 +17,7 @@ body.home-page {
 .home-main {
   max-width: 1060px;
   margin: 0 auto;
-  padding: 76px 28px 80px;
+  padding: calc(76px + var(--tabs-h, 0px)) 28px 80px;
 }
 
 .home-section { margin-bottom: 36px; }
@@ -485,30 +485,36 @@ body.home-page {
 /* Ghost creation card (MANUSCRIPT_LIFECYCLE_PLAN §1): faint outline + big
    centered plus; hover "lights it up" and reveals the label. Shared by the
    manuscript and scratchpad grids (data-ghost distinguishes handlers). */
+/* Ghost cards: TRANSLUCENT at rest (the old solid fill read like a real
+   card); hovering turns them into the real card's white face — kind bar
+   on top, the + wearing the kind's color, nothing else. */
 .card-ghost {
-  background: #edeae1;
-  border: 2px dashed #cfcaba;
+  background: rgba(237, 234, 225, 0.35);
+  border: 2px dashed #d9d4c7;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #b3ac9c;
+  color: #c8c2b3;
   font: inherit;
+  overflow: hidden;
 }
 .card-ghost .ghost-plus {
   font: 300 44px/1 "Helvetica", sans-serif;
   transition: color 120ms ease;
 }
-.card-ghost .ghost-label {
-  font-size: 12px;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
 .card-ghost:hover, .card-ghost:focus-visible {
-  border-color: #2a6fb0;
-  color: #2a6fb0;
-  background: rgba(42, 111, 176, 0.04);
+  background: #fff;
+  border: 1px solid #e4e1d8;
+  border-top: 4px solid;
 }
-.card-ghost:hover .ghost-label, .card-ghost:focus-visible .ghost-label { opacity: 1; }
+.card-ghost[data-ghost="manuscript"]:hover, .card-ghost[data-ghost="manuscript"]:focus-visible {
+  border-top-color: #57503f;
+  color: #57503f;
+}
+.card-ghost[data-ghost="scratchpad"]:hover, .card-ghost[data-ghost="scratchpad"]:focus-visible {
+  border-top-color: #2a6fb0;
+  color: #2a6fb0;
+}
 
 /* Card gear (beside "daily tasks"): quiet until hovered. */
 .ms-gear {

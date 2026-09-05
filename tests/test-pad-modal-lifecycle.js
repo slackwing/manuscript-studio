@@ -132,15 +132,16 @@ function psql(sql) {
     await page.locator('.spm-dialog').dispatchEvent('mousedown', { bubbles: true });
     await page.waitForTimeout(300);
     check('mousedown INSIDE the dialog does not close', (await page.locator('.spm-overlay').count()) === 1);
-    await page.click('#spm-expand');
-    check('expand toggles spm-full on',
-      await page.locator('.spm-dialog').evaluate(el => el.classList.contains('spm-full')));
-    await page.click('#spm-expand');
-    check('expand toggles spm-full off',
-      !(await page.locator('.spm-dialog').evaluate(el => el.classList.contains('spm-full'))));
-    await page.mouse.click(6, 6); // the overlay backdrop
-    await page.waitForSelector('.spm-overlay', { state: 'detached' });
-    check('backdrop mousedown closes (clean pad)', true);
+    // The expander became the PIN (tabs feature): clicking pins the pad as
+    // a tab under the top bar; clicking again unpins.
+    await page.click('#spm-pin');
+    check('pin adds the pad to the tab row',
+      await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 1
+      && await page.locator('#spm-pin.pinned').count() === 1);
+    await page.click('#spm-pin');
+    check('re-click unpins (row empties and hides)',
+      await page.locator('#ms-tabs .ms-tab').count() === 0
+      && await page.locator('#ms-tabs[hidden]').count() === 1)
 
     // ---- hash-lifecycle ---------------------------------------------------
     {

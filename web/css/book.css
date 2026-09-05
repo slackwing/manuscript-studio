@@ -372,6 +372,7 @@ body {
 #app-container {
   position: relative;
   z-index: 1;
+  padding-top: var(--tabs-h, 0px);
 }
 
 /* Manuscript content container */
@@ -771,7 +772,7 @@ p.section-break {
    it here. Only shown when there's structure. */
 #outline-margin {
   position: fixed;
-  top: 142px; /* below #manuscript-chrome (HOME_PLAN.md) */
+  top: calc(142px + var(--tabs-h, 0px)); /* below #manuscript-chrome (HOME_PLAN.md) */
   /* left: set by JS (mirrors the sticky-note gutter). */
   width: var(--gutter-band-width);
   max-height: calc(100vh - 162px);
@@ -887,7 +888,7 @@ p.section-break {
    the mobile block's `display … !important` by source order. */
 #stats-margin {
   position: fixed;
-  top: 142px; /* below #manuscript-chrome, same as the outline */
+  top: calc(142px + var(--tabs-h, 0px)); /* below #manuscript-chrome, same as the outline */
   /* left: set by JS (notes.js positionGutters), mirroring the outline. */
   width: var(--gutter-band-width);
   max-height: calc(100vh - 162px);
@@ -2795,7 +2796,7 @@ p.section-break {
    ============================================================ */
 #manuscript-chrome {
   position: fixed;
-  top: 52px;
+  top: calc(52px + var(--tabs-h, 0px));
   /* left: set by JS (positionGutters) so this info header sits directly above
      the outline in the same left band. */
   width: var(--gutter-band-width);
@@ -2919,7 +2920,7 @@ p.section-break {
   /* --- second bar, left third: the info panel (name + updated line + push),
          centered both axes so it reads as a tidy little panel --- */
   #manuscript-chrome {
-    top: 40px;
+    top: calc(40px + var(--tabs-h, 0px));
     left: 0 !important;          /* beat the inline left JS sets for desktop */
     width: 33.333%;
     height: 200px;               /* room for name + info + control rows */
@@ -2967,7 +2968,7 @@ p.section-break {
      content. (position:fixed escapes the chrome's overflow:hidden.) */
   #manuscript-chrome .pane-tabs {
     position: fixed;
-    top: 40px;
+    top: calc(40px + var(--tabs-h, 0px));
     left: 33.333%;
     width: 66.667%;
     height: 26px;
@@ -2997,7 +2998,7 @@ p.section-break {
          structure — an outline-less manuscript shows no empty bar) --- */
   #outline-margin.has-outline {
     display: block !important;
-    top: 66px;                   /* 40 top bar + 26 tab strip */
+    top: calc(66px + var(--tabs-h, 0px));  /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 174px;               /* 200 bar − 26 tabs */
@@ -3021,7 +3022,7 @@ p.section-break {
      (visibility itself is decided by the .pane-on/.pane-off rules at the
      very end of the file). */
   #stats-margin.pane-on {
-    top: 66px;                   /* 40 top bar + 26 tab strip */
+    top: calc(66px + var(--tabs-h, 0px));  /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 174px;               /* 200 bar − 26 tabs */
@@ -3047,7 +3048,7 @@ p.section-break {
              version stripped all of these to "maximize" width — that made the
              pages stop looking like pages. Don't do that again; a dedicated
              mobile UI comes later.) --- */
-  #app-container { padding-top: 240px; }   /* 40 top bar + 200 second bar */
+  #app-container { padding-top: calc(240px + var(--tabs-h, 0px)); }   /* 40 top bar + 200 second bar */
   .pagedjs_pages {
     margin-top: 0 !important;
     /* small top/bottom breathing room; the horizontal fit is handled by the
@@ -3454,7 +3455,7 @@ body.range-delete-mode .pagedjs_pages {
    detached piece. (Lives here, after the base rules, to win source order.) */
 @media (max-width: 1239px) {
   #people-margin.pane-on {
-    top: 66px;                   /* 40 top bar + 26 tab strip */
+    top: calc(66px + var(--tabs-h, 0px));  /* 40 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 174px;               /* 200 bar − 26 tabs */

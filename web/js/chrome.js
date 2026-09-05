@@ -43,4 +43,11 @@
       <button id="logout-btn" onclick="logout()">Logout</button>
       ${extras.map((k) => EXTRA_HTML[k] || '').join('')}
     </div>`;
+
+  // Pinned-tabs shell: the row under the bar (tabs.js owns state/render;
+  // hidden until something is pinned).
+  if (!document.getElementById('ms-tabs')) {
+    host.insertAdjacentHTML('afterend',
+      '<div id="ms-tabs" class="pagedjs_ignore" hidden></div>');
+  }
 })();
