@@ -96,6 +96,12 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.fill('#spm-title', 'Live pad');
   await page.locator('.spm-editor .ProseMirror').click();
   await page.keyboard.type('remember me');
+  // A sketch too — the panel page must load the FULL widget machinery
+  // (pane-widget etc.), not just prose.
+  await page.locator('#spm-toolbar button', { hasText: 'Sketch' }).dispatchEvent('mousedown');
+  await page.waitForSelector('.sn-insertpop:not([hidden]) .sn-ins-new', { timeout: 8000 });
+  await page.click('.sn-insertpop:not([hidden]) .sn-ins-new');
+  await page.waitForSelector('.spm-editor .sn-widget[data-variation-id]', { timeout: 15000 });
   await page.click('#spm-pin');
   await page.waitForSelector('#ms-tab-panels iframe[src*="pad.html"].active', { timeout: 15000 });
   check('pin turns the modal into a live panel (modal gone)',
@@ -104,6 +110,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await padFrame.waitForSelector('.spm-editor .ProseMirror', { timeout: 20000 });
   check('panel carries the pad content (typed text survived the pin flush)',
     (await padFrame.evaluate(() => document.querySelector('.spm-editor .ProseMirror').textContent)).includes('remember me'));
+  await padFrame.waitForSelector('.sn-widget .sn-render', { timeout: 20000 });
+  check('sketch widget RENDERS inside the panel (preview mounted, no dead deps)',
+    await padFrame.evaluate(() => document.querySelectorAll('.sn-widget .sn-render').length >= 1));
   check('pad tab label from the title', await page.evaluate(() => {
     const t = document.querySelector('#ms-tabs .ms-tab-scratchpad .ms-tab-label');
     return !!t && t.textContent === 'Live pad';
