@@ -152,6 +152,7 @@ html.has-ms-tabs { --tabs-h: 30px; }
   border-top: 2px solid transparent;
   white-space: nowrap;
 }
+.ms-tab-home { border-top-color: #a8a08c; }
 .ms-tab-manuscript { border-top-color: #57503f; }
 .ms-tab-scratchpad { border-top-color: #2a6fb0; }
 .ms-tab:hover { background: #f6f4ee; color: #333; }

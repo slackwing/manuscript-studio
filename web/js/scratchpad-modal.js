@@ -43,6 +43,11 @@ const WriteSysScratchpadModal = {
     return this._mod.ScratchpadModal.close();
   },
 
+  // Which pad is showing (0 = none). Sync — tabs.js reads it every render.
+  currentId() {
+    return this._mod ? this._mod.ScratchpadModal.currentId() : 0;
+  },
+
   // Restore/react to the URL hash. Accepts #scratchpad=N and the deep-link form
   // #scratchpad=N&variation=ID (navigate-to-source). If a pad is already open,
   // just scroll to the variation; otherwise open the pad (which then scrolls).

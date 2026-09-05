@@ -67,10 +67,16 @@ export const ScratchpadModal = {
       if (e.target === overlay) this.close();
     });
     // Pin as tab (was the fullscreen expander): the pad joins the tab row
-    // under the top bar, so book↔pad switching skips the landing page.
+    // under the top bar AND takes over the screen — a pinned pad is a tab's
+    // page (spm-full), an unpinned one stays a windowed modal.
     const pinBtn = overlay.querySelector('#spm-pin');
-    const syncPin = () => pinBtn.classList.toggle('pinned',
-      !!(window.WriteSysTabs && window.WriteSysTabs.isPinned('scratchpad', scratchpadId)));
+    const dialog = overlay.querySelector('.spm-dialog');
+    const syncPin = () => {
+      const pinned = !!(window.WriteSysTabs && window.WriteSysTabs.isPinned('scratchpad', scratchpadId));
+      pinBtn.classList.toggle('pinned', pinned);
+      dialog.classList.toggle('spm-full', pinned);
+      overlay.classList.toggle('spm-tabbed', pinned); // below the tab strip
+    };
     pinBtn.addEventListener('click', () => {
       if (!window.WriteSysTabs) return;
       const name = (overlay.querySelector('#spm-title').value || 'Untitled').trim();

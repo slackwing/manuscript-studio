@@ -1,8 +1,11 @@
 // Pinned tabs — the row under the top bar, on every logged-in page.
-// Pinning happens from the pad modal's pin button and the book strip's pin
-// button (manuscripts and scratchpads only; notes' "See all" is a landing
-// view, not a place). Pins live in localStorage: switching between a book
-// and a pad no longer routes through the landing page.
+// The row is a real tab bar: as soon as anything is pinned it shows a Home
+// tab (the landing page) followed by one tab per pin, each with its own ×.
+// Pinning a pad makes it a fullscreen page (spm-full) behind its tab;
+// manuscripts auto-pin on open. Pinning happens from the pad modal's pin
+// button and the book strip's pin button (manuscripts and scratchpads only;
+// notes' "See all" is a landing view, not a place). Pins live in
+// localStorage: switching between tabs never routes through a card grid.
 //
 // chrome.js renders the empty #ms-tabs shell right under #controls; this
 // file (loaded after it on every page) owns state + rendering. The row
@@ -20,6 +23,19 @@ window.WriteSysTabs = (function () {
   };
 
   const bookId = () => parseInt(new URLSearchParams(location.search).get('manuscript_id'), 10) || null;
+  const onHomePage = () => /home\.html$/.test(location.pathname);
+  // WriteSysScratchpadModal starts as a lazy-loader shim (scratchpad-modal.js)
+  // that only grows currentId/close once the real module loads — and nothing
+  // can be open before that.
+  const modal = () => window.WriteSysScratchpadModal || null;
+  const openPadId = () => {
+    const m = modal();
+    return (m && typeof m.currentId === 'function' && m.currentId()) || 0;
+  };
+  const closePad = () => {
+    const m = modal();
+    if (m && typeof m.close === 'function') m.close();
+  };
   const isPinned = (type, id) => read().some((p) => p.type === type && p.id === id);
 
   const pin = (type, id, name) => {
@@ -29,52 +45,91 @@ window.WriteSysTabs = (function () {
   const unpin = (type, id) => write(read().filter((p) => !(p.type === type && p.id === id)));
   const toggle = (type, id, name) => (isPinned(type, id) ? unpin(type, id) : pin(type, id, name));
 
+  const goHome = () => {
+    if (!onHomePage()) { location.href = 'home.html'; return; }
+    if (openPadId()) closePad();
+  };
+
   const go = (p) => {
     if (p.type === 'manuscript') {
-      if (p.id === bookId()) return; // already reading it
+      if (p.id === bookId()) { if (openPadId()) closePad(); return; }
       location.href = './?manuscript_id=' + p.id;
-    } else if (window.WriteSysScratchpadModal) {
-      window.WriteSysScratchpadModal.open(p.id);
+    } else if (modal()) {
+      if (p.id === openPadId()) return; // already looking at it
+      modal().open(p.id);
     } else {
       location.href = 'home.html#scratchpad=' + p.id;
     }
   };
 
+  // Closing a tab (×) closes what it shows: an open pad's modal closes with
+  // its tab; the manuscript you're reading sends you back to the landing page.
+  const closeTab = (p) => {
+    const wasOpenPad = p.type === 'scratchpad' && p.id === openPadId();
+    const wasCurrentBook = p.type === 'manuscript' && p.id === bookId();
+    unpin(p.type, p.id);
+    if (wasOpenPad) closePad();
+    if (wasCurrentBook) location.href = 'home.html';
+  };
+
   const render = () => {
     const host = document.getElementById('ms-tabs');
     if (!host) return;
-    const tabs = read();
-    document.documentElement.classList.toggle('has-ms-tabs', tabs.length > 0);
-    host.hidden = !tabs.length;
+    const pins = read();
+    document.documentElement.classList.toggle('has-ms-tabs', pins.length > 0);
+    host.hidden = !pins.length;
     host.replaceChildren();
+    if (!pins.length) return;
     const controls = document.getElementById('controls');
-    if (controls) host.style.top = Math.round(controls.getBoundingClientRect().height) + 'px';
-    tabs.forEach((p) => {
+    if (controls) {
+      const h = Math.round(controls.getBoundingClientRect().height);
+      host.style.top = h + 'px';
+      // Where the fixed chrome ends — the fullscreen ("tabbed") pad overlay
+      // starts here so the strip stays clickable above it.
+      document.documentElement.style.setProperty('--ms-chrome-b', (h + 30) + 'px'); // 30 = strip height (chrome.css)
+    }
+
+    const mkTab = (cls, name, active, onClick) => {
       const tab = document.createElement('button');
       tab.type = 'button';
-      tab.className = 'ms-tab ms-tab-' + p.type
-        + (p.type === 'manuscript' && p.id === bookId() ? ' active' : '');
-      tab.title = p.name;
+      tab.className = 'ms-tab ' + cls + (active ? ' active' : '');
+      tab.title = name;
       const label = document.createElement('span');
       label.className = 'ms-tab-label';
-      label.textContent = p.name;
+      label.textContent = name;
+      tab.appendChild(label);
+      tab.addEventListener('click', onClick);
+      host.appendChild(tab);
+      return tab;
+    };
+
+    // The landing page anchors the row whenever pins exist (not itself a
+    // pin — no ×): active when nothing else is on top of it.
+    mkTab('ms-tab-home', 'Home', onHomePage() && !openPadId(), goHome);
+
+    pins.forEach((p) => {
+      const active = p.type === 'manuscript'
+        ? (p.id === bookId() && !openPadId())
+        : p.id === openPadId();
+      const tab = mkTab('ms-tab-' + p.type, p.name, active, () => go(p));
       const x = document.createElement('span');
       x.className = 'ms-tab-x';
-      x.title = 'Unpin';
+      x.title = 'Close';
       x.textContent = '×';
-      x.addEventListener('click', (e) => { e.stopPropagation(); unpin(p.type, p.id); });
-      tab.append(label, x);
-      tab.addEventListener('click', () => go(p));
-      host.appendChild(tab);
+      x.addEventListener('click', (e) => { e.stopPropagation(); closeTab(p); });
+      tab.appendChild(x);
     });
     // Book-page pin button reflects the current manuscript's pin state.
     const pinBtn = document.getElementById('mc-pin');
     if (pinBtn) pinBtn.classList.toggle('pinned', isPinned('manuscript', bookId()));
   };
 
-  // Cross-tab sync + late layout (fonts can nudge the header height).
+  // Cross-tab sync + late layout (fonts can nudge the header height) +
+  // active-tab tracking as pads open and close.
   window.addEventListener('storage', (e) => { if (e.key === KEY) render(); });
   window.addEventListener('resize', render);
+  window.addEventListener('scratchpad-modal-opened', render);
+  window.addEventListener('scratchpad-modal-closed', render);
 
   // Book strip pin button (present on index.html only).
   document.addEventListener('DOMContentLoaded', () => {

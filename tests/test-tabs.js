@@ -51,40 +51,80 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   const hov2 = await ghostPad.evaluate((el) => getComputedStyle(el).borderTopColor);
   check('scratchpad ghost hover: blue lining', hov2 === 'rgb(42, 111, 176)', hov2);
 
-  // ---- pin a pad from the modal ----
+  // ---- pin a pad from the modal: Home tab + fullscreen pad tab ----
   await ghostPad.click();
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
+  check('unpinned pad opens as a windowed modal',
+    await page.locator('.spm-dialog.spm-full').count() === 0);
   await page.fill('#spm-title', 'Tab pad');
   await page.click('#spm-pin');
-  check('pad pin: tab appears with the pad title', await page.evaluate(() => {
-    const t = document.querySelector('#ms-tabs .ms-tab-scratchpad .ms-tab-label');
-    return !!t && t.textContent === 'Tab pad';
+  check('pinning spawns TWO tabs: Home + the pad', await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('#ms-tabs .ms-tab')];
+    return tabs.length === 2 && tabs[0].classList.contains('ms-tab-home')
+      && tabs[1].classList.contains('ms-tab-scratchpad')
+      && tabs[1].querySelector('.ms-tab-label').textContent === 'Tab pad';
+  }));
+  check('Home tab has no ×; pad tab has one', await page.evaluate(() => {
+    const [home, pad] = document.querySelectorAll('#ms-tabs .ms-tab');
+    return !home.querySelector('.ms-tab-x') && !!pad.querySelector('.ms-tab-x');
+  }));
+  check('pinned pad goes fullscreen', await page.locator('.spm-dialog.spm-full').count() === 1);
+  check('pad tab is the active one', await page.evaluate(() => {
+    const active = document.querySelector('#ms-tabs .ms-tab.active');
+    return !!active && active.classList.contains('ms-tab-scratchpad');
   }));
   check('pad pin: button reads pinned', await page.locator('#spm-pin.pinned').count() === 1);
   check('row claims layout (has-ms-tabs)', await page.evaluate(() =>
     document.documentElement.classList.contains('has-ms-tabs')));
-  await page.keyboard.press('Escape');
-  await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 }).catch(() => {});
 
-  // ---- persistence + click-to-open ----
+  // ---- Home tab: back to the landing page (closes the pad) ----
+  await page.click('#ms-tabs .ms-tab-home');
+  await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 });
+  check('Home tab closes the pad and takes the active state', await page.evaluate(() => {
+    const active = document.querySelector('#ms-tabs .ms-tab.active');
+    return !!active && active.classList.contains('ms-tab-home');
+  }));
+
+  // ---- persistence + click-to-open (fullscreen since pinned) ----
   await page.reload();
   await page.waitForSelector('#ms-tabs .ms-tab-scratchpad', { timeout: 8000 });
-  check('tab survives reload', true);
+  check('tabs survive reload', true);
   await page.click('#ms-tabs .ms-tab-scratchpad');
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
-  check('clicking the pad tab opens the pad', true);
+  check('pad tab reopens the pad FULLSCREEN',
+    await page.locator('.spm-dialog.spm-full').count() === 1);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 }).catch(() => {});
 
-  // ---- book page: pin button in the strip ----
+  // ---- second pad: pinning appends a third tab ----
+  await page.click('.card-ghost[data-ghost="scratchpad"]');
+  await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
+  await page.fill('#spm-title', 'Second pad');
+  await page.click('#spm-pin');
+  check('second pin appends a third tab', await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('#ms-tabs .ms-tab')];
+    return tabs.length === 3
+      && tabs[2].querySelector('.ms-tab-label').textContent === 'Second pad'
+      && tabs[2].classList.contains('active');
+  }));
+  // × on the OPEN pad's tab closes pad + tab together.
+  await page.hover('#ms-tabs .ms-tab:nth-child(3)');
+  await page.click('#ms-tabs .ms-tab:nth-child(3) .ms-tab-x');
+  await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 });
+  check('× on the open pad tab closes the pad and drops the tab', await page.evaluate(() =>
+    document.querySelectorAll('#ms-tabs .ms-tab').length === 2));
+
+  // ---- book page: auto-pin joins the row after Home ----
   await page.goto(TEST_URL);
   await waitForPagination(page);
-  check('tab row rides along to the book page',
-    await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 1);
-  // Opening a manuscript IS opening a tab: the visit auto-pins.
   await page.waitForSelector('#ms-tabs .ms-tab-manuscript', { timeout: 8000 });
-  check('opening a manuscript auto-pins it, ACTIVE on its own page',
-    await page.locator('#ms-tabs .ms-tab-manuscript.active').count() === 1);
+  check('book page row: Home, pad, manuscript (active)', await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('#ms-tabs .ms-tab')];
+    return tabs.length === 3 && tabs[0].classList.contains('ms-tab-home')
+      && tabs[1].classList.contains('ms-tab-scratchpad')
+      && tabs[2].classList.contains('ms-tab-manuscript')
+      && tabs[2].classList.contains('active');
+  }));
   await page.waitForSelector('#mc-pin.pinned', { timeout: 8000 });
   check('book pin button reads pinned', true);
   await page.waitForFunction(() => {
@@ -93,27 +133,38 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   }, null, { timeout: 10000 });
   check('tab label follows the async display name', true);
 
-  // ---- pad tab opens the pad IN PLACE on the book page ----
+  // ---- pad tab over the book: fullscreen, active flips, close restores ----
   await page.click('#ms-tabs .ms-tab-scratchpad');
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
-  check('pad tab opens the pad over the book (no landing-page round trip)', true);
+  check('pad tab opens fullscreen over the book, pad tab active', await page.evaluate(() =>
+    !!document.querySelector('.spm-dialog.spm-full')
+    && document.querySelector('#ms-tabs .ms-tab.active').classList.contains('ms-tab-scratchpad')));
   await page.keyboard.press('Escape');
-  await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 }).catch(() => {});
+  await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 });
+  check('closing the pad re-activates the manuscript tab', await page.evaluate(() =>
+    document.querySelector('#ms-tabs .ms-tab.active').classList.contains('ms-tab-manuscript')));
+
+  // ---- Home tab navigates off the book page ----
+  await page.click('#ms-tabs .ms-tab-home');
+  await page.waitForURL(/home\.html/, { timeout: 15000 });
+  await page.waitForSelector('#ms-tabs .ms-tab-home.active', { timeout: 8000 });
+  check('Home tab navigates to the landing page and is active', true);
 
   // ---- manuscript tab navigates from home ----
-  await page.goto(HOME_URL);
-  await page.waitForSelector('#ms-tabs .ms-tab-manuscript', { timeout: 8000 });
   await page.click('#ms-tabs .ms-tab-manuscript');
   await page.waitForURL(/manuscript_id=/, { timeout: 15000 });
   check('manuscript tab navigates to the book', true);
 
-  // ---- unpin via × ----
+  // ---- × on the manuscript you're reading → back to the landing page ----
+  await page.waitForSelector('#ms-tabs .ms-tab-manuscript', { timeout: 8000 });
+  await page.hover('#ms-tabs .ms-tab-manuscript');
+  await page.click('#ms-tabs .ms-tab-manuscript .ms-tab-x');
+  await page.waitForURL(/home\.html/, { timeout: 15000 });
+  check('closing the current book tab lands on the landing page', true);
   await page.waitForSelector('#ms-tabs .ms-tab-scratchpad', { timeout: 8000 });
   await page.hover('#ms-tabs .ms-tab-scratchpad');
   await page.click('#ms-tabs .ms-tab-scratchpad .ms-tab-x');
-  await page.hover('#ms-tabs .ms-tab-manuscript');
-  await page.click('#ms-tabs .ms-tab-manuscript .ms-tab-x');
-  check('unpinning everything hides the row',
+  check('closing the last pin hides the row (Home goes with it)',
     await page.locator('#ms-tabs[hidden]').count() === 1);
   check('…and releases the layout claim', await page.evaluate(() =>
     !document.documentElement.classList.contains('has-ms-tabs')));
