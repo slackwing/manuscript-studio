@@ -85,6 +85,20 @@ window.WriteSysTabs = (function () {
         toggle('manuscript', bookId(), name.trim());
       });
     }
+    // Manuscripts don't open in a modal — opening one IS opening a tab,
+    // so the visit pins it (pads pin explicitly from their modal). The
+    // display name lands async (renderer's setName retry loop); follow it.
+    const id = bookId();
+    const nameEl = document.getElementById('mc-name');
+    if (id && nameEl) {
+      const nameNow = () => (nameEl.textContent || '').trim();
+      if (!isPinned('manuscript', id)) pin('manuscript', id, nameNow() || 'Manuscript');
+      new MutationObserver(() => {
+        const tabs = read();
+        const t = tabs.find((p) => p.type === 'manuscript' && p.id === id);
+        if (t && nameNow() && t.name !== nameNow()) { t.name = nameNow(); write(tabs); }
+      }).observe(nameEl, { childList: true, characterData: true, subtree: true });
+    }
     render();
   });
   render();

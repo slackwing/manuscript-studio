@@ -81,12 +81,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await waitForPagination(page);
   check('tab row rides along to the book page',
     await page.locator('#ms-tabs .ms-tab-scratchpad').count() === 1);
-  await page.waitForSelector('#mc-pin', { timeout: 8000 });
-  await page.click('#mc-pin');
+  // Opening a manuscript IS opening a tab: the visit auto-pins.
   await page.waitForSelector('#ms-tabs .ms-tab-manuscript', { timeout: 8000 });
-  check('book pin: manuscript tab appears, ACTIVE on its own page',
+  check('opening a manuscript auto-pins it, ACTIVE on its own page',
     await page.locator('#ms-tabs .ms-tab-manuscript.active').count() === 1);
-  check('book pin button reads pinned', await page.locator('#mc-pin.pinned').count() === 1);
+  await page.waitForSelector('#mc-pin.pinned', { timeout: 8000 });
+  check('book pin button reads pinned', true);
+  await page.waitForFunction(() => {
+    const t = document.querySelector('#ms-tabs .ms-tab-manuscript .ms-tab-label');
+    return !!t && t.textContent.length > 0 && t.textContent !== 'Manuscript';
+  }, null, { timeout: 10000 });
+  check('tab label follows the async display name', true);
 
   // ---- pad tab opens the pad IN PLACE on the book page ----
   await page.click('#ms-tabs .ms-tab-scratchpad');
