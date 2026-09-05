@@ -138,6 +138,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('tabs survived reload', await page.evaluate(() =>
     document.querySelectorAll('#ms-tabs .ms-tab').length === 3));
 
+  // ---- clicking the PINNED pad's landing card FOCUSES its tab (no modal) ----
+  await page.click('#ms-tabs .ms-tab-home');
+  await page.waitForFunction(() => document.getElementById('ms-tab-panels').hidden === true);
+  const pinnedPadId = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('ms_pinned_tabs')).find((p) => p.type === 'scratchpad').id);
+  await page.click(`.card-scratchpad[data-scratchpad-id="${pinnedPadId}"]`);
+  await page.waitForSelector('#ms-tab-panels iframe[src*="pad.html"].active', { timeout: 10000 });
+  check('pinned pad card → its tab focuses; NO modal', await page.evaluate(() =>
+    !document.querySelector('.spm-overlay')
+    && document.querySelector('#ms-tabs .ms-tab.active').classList.contains('ms-tab-scratchpad')));
+
   // ---- × destroys the panel; active falls back to Home ----
   await page.hover('#ms-tabs .ms-tab-scratchpad');
   await page.click('#ms-tabs .ms-tab-scratchpad .ms-tab-x');

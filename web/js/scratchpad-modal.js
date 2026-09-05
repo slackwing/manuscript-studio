@@ -34,6 +34,16 @@ const WriteSysScratchpadModal = {
   },
 
   async open(scratchpadId, opts) {
+    // In the SHELL, a pad that lives in a pinned tab FOCUSES that tab —
+    // never a second copy in a modal. (Cards, deep links, everything routes
+    // through here.) Framed pages fall through to the in-frame modal.
+    if (window.top === window && /home\.html$/.test(location.pathname)) {
+      const tabs = window.WriteSysTabs;
+      if (tabs && tabs.isPinned('scratchpad', scratchpadId)) {
+        tabs.activate('s' + scratchpadId);
+        return;
+      }
+    }
     const mod = await this._load();
     return mod.ScratchpadModal.open(scratchpadId, opts);
   },
