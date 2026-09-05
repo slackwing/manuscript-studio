@@ -105,8 +105,12 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.locator('.sn-ins-clip').click();
   await page.waitForFunction((n) => document.querySelectorAll('.sn-widget').length === n + 1, widgetsBefore, { timeout: 10000 });
   check('clicking it inserts a related sibling variation', true);
-  const letters = await page.evaluate(() => Array.from(document.querySelectorAll('.sn-widget .sn-rail-btn')).length);
-  check('new widget shows the sibling rail', letters >= 2, `rail buttons=${letters}`);
+  // Rail buttons render after the new widget's ctx fetch — wait, don't count.
+  const gotRail = await page.waitForFunction(
+    () => document.querySelectorAll('.sn-widget .sn-rail-btn').length >= 2,
+    null, { timeout: 10000 }).then(() => true).catch(() => false);
+  check('new widget shows the sibling rail', gotRail,
+    gotRail ? '' : `rail buttons=${await page.locator('.sn-widget .sn-rail-btn').count()}`);
 
   // 5. The sketch's NOTE (026): a colored square — the same component that
   //    fronts highlighted text — sits top-left of the widget; clicking opens
