@@ -3,7 +3,7 @@
 // server on :5002.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const {BASE_URL, TEST_URL, TEST_USERNAME, TEST_PASSWORD, loginAsTestUser} = require('./test-utils');
+const {BASE_URL, TEST_URL, TEST_USERNAME, TEST_PASSWORD, loginAsTestUser, waitForPagination, paginationStamp} = require('./test-utils');
 const BASE = BASE_URL;
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -28,8 +28,10 @@ const psql = (sql) => execSync(
     localStorage.setItem('csrf_token', d.csrf_token);
   });
   await page.goto(TEST_URL);
-  await page.waitForSelector('.sentence[data-sentence-id]', { timeout: 60000 });
-  await page.waitForTimeout(4000);
+  await waitForPagination(page, 60000);
+  // import zones rebuild synchronously after pagination — the plusHidden
+  // check below needs them present
+  await page.waitForSelector('.import-zone', { timeout: 15000 });
 
   // pick two prose sentences a few apart
   const pair = await page.evaluate(() => {
@@ -43,9 +45,14 @@ const psql = (sql) => execSync(
   check('picked a range of sentences', pair.between.length >= 3, `${pair.between.length} sentences`);
 
   await page.locator(`.sentence[data-sentence-id="${pair.aId}"]`).first().click();
-  await page.waitForTimeout(300);
+  // plain click sets the range anchor synchronously in the click handler
+  await page.waitForFunction((id) => window.WriteSysRangeDelete && window.WriteSysRangeDelete.anchorId === id, pair.aId);
   await page.locator(`.sentence[data-sentence-id="${pair.bId}"]`).first().click({ modifiers: ['Shift'] });
-  await page.waitForTimeout(400);
+  // select() highlights + appends both gutter buttons synchronously
+  await page.waitForFunction(() =>
+    document.body.classList.contains('range-delete-mode') &&
+    document.querySelector('.range-trash:not(.range-sketch)') &&
+    document.querySelector('.range-trash.range-sketch'));
 
   const mode = await page.evaluate(() => {
     const trashEl = document.querySelector('.range-trash');
@@ -87,8 +94,17 @@ const psql = (sql) => execSync(
   check('first click arms (confirming)', arming);
   const before = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   check('no suggestions before confirm', before === '0', before);
+  const stamp = await paginationStamp(page);
   await page.locator('.range-trash:not(.range-sketch)').click();
-  await page.waitForTimeout(2500);
+  // apply() PUTs the suggestions then re-renders: wait for the NEW pagination
+  // pass AND the old pages to be swapped out (suggested-delete marks live in
+  // the fresh DOM). Timeout falls through so the checks below report the
+  // actual failure.
+  await page.waitForFunction((prev) =>
+    (document.body.dataset.paginated || '0') !== prev &&
+    document.querySelectorAll('.pagedjs_pages').length === 1 &&
+    document.querySelector('.sentence.suggested-delete'),
+    stamp, { timeout: 20000 }).catch(() => {});
 
   const rows = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text=''`);
   check('EMPTY suggestion on every sentence in range', rows === String(pair.between.length), `rows=${rows}`);

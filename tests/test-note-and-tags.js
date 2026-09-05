@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestAnnotations, loginAsTestUser, waitForPagination } = require('./test-utils');
 
 (async () => {
   console.log('=== Note and Tags Test ===\n');
@@ -18,9 +18,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
   try {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     console.log('✓ Page loaded');
 
@@ -41,7 +39,7 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     const sentenceId = await firstSentence.getAttribute('data-sentence-id');
     await firstSentence.click();
     await page.waitForSelector('.sticky-note.uncreated-note', { timeout: 5000 });
-    await page.waitForTimeout(500);
+    await page.waitForSelector('#sticky-notes-container.visible', { timeout: 5000 });
 
     const uncreatedCount = await page.locator('.sticky-note.uncreated-note').count();
     const containerVisible = await page.evaluate(() => {
@@ -57,7 +55,8 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
 
     // Test 3: Hover reveals per-note palette
     await page.locator('.sticky-note.uncreated-note .sticky-note-color-circle').first().hover({ force: true });
-    await page.waitForTimeout(400);
+    // Palette shows on mouseenter; catch() keeps the assertion below authoritative.
+    await page.waitForSelector('.sticky-note.uncreated-note .sticky-note-palette.visible', { timeout: 3000 }).catch(() => {});
     const paletteVisible = await page.evaluate(() => {
       return !!document.querySelector('.sticky-note.uncreated-note .sticky-note-palette.visible');
     });
@@ -80,7 +79,10 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     // Test 5: Typing in the note-input auto-creates a yellow annotation (default color)
     const uncreatedNoteInput = page.locator('.sticky-note.uncreated-note .note-input').first();
     await uncreatedNoteInput.type('Test note', { delay: 5 });
-    await page.waitForTimeout(1500);
+    // Auto-create = POST /api/notes then an awaited refreshRainbowBars; the
+    // yellow side-bar appearing is the "create landed" observable (the real
+    // sticky note renders before the bars do).
+    await page.waitForSelector(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="yellow"]`, { timeout: 10000 }).catch(() => {});
 
     // Sentence backgrounds are no longer driven by annotation presence;
     // a new yellow annotation surfaces as a yellow rainbow side-bar.
@@ -106,16 +108,17 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     for (let i = 0; i < 3; i++) {
       try {
         await page.locator('.sticky-note:not(.uncreated-note) .sticky-note-color-circle').first().hover({ force: true });
-        await page.waitForTimeout(400);
         await page.waitForSelector('.sticky-note:not(.uncreated-note) .sticky-note-palette.visible', { timeout: 2000 });
         await page.locator('.sticky-note:not(.uncreated-note) .color-circle[data-color="blue"]').first().click({ force: true });
-        await page.waitForTimeout(1200);
         break;
       } catch (e) {
         if (i === 2) throw e;
-        await page.waitForTimeout(400);
+        await page.waitForTimeout(400); // ride out the palette's 200ms mouseleave hide-delay
       }
     }
+    // Color change = PUT then an awaited refreshRainbowBars; the blue bar
+    // appearing is the observable. catch() keeps the assertions authoritative.
+    await page.waitForSelector(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="blue"]`, { timeout: 5000 }).catch(() => {});
 
     const blueBarNow = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="blue"]`).count();
     const yellowBarStill = await page.locator(`.rainbow-bar[data-sentence-id="${sentenceId}"][data-color="yellow"]`).count();
@@ -138,18 +141,21 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     // Test 9: Note text and color persist after reload
     const noteInput = page.locator('.sticky-note:not(.uncreated-note) .note-input').first();
     await noteInput.click();
+    // The widget's 1s-debounced auto-save PUTs the text; wait for THAT
+    // response (matched on body so a leftover earlier save can't satisfy it).
+    const savePut = page.waitForResponse(r =>
+      r.request().method() === 'PUT' && /\/api\/notes\/\d+/.test(r.url()) &&
+      (r.request().postData() || '').includes('Test note more text'),
+      { timeout: 10000 });
     await noteInput.fill('');
     await noteInput.type('Test note more text', { delay: 5 });
-    await page.waitForTimeout(1500); // auto-save
+    await savePut;
 
     await page.reload();
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 5000 });
-    await page.waitForTimeout(2000);
+    await waitForPagination(page);
 
     await page.locator(`.sentence[data-sentence-id="${sentenceId}"]`).first().click({ force: true });
     await page.waitForSelector('.sticky-note:not(.uncreated-note) .note-input', { timeout: 10000 });
-    await page.waitForTimeout(800);
 
     const persistedText = await page.locator('.sticky-note:not(.uncreated-note) .note-input').first().inputValue();
     if (persistedText === 'Test note more text') {
@@ -170,7 +176,9 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser } = require('./test-ut
     // Manuscript chip: a sentence note is trivially in its manuscript, so the
     // margin does NOT show a manuscript chip (showManuscriptChip:false flag).
     await page.locator('.sentence').first().click();
-    await page.waitForTimeout(800);
+    // Panel renders synchronously from the cache; the note appearing is the
+    // "re-render done" signal for the chip check below.
+    await page.waitForSelector('.sticky-note[data-annotation-id]', { timeout: 5000 });
     const marginChips = await page.locator('.sticky-note[data-annotation-id] .manuscript-chip').count();
     if (marginChips === 0) {
       console.log('✓ margin note shows NO manuscript chip (flagged off in manuscript view)');

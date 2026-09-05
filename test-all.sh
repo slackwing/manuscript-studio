@@ -166,8 +166,9 @@ esac
 
 # Parallel workers (per-worker fixture manuscripts + users — see
 # tests/test-utils.js and tests/provision-workers.sh). MS_TEST_WORKERS=1
-# gives the old sequential behavior.
-WORKERS="${MS_TEST_WORKERS:-4}"
+# gives the old sequential behavior. Default sized for the 24-core dev
+# box; each test holds one Firefox page against the shared browser.
+WORKERS="${MS_TEST_WORKERS:-8}"
 
 echo "========================================"
 echo "Manuscript Studio Test Suite ($mode, ${WORKERS} workers)"
@@ -276,17 +277,44 @@ run_worker() {
   done
 }
 
-# Round-robin distribution keeps each worker's mix of fast/slow balanced.
-declare -a bucket
-for i in "${!js_tests[@]}"; do
-  w=$(( (i % WORKERS) + 1 ))
-  bucket[$w]="${bucket[$w]:-} ${js_tests[$i]}"
-done
+# Event-driven work queue: idle workers pull the next test the moment they
+# finish one (flock guards the queue cursor), so no worker sits idle while
+# another drains a straggler bucket. Longest-first ordering (durations from
+# tests/.test-durations, refreshed every run) keeps the slowest tests off
+# the tail of the schedule.
+QUEUE="$RUNDIR/queue"
+if [ -f tests/.test-durations ]; then
+  for name in "${js_tests[@]}"; do
+    d=$(grep -m1 "^${name}:" tests/.test-durations | cut -d: -f2)
+    printf '%04d %s\n' "${d:-9999}" "$name"
+  done | sort -rn | cut -d' ' -f2 > "$QUEUE"
+else
+  printf '%s\n' "${js_tests[@]}" > "$QUEUE"
+fi
+echo 0 > "$RUNDIR/cursor"
+
+pull_next() {
+  (
+    flock 9
+    local i total
+    i=$(cat "$RUNDIR/cursor")
+    total=$(wc -l < "$QUEUE")
+    if [ "$i" -ge "$total" ]; then return 1; fi
+    echo $((i + 1)) > "$RUNDIR/cursor"
+    sed -n "$((i + 1))p" "$QUEUE"
+  ) 9>"$RUNDIR/queue.lock"
+}
+
+queue_worker() {
+  local w=$1 name
+  while name=$(pull_next); do
+    run_worker "$w" "$name"
+  done
+}
 
 worker_pids=()
 for w in $(seq 1 "$WORKERS"); do
-  # shellcheck disable=SC2086
-  run_worker "$w" ${bucket[$w]:-} &
+  queue_worker "$w" &
   worker_pids+=($!)
 done
 for p in "${worker_pids[@]}"; do wait "$p"; done
@@ -297,6 +325,9 @@ run_worker 1 "${SERIAL_TESTS[@]}"
 js_tests+=("${SERIAL_TESTS[@]}")
 
 suite_end=$(date +%s)
+
+# Refresh the duration hints that order the next run's queue (longest first).
+sort -t'|' -k1,1 -u "$RUNDIR/results" | awk -F'|' '{print $1 ":" $3}' > tests/.test-durations
 
 passed=()
 failed=()

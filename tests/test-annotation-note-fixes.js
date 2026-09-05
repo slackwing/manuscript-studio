@@ -19,6 +19,7 @@ const {
   TEST_URL,
   cleanupTestAnnotations,
   loginAsTestUser,
+  waitForPagination,
 } = require('./test-utils');
 
 function psql(sql) {
@@ -53,9 +54,7 @@ function psql(sql) {
   try {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // Three distinct prose sentences: one for the blur check, two for the race.
     const targets = await page.evaluate(() => {
@@ -80,10 +79,16 @@ function psql(sql) {
     await page.locator(`.sentence[data-sentence-id="${blurSid}"]`).first().click();
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated .note-input', { timeout: 5000 });
     await page.locator('.sticky-note.uncreated-note.first-uncreated .note-input').click();
+    // Every create/typing interleaving (recovery save after the POST, or the
+    // 1s debounced save from the real textarea) ends with exactly one PUT
+    // carrying the FULL text — wait for that response instead of sleeping.
+    const fullSave = page.waitForResponse(r =>
+      r.request().method() === 'PUT' && /\/api\/notes\/\d+/.test(r.url()) &&
+      (r.request().postData() || '').includes('a stable note'),
+      { timeout: 10000 });
     await page.keyboard.type('a stable note');
-    // Let the create POST land and the 1s debounced text save drain.
     await page.waitForSelector('.sticky-note:not(.uncreated-note) .note-input', { timeout: 5000 });
-    await page.waitForTimeout(2500);
+    await fullSave;
 
     const annId = await page.evaluate(() => {
       const a = window.WriteSysNotes && window.WriteSysNotes.notes[0];
@@ -97,9 +102,13 @@ function psql(sql) {
     // Focus the note, then blur without editing.
     const noteInput = page.locator(`.sticky-note[data-annotation-id="${annId}"] .note-input`);
     await noteInput.click();
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() =>
+      document.activeElement && document.activeElement.classList.contains('note-input'),
+      null, { timeout: 3000 });
     await page.evaluate(() => document.activeElement && document.activeElement.blur());
-    await page.waitForTimeout(1500);
+    // Negative check: the buggy no-op save fired synchronously in the blur
+    // handler, so a short grace is ample for its request event to register.
+    await page.waitForTimeout(500);
 
     assert(annotationPuts.length === putsBefore,
       `No PUT fired on focus+blur without edits (got ${annotationPuts.length - putsBefore} extra)`);
@@ -111,8 +120,12 @@ function psql(sql) {
     await noteInput.click();
     await noteInput.evaluate(el => el.setSelectionRange(el.value.length, el.value.length));
     await page.keyboard.type(' now edited');
+    // Blur flushes the debounced save immediately — wait for its PUT response.
+    const editPut = page.waitForResponse(r =>
+      r.request().method() === 'PUT' && /\/api\/notes\/\d+/.test(r.url()),
+      { timeout: 5000 });
     await page.evaluate(() => document.activeElement && document.activeElement.blur());
-    await page.waitForTimeout(1500);
+    await editPut;
     assert(annotationPuts.length > putsBefore, 'Edit + blur still PUTs the new text');
     const savedNote = psql(`SELECT body FROM note WHERE note_id=${annId}`);
     assert(savedNote === 'a stable note now edited',
@@ -131,12 +144,21 @@ function psql(sql) {
     await page.locator(`.sentence[data-sentence-id="${raceSidA}"]`).first().click();
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated .note-input', { timeout: 5000 });
     await page.locator('.sticky-note.uncreated-note.first-uncreated .note-input').click();
+    const createSent = page.waitForRequest(r =>
+      r.method() === 'POST' && /\/api\/notes$/.test(r.url()), { timeout: 5000 });
+    const createDone = page.waitForResponse(r =>
+      r.request().method() === 'POST' && /\/api\/notes$/.test(r.url()), { timeout: 15000 });
     await page.keyboard.type('z'); // first char fires the delayed POST
-    // While the POST is in flight, select a different sentence.
-    await page.waitForTimeout(300);
+    // The instant the POST is in flight, select a different sentence (the
+    // route above holds the POST open for 1.5s, so we're well inside it).
+    await createSent;
     await page.locator(`.sentence[data-sentence-id="${raceSidB}"]`).first().click();
-    // Let the POST resolve and everything settle.
-    await page.waitForTimeout(3000);
+    // Let the POST resolve and the cache add (right after response.json()) land.
+    await createDone;
+    await page.waitForFunction(() => {
+      const cache = (window.WriteSysRenderer && window.WriteSysRenderer.currentNotes) || [];
+      return cache.some(x => (x.body || '').startsWith('z'));
+    }, null, { timeout: 5000 });
     await page.unroute('**/api/notes');
 
     const race = await page.evaluate(({ a, b }) => {
@@ -163,7 +185,9 @@ function psql(sql) {
 
     // Re-selecting the original sentence shows the note (cache add worked).
     await page.locator(`.sentence[data-sentence-id="${raceSidA}"]`).first().click();
-    await page.waitForTimeout(500);
+    // Panel renders synchronously from the cache; catch() keeps the count
+    // assertion below authoritative.
+    await page.waitForSelector('#sticky-notes-container .sticky-note:not(.uncreated-note)', { timeout: 5000 }).catch(() => {});
     const shownOnA = await page.evaluate(() =>
       document.querySelectorAll('#sticky-notes-container .sticky-note:not(.uncreated-note)').length);
     assert(shownOnA === 1, `Note appears when its own sentence is re-selected (got ${shownOnA})`);

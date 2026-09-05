@@ -31,6 +31,11 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForTimeout(400);
   await page.locator('.sn-widget .sn-render').click(); // empty → edit
   await page.waitForSelector('.sn-widget textarea');
+  // Registered BEFORE typing: the autosaver debounces 600ms after the last
+  // keystroke, then PUTs api/variations/<id> — that response IS the autosave
+  // cycle the test waits on below.
+  const savePut = page.waitForResponse((r) => r.request().method() === 'PUT'
+    && /\/api\/variations\/\d+$/.test(r.url()) && r.ok(), { timeout: 15000 });
   await page.keyboard.type('alpha beta gamma delta');
   await page.waitForTimeout(150);
 
@@ -46,16 +51,23 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.keyboard.press('ArrowRight');
   check('ArrowRight advances the caret', (await sel()) === s + 1, `sel=${await sel()}`);
 
-  // Across an autosave cycle.
-  await page.waitForTimeout(1200);
+  // Across an autosave cycle — wait for the debounced PUT itself.
+  await savePut;
   await page.mouse.click(box.x + 95, box.y + 18);
   await page.waitForTimeout(150);
   const s2 = await sel();
   check('caret still movable after autosave', s2 > 0 && s2 !== s + 1, `sel=${s2}`);
 
-  // Leave edit (blur to prose) and come back — still fine.
+  // Leave edit (blur to prose) and come back — still fine. Blur flips the
+  // widget to preview; wait for the rendered preview showing the saved text
+  // (the textarea gone) instead of a fixed sleep.
   await page.locator('.spm-editor .ProseMirror > p').first().click();
-  await page.waitForTimeout(800);
+  await page.waitForFunction(() => {
+    const w = document.querySelector('.sn-widget');
+    const r = w && w.querySelector('.sn-render');
+    return r && !w.querySelector('textarea') && r.shadowRoot
+      && r.shadowRoot.textContent.includes('alpha beta gamma delta');
+  }, null, { timeout: 10000 });
   await page.locator('.sn-widget .sn-render').click();
   await page.waitForSelector('.sn-widget textarea');
   const box2 = await page.locator('.sn-widget textarea').boundingBox();

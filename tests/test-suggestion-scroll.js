@@ -17,6 +17,7 @@ const {
   cleanupTestAnnotations,
   TEST_USERNAME,
   loginAsTestUser,
+  waitForPagination, paginationStamp, waitForRepagination,
 } = require('./test-utils');
 const { suggestEditor } = require('./test-utils');
 
@@ -47,9 +48,7 @@ function psql(sql) {
   try {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // Pick a sentence that lives well below the fold — guarantees scroll
     // restore is the only thing that could put it on screen after reload.
@@ -70,17 +69,17 @@ function psql(sql) {
     // lives far down — it can't "stay visible" because it wasn't visible.
     await page.evaluate((sid) => {
       const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
-      el.scrollIntoView({ block: 'center' });
+      el.scrollIntoView({ block: 'center' }); // default behavior: instant, no animation
     }, target.id);
-    await page.waitForTimeout(500);
 
     const newText = target.text.replace(/\.$/, '') + ' (SCROLL TARGET).';
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), target.id);
     await page.waitForSelector('#suggestion-modal');
     await (await suggestEditor(page)).fill(newText);
+    const preSaveStamp = await paginationStamp(page);
     await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
-    await page.waitForTimeout(2000); // re-pagination
+    await waitForRepagination(page, preSaveStamp); // post-save full re-render
 
     const url = page.url();
     assert(url.includes(`scroll_to=${target.id}`),

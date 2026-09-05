@@ -2,7 +2,7 @@
 // the + must appear (no longer suppressed) and the canonize must COMPOSE —
 // one suggestion carrying the user's prose edit AND the &sketch region.
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_USERNAME, loginAsTestUser, cleanupTestAnnotations, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, loginAsTestUser, cleanupTestAnnotations, cleanupTestNotes, waitForPagination } = require('./test-utils');
 const { execSync } = require('child_process');
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -34,8 +34,10 @@ const psql = (sql) => execSync(
   await page.waitForSelector('.spm-overlay', { state: 'detached' });
 
   await page.goto(`${TEST_URL}/index.html`);
-  await page.waitForSelector('.sentence[data-sentence-id]', { timeout: 40000 });
-  await page.waitForTimeout(4000);
+  await waitForPagination(page, 40000);
+  // import zones are (re)built synchronously after the pagination pass —
+  // wait for them rather than sleeping.
+  await page.waitForSelector('.import-zone[data-sentence-id]', { timeout: 15000 });
 
   // find a + zone boundary, put a SUGGESTION on that sentence first
   const boundary = await page.evaluate(() => document.querySelector('.import-zone[data-sentence-id]').dataset.sentenceId);
@@ -52,8 +54,10 @@ const psql = (sql) => execSync(
   check('pending suggestion placed on the boundary sentence', !!edited);
 
   await page.reload();
-  await page.waitForSelector('.sentence[data-sentence-id]', { timeout: 40000 });
-  await page.waitForTimeout(4000);
+  await waitForPagination(page, 40000);
+  // Wait for ANY zone (zones rebuild in one pass); the SPECIFIC boundary
+  // zone stays an assertion below, not a wait.
+  await page.waitForSelector('.import-zone[data-sentence-id]', { timeout: 15000 });
   const zoneStill = await page.evaluate((sid) =>
     !!document.querySelector(`.import-zone[data-sentence-id="${CSS.escape(sid)}"]`), boundary);
   check('+ still appears at a suggested boundary', zoneStill);
@@ -65,11 +69,15 @@ const psql = (sql) => execSync(
   // the + opens the insert menu now (LIFECYCLE §6) — pick "Place sketch"
   await page.waitForSelector('#insert-menu [data-act="sketch"]');
   await page.click('#insert-menu [data-act="sketch"]');
-  await page.waitForSelector('#im-blocks .im-block, #im-blocks button, #import-modal', { timeout: 10000 });
-  await page.waitForTimeout(800);
-  // pick our variation (search narrows it)
+  // modal open + variation list loaded (loadVariations fetch rendered blocks)
+  await page.waitForSelector('#im-blocks .im-block', { timeout: 10000 });
+  // pick our variation (search narrows it) — wait for the debounced refetch
+  // to render a first block matching the query
   await page.fill('#im-q', 'Composed canon region');
-  await page.waitForTimeout(600);
+  await page.waitForFunction(() => {
+    const b = document.querySelector('#im-blocks .im-block .im-block-text');
+    return b && b.textContent.includes('Composed canon region');
+  }, null, { timeout: 10000 });
   const picked = await page.evaluate(() => {
     const b = document.querySelector('#im-blocks [data-variation-id], #im-blocks .im-block');
     if (!b) return false;

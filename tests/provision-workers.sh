@@ -3,12 +3,14 @@
 # Provision parallel-suite fixtures (test-all.sh): worker 1 uses the
 # historical test/test-manuscripts pair; workers 2..K get testN users and
 # test-manuscripts-wN repo copies + grants. Idempotent — reruns are no-ops.
-# The wN manuscript entries must exist in config.dev.yaml (they do).
+# The wN manuscript entries must exist in config.dev.yaml (w2..w8 do) —
+# the server registers manuscript rows from that registry at startup, so a
+# new worker count needs a config block AND a server restart first.
 set -u
 
-K="${1:-4}"
+K="${1:-8}"
 REPOS="$HOME/.config/manuscript-studio-dev/repos"
-API="http://localhost:5001/api"
+API="http://localhost:${MS_TEST_PORT:-5001}/api"
 TOKEN="dev-system-token-not-for-production"
 
 for i in $(seq 2 "$K"); do

@@ -22,6 +22,7 @@ const {
   SYSTEM_TOKEN,
   cleanupTestAnnotations,
   loginAsTestUser,
+  waitForPagination,
 } = require('./test-utils');
 const { suggestEditor } = require('./test-utils');
 
@@ -94,8 +95,7 @@ async function syncToHead() {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     await loginAsTestUser(page);
     await page.goto(`${TEST_URL}/index.html`);
-    await page.waitForSelector('.sentence[data-sentence-id]', { timeout: 40000 });
-    await page.waitForTimeout(3000); // history bars data load
+    await waitForPagination(page, 40000);
 
     const target = await page.evaluate((needle) => {
       const map = window.WriteSysRenderer.sentenceMap;
@@ -105,6 +105,15 @@ async function syncToHead() {
       return null;
     }, 'Version three');
     check('found the sentence with history', !!target, target && target.id);
+
+    // History-bars data loads async after render (pagedjs-config afterRendered
+    // → WriteSysHistory.loadHistory); the modal's version rail needs it.
+    await page.waitForFunction(
+      (sid) => !!(window.WriteSysHistory && window.WriteSysHistory.bySentenceId
+        && window.WriteSysHistory.bySentenceId[sid]),
+      target.id,
+      { timeout: 15000 }
+    );
 
     await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), target.id);
     await page.waitForSelector('#suggestion-modal');
@@ -145,11 +154,22 @@ async function syncToHead() {
     const label = await page.locator('#suggestion-modal .pw-actionrow-right .pw-row-title').textContent();
     check('version label updates (single caption, no leading number)', /^1 commit ago$/.test(label.trim()), label);
 
-    // AUTOSAVE AS YOU TYPE: no close, no button — just wait out the debounce.
+    // AUTOSAVE AS YOU TYPE: no close, no button — the debounced PUT is the event.
     await (await suggestEditor(page)).click();
     await page.keyboard.press('End');
+    const autosavePut = page.waitForResponse(
+      (r) => r.request().method() === 'PUT'
+        && r.url().includes(`/sentences/${encodeURIComponent(target.id)}/suggestion`)
+        && r.ok(),
+      { timeout: 15000 }
+    );
     await page.keyboard.type(' Autosaved tail.');
-    await page.waitForTimeout(1500);
+    await autosavePut; // debounced autosave landed server-side
+    // ...and the saver settled locally (status cleared after the await).
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#suggestion-modal .sn-save');
+      return el && el.textContent === '';
+    }, null, { timeout: 10000 });
     const rows = psql(`SELECT text FROM suggested_change WHERE sentence_id='${target.id}' AND user_id='${TEST_USERNAME}'`);
     check('typed text AUTOSAVED without closing the modal', rows.includes('Autosaved tail.'), JSON.stringify(rows.slice(0, 60)));
     const status = await page.locator('#suggestion-modal .sn-save').textContent();
@@ -158,8 +178,8 @@ async function syncToHead() {
     // Revert to original and close — suggestion collapses, no row left.
     await (await suggestEditor(page)).fill(target.text);
     await (await suggestEditor(page)).press('Escape');
+    // Detach ⇒ close() already awaited the flush PUT — DB is settled.
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 5000 });
-    await page.waitForTimeout(400);
     const left = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${target.id}' AND user_id='${TEST_USERNAME}'`);
     check('revert-and-close leaves no suggestion row', left === '0', left);
   } catch (e) {

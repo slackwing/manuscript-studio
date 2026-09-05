@@ -35,7 +35,16 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   // Leave edit → preview renders (Escape exits the edit only).
   await page.keyboard.press('Escape');
   await page.waitForSelector('.sn-widget .sn-render');
-  await page.waitForTimeout(1200); // save + preview settle
+  // Save + preview settle, event-driven: the preview shows the FULL typed
+  // text only after the blur-flush PUT resolves (onSaved updates the ctx and
+  // re-renders) — so this condition also guarantees the server has the text
+  // for the stored-text check below.
+  await page.waitForFunction(() => {
+    const r = document.querySelector('.sn-widget .sn-render');
+    return r && r.shadowRoot
+      && r.shadowRoot.querySelectorAll('.scratch-book p').length === 2
+      && r.shadowRoot.textContent.includes('Second paragraph, indented as usual.');
+  }, null, { timeout: 15000 });
 
   const withTab = await page.evaluate(() => {
     const host = document.querySelector('.sn-widget .sn-render');
@@ -65,7 +74,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     view.focus();
   });
   await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
-  await page.waitForTimeout(600);
+  await page.waitForFunction(() =>
+    document.querySelectorAll('.spm-editor .sn-widget .sn-render').length === 2,
+  null, { timeout: 15000 }); // second widget's ctx loaded, preview up
   const w2 = page.locator('.spm-editor .sn-widget').last();
   await w2.locator('.sn-render').click();
   await w2.locator('textarea').waitFor();
@@ -74,7 +85,13 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.keyboard.press('Tab');
   await page.keyboard.type('Second paragraph, indented.');
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(1200);
+  // Same event-driven settle as above, on the SECOND widget's preview.
+  await page.waitForFunction(() => {
+    const hosts = document.querySelectorAll('.spm-editor .sn-widget .sn-render');
+    const h = hosts[hosts.length - 1];
+    return hosts.length === 2 && h.shadowRoot
+      && h.shadowRoot.textContent.includes('Second paragraph, indented.');
+  }, null, { timeout: 15000 });
 
   const noTab = await page.evaluate(() => {
     const hosts = document.querySelectorAll('.sn-widget .sn-render');

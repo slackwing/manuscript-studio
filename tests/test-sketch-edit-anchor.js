@@ -12,6 +12,23 @@ const JOINER = process.argv[2] === 'nn' ? '\n\n' : '\n\t';
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on('dialog', d => d.accept());
+  // Event-driven "scroll settled": no active scroll hold on the pad (the
+  // flight recorder — scroll.mjs — exposes them via msScrollDiag.state())
+  // AND scrollTop unchanged across 3 consecutive raf polls. (No Promise
+  // predicates: waitForFunction treats a returned Promise object as truthy.)
+  const scrollSettled = () => page.waitForFunction(() => {
+    const h = document.querySelector('.spm-editor');
+    const d = window.msScrollDiag;
+    const held = !!(d && d.state().holds);
+    const w = window.__settleProbe || (window.__settleProbe = { last: NaN, n: 0 });
+    if (!h || held || h.scrollTop !== w.last) {
+      w.last = h ? h.scrollTop : NaN;
+      w.n = 0;
+      return false;
+    }
+    if (++w.n >= 3) { window.__settleProbe = null; return true; }
+    return false;
+  }, null, { timeout: 15000, polling: 'raf' });
   await loginAsTestUser(page);
   await page.goto(HOME_URL);
   await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
@@ -32,7 +49,8 @@ const JOINER = process.argv[2] === 'nn' ? '\n\n' : '\n\t';
     // the test harness via window.__joiner.
     await ed.variationApi.saveText(c.variation.variation_id, lines.join(window.__joiner || '\n\t'));
   });
-  await page.waitForTimeout(2200); // save settles
+  // (saveText is awaited inside the evaluate — the PUT has already landed;
+  // the close below flushes the pad doc itself.)
   // Reopen the pad so the widget loads the API-saved text fresh.
   const padId = await page.evaluate(() => window.WriteSysScratchpad.scratchpadId);
   await page.click('#spm-close');
@@ -44,7 +62,7 @@ const JOINER = process.argv[2] === 'nn' ? '\n\n' : '\n\t';
     return r && r.shadowRoot && r.shadowRoot.querySelector('.scratch-book') &&
       r.shadowRoot.textContent.includes('ZEBRAMARK');
   }, null, { timeout: 10000 });
-  await page.waitForTimeout(800);
+  await scrollSettled(); // widget-mount holds expired
   // find ZEBRAMARK in the shadow render, scroll it to mid-viewport
   const before = await page.evaluate(() => {
     const host = document.querySelector('.spm-editor');
@@ -61,10 +79,16 @@ const JOINER = process.argv[2] === 'nn' ? '\n\n' : '\n\t';
     const r2 = range.getBoundingClientRect();
     return { x: r2.left + 20, y: r2.top + 6, scrollTop: Math.round(host.scrollTop) };
   });
-  await page.waitForTimeout(900); // let any holds expire
+  await scrollSettled(); // let any holds expire; the scroll-set above stuck
   await page.mouse.click(before.x, before.y);
   await page.waitForSelector('.sn-widget textarea.sn-text', { timeout: 8000 });
-  await page.waitForTimeout(900); // autoGrow + holds settle
+  // autoGrow + holds settle: overlay mirrors the text, then the edit-entry
+  // scroll hold expires and the position is stable.
+  await page.waitForFunction(() => {
+    const ov = document.querySelector('.sn-widget .sn-text-overlay');
+    return ov && ov.textContent.includes('ZEBRAMARK');
+  }, null, { timeout: 10000 });
+  await scrollSettled();
   const after = await page.evaluate(() => {
     const host = document.querySelector('.spm-editor');
     const ov = document.querySelector('.sn-widget .sn-text-overlay');

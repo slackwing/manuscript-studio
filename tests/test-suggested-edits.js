@@ -16,6 +16,7 @@ const {
   cleanupTestAnnotations,
   loginAsTestUser,
   TEST_MANUSCRIPT_ID, TEST_USERNAME,
+  waitForPagination, paginationStamp, waitForRepagination,
 } = require('./test-utils');
 const { suggestEditor } = require('./test-utils');
 
@@ -47,9 +48,7 @@ function psql(sql) {
   try {
     await loginAsTestUser(page);
     await page.goto(TEST_URL);
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await waitForPagination(page);
 
     // Skip headings: their textContent includes the leading "# " that the
     // segmenter strips, so DOM text and sentenceMap text would differ.
@@ -69,7 +68,15 @@ function psql(sql) {
     assert(!!first && !!first.id, `Found a prose sentence (${first && first.id.slice(0, 12)}...)`);
 
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
-    await page.waitForTimeout(300);
+    // First click selects (synchronously); wait for the class before re-clicking.
+    await page.waitForFunction(
+      (sid) => {
+        const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+        return el && el.classList.contains('selected');
+      },
+      first.id,
+      { timeout: 3000 }
+    );
     // Re-click → opens modal.
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForSelector('#suggestion-modal', { timeout: 3000 });
@@ -121,9 +128,17 @@ function psql(sql) {
     assert(strip(dbRow) === strip(newText), `Server stored the suggestion (got "${dbRow.slice(0,30)}...")`);
 
     await page.reload();
-    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForSelector('.sentence', { timeout: 10000 });
-    await page.waitForTimeout(2500);
+    await waitForPagination(page);
+    // Suggestion underline + scroll-restore selection are applied post-render;
+    // the next step's single-click-opens-modal depends on .selected being set.
+    await page.waitForFunction(
+      (sid) => {
+        const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+        return el && el.classList.contains('has-suggestion') && el.classList.contains('selected');
+      },
+      first.id,
+      { timeout: 15000 }
+    );
     const stillSuggested = await page.evaluate((sid) => {
       const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
       return el && el.classList.contains('has-suggestion');
@@ -137,9 +152,12 @@ function psql(sql) {
     await page.locator(`.sentence[data-sentence-id="${first.id}"]`).first().click();
     await page.waitForSelector('#suggestion-modal');
     await (await suggestEditor(page)).fill(first.text);
+    const revertStamp = await paginationStamp(page);
     await (await suggestEditor(page)).press('Escape');
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
-    await page.waitForTimeout(2000);
+    // Modal detach ⇒ the flush PUT already landed (close() awaits it); wait
+    // out the post-revert full re-render so the next clicks hit fresh spans.
+    await waitForRepagination(page, revertStamp);
 
     const dbRowAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
     assert(dbRowAfterRevert === '0', `Reverting to original deletes the suggestion (count: ${dbRowAfterRevert})`);
@@ -161,10 +179,19 @@ function psql(sql) {
     if (apos) {
       const aposNew = apos.text.replace(/\.?$/, '') + ' EXTRA.';
       await page.locator(`.sentence[data-sentence-id="${apos.id}"]`).first().click();
-      await page.waitForTimeout(300);
+      // First click selects; wait for the class before the modal-opening re-click.
+      await page.waitForFunction(
+        (sid) => {
+          const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+          return el && el.classList.contains('selected');
+        },
+        apos.id,
+        { timeout: 3000 }
+      );
       await page.locator(`.sentence[data-sentence-id="${apos.id}"]`).first().click();
       await page.waitForSelector('#suggestion-modal');
       await (await suggestEditor(page)).fill(aposNew);
+      const aposStamp = await paginationStamp(page);
       await (await suggestEditor(page)).press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
       await page.waitForFunction(
@@ -175,6 +202,9 @@ function psql(sql) {
         apos.id,
         { timeout: 15000 }
       );
+      // Let the post-save full re-render finish so the diff counts below read
+      // the settled DOM (has-suggestion above can be the interim in-place patch).
+      await waitForRepagination(page, aposStamp);
       const counts = await page.evaluate((sid) => {
         const el = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
         return {
@@ -193,9 +223,12 @@ function psql(sql) {
       await page.evaluate((sid) => window.WriteSysSuggestions.openModal(sid), apos.id);
       await page.waitForSelector('#suggestion-modal');
       await (await suggestEditor(page)).fill(apos.text);
+      const aposRevertStamp = await paginationStamp(page);
       await (await suggestEditor(page)).press('Escape');
       await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
-      await page.waitForTimeout(2000);
+      // Detach ⇒ flush PUT landed; wait out the post-revert re-render before
+      // the next block opens modals against the same sentences.
+      await waitForRepagination(page, aposRevertStamp);
     }
 
     // AUTOSAVE semantics: Escape now FLUSHES then closes — typed text is
@@ -206,8 +239,8 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal');
     await (await suggestEditor(page)).fill('this text auto-saves on Escape');
     await (await suggestEditor(page)).press('Escape');
+    // Modal detach ⇒ close() already awaited the flush PUT — DB is settled.
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
-    await page.waitForTimeout(500);
     const dbAfterEsc = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
     assert(dbAfterEsc === '1', `Escape saved the typed text (count 1, autosave)`);
     // Revert: original text → server collapses to delete.
@@ -215,8 +248,8 @@ function psql(sql) {
     await page.waitForSelector('#suggestion-modal');
     await (await suggestEditor(page)).fill(first.text);
     await (await suggestEditor(page)).press('Escape');
+    // Detach ⇒ flush PUT landed (server collapses original-text to a delete).
     await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 3000 });
-    await page.waitForTimeout(500);
     const dbAfterRevert = psql(`SELECT COUNT(*) FROM suggested_change WHERE sentence_id='${first.id}' AND user_id='${TEST_USERNAME}'`);
     assert(dbAfterRevert === '0', `Reverting to original then Escape deletes the suggestion`);
 

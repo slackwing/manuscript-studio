@@ -76,3 +76,4 @@ package-lock.json
 
 # Claude Code (per-user agent memory, scheduler lock, etc.)
 .claude/
+tests/.test-durations
