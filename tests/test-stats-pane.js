@@ -204,7 +204,7 @@ function resetMeta() {
     const el = document.getElementById('stats-margin');
     if (!el) return false;
     const r = el.getBoundingClientRect();
-    return getComputedStyle(el).display !== 'none' && r.top < 100 && r.left > 200;
+    return getComputedStyle(el).display !== 'none' && r.top < 110 && r.left > 200; // top bar 40 + 36px tab strip + bar padding
   });
   check('mobile: stats pane sits in the second bar', true);
 
