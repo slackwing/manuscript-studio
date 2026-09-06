@@ -140,12 +140,31 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   border-bottom: 1px solid #e3e0d8;
   display: flex;
   align-items: stretch;
-  gap: 2px;
   padding: 0 12px;
+}
+#ms-tabs[hidden] { display: none; }
+/* Tabs live in per-pane bars (one bar unsplit, two split); each bar
+   scrolls its own overflow so the split button never scrolls away. */
+.ms-tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
   overflow-x: auto;
   scrollbar-width: none;
 }
-#ms-tabs[hidden] { display: none; }
+/* Split: the left bar ends exactly at the pane seam (--split-x is a
+   viewport length; the strip's 12px padding offsets it). */
+#ms-tabs.split .ms-tabbar-left {
+  flex: none;
+  width: calc(var(--split-x, 50vw) - 12px);
+  border-right: 1px solid #e3e0d8;
+}
+#ms-tabs.split .ms-tabbar-right { padding-left: 8px; }
+/* Focus indication, kept light: the unfocused pane's active tab loses its
+   ink but keeps its weight (no layout shift). */
+#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #6f6a60; background: #f1efe8; }
 .ms-tab {
   display: inline-flex;
   align-items: center;
@@ -176,6 +195,22 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 }
 .ms-tab:hover .ms-tab-x { visibility: visible; }
 .ms-tab-x:hover { color: #b03030; background: #eee9dd; }
+.ms-tab.dragging { opacity: 0.5; }
+
+/* The split button, far right of the strip (tabs.js, shell only). */
+#ms-split-btn {
+  margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  border: none;
+  background: none;
+  color: #8a8474;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#ms-split-btn:hover { color: #333; background: #f6f4ee; }
+#ms-split-btn:disabled { color: #ddd8cc; cursor: default; background: none; }
 
 /* ---- live tab panels (home shell) ----------------------------------------
    One kept-alive iframe per activated pin. Inactive panels stay MOUNTED
@@ -200,6 +235,56 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   visibility: hidden;
 }
 .ms-panel.active { visibility: visible; }
+
+/* ---- split pane (SPLIT_PANE_PLAN.md) ------------------------------------
+   Panels never reparent (an iframe reloads if it moves in the DOM) — pane
+   assignment is the .pane-right class and the seam is --split-x (a vw
+   length set by tabs.js). Each pane is its own iframe viewport, so the
+   framed pages' 1239px mobile breakpoint applies per pane for free. */
+#ms-tab-panels.split .ms-panel.active:not(.pane-right) {
+  right: auto;
+  width: var(--split-x, 50vw);
+}
+#ms-tab-panels.split .ms-panel.active.pane-right {
+  left: var(--split-x, 50vw);
+  width: auto;
+}
+/* Home in the left pane: the landing page IS the shell document, so the
+   host shrinks to the right region and the page underneath stays live. */
+#ms-tab-panels.split.home-left { left: var(--split-x, 50vw); }
+#ms-tab-panels.split.home-left .ms-panel.active.pane-right { left: 0; width: 100%; }
+html.ms-split body.home-page .home-main {
+  max-width: none;
+  width: var(--split-x, 50vw);
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* The divider: a 7px grab strip over the seam, 1px visual line. While
+   dragging, iframes must not swallow the pointer (html.ms-divider-drag). */
+#ms-split-divider {
+  position: fixed;
+  top: var(--ms-chrome-b, 85px);
+  bottom: 0;
+  left: calc(var(--split-x, 50vw) - 3px);
+  width: 7px;
+  z-index: 900;
+  cursor: col-resize;
+  touch-action: none;
+}
+#ms-split-divider::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #e3e0d8;
+}
+#ms-split-divider:hover::after,
+html.ms-divider-drag #ms-split-divider::after { background: #2a6fb0; }
+html.ms-divider-drag { cursor: col-resize; user-select: none; }
+html.ms-divider-drag .ms-panel { pointer-events: none; }
 
 /* Inside a panel the page is chrome-less — the shell owns header + tabs. */
 html.embedded #controls, html.embedded #ms-tabs { display: none !important; }

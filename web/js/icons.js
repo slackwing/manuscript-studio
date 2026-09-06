@@ -38,5 +38,10 @@
       return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"',
         '<path d="M6 14L14 6M8.5 5.5H14.5V11.5"/>');
     },
+    // Split pane — a frame with a center seam (the tab strip's split button).
+    splitPane(size) {
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"',
+        '<rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.5"/><path d="M8 2.7v10.6"/>');
+    },
   };
 })();
