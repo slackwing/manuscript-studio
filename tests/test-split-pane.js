@@ -85,8 +85,12 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     const vis = [...document.querySelectorAll('#ms-tab-panels .ms-panel.active')];
     if (vis.length !== 2) return false;
     const [l, r] = vis[0].classList.contains('pane-right') ? [vis[1], vis[0]] : [vis[0], vis[1]];
+    // r.right must reach the viewport edge — width:auto on an iframe
+    // collapses to its intrinsic 300px (replaced element), which once
+    // shipped a 300px right pane. Assert the full box, not just the seam.
     return Math.abs(l.getBoundingClientRect().width - 800) < 3
-      && Math.abs(r.getBoundingClientRect().left - 800) < 3;
+      && Math.abs(r.getBoundingClientRect().left - 800) < 3
+      && Math.abs(r.getBoundingClientRect().right - 1600) < 3;
   }));
   check('no reload on split (sentinel survived)',
     (await frameB.evaluate(() => window.__sentinelB).catch(() => 'GONE')) === 'alive');

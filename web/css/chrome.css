@@ -247,7 +247,9 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 }
 #ms-tab-panels.split .ms-panel.active.pane-right {
   left: var(--split-x, 50vw);
-  width: auto;
+  /* NOT width:auto — an iframe is a replaced element, so auto resolves to
+     its intrinsic 300px, not a left/right stretch. */
+  width: calc(100% - var(--split-x, 50vw));
 }
 /* Home in the left pane: the landing page IS the shell document, so the
    host shrinks to the right region and the page underneath stays live. */
