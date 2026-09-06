@@ -107,6 +107,23 @@ const PNG_1PX = Buffer.from(
       document.querySelector('#spm-toolbar button[title^="Add row below"]').classList.contains('tb-hidden'));
     check('table ops hide once the caret leaves any table', true);
 
+    // ---- bullet from a HEADING caret -------------------------------------
+    // wrapInList refuses headings; Enter after a date line leaves the caret
+    // in an empty heading that LOOKS like an empty paragraph, so the button
+    // silently did nothing. listCommand demotes to paragraph and wraps.
+    await pm.click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('headed line');
+    await tbBtn('Heading 2').click();
+    await page.waitForSelector('.ProseMirror h2');
+    await tbBtn('Bullet list').click();
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.spm-editor .ProseMirror ul li')].some(li => /headed line/.test(li.textContent)));
+    check('bullet button works with the caret in a heading (demotes + wraps)', true);
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
+
     // ---- tab-in-list (context 2) -----------------------------------------
     await pm.click();
     await page.keyboard.press('Control+End');

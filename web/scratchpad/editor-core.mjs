@@ -80,6 +80,17 @@ function breathingRoomInserts(doc, sc, atOpen) {
 const ICON_UL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="2.5" cy="12.5" r="1.4"/><rect x="6" y="2.7" width="9" height="1.6" rx="0.8"/><rect x="6" y="7.2" width="9" height="1.6" rx="0.8"/><rect x="6" y="11.7" width="9" height="1.6" rx="0.8"/></svg>';
 const ICON_OL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><text x="0" y="5.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">1.</text><text x="0" y="10.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">2.</text><text x="0" y="15.4" font-size="5.4" font-family="Helvetica,Arial,sans-serif">3.</text><rect x="6" y="2.7" width="9" height="1.6" rx="0.8"/><rect x="6" y="7.2" width="9" height="1.6" rx="0.8"/><rect x="6" y="11.7" width="9" height="1.6" rx="0.8"/></svg>';
 
+// wrapInList refuses non-paragraph textblocks — notably the empty HEADING
+// the caret sits in after Enter on a date line, which looks exactly like an
+// empty paragraph, so the button seemed dead. Demote to paragraph first and
+// wrap; history's newGroupDelay folds both dispatches into one undo.
+const listCommand = (listType) => (state, dispatch, view) => {
+  if (wrapInList(listType)(state, dispatch)) return true;
+  if (!dispatch || !view) return false;
+  if (!setBlockType(schema.nodes.paragraph)(state, dispatch)) return false;
+  return wrapInList(listType)(view.state, view.dispatch);
+};
+
 // ----------------------------------------------------------- the instance
 
 /**
@@ -161,8 +172,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
     { html: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="1.5"/><path d="M1.5 6h13M5 1v3M11 1v3"/></svg>',
       title: 'Insert today\u2019s date as a heading (Alt+D)', run: (s, d) => insertDate(s, d) },
     { sep: true },
-    { html: ICON_UL, title: 'Bullet list (Ctrl+Shift+8)', run: wrapInList(schema.nodes.bullet_list) },
-    { html: ICON_OL, title: 'Numbered list (Ctrl+Shift+7)', run: wrapInList(schema.nodes.ordered_list) },
+    { html: ICON_UL, title: 'Bullet list (Ctrl+Shift+8)', run: listCommand(schema.nodes.bullet_list) },
+    { html: ICON_OL, title: 'Numbered list (Ctrl+Shift+7)', run: listCommand(schema.nodes.ordered_list) },
     { sep: true },
     { label: '❝', title: 'Blockquote (Ctrl+Shift+9)', run: toggleBlockquote, active: inBlockquote },
     { label: '—', title: 'Horizontal rule', run: (s, d) => insertBlockSafely(s, d, schema.nodes.horizontal_rule.create()) },
@@ -265,8 +276,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
             : setBlockType(schema.nodes.heading, { level: l })(s, d),
         ])),
         // Lists + quote: the Docs/Notion conventions.
-        'Shift-Mod-7': wrapInList(schema.nodes.ordered_list),
-        'Shift-Mod-8': wrapInList(schema.nodes.bullet_list),
+        'Shift-Mod-7': listCommand(schema.nodes.ordered_list),
+        'Shift-Mod-8': listCommand(schema.nodes.bullet_list),
         'Shift-Mod-9': toggleBlockquote,
         'Enter': splitListItem(li),
         'Tab': chainCommands(goToNextCell(1), sinkListItem(li)),
