@@ -550,7 +550,13 @@ const WriteSysSuggestions = {
       overlay.appendChild(modal);
       if (window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
         notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
-        if (notesStack) overlay.appendChild(notesStack);
+        if (notesStack) {
+          overlay.appendChild(notesStack);
+          // scrollHeight is 0 on detached elements, so the build-time autosize
+          // left long notes floored at min-height — re-run now that the stack
+          // is in the DOM (same post-attach pass the desktop margin does).
+          window.WriteSysNotes.refreshMobileNoteStack();
+        }
       }
     } else {
       document.body.appendChild(modal);

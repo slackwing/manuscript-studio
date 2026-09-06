@@ -11,13 +11,17 @@ const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf-8' }).trim();
 const BODY = `Mobile stack note (${TEST_USERNAME})`;
+// Long enough to overflow .note-input's 80px min-height at 390px width —
+// the stack autosizes while DETACHED (scrollHeight 0), so without the
+// post-attach re-pass this note renders clipped.
+const LONG_BODY = 'Long mobile note. '.repeat(30) + `(${TEST_USERNAME})`;
 
 (async () => {
   const browser = await chromium.launch();
   let failed = false;
   const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
 
-  psql(`DELETE FROM note WHERE user_id='${TEST_USERNAME}' AND body='${BODY}'`);
+  psql(`DELETE FROM note WHERE user_id='${TEST_USERNAME}' AND (body='${BODY}' OR body='${LONG_BODY}')`);
 
   // ---- phone viewport: modal at top, notes float below ----
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -26,6 +30,7 @@ const BODY = `Mobile stack note (${TEST_USERNAME})`;
   await waitForPagination(page);
   const sid = await page.evaluate(() => document.querySelectorAll('.sentence[data-sentence-id]')[2].dataset.sentenceId);
   psql(`INSERT INTO note (sentence_id, user_id, color, body, position) VALUES ('${sid}', '${TEST_USERNAME}', 'yellow', '${BODY}', 'a0')`);
+  psql(`INSERT INTO note (sentence_id, user_id, color, body, position) VALUES ('${sid}', '${TEST_USERNAME}', 'green', '${LONG_BODY}', 'a1')`);
   await page.reload();
   await waitForPagination(page);
   // notes preload with the manuscript — wait until the cache has ours
@@ -54,8 +59,22 @@ const BODY = `Mobile stack note (${TEST_USERNAME})`;
   check('no × close button', !geo.closeBtn);
   check('dark backdrop present', /0\.35|0, 0, 0/.test(geo.overlayDark), geo.overlayDark);
 
-  // Backdrop click closes BOTH
-  await page.mouse.click(195, 830);
+  // ---- long note autosizes to FIT on first open (no clipped text) ----
+  const fit = await page.evaluate((b) => {
+    const t = [...document.querySelectorAll('#sgm-notes-stack .note-input')].find(x => x.value === b);
+    return t ? { client: t.clientHeight, scroll: t.scrollHeight } : null;
+  }, LONG_BODY);
+  check('long note fits its text on first open (autosized after attach)',
+    !!fit && fit.scroll <= fit.client + 2, JSON.stringify(fit));
+
+  // Backdrop click closes BOTH — aim at the dark gap between modal and
+  // stack (a fixed bottom point lands on note cards once notes get tall).
+  const gapY = await page.evaluate(() => {
+    const m = document.getElementById('suggestion-modal').getBoundingClientRect();
+    const s = document.getElementById('sgm-notes-stack').getBoundingClientRect();
+    return (m.bottom + s.top) / 2;
+  });
+  await page.mouse.click(195, gapY);
   await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
   check('backdrop click closes modal + stack',
     (await page.locator('#sgm-notes-stack').count()) === 0);
@@ -104,7 +123,7 @@ const BODY = `Mobile stack note (${TEST_USERNAME})`;
   await desk.keyboard.press('Escape');
   await desk.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
 
-  psql(`DELETE FROM note WHERE user_id='${TEST_USERNAME}' AND body='${BODY}'`);
+  psql(`DELETE FROM note WHERE user_id='${TEST_USERNAME}' AND (body='${BODY}' OR body='${LONG_BODY}')`);
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();
   process.exit(failed ? 1 : 0);
