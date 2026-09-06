@@ -438,7 +438,7 @@ window.WriteSysTabs = (function () {
       host.style.top = h + 'px';
       // Where the fixed chrome ends — panels start here (CSS has a static
       // fallback so a late measurement can never swallow the header).
-      document.documentElement.style.setProperty('--ms-chrome-b', (h + 30) + 'px'); // 30 = strip height (chrome.css)
+      document.documentElement.style.setProperty('--ms-chrome-b', (h + 36) + 'px'); // 36 = strip height (chrome.css)
     }
 
     const mkTab = (bar, cls, name, active, onClick) => {

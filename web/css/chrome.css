@@ -120,7 +120,7 @@ a#brand, a#brand:visited { color: inherit; }
    claimed only when pins exist: html.has-ms-tabs flips --tabs-h, and every
    fixed-top rule in book.css/home.css adds it on. ---- */
 :root { --tabs-h: 0px; }
-html.has-ms-tabs { --tabs-h: 30px; }
+html.has-ms-tabs { --tabs-h: 36px; }
 /* Framed inside a shell panel: the page's own top bar (52px desktop, 40px
    mobile — book.css constants) and tab strip are hidden, so every
    "calc(Xpx + var(--tabs-h))" fixed offset must LOSE the top-bar height.
@@ -133,10 +133,10 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   position: fixed;
   left: 0;
   right: 0;
-  height: 30px;
+  height: 36px;
   box-sizing: border-box;
   z-index: 9999;
-  background: #fff;
+  background: #f6f4ef;
   border-bottom: 1px solid #e3e0d8;
   display: flex;
   align-items: stretch;
@@ -148,7 +148,6 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 .ms-tabbar {
   display: flex;
   align-items: stretch;
-  gap: 2px;
   min-width: 0;
   flex: 1;
   overflow-x: auto;
@@ -164,32 +163,42 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 #ms-tabs.split .ms-tabbar-right { padding-left: 8px; }
 /* Focus indication, kept light: the unfocused pane's active tab loses its
    ink but keeps its weight (no layout shift). */
-#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #6f6a60; background: #f1efe8; }
+#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #555; background: #f0ede5; }
+/* Filing-folder tabs: trapezoids (angled left+right via clip-path) that
+   overlap like an organizer's dividers — hovered/active ride on top. The
+   strip is tinted so the faces read as shapes; the ACTIVE face is white,
+   pointing at the content below. Ink matches the wordmark's darkness.
+   Type identity stays as the thin colored top edge (clip-path trims it to
+   the trapezoid's short edge — a folder color label). */
 .ms-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 220px;
+  max-width: 260px;
   border: none;
-  background: none;
-  padding: 0 10px;
-  font: 12px "Helvetica", sans-serif;
-  color: #6f6a60;
+  background: #ece9e0;
+  padding: 0 22px;
+  font: 13.5px "Helvetica", sans-serif;
+  color: #333;
   cursor: pointer;
-  border-top: 2px solid transparent;
+  border-top: 3px solid transparent;
   white-space: nowrap;
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 100%, 0 100%);
+  position: relative;
+  z-index: 1;
 }
+.ms-tab + .ms-tab { margin-left: -11px; }
 .ms-tab-home { border-top-color: #a8a08c; }
 .ms-tab-manuscript { border-top-color: #57503f; }
 .ms-tab-scratchpad { border-top-color: #2a6fb0; }
-.ms-tab:hover { background: #f6f4ee; color: #333; }
-.ms-tab.active { color: #222; font-weight: 700; background: #f6f4ee; }
+.ms-tab:hover { background: #e7e3d8; color: #1d1d1d; z-index: 2; }
+.ms-tab.active { color: #1d1d1d; font-weight: 700; background: #fff; z-index: 3; }
 .ms-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .ms-tab-x {
-  color: #c4bdae;
-  font-size: 14px;
+  color: #b8b09e;
+  font-size: 15px;
   line-height: 1;
-  padding: 2px 3px;
+  padding: 2px 4px;
   border-radius: 3px;
   visibility: hidden;
 }
