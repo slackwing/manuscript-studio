@@ -142,6 +142,15 @@ const { suggestEditor } = require('./test-utils');
     const mid = await render([{ id: 'r6b', text: 'before &end#x after' }]);
     check('R6: mid-text &end invisible but present as inline-end',
       mid.includes('inline-end') && mid.includes('before') && mid.includes('after') && !mid.includes('&amp;end'), mid);
+    // Unknown commands (generic grammar): invisible by default, kind/args
+    // preserved as data attributes for future tooling.
+    const unk = await page.evaluate(() =>
+      window.WriteSysRenderer.renderInlineCommand({ kind: 'mark', slug: '', notes: '', args: ['interesting'], raw: '&mark{interesting}', unknown: true }));
+    check('R6: renderInlineCommand(unknown) → invisible inline-cmd span',
+      unk === '<span class="inline-cmd" data-kind="mark" data-args="interesting" aria-hidden="true"></span>', unk);
+    const midUnk = await render([{ id: 'r6c', text: 'before &mark{tag} after' }]);
+    check('R6: mid-text unknown command invisible, no literal leaks',
+      midUnk.includes('inline-cmd') && midUnk.includes('before') && midUnk.includes('after') && !midUnk.includes('&amp;mark'), midUnk);
   }
 
   // ---- R7: placeholder block branches -----------------------------------
@@ -292,6 +301,9 @@ const { suggestEditor } = require('./test-utils');
         straddle: R.renderInlineCommandsInHtml('x &amp;refer<del>ence#a{n}</del>'),
         end: R.renderInlineCommandsInHtml('x &amp;end#zz y'),
         ph: R.renderInlineCommandsInHtml('&amp;placeholder#p{sentences}{s}'),
+        unkBare: R.renderInlineCommandsInHtml('was <span class="diff-added">&amp;mark#interesting</span> here'),
+        unkBrace: R.renderInlineCommandsInHtml('was &amp;mark{interesting} here'),
+        blockMidProse: R.renderInlineCommandsInHtml('x &amp;title{The Fire} y'),
       };
       window.WriteSysOutline.slugMap = prevMap;
       return r;
@@ -304,6 +316,14 @@ const { suggestEditor } = require('./test-utils');
       out.straddle === 'x &amp;refer<del>ence#a{n}</del>', out.straddle);
     check('R14: escaped &end#slug form → inline-end', out.end.includes('inline-end') && out.end.includes('data-slug="zz"'), out.end);
     check('R14: escaped placeholder → ph run', out.ph.includes('class="ph"'), out.ph.slice(0, 80));
+    // The generic grammar in the diff stream — a suggested &mark must NOT
+    // print its literal in green (the bug that prompted the feature).
+    check('R14: unknown bare &mark#tag in a diff-added span → invisible',
+      out.unkBare.includes('inline-cmd') && out.unkBare.includes('data-slug="interesting"') && !out.unkBare.includes('&amp;mark'), out.unkBare);
+    check('R14: unknown brace form → invisible, args preserved',
+      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;mark'), out.unkBrace);
+    check('R14: KNOWN block kind mid-prose stays literal (no inline renderer for it)',
+      out.blockMidProse === 'x &amp;title{The Fire} y', out.blockMidProse);
   }
 
   // ---- R15: applyEffectiveSettings overlay ------------------------------

@@ -20,13 +20,22 @@ func TestParseCommand(t *testing.T) {
 		{"&anchor#origin{where it begins}", true, CmdAnchor, "origin", []string{"where it begins"}},
 		{"&anchor#x{}", true, CmdAnchor, "x", []string{""}}, // empty arg
 		{"&reference#origin{see the start}", true, CmdReference, "origin", []string{"see the start"}},
+		// Generic grammar: ANY &[a-z]+ with the '#'/'{' delimiter parses
+		// (Unknown=true — invisible by default; see TestParseCommand_Unknown).
+		{"&mark#interesting", true, "mark", "interesting", nil}, // the usage: bare #tag
+		{"&mark#digression", true, "mark", "digression", nil},
+		{"&mark{interesting}", true, "mark", "", []string{"interesting"}}, // brace form parses too
+		{"&custom#s1{x}", true, "custom", "s1", []string{"x"}},            // full general shape
+		{"&unknown{x}", true, "unknown", "", []string{"x"}},
 		// Not commands:
 		{"Smith & Sons", false, "", "", nil},
 		{"R&D budget", false, "", "", nil},
 		{"&chapter of accidents", false, "", "", nil}, // no delimiter
-		{"&unknown{x}", false, "", "", nil},           // unknown keyword
-		{"&chapter#p1", false, "", "", nil},           // slug but no args
+		{"&Mark{x}", false, "", "", nil},              // keywords are lowercase-only
+		{"&mark alone", false, "", "", nil},           // no '#'/'{' delimiter → prose
+		{"&chapter#p1", false, "", "", nil},           // KNOWN kind: slug needs args
 		{"&chapter#p1{unterminated", false, "", "", nil},
+		{"&mark{unterminated", false, "", "", nil},
 		{"plain text", false, "", "", nil},
 	}
 	for _, c := range cases {
@@ -347,5 +356,19 @@ func TestSketchAliasParsesAsSketch(t *testing.T) {
 	}
 	if _, bare := ParseCommand("&snippet#abc123"); bare {
 		t.Fatal("bare &snippet#slug (no brace group) must stay prose, like &sketch")
+	}
+}
+
+// The generic grammar marks non-keyword commands Unknown — the flag every
+// layer keys invisibility off (render nothing, strip from wordcount, allow
+// as a standalone sentence).
+func TestParseCommand_Unknown(t *testing.T) {
+	cmd, ok := ParseCommand("&mark{interesting}")
+	if !ok || !cmd.Unknown {
+		t.Fatalf("ParseCommand(&mark{...}) = %+v, %v; want ok with Unknown=true", cmd, ok)
+	}
+	known, ok := ParseCommand("&title{The Wildfire}")
+	if !ok || known.Unknown {
+		t.Fatalf("ParseCommand(&title{...}) = %+v, %v; want ok with Unknown=false", known, ok)
 	}
 }

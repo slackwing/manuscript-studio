@@ -969,6 +969,15 @@ const WriteSysRenderer = {
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
+    if (c.unknown) {
+      // Unknown command (generic grammar, e.g. &mark{tag}): commands are
+      // invisible by default — only display commands show. The kind/args
+      // land in data attributes so future tooling (mark-frequency plots)
+      // can read them straight off the DOM.
+      const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
+      const args = c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '';
+      return `<span class="inline-cmd" data-kind="${escapeHTML(c.kind)}"${slug}${args} aria-hidden="true"></span>`;
+    }
     if (c.kind === 'end') {
       // Invisible region terminator, same treatment as an inline anchor.
       const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
@@ -1016,33 +1025,26 @@ const WriteSysRenderer = {
   // reference in edited prose still renders as a link. Tokens that straddle a
   // <del>/<strong> boundary are left as-is (rare; they read as diff text).
   renderInlineCommandsInHtml(html) {
-    // Match an escaped command token: &amp;(keyword)(#slug)?{...}{...}...
-    // (1-4 brace groups: reference/anchor take 1-2, placeholder up to 4).
-    // Args are plain (no nested braces in the escaped stream we care about).
-    // 'snippet' is the legacy spelling of 'sketch' — same command kind.
-    //
-    // TODO(CODE_REVIEW_AUG_2026.md §3.1/#15): this regex hand-duplicates the
-    // command grammar that command.js parse() owns (keyword list, ≤4 brace
-    // groups, slug charset, snippet→sketch aliasing) — adding a command
-    // keyword there without updating this regex silently breaks diff
-    // rendering. Deliberately NOT unified this pass (rewriting the escaped-
-    // HTML scan over the real parser is risky); test-render-units R14 pins
-    // the current behavior. Unify when the renderer is next rewritten.
-    const re = /&amp;(reference|anchor|placeholder|sketch|snippet)(#[a-z0-9-]+)?((?:\{[^{}]*\}){1,4})|&amp;(end)(#[a-z0-9-]+)/g;
+    // Find CANDIDATE tokens in the escaped diff stream (&amp;word, optional
+    // #slug, any brace groups), then let command.js parse() — the grammar's
+    // one owner — decide. This retired the hand-duplicated keyword regex
+    // (CODE_REVIEW_AUG_2026.md §3.1/#15): new keywords and the generic
+    // unknown-command grammar flow through automatically. Only kinds the
+    // inline renderer actually handles are replaced; anything else (a block
+    // command riding mid-prose, a parse failure) stays literal, as before.
+    const re = /&amp;[a-z]+(?:#[a-z0-9-]+)?(?:\{[^{}]*\})*/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-    return html.replace(re, (m, kw, hashSlug, groups, endKw, endSlug) => {
-      if (endKw) {
-        return this.renderInlineCommand({ kind: 'end', slug: endSlug.slice(1), notes: '', args: [], raw: m.replace('&amp;', '&') });
-      }
-      const slug = hashSlug ? hashSlug.slice(1) : '';
-      // args here are already HTML-escaped (we're in escaped output);
-      // unescape just for the parse, renderInlineCommand re-escapes.
-      const args = [];
-      groups.replace(/\{([^{}]*)\}/g, (_, g) => { args.push(unescape(g)); return ''; });
-      const raw = '&' + kw + (hashSlug || '') + args.map(a => '{' + a + '}').join('');
-      return this.renderInlineCommand({ kind: kw === 'snippet' ? 'sketch' : kw, slug, notes: args[0] || '', args, raw });
+    const INLINE_KINDS = { reference: true, anchor: true, placeholder: true, sketch: true, end: true };
+    return html.replace(re, (m) => {
+      const cmd = window.WriteSysCommand && window.WriteSysCommand.parse(unescape(m));
+      if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
+      if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
+      return this.renderInlineCommand({
+        kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '',
+        args: cmd.args, raw: cmd.raw, unknown: !!cmd.unknown,
+      });
     });
   },
 

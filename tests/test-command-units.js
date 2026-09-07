@@ -36,6 +36,26 @@ for (const kw of ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'pl
 check('&snippet{x} parses (legacy spelling)', !!cmd.parse('&snippet{x}'));
 check('&end#slug parses', !!cmd.parse('&end#slug'));
 
+// ---- C1b: generic grammar — unknown commands parse, flagged unknown ----
+console.log('=== C1b generic-grammar-unknown-commands ===');
+{
+  const bare = cmd.parse('&mark#interesting');
+  check('&mark#interesting (the usage: bare #tag) parses as unknown',
+    !!bare && bare.kind === 'mark' && bare.unknown === true && bare.slug === 'interesting');
+  const m = cmd.parse('&mark{interesting}');
+  check('&mark{interesting} (brace form) parses as unknown too',
+    !!m && m.kind === 'mark' && m.unknown === true && m.args[0] === 'interesting');
+  const ms = cmd.parse('&custom#s1{x}');
+  check('full generic shape keeps slug + args', !!ms && ms.slug === 's1' && ms.unknown === true);
+  check('known keywords are NOT flagged unknown', cmd.parse('&title{x}').unknown === false);
+  check('&Mark{x} — keywords are lowercase-only', cmd.parse('&Mark{x}') === null);
+  check('bare &mark with no delimiter stays prose', cmd.parse('&mark alone') === null);
+  check('&mark{unterminated is null', cmd.parse('&mark{unterminated') === null);
+  const inl = cmd.findInline('It was &mark#interesting tonight.');
+  check('findInline surfaces unknown commands',
+    inl.length === 1 && inl[0].kind === 'mark' && inl[0].unknown === true && inl[0].slug === 'interesting');
+}
+
 // ---- C2: legacy snippet normalizes to sketch --------------------------
 console.log('=== C2 parse-snippet-normalizes-to-sketch ===');
 {

@@ -45,22 +45,38 @@ const WriteSysCommand = {
 
     let kind = null;
     let i = 0;
+    let unknown = false;
     for (const kw of this.KEYWORDS) {
       const end = 1 + kw.length;
       if (end >= chars.length) continue;
       if (chars.slice(1, end).join('') !== kw) continue;
       if (chars[end] === '#' || chars[end] === '{') { kind = kw; i = end; break; }
     }
-    if (kind === null) return null;
+    if (kind === null) {
+      // Generic grammar (the basis for ALL commands — mirror of Go's
+      // ParseCommand, keep in lockstep): any &[a-z]+ keyword followed by '#'
+      // or '{' parses even when we don't process it; unknown commands render
+      // as NOTHING (invisible by default — only display commands show).
+      // Prose stays safe: "Smith & Sons", "R&D", "&chapter of accidents"
+      // still lack the delimiter. No bare-#slug form for unknowns (&end's
+      // privilege alone) — the ≥1-brace-group check below applies.
+      let j = 1;
+      while (j < chars.length && chars[j] >= 'a' && chars[j] <= 'z') j++;
+      if (j === 1 || j >= chars.length || (chars[j] !== '#' && chars[j] !== '{')) return null;
+      kind = chars.slice(1, j).join('');
+      i = j;
+      unknown = true;
+    }
     if (kind === 'snippet') kind = 'sketch'; // legacy spelling — one internal kind
 
     let slug = '';
     if (i < chars.length && chars[i] === '#') {
       i++;
       const start = i;
-      if (kind === 'end') {
-        // 'end' may be a bare #slug token with no {...} groups, so its slug
-        // self-terminates on the slug charset [a-z0-9-].
+      if (kind === 'end' || unknown) {
+        // 'end' — and any UNKNOWN command (&mark#interesting) — may be a
+        // bare #slug token with no {...} groups, so its slug self-terminates
+        // on the slug charset [a-z0-9-].
         while (i < chars.length && /[a-z0-9-]/.test(chars[i])) i++;
       } else {
         while (i < chars.length && chars[i] !== '{') i++;
@@ -83,9 +99,9 @@ const WriteSysCommand = {
       }
       if (!closed) return null; // unterminated group
     }
-    if (args.length === 0 && !(kind === 'end' && slug)) return null;
+    if (args.length === 0 && !((kind === 'end' || unknown) && slug)) return null;
 
-    return { kind, slug, args, raw: chars.slice(0, i).join('') };
+    return { kind, slug, args, raw: chars.slice(0, i).join(''), unknown };
   },
 
   // isBlockCommandText: the whole sentence is one block command (nothing
@@ -251,8 +267,8 @@ const WriteSysCommand = {
       const cmd = this.parse(chars.slice(i).join(''));
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
-      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'sketch' || cmd.kind === 'end') {
-        out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end });
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'sketch' || cmd.kind === 'end' || cmd.unknown) {
+        out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end, unknown: !!cmd.unknown });
       }
       i = end;
     }

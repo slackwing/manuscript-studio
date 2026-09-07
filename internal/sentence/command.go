@@ -64,10 +64,11 @@ var blockCommandKinds = map[CommandKind]bool{
 // author gave none — callers derive an auto-slug from Args in that case).
 // Args are the brace groups in order: e.g. chapter → [label, desc?].
 type Command struct {
-	Kind CommandKind
-	Slug string   // "" when no #slug was written
-	Args []string // brace-group contents, in source order
-	Raw  string   // the exact matched command token
+	Kind    CommandKind
+	Slug    string   // "" when no #slug was written
+	Args    []string // brace-group contents, in source order
+	Raw     string   // the exact matched command token
+	Unknown bool     // generic-grammar match, not a keyword we process
 }
 
 var (
@@ -255,8 +256,24 @@ func ParseCommand(s string) (Command, bool) {
 		return Command{}, false
 	}
 	kind, after := matchKeyword(runes)
+	unknown := false
 	if kind == "" {
-		return Command{}, false
+		// Generic grammar (the basis for ALL commands, TEX_COMMANDS_PLAN.md):
+		// any &[a-z]+ keyword followed by '#' or '{' parses as a command even
+		// when we don't process it — unknown commands are stripped from word
+		// counts and render as nothing (invisible by default; only display
+		// commands show). Prose stays safe: "Smith & Sons", "R&D", and
+		// "&chapter of accidents" still lack the '#'/'{' delimiter. Unknown
+		// commands have no bare-#slug form (that privilege is &end's alone),
+		// so the ≥1-brace-group check below still applies to them.
+		j := 1
+		for j < len(runes) && runes[j] >= 'a' && runes[j] <= 'z' {
+			j++
+		}
+		if j == 1 || j >= len(runes) || (runes[j] != '#' && runes[j] != '{') {
+			return Command{}, false
+		}
+		kind, after, unknown = CommandKind(string(runes[1:j])), j, true
 	}
 
 	i := after
@@ -264,9 +281,10 @@ func ParseCommand(s string) (Command, bool) {
 	if i < len(runes) && runes[i] == '#' {
 		i++
 		start := i
-		if kind == CmdEnd {
-			// 'end' may be a bare #slug token with no {...} groups, so its
-			// slug self-terminates on the slug charset [a-z0-9-].
+		if kind == CmdEnd || unknown {
+			// 'end' — and any UNKNOWN command (&mark#interesting) — may be a
+			// bare #slug token with no {...} groups, so its slug
+			// self-terminates on the slug charset [a-z0-9-].
 			for i < len(runes) && isSlugRune(runes[i]) {
 				i++
 			}
@@ -302,14 +320,15 @@ func ParseCommand(s string) (Command, bool) {
 	nextGroup:
 	}
 
-	if len(args) == 0 && !(kind == CmdEnd && slug != "") {
+	if len(args) == 0 && !((kind == CmdEnd || unknown) && slug != "") {
 		return Command{}, false
 	}
 	return Command{
-		Kind: kind,
-		Slug: slug,
-		Args: args,
-		Raw:  string(runes[:i]),
+		Kind:    kind,
+		Slug:    slug,
+		Args:    args,
+		Raw:     string(runes[:i]),
+		Unknown: unknown,
 	}, true
 }
 

@@ -33,7 +33,10 @@ func ValidateSentenceText(text string) error {
 	if strings.HasPrefix(text, "&") {
 		cmd, ok := ParseCommand(text)
 		if ok && cmd.Raw == text {
-			if !blockCommandKinds[cmd.Kind] {
+			// An UNKNOWN command as its own sentence is fine — the generic
+			// grammar renders it invisibly; only known inline-only kinds
+			// (&reference) are wrong as a standalone sentence.
+			if !blockCommandKinds[cmd.Kind] && !cmd.Unknown {
 				return fmt.Errorf("only block commands (title/part/chapter/anchor/meta/placeholder/end) may be their own sentence, got &%s: %q", cmd.Kind, truncate(text))
 			}
 			if strings.ContainsAny(text, "\n\t") {
