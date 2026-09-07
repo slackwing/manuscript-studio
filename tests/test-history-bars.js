@@ -88,11 +88,13 @@ async function syncToHead() {
     let firstProseIdx = lines.findIndex(l => l.trim() && !l.startsWith('#'));
     if (firstProseIdx < 0) throw new Error('could not find prose line');
 
-    // Small per-version edits so the matcher pairs them.
+    // Small per-version edits so the matcher pairs them. FOUR rounds — the
+    // bars now reach 4-ago (lane 4).
     const versions = [
       'A short tweaked first sentence.',
       'A short tweaked first sentence here.',
       'A slightly longer tweaked first sentence here today.',
+      'A slightly longer tweaked first sentence here again now.',
     ];
 
     for (let i = 0; i < versions.length; i++) {
@@ -137,6 +139,32 @@ async function syncToHead() {
     const lane1 = await page.locator('.history-bar[data-lane="1"]').count();
     assert(lane1 > 0, `At least one lane-1 bar (got ${lane1})`);
 
+    // Depth now reaches 4-ago: after four edit+sync rounds the edited
+    // sentence carries a lane-4 bar (v1 vs the initial text).
+    const lane4 = await page.locator('.history-bar[data-lane="4"]').count();
+    assert(lane4 > 0, `At least one lane-4 bar (got ${lane4})`);
+
+    // The ONE color rule (word-diff ratio, green/(green+red)):
+    const colors = await page.evaluate(() => {
+      const H = window.WriteSysHistory;
+      return {
+        appendMostly: H.diffColor('keep1 keep2 n1 n2 n3 n4 n5 n6 n7 n8', 'keep1 keep2'),
+        removeMostly: H.diffColor('keep1 keep2', 'keep1 keep2 o1 o2 o3 o4 o5 o6 o7 o8'),
+        rewriteHalf: H.diffColor('keep1 keep2 x y', 'keep1 keep2 a b'),
+        exactly80: H.diffColor('keep1 keep2 n1 n2 n3 n4', 'keep1 keep2 gone'),
+        identical: H.diffColor('same text here', 'same text here'),
+        insert: H.diffColor('brand new sentence', null),
+        whitespaceOnly: H.diffColor('a  b', 'a b'),
+      };
+    });
+    assert(colors.appendMostly === 'green', `>=80% added words → green (${colors.appendMostly})`);
+    assert(colors.removeMostly === 'red', `>=80% removed words → red (${colors.removeMostly})`);
+    assert(colors.rewriteHalf === 'blue', `mixed change → blue (${colors.rewriteHalf})`);
+    assert(colors.exactly80 === 'green', `exactly 0.80 → green (${colors.exactly80})`);
+    assert(colors.identical === null, `identical → no bar (${colors.identical})`);
+    assert(colors.insert === 'green', `insert → green (${colors.insert})`);
+    assert(colors.whitespaceOnly === null, `whitespace-only → no bar (${colors.whitespaceOnly})`);
+
     const firstContainer = page.locator('.history-bar-container').first();
     await firstContainer.hover();
     await page.waitForSelector('#history-popup', { timeout: 3000 });
@@ -145,10 +173,31 @@ async function syncToHead() {
     const hasNow = await page.locator('#history-popup .history-popup-current').count();
     assert(hasNow === 1, `Popup includes current "now" row`);
 
+    const editNone = await page.locator('#history-popup .history-popup-edit .history-popup-text').textContent();
+    assert(editNone === '(none)', `Popup edit row shows (none) without a suggestion (got "${editNone}")`);
+
     await page.mouse.move(0, 0);
     await page.waitForTimeout(300);
     const popupGone = await page.locator('#history-popup').count();
     assert(popupGone === 0, `Popup hides on mouseleave`);
+
+    // ---- the EDIT bar: a mostly-added suggestion → green rightmost bar ----
+    const sid = await page.evaluate(async (suffix) => {
+      const el = document.querySelector('.history-bar-container');
+      const id = el.dataset.sentenceId;
+      const cur = window.WriteSysRenderer.sentenceMap[id];
+      await window.WriteSysSuggestions.putSuggestion(id, cur + ' Plus a whole run of freshly suggested words appended.');
+      return id;
+    });
+    await page.reload();
+    await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
+    await page.waitForTimeout(2500);
+    const editBar = page.locator(`.history-bar-container[data-sentence-id="${sid}"] .history-bar[data-lane="edit"]`);
+    assert(await editBar.count() > 0, 'EDIT bar renders for the suggested sentence');
+    await page.locator(`.history-bar-container[data-sentence-id="${sid}"]`).first().hover();
+    await page.waitForSelector('#history-popup', { timeout: 3000 });
+    const editText = await page.locator('#history-popup .history-popup-edit .history-popup-text').textContent();
+    assert(/freshly suggested words/.test(editText), `Popup edit row carries the suggestion (got "${editText.slice(0, 60)}…")`);
 
   } catch (e) {
     console.log(`✗ Test errored: ${e.message}`);

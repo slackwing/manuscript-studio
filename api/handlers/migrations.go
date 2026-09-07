@@ -208,7 +208,7 @@ func (h *MigrationHandlers) HandleGetSentenceHistory(w http.ResponseWriter, r *h
 		return
 	}
 
-	const historyCommitsBack = 3
+	const historyCommitsBack = 4
 
 	currentSentences, err := h.DB.GetSentencesByMigration(ctx, migrationID)
 	if err != nil {

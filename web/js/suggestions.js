@@ -88,6 +88,13 @@ const WriteSysSuggestions = {
   },
 
   rebuildMaps() {
+    // The history bars' EDIT lane reads renderBySentenceId — refresh them
+    // once this rebuild (and the sentence re-render that follows) settles.
+    // Post-pagination loadHistory remains the authoritative layout pass.
+    if (window.WriteSysHistory) {
+      clearTimeout(this._historyRefresh);
+      this._historyRefresh = setTimeout(() => window.WriteSysHistory.render(), 50);
+    }
     this.bySentenceId = {};
     this.rowsBySentence = {};
     this.staleBySentence = {};

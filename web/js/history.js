@@ -1,12 +1,19 @@
 /**
  * Sentence-history left-margin bars.
  *
- * Three lanes parallel to the text. Lane 1 = closest to text = newest comparison
- * (current vs. 1-ago); lane 3 = oldest (2-ago vs. 3-ago).
+ * FIVE bars parallel to the text. Rightmost (closest to text) = EDIT — the
+ * render-winner suggested edit vs. the current text; then lane 1 (current
+ * vs. 1-ago) out to lane 4 (3-ago vs. 4-ago), oldest leftmost — so a
+ * hover reads left-to-right as 4 ago … 1 ago, now, edit.
  *
- * Color encodes alphanumeric char-count delta vs. older:
- *   newly inserted or ≥25% more → green; ≥25% fewer → red; otherwise blue;
- *   identical text → no bar in that lane.
+ * Color is a WORD-diff ratio (same rule for history and edit): green =
+ * added words, red = removed words, g = green/(green+red):
+ *   g ≥ 0.80 → green; g ≤ 0.20 → red; otherwise blue.
+ *   Newly inserted → green; identical text / no words changed → no bar.
+ *
+ * Overlap rule is deliberately dumb: every bar covers ALL the lines of its
+ * sentence, drawn in iteration order — a later sentence's bars paint over
+ * an earlier one's where lines are shared. Simple beats clever here.
  *
  * Hover any bar to open a popup of all versions, oldest-on-top.
  */
@@ -16,17 +23,19 @@ const WriteSysHistory = {
 
   bySentenceId: {},
 
-  LANE_COUNT: 3,
+  LANE_COUNT: 4,
   LANE_WIDTH_EM: 0.5,
   LANE_GAP_EM: 0.05,
   // Pre-flattened "color × opacity" RGB so adjacent same-lane bars don't
   // produce darker stripes where they overlap via alpha compositing.
-  // Tier 0 = lane 1 (newest), tier 2 = lane 3 (oldest).
+  // Tier 0 = lane 1 (newest), tier 3 = lane 4 (oldest).
   COLORS: {
-    green: ['#5CB85C', '#AEDCAE', '#DEEFDE'],
-    blue:  ['#5BC0DE', '#AEE0EF', '#DEEFF6'],
-    red:   ['#D9534F', '#ECA9A7', '#F7DDDC'],
+    green: ['#5CB85C', '#94D094', '#C4E5C4', '#E5F3E5'],
+    blue:  ['#5BC0DE', '#95D6EA', '#C5E9F3', '#E7F5FA'],
+    red:   ['#D9534F', '#E68986', '#F0BCBA', '#F8E1E0'],
   },
+  // The EDIT bar is a live proposal, not history — one saturated step up.
+  EDIT_COLORS: { green: '#449D44', blue: '#31B0D5', red: '#C9302C' },
 
   async loadHistory(migrationID) {
     if (!migrationID) return;
@@ -53,45 +62,102 @@ const WriteSysHistory = {
     return count;
   },
 
-  // Returns 'green' | 'blue' | 'red' | null (no bar). older may be null for inserts.
+  // Word-diff counts between two texts: green = words added in newer,
+  // red = words removed. Uses d-m-p's word mode (the same
+  // diff_linesToWords_ the suggestion diff renders with — it's a prototype
+  // extension from suggestions.js, probed lazily so load order is moot).
+  wordDelta(older, newer) {
+    const D = window.diff_match_patch;
+    if (!D || !D.prototype.diff_linesToWords_) return null;
+    if (!this._dmp) this._dmp = new D();
+    const a = this._dmp.diff_linesToWords_(older || '', newer || '');
+    const diffs = this._dmp.diff_main(a.chars1, a.chars2, false);
+    this._dmp.diff_charsToLines_(diffs, a.lineArray);
+    let green = 0;
+    let red = 0;
+    for (let i = 0; i < diffs.length; i++) {
+      const words = (diffs[i][1].match(/\S+/g) || []).length;
+      if (diffs[i][0] === 1) green += words;
+      else if (diffs[i][0] === -1) red += words;
+    }
+    return { green, red };
+  },
+
+  // Returns 'green' | 'blue' | 'red' | null (no bar). older may be null for
+  // inserts. ONE rule for history lanes and the EDIT bar: by word count of
+  // the colored diff, g = green/(green+red) — g ≥ .80 green, g ≤ .20 red,
+  // else blue (enough of both). No changed words → no bar.
   diffColor(newer, older) {
-    const newC = this.alnumCount(newer);
     if (older === null || older === undefined) {
-      return newC > 0 ? 'green' : null;
+      return this.alnumCount(newer) > 0 ? 'green' : null;
     }
     if (newer === older) return null;
-    const oldC = this.alnumCount(older);
-    if (oldC === 0) return newC > 0 ? 'green' : null;
-    const ratio = (newC - oldC) / oldC;
-    if (ratio >= 0.25) return 'green';
-    if (ratio <= -0.25) return 'red';
+    // Whitespace shuffles aren't word changes: normalize before diffing so
+    // 'a  b' vs 'a b' is "no changed words → no bar", not a phantom blue.
+    const norm = (t) => String(t).replace(/\s+/g, ' ').trim();
+    const nNew = norm(newer);
+    const nOld = norm(older);
+    if (nNew === nOld) return null;
+    const d = this.wordDelta(nOld, nNew);
+    if (!d) {
+      // d-m-p missing (never on the book page; belt-and-braces): fall back
+      // to the old alnum-count delta rule.
+      const newC = this.alnumCount(newer);
+      const oldC = this.alnumCount(older);
+      if (oldC === 0) return newC > 0 ? 'green' : null;
+      const ratio = (newC - oldC) / oldC;
+      if (ratio >= 0.25) return 'green';
+      if (ratio <= -0.25) return 'red';
+      return 'blue';
+    }
+    const total = d.green + d.red;
+    if (total === 0) return null; // whitespace/punctuation-only shuffle
+    const g = d.green / total;
+    if (g >= 0.8) return 'green';
+    if (g <= 0.2) return 'red';
     return 'blue';
   },
 
+  // The EDIT bar: the render-winner suggestion vs. the current text — the
+  // suggestion counts as ONE sentence however many sentences it splits
+  // into (it lives under one sentence id). No suggestion → no bar.
+  editColor(sentenceId, currentText) {
+    const sugMap = window.WriteSysSuggestions && window.WriteSysSuggestions.renderBySentenceId;
+    if (!sugMap || !(sentenceId in sugMap)) return null;
+    const suggested = sugMap[sentenceId];
+    if (suggested === currentText) return null;
+    if (!this.alnumCount(suggested)) return 'red'; // deletion proposal
+    return this.diffColor(suggested, currentText || '');
+  },
+
+  currentTextOf(sentenceId) {
+    const sentEl = document.querySelector(`.sentence[data-sentence-id="${sentenceId}"]`);
+    if (!sentEl) return null;
+    return (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
+      ? window.WriteSysRenderer.sentenceMap[sentenceId] || sentEl.textContent
+      : sentEl.textContent;
+  },
+
   // Returns up to LANE_COUNT lane colors (or nulls) for a sentence.
+  // lanes[k] = the (k)-ago → (k+1)-ago boundary (lanes[0] = current vs 1-ago).
   lanesFor(sentenceId) {
     const entry = this.bySentenceId[sentenceId];
-    if (!entry) return [null, null, null];
+    if (!entry) return new Array(this.LANE_COUNT).fill(null);
     const history = entry.history || [];
     // texts[N] = N commits ago (texts[0] = current, fetched from the DOM
     // since the response only carries the prior versions).
-    const texts = [null, null, null, null];
-    const sentEl = document.querySelector(`.sentence[data-sentence-id="${sentenceId}"]`);
-    if (sentEl) {
-      texts[0] = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
-        ? window.WriteSysRenderer.sentenceMap[sentenceId] || sentEl.textContent
-        : sentEl.textContent;
-    }
+    const texts = new Array(this.LANE_COUNT + 1).fill(null);
+    texts[0] = this.currentTextOf(sentenceId);
     history.forEach(h => {
-      if (h.commits_ago >= 1 && h.commits_ago <= 3) {
+      if (h.commits_ago >= 1 && h.commits_ago <= this.LANE_COUNT) {
         texts[h.commits_ago] = h.text;
       }
     });
-    return [
-      this.diffColor(texts[0], texts[1]),
-      this.diffColor(texts[1], texts[2]),
-      this.diffColor(texts[2], texts[3]),
-    ];
+    const lanes = [];
+    for (let k = 0; k < this.LANE_COUNT; k++) {
+      lanes.push(this.diffColor(texts[k], texts[k + 1]));
+    }
+    return lanes;
   },
 
   render() {
@@ -99,7 +165,8 @@ const WriteSysHistory = {
 
     Object.keys(this.bySentenceId).forEach(sentenceId => {
       const lanes = this.lanesFor(sentenceId);
-      if (lanes.every(c => !c)) return;
+      const edit = this.editColor(sentenceId, this.currentTextOf(sentenceId));
+      if (!edit && lanes.every(c => !c)) return;
 
       const fragments = document.querySelectorAll(`.sentence[data-sentence-id="${sentenceId}"]`);
       fragments.forEach(sentence => {
@@ -126,7 +193,8 @@ const WriteSysHistory = {
         const top = Math.round((sentenceRect.top - pageRect.top) / s - padPerSide);
         const height = Math.round(sentenceRect.height / s + padPerSide * 2);
 
-        const totalWidthEm = this.LANE_COUNT * this.LANE_WIDTH_EM + (this.LANE_COUNT - 1) * this.LANE_GAP_EM;
+        const slotCount = this.LANE_COUNT + 1; // + the EDIT bar
+        const totalWidthEm = slotCount * this.LANE_WIDTH_EM + (slotCount - 1) * this.LANE_GAP_EM;
         const container = document.createElement('div');
         container.className = 'history-bar-container';
         container.dataset.sentenceId = sentenceId;
@@ -137,9 +205,16 @@ const WriteSysHistory = {
         container.style.height = `${height}px`;
         container.style.zIndex = '10';
 
-        // idx 0 → rightmost lane (closest to text); idx 2 → leftmost.
-        lanes.forEach((color, idx) => {
-          if (!color) return;
+        // Slot 0 → rightmost (closest to text) = EDIT; slots 1..LANE_COUNT
+        // = lane 1 (newest) out to lane 4 (oldest, leftmost) — a hover
+        // reads left-to-right as 4 ago … 1 ago, edit.
+        const slots = [
+          { key: 'edit', color: edit, fill: edit && this.EDIT_COLORS[edit] },
+        ].concat(lanes.map((color, k) => ({
+          key: String(k + 1), color, fill: color && this.COLORS[color][k],
+        })));
+        slots.forEach((slot, idx) => {
+          if (!slot.color) return;
           const lane = document.createElement('div');
           lane.className = 'history-bar';
           lane.style.position = 'absolute';
@@ -148,10 +223,10 @@ const WriteSysHistory = {
           lane.style.width = `${this.LANE_WIDTH_EM}em`;
           const offsetEm = idx * (this.LANE_WIDTH_EM + this.LANE_GAP_EM);
           lane.style.right = `${offsetEm}em`;
-          lane.style.backgroundColor = this.COLORS[color][idx];
+          lane.style.backgroundColor = slot.fill;
           lane.style.pointerEvents = 'auto';
           lane.style.cursor = 'help';
-          lane.dataset.lane = String(idx + 1);
+          lane.dataset.lane = slot.key;
           container.appendChild(lane);
         });
 
@@ -167,11 +242,11 @@ const WriteSysHistory = {
     this.hidePopup();
     const entry = this.bySentenceId[sentenceId];
     const lanes = this.lanesFor(sentenceId);
-    if (lanes.every(c => !c)) return;
-
     const currentText = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
       ? window.WriteSysRenderer.sentenceMap[sentenceId] || ''
       : '';
+    const editLane = this.editColor(sentenceId, currentText || this.currentTextOf(sentenceId));
+    if (!editLane && lanes.every(c => !c)) return;
 
     const popup = document.createElement('div');
     popup.className = 'history-popup';
@@ -218,6 +293,32 @@ const WriteSysHistory = {
       text.className = 'history-popup-text';
       const tm = window.WriteSysTextMarkers;
       text.textContent = tm ? tm.toGlyphs(currentText) : currentText;
+      row.appendChild(label);
+      row.appendChild(text);
+      popup.appendChild(row);
+    }
+    {
+      // The EDIT row: the pending render-winner suggestion, "(none)" when
+      // there isn't one — the timeline always ends … now, edit.
+      const sugMap = window.WriteSysSuggestions && window.WriteSysSuggestions.renderBySentenceId;
+      const suggested = sugMap && sentenceId in sugMap ? sugMap[sentenceId] : undefined;
+      const row = document.createElement('div');
+      row.className = 'history-popup-row history-popup-edit';
+      const label = document.createElement('span');
+      label.className = 'history-popup-label';
+      label.textContent = 'edit';
+      const text = document.createElement('span');
+      text.className = 'history-popup-text';
+      const tm = window.WriteSysTextMarkers;
+      if (suggested === undefined) {
+        text.textContent = '(none)';
+        text.classList.add('history-popup-empty');
+      } else if (suggested === '') {
+        text.textContent = '(delete)';
+        text.classList.add('history-popup-empty');
+      } else {
+        text.textContent = tm ? tm.toGlyphs(suggested) : suggested;
+      }
       row.appendChild(label);
       row.appendChild(text);
       popup.appendChild(row);
