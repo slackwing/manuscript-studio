@@ -163,36 +163,47 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 #ms-tabs.split .ms-tabbar-right { padding-left: 8px; }
 /* Focus indication, kept light: the unfocused pane's active tab loses its
    ink but keeps its weight (no layout shift). */
-#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #555; background: #f0ede5; }
-/* Filing-folder tabs: trapezoids (angled left+right via clip-path) that
-   overlap like an organizer's dividers — hovered/active ride on top. The
-   strip is tinted so the faces read as shapes; the ACTIVE face is white,
-   pointing at the content below. Ink matches the wordmark's darkness.
-   Type identity stays as the thin colored top edge (clip-path trims it to
-   the trapezoid's short edge — a folder color label). */
+#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #555; --bg: #f0ede5; }
+/* Browser-style curved tabs (the Chrome silhouette): rounded top corners
+   plus concave flares where the tab meets the strip's bottom edge, so the
+   active tab reads as fused with the content below. Pure CSS, one element:
+   the flares live in transparent inline borders; a bottom-strip
+   radial-gradient MASK carves the concave corners (gradient mask is
+   baseline in Firefox). Neighbors overlap via negative inline margins —
+   hovered/active ride on top. Faces read against the tinted strip; the
+   ACTIVE face is white; ink matches the wordmark's darkness. Type identity
+   is the thin colored top edge (--edge), painted as the background's first
+   3px so it follows the curve. */
 .ms-tab {
+  --r: 9px;               /* corner + flare radius */
+  --bg: #ece9e0;          /* face; hover/active override */
+  --edge: transparent;    /* type color, top edge */
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 260px;
-  border: none;
-  background: #ece9e0;
-  padding: 0 22px;
+  border: 0;
+  border-inline: var(--r) solid #0000;
+  border-radius: calc(2 * var(--r)) calc(2 * var(--r)) 0 0 / var(--r);
+  background: linear-gradient(var(--edge) 0 3px, var(--bg) 3px) padding-box;
+  mask:
+    radial-gradient(var(--r) at var(--r) 0, #0000 98%, #000 101%)
+      calc(-1 * var(--r)) 100% / 100% var(--r) repeat-x,
+    conic-gradient(#000 0 0) padding-box;
+  margin-inline: calc(-1 * var(--r) + 2px);
+  padding: 0 14px;
   font: 13.5px "Helvetica", sans-serif;
   color: #333;
   cursor: pointer;
-  border-top: 3px solid transparent;
   white-space: nowrap;
-  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 100%, 0 100%);
   position: relative;
   z-index: 1;
 }
-.ms-tab + .ms-tab { margin-left: -11px; }
-.ms-tab-home { border-top-color: #a8a08c; }
-.ms-tab-manuscript { border-top-color: #57503f; }
-.ms-tab-scratchpad { border-top-color: #2a6fb0; }
-.ms-tab:hover { background: #e7e3d8; color: #1d1d1d; z-index: 2; }
-.ms-tab.active { color: #1d1d1d; font-weight: 700; background: #fff; z-index: 3; }
+.ms-tab-home { --edge: #a8a08c; }
+.ms-tab-manuscript { --edge: #57503f; }
+.ms-tab-scratchpad { --edge: #2a6fb0; }
+.ms-tab:hover { --bg: #e7e3d8; color: #1d1d1d; z-index: 2; }
+.ms-tab.active { color: #1d1d1d; font-weight: 700; --bg: #fff; z-index: 3; }
 .ms-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .ms-tab-x {
   color: #b8b09e;
