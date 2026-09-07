@@ -161,7 +161,6 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 #ms-tabs.split .ms-tabbar-left {
   flex: none;
   width: calc(var(--split-x, 50vw) - 12px);
-  border-right: 1px solid #e3e0d8;
 }
 #ms-tabs.split .ms-tabbar-right { padding-left: 8px; }
 /* Focus indication, kept light: the unfocused pane's active tab loses its
