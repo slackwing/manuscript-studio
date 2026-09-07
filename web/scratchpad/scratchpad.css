@@ -76,7 +76,9 @@ html.pad-page #spm-close, html.pad-page #spm-pin { display: none; }
   padding: 2px 8px;
 }
 .spm-header button:hover { color: #222; }
-.spm-toolbar { margin: 0 !important; max-width: none !important; border-left: none; border-right: none; }
+/* In the pad the toolbar is flush chrome: the header's 1px border-bottom is
+   the ONE line above it (its own border-top would stack into a 2px smudge). */
+.spm-toolbar { margin: 0 !important; max-width: none !important; border-left: none; border-right: none; border-top: none; }
 .spm-editor {
   flex: 1;
   overflow-y: auto;
