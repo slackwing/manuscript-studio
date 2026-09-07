@@ -116,6 +116,15 @@ a#brand, a#brand:visited { color: inherit; }
 #controls #logout-btn:hover { color: #222; border-color: #999; background: #f7f6f3; }
 
 
+/* Bookish parchment chrome: header + tab strip share one light-gold tan —
+   the whole top reads as a book's endpaper, and the ACTIVE tab's white face
+   is the open page against it. (book.css paints #controls white; this
+   later-loading override wins.) */
+:root { --chrome-tan: #f3ebd7; }
+#controls { background: var(--chrome-tan); }
+#controls #gs-input { background-color: #faf6ec; }
+#controls #gs-input:focus { background-color: #fff; }
+
 /* ---- Pinned tabs: the row under the top bar (tabs.js). Layout space is
    claimed only when pins exist: html.has-ms-tabs flips --tabs-h, and every
    fixed-top rule in book.css/home.css adds it on. ---- */
@@ -139,7 +148,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   /* The strip's bottom edge is a PAINTED 1px line (not a border): tabs sit
      above it (bar padding), and the ACTIVE tab alone extends 1px lower to
      cover it — no seam between the open tab and its panel below. */
-  background: linear-gradient(to top, #e3e0d8 1px, #fff 1px);
+  background: linear-gradient(to top, #d9cdaf 1px, var(--chrome-tan) 1px);
   display: flex;
   align-items: stretch;
   padding: 0 12px;
@@ -165,7 +174,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 #ms-tabs.split .ms-tabbar-right { padding-left: 8px; }
 /* Focus indication, kept light: the unfocused pane's active tab loses its
    ink but keeps its weight (no layout shift). */
-#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #555; --bg: #f0ede5; }
+#ms-tabs.split .ms-tabbar.unfocused .ms-tab.active { color: #555; --bg: #f8f3e6; }
 /* Browser-style curved tabs (the Chrome silhouette): rounded top corners
    plus concave flares where the tab meets the strip's bottom edge, so the
    active tab reads as fused with the content below. Pure CSS, one element:
@@ -178,7 +187,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
    3px so it follows the curve. */
 .ms-tab {
   --r: 9px;               /* corner + flare radius */
-  --bg: #ece9e0;          /* face; hover/active override */
+  --bg: #e9dfc6;          /* face, a step deeper than the parchment strip */
   --edge: transparent;    /* type color, top edge */
   display: inline-flex;
   align-items: center;
@@ -204,7 +213,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 .ms-tab-home { --edge: #a8a08c; }
 .ms-tab-manuscript { --edge: #57503f; }
 .ms-tab-scratchpad { --edge: #2a6fb0; }
-.ms-tab:hover { --bg: #e7e3d8; color: #1d1d1d; z-index: 2; }
+.ms-tab:hover { --bg: #e2d5b5; color: #1d1d1d; z-index: 2; }
 /* On the white strip the active face is white too — a drop-shadow (which
    follows the MASKED silhouette, unlike box-shadow) draws its outline. */
 .ms-tab.active {
