@@ -322,14 +322,16 @@ const { suggestEditor } = require('./test-utils');
     // print its literal in green; an ADDED/REMOVED one shows the ◆ (the
     // diamond is the command, diff color says which way), an unchanged one
     // stays invisible, and the ◆ never appears outside diffing.
-    check('R14: ADDED &marker → green-side ◆ with the raw as tooltip',
-      out.unkAdded === 'was <strong><span class="cmd-diamond cmd-diamond-added" title="&amp;marker#interesting">◆</span></strong> here', out.unkAdded);
-    check('R14: REMOVED &marker → del-side ◆',
-      out.unkRemoved === 'was <del><span class="cmd-diamond cmd-diamond-removed" title="&amp;marker#interesting">◆</span></del> here', out.unkRemoved);
+    check('R14: ADDED &marker → green-side diamond (SVG lozenge) with the raw as tooltip',
+      out.unkAdded.includes('<strong><span class="cmd-diamond cmd-diamond-added" title="&amp;marker#interesting">')
+      && out.unkAdded.includes('<svg') && !out.unkAdded.includes('&amp;marker#interesting<'), out.unkAdded);
+    check('R14: REMOVED &marker → del-side diamond',
+      out.unkRemoved.includes('<del><span class="cmd-diamond cmd-diamond-removed" title="&amp;marker#interesting">')
+      && out.unkRemoved.includes('<svg'), out.unkRemoved);
     check('R14: unchanged unknown (outside del/strong) → invisible, args preserved',
-      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker') && !out.unkBrace.includes('◆'), out.unkBrace);
+      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker') && !out.unkBrace.includes('cmd-diamond'), out.unkBrace);
     check('R14: KNOWN invisible kind (&end) in a diff keeps its usual render (no ◆)',
-      out.knownInDiff.includes('inline-end') && !out.knownInDiff.includes('◆'), out.knownInDiff);
+      out.knownInDiff.includes('inline-end') && !out.knownInDiff.includes('cmd-diamond'), out.knownInDiff);
     check('R14: KNOWN block kind mid-prose stays literal (no inline renderer for it)',
       out.blockMidProse === 'x &amp;title{The Fire} y', out.blockMidProse);
   }

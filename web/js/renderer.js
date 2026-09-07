@@ -1067,7 +1067,12 @@ const WriteSysRenderer = {
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
       if (cmd.unknown && diffState) {
-        return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">◆</span>`;
+        // An SVG lozenge (taller than wide), not the ◆ glyph — font metrics
+        // for U+25C6 differ per platform (Firefox/DejaVu drew it sunk to
+        // the baseline), an inline SVG centers identically everywhere.
+        return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
+          + '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
+          + '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg></span>';
       }
       return this.renderInlineCommand({
         kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '',

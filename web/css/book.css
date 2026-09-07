@@ -2224,14 +2224,17 @@ p.section-break {
 .cmd-diamond {
   display: inline-block;
   /* UNSCOPED + fixed px: the suggest-edit modal's diff pane isn't inside
-     .sentence, so an em-scoped rule left the book's ◆ smaller than the
-     modal's. One absolute size everywhere (the larger), centered on the
-     text line. */
-  font-size: 13px;
-  line-height: 1;
-  font-weight: 400;
-  vertical-align: middle;
+     .sentence, so an em-scoped rule would size the two differently. The
+     glyph is an SVG lozenge (renderCmdTokensInHtml) — no font metrics, so
+     the alignment below lands identically in Firefox and Chromium. */
+  line-height: 0;
   cursor: default;
+}
+.cmd-diamond svg {
+  display: inline-block;
+  /* Box middle → baseline + x-height/2 — the canonical optical middle,
+     computed from the PARENT font so Firefox and Chromium agree. */
+  vertical-align: middle;
 }
 
 /* A del/ins whose content is ONLY emphasis markers (a moved `*` or `_`) —
