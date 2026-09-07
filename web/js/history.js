@@ -28,14 +28,14 @@ const WriteSysHistory = {
   LANE_GAP_EM: 0.05,
   // Pre-flattened "color × opacity" RGB so adjacent same-lane bars don't
   // produce darker stripes where they overlap via alpha compositing.
-  // Tier 0 = lane 1 (newest), tier 3 = lane 4 (oldest).
+  // Opacity scheme: EDIT 100%, lane 1 (tier 0) 50%, lanes 2-4 25% — the
+  // live proposal shouts, the last commit speaks, deeper history whispers.
   COLORS: {
-    green: ['#5CB85C', '#94D094', '#C4E5C4', '#E5F3E5'],
-    blue:  ['#5BC0DE', '#95D6EA', '#C5E9F3', '#E7F5FA'],
-    red:   ['#D9534F', '#E68986', '#F0BCBA', '#F8E1E0'],
+    green: ['#AEDCAE', '#D6EDD6', '#D6EDD6', '#D6EDD6'],
+    blue:  ['#ADE0EF', '#D6EFF7', '#D6EFF7', '#D6EFF7'],
+    red:   ['#ECA9A7', '#F6D4D3', '#F6D4D3', '#F6D4D3'],
   },
-  // The EDIT bar is a live proposal, not history — one saturated step up.
-  EDIT_COLORS: { green: '#449D44', blue: '#31B0D5', red: '#C9302C' },
+  EDIT_COLORS: { green: '#5CB85C', blue: '#5BC0DE', red: '#D9534F' },
 
   async loadHistory(migrationID) {
     if (!migrationID) return;
