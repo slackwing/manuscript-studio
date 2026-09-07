@@ -2244,6 +2244,10 @@ p.section-break {
    carry their colors explicitly: purple = fix added, red = fix removed. */
 .cmd-diamond-fixadd { color: #7d35a5; }
 .cmd-diamond-fixrem { color: #b33b3a; }
+/* Fix diamonds are FLUSH by construction (the stripped wrapper leaves no
+   space token) — breathe on the right. Ordinary diamonds keep the text's
+   own spacing, so no blanket margin. */
+.cmd-diamond-fixadd, .cmd-diamond-fixrem { margin-right: 0.3em; }
 .cmd-fix em { color: inherit; }
 
 .cmd-diamond {
