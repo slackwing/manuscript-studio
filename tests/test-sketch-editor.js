@@ -198,11 +198,19 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.evaluate(() => {
     navigator.clipboard.readText = () => new Promise(() => {});
   });
+  // Slow the validation GET so the spinner is deterministically observable —
+  // un-delayed, a fast localhost response wins the race and the spinner is
+  // gone before the check runs (this was a real flake).
+  await page.route(`**/api/variations/${supId}`, async (route) => {
+    await new Promise((r) => setTimeout(r, 600));
+    await route.continue();
+  });
   await page.locator('#spm-toolbar button', { hasText: 'Sketch' }).first().click();
   await page.waitForSelector('.sn-insertpop .sn-ins-clip');
   check('spinner shows while the check runs', await page.locator('.sn-ins-clip .sn-clip-spin').count() === 1);
   // The 700ms timeout race hands over to the in-app record → enabled.
   await page.waitForSelector('.sn-ins-clip:not([disabled])', { timeout: 6000 });
+  await page.unroute(`**/api/variations/${supId}`);
   check('spinner gone once settled', await page.locator('.sn-ins-clip .sn-clip-spin').count() === 0);
   check('From clipboard enabled via fallback (clipboard unreadable)', true);
   const widgetsBeforeSup = await page.locator('.sn-widget').count();
