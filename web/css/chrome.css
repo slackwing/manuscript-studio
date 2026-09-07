@@ -136,8 +136,10 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   height: 36px;
   box-sizing: border-box;
   z-index: 9999;
-  background: #f6f4ef;
-  border-bottom: 1px solid #e3e0d8;
+  /* The strip's bottom edge is a PAINTED 1px line (not a border): tabs sit
+     above it (bar padding), and the ACTIVE tab alone extends 1px lower to
+     cover it — no seam between the open tab and its panel below. */
+  background: linear-gradient(to top, #e3e0d8 1px, #fff 1px);
   display: flex;
   align-items: stretch;
   padding: 0 12px;
@@ -152,6 +154,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   flex: 1;
   overflow-x: auto;
   scrollbar-width: none;
+  padding-bottom: 1px; /* tabs stop above the painted edge (active dips below) */
 }
 /* Split: the left bar ends exactly at the pane seam (--split-x is a
    viewport length; the strip's 12px padding offsets it). */
@@ -203,7 +206,22 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
 .ms-tab-manuscript { --edge: #57503f; }
 .ms-tab-scratchpad { --edge: #2a6fb0; }
 .ms-tab:hover { --bg: #e7e3d8; color: #1d1d1d; z-index: 2; }
-.ms-tab.active { color: #1d1d1d; font-weight: 700; --bg: #fff; z-index: 3; }
+/* On the white strip the active face is white too — a drop-shadow (which
+   follows the MASKED silhouette, unlike box-shadow) draws its outline. */
+.ms-tab.active {
+  color: #1d1d1d;
+  font-weight: 700;
+  --bg: #fff;
+  z-index: 3;
+  /* Upward-biased silhouette: defines the white face on the white strip
+     without shading the panel below (the bottom must fuse seamlessly). */
+  filter: drop-shadow(0 -1px 1.5px rgba(76, 60, 20, 0.25));
+  margin-bottom: -1px; /* over the painted edge — fuses with the panel */
+}
+
+/* The strip fuses with the header above it — one white chrome block, the
+   strip's own bottom border is the only edge. */
+html.has-ms-tabs #controls { border-bottom-color: transparent; }
 .ms-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .ms-tab-x {
   color: #b8b09e;
