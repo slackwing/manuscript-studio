@@ -2240,6 +2240,10 @@ p.section-break {
    the diamond exists only while diffing. Hover reveals the raw command. */
 /* &fix{…}: the author's visible fix-me — the wrapped prose, bold purple. */
 .cmd-fix { font-weight: 700; color: #7d35a5; }
+/* The fix wrapper's own diff diamonds sit in EQUAL (bare) text, so they
+   carry their colors explicitly: purple = fix added, red = fix removed. */
+.cmd-diamond-fixadd { color: #7d35a5; }
+.cmd-diamond-fixrem { color: #b33b3a; }
 .cmd-fix em { color: inherit; }
 
 .cmd-diamond {

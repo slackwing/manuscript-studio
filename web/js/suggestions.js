@@ -933,6 +933,58 @@ const WriteSysSuggestions = {
 //     and per-segment substitution can't see the matching `*`.
 function renderDiffHTML(oldText, newText, dmp) {
   if (!dmp) return `<strong>${formatFallbackHTML(newText)}</strong>`;
+
+  // ---- &fix{…} CONTENT-level diffing (a deliberately weird feature) ----
+  // Wrapping prose in &fix must NOT read as "old words struck red, same
+  // words repeated purple." The rule (owner-specified, 2026-09-07):
+  //   * The diff runs on WRAPPER-STRIPPED text — &fix{X} diffs as X — so
+  //     the word diff compares content against content.
+  //   * Unchanged words inside a fix region render BOLD PURPLE (the fix
+  //     look). Added words stay GREEN, removed words stay RED-STRUCK —
+  //     diff coloring overrides the purple. No word changes → all purple.
+  //   * The WRAPPER's own add/remove is a diamond: PURPLE ◆ where a fix
+  //     was added, RED ◆ where one was removed — and after a removal the
+  //     surviving words default to normal black (no purple).
+  // Mechanics: strip &fix wrappers from both sides, remembering each
+  // region's [start,end) in the STRIPPED text. Diff the stripped texts.
+  // During assembly, track the old-side and new-side character positions;
+  // EQUAL chunks covered by a new-side region emit inside .cmd-fix.
+  // Wrapper delta is INDEX-paired (region i ↔ region i): extra new
+  // regions are "added" (purple ◆ at their start), extra old regions are
+  // "removed" (red ◆). Equal counts = persistent wrappers, no diamonds —
+  // a simultaneous remove-one-add-another reads as persistent; accepted.
+  // The wholesale-rewrite path below diffs/renders the stripped text too,
+  // so a full rewrite shows plain green/red without fix styling; also
+  // accepted — everything there is new anyway.
+  const stripFix = (text) => {
+    const chars = Array.from(String(text));
+    const regions = [];
+    let out = '';
+    let i = 0;
+    const lib = window.WriteSysCommand;
+    while (i < chars.length) {
+      if (chars[i] === '&' && lib) {
+        const cmd = lib.parse(chars.slice(i).join(''));
+        if (cmd && cmd.kind === 'fix') {
+          const content = (cmd.args || []).join('');
+          regions.push({ start: out.length, end: out.length + content.length });
+          out += content;
+          i += Array.from(cmd.raw).length;
+          continue;
+        }
+      }
+      out += chars[i];
+      i++;
+    }
+    return { text: out, regions };
+  };
+  const oldF = stripFix(oldText);
+  const newF = stripFix(newText);
+  const fixAdded = newF.regions.slice(oldF.regions.length);
+  const fixRemoved = oldF.regions.slice(newF.regions.length);
+  oldText = oldF.text;
+  newText = newF.text;
+
   const a = dmp.diff_linesToWords_ ? dmp.diff_linesToWords_(oldText, newText) : null;
   let diffs;
   if (a) {
@@ -1013,10 +1065,85 @@ function renderDiffHTML(oldText, newText, dmp) {
   // original interleaving. Italics are NOT substituted here — see the
   // pairItalicsAcrossInserts pass below for why.
   const parts = [];
+  // Side-position tracking for the &fix machinery: EQUAL advances both
+  // sides, a del/ins cluster advances old/new by its del/ins lengths.
+  // (The whitespace-coalescing pass above DUPLICATES an absorbed EQ run
+  // into both the del and the ins — which is exactly what keeps both
+  // counters honest.) Diamonds flush at part boundaries once the side
+  // position passes a region start — ±a cluster of precision, plenty.
+  let oldPos = 0;
+  let newPos = 0;
+  const FIX_DIAMOND = (cls) => `<span class="cmd-diamond ${cls}" title="fix">`
+    + '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
+    + '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg></span>';
+  const emittedD = new Set();
+  // Cluster-boundary fallback for diamonds whose region start never lands
+  // inside an EQUAL segment (e.g. the wrapped content was itself all-new).
+  const flushDiamonds = () => {
+    for (const r of fixAdded) {
+      if (!emittedD.has(r) && r.start <= newPos) { parts.push(FIX_DIAMOND('cmd-diamond-fixadd')); emittedD.add(r); }
+    }
+    for (const r of fixRemoved) {
+      if (!emittedD.has(r) && r.start <= oldPos) { parts.push(FIX_DIAMOND('cmd-diamond-fixrem')); emittedD.add(r); }
+    }
+  };
+  // EQUAL text carries BOTH sides' positions, so it's where diamonds land
+  // exactly and where purple applies: chunks covered by a new-side region
+  // emit inside .cmd-fix; add/remove diamonds weave in at their precise
+  // region-start offsets (new-side for adds, old-side for removes).
+  const emitEqual = (text) => {
+    const nb = newPos;
+    const ob = oldPos;
+    const L = text.length;
+    const marks = [];
+    for (const r of fixAdded) {
+      if (!emittedD.has(r) && r.start >= nb && r.start <= nb + L) {
+        marks.push([r.start - nb, FIX_DIAMOND('cmd-diamond-fixadd')]);
+        emittedD.add(r);
+      }
+    }
+    for (const r of fixRemoved) {
+      if (!emittedD.has(r) && r.start >= ob && r.start <= ob + L) {
+        marks.push([r.start - ob, FIX_DIAMOND('cmd-diamond-fixrem')]);
+        emittedD.add(r);
+      }
+    }
+    marks.sort((x, y) => x[0] - y[0]);
+    let out = '';
+    let p = 0;
+    const upTo = (q) => {
+      while (p < q) {
+        let coverEnd = null;
+        for (const r of newF.regions) {
+          const s = r.start - nb;
+          const e = r.end - nb;
+          if (p >= s && p < e) { coverEnd = Math.min(e, q); break; }
+        }
+        if (coverEnd !== null) {
+          out += `<span class="cmd-fix">${escapeHTML(text.slice(p, coverEnd))}</span>`;
+          p = coverEnd;
+          continue;
+        }
+        let next = q;
+        for (const r of newF.regions) {
+          const s = r.start - nb;
+          if (s > p && s < next) next = s;
+        }
+        out += escapeHTML(text.slice(p, next));
+        p = next;
+      }
+    };
+    for (const m of marks) { upTo(Math.max(0, Math.min(m[0], L))); out += m[1]; }
+    upTo(L);
+    return out;
+  };
   let i = 0;
   while (i < segs.length) {
     if (segs[i][0] === 0) {
-      parts.push(escapeHTML(segs[i][1]));
+      flushDiamonds();
+      parts.push(emitEqual(segs[i][1]));
+      oldPos += segs[i][1].length;
+      newPos += segs[i][1].length;
       i++;
       continue;
     }
@@ -1026,6 +1153,9 @@ function renderDiffHTML(oldText, newText, dmp) {
       else if (segs[i][0] === 1) inses += segs[i][1];
       i++;
     }
+    flushDiamonds();
+    oldPos += dels.length;
+    newPos += inses.length;
     // A change that is ONLY emphasis markers (e.g. a moved `*`) reads as
     // noise at full weight — tag it so CSS can render it subdued.
     const mdOnly = (t) => /^[\s*_]+$/.test(t) && /[*_]/.test(t);
@@ -1050,6 +1180,9 @@ function renderDiffHTML(oldText, newText, dmp) {
     if (dels) parts.push(`<del${mdOnly(dels) ? ' class="md-marker"' : ''}>${escapeHTML(dels)}</del>`);
     if (inses) parts.push(`<strong${mdOnly(inses) ? ' class="md-marker"' : ''}>${escapeHTML(inses)}</strong>`);
   }
+  newPos = Infinity;
+  oldPos = Infinity;
+  flushDiamonds(); // trailing regions (a fix at the very end of the text)
   return renderStructuralMarkers(pairItalicsAcrossInserts(parts.join('')));
 }
 

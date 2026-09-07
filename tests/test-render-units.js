@@ -350,11 +350,39 @@ const { suggestEditor } = require('./test-utils');
       { r14w: 'sound so far away, &marker{like an echo}.' });
     check('R14: wrapping words in &marker{…} → ◆, literal never leaks',
       wrapMk.includes('cmd-diamond-added') && !/>[^<]*&amp;marker/.test(wrapMk), wrapMk);
+    // &fix CONTENT-level diff (the weird-by-design rules, 2026-09-07):
+    // wrapping unchanged words → NO strike/repeat: purple ◆ at the wrap
+    // point + the words in bold purple, nothing red, nothing green.
     const wrapFix = await render(
       [{ id: 'r14x', text: 'sound so far away, like an echo.' }],
       { r14x: 'sound so far away, &fix{like an echo}.' });
-    check('R14: wrapping words in &fix{…} → purple prose, no literal',
-      wrapFix.includes('cmd-fix') && wrapFix.includes('like an echo') && !wrapFix.includes('&amp;fix'), wrapFix);
+    check('R14: wrapping unchanged words in &fix → purple ◆ + purple words, NO strike',
+      wrapFix.includes('cmd-diamond-fixadd')
+      && wrapFix.includes('<span class="cmd-fix">like an echo</span>')
+      && !wrapFix.includes('<del>') && !wrapFix.includes('&amp;fix'), wrapFix);
+    // Words edited INSIDE the wrap: the word diff overrides the purple —
+    // removed red, added green, untouched words purple.
+    const wrapEdit = await render(
+      [{ id: 'r14y', text: 'sound so far away, like an echo.' }],
+      { r14y: 'sound so far away, &fix{like a loud echo}.' });
+    check('R14: edits inside &fix → red/green word diff over purple rest',
+      wrapEdit.includes('cmd-diamond-fixadd') && wrapEdit.includes('<del>')
+      && wrapEdit.includes('<strong>') && wrapEdit.includes('cmd-fix'), wrapEdit);
+    // UNWRAPPING: red ◆ at the removal point, surviving words plain black.
+    const unwrapFix = await render(
+      [{ id: 'r14z', text: 'sound so far away, &fix{like an echo}.' }],
+      { r14z: 'sound so far away, like an echo.' });
+    check('R14: removing &fix → red ◆, words back to plain (no purple, no strike)',
+      unwrapFix.includes('cmd-diamond-fixrem')
+      && !unwrapFix.includes('cmd-fix"') && !unwrapFix.includes('<del>'), unwrapFix);
+    // PERSISTENT wrapper (fix on both sides, other words edited): purple
+    // stays, no diamonds.
+    const persistFix = await render(
+      [{ id: 'r14p', text: 'It began &fix{like an echo} at dawn.' }],
+      { r14p: 'It started &fix{like an echo} at dawn.' });
+    check('R14: persistent &fix → purple content, no diamonds, normal diff elsewhere',
+      persistFix.includes('<span class="cmd-fix">like an echo</span>')
+      && !persistFix.includes('cmd-diamond') && persistFix.includes('<del>began'), persistFix);
     check('R14: KNOWN block kind mid-prose stays literal (no inline renderer for it)',
       out.blockMidProse === 'x &amp;title{The Fire} y', out.blockMidProse);
   }
