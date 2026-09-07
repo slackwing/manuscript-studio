@@ -122,16 +122,16 @@ a#brand, a#brand:visited { color: inherit; }
   /* Defined HERE (not via JS inline style) so the url() base is this
      stylesheet in every engine → ../img works in dev and under the
      /manuscripts/ prod prefix alike. chrome.js picks the class. */
-  --cloth-img: url("../img/cloth-blue.jpg");
+  --cloth-img: url("../img/cloth-blue.jpg?v=2");
   --cloth-dye: #456982;
   --gold: #d3c08c;
 }
-html.cloth-red { --cloth-img: url("../img/cloth-red.jpg"); }
-html.cloth-green { --cloth-img: url("../img/cloth-green.jpg"); }
-html.cloth-blue { --cloth-img: url("../img/cloth-blue.jpg"); }
+html.cloth-red { --cloth-img: url("../img/cloth-red.jpg?v=2"); }
+html.cloth-green { --cloth-img: url("../img/cloth-green.jpg?v=2"); }
+html.cloth-blue { --cloth-img: url("../img/cloth-blue.jpg?v=2"); }
 #controls {
   background: var(--cloth-img) repeat fixed, var(--cloth-dye);
-  background-size: 260px auto;
+  background-size: 170px auto;
 }
 #controls #gs-input {
   background-color: rgba(253, 250, 242, 0.94);
@@ -199,7 +199,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
      rule — a painted line the active tab alone overlaps (the open page
      breaks the gilding). */
   background: linear-gradient(to top, var(--gold) 1px, #0000 1px), var(--cloth-img) repeat fixed, var(--cloth-dye);
-  background-size: auto, 260px auto, auto;
+  background-size: auto, 170px auto, auto;
   display: flex;
   align-items: stretch;
   padding: 0 12px;

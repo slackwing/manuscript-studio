@@ -22,7 +22,7 @@
   // The tile url() literals live in chrome.css (a url() smuggled through an
   // inline-style custom property resolves against the STYLESHEET base in
   // Chromium and the document base in Firefox — a class dodges both).
-  const DYES = { red: '#8f676f', green: '#529576', blue: '#456982' };
+  const DYES = { red: '#7e5a62', green: '#488367', blue: '#3d5c73' };
   const dye = Object.keys(DYES)[Math.floor(Math.random() * 3)];
   document.documentElement.classList.add('cloth-' + dye);
   document.documentElement.style.setProperty('--cloth-dye', DYES[dye]);
