@@ -54,6 +54,17 @@ console.log('=== C1b generic-grammar-unknown-commands ===');
   const inl = cmd.findInline('It was &marker#interesting tonight.');
   check('findInline surfaces unknown commands',
     inl.length === 1 && inl[0].kind === 'marker' && inl[0].unknown === true && inl[0].slug === 'interesting');
+  const multi = cmd.parse('&marker#slug-1#other-slug{unused}{more}');
+  check('multi-slug: slugs in order, slug = first, args intact',
+    !!multi && multi.slug === 'slug-1'
+    && JSON.stringify(multi.slugs) === '["slug-1","other-slug"]' && multi.args.length === 2);
+  const multiBare = cmd.parse('&marker#a#b');
+  check('multi-slug bare form parses', !!multiBare && JSON.stringify(multiBare.slugs) === '["a","b"]');
+  const multiKnown = cmd.parse('&chapter#p1#alt{1.}{Smoke}');
+  check('known commands accept extra slugs (first wins)',
+    !!multiKnown && multiKnown.slug === 'p1' && multiKnown.slugs[1] === 'alt');
+  const multiInl = cmd.findInline('mid &marker#x#y sentence.');
+  check('findInline carries the slugs array', multiInl.length === 1 && multiInl[0].slugs.length === 2);
 }
 
 // ---- C2: legacy snippet normalizes to sketch --------------------------

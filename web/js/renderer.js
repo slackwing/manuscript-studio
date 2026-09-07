@@ -1057,7 +1057,7 @@ const WriteSysRenderer = {
   // turns an added/removed UNKNOWN command into a diff-colored ◆ (color
   // inherits from the surrounding del/strong; hover shows the raw command).
   renderCmdTokensInHtml(html, diffState) {
-    const re = /&amp;[a-z]+(?:#[a-z0-9-]+)?(?:\{[^{}]*\})*/g;
+    const re = /&amp;[a-z]+(?:#[a-z0-9-]+)*(?:\{[^{}]*\})*/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -1075,7 +1075,7 @@ const WriteSysRenderer = {
           + '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg></span>';
       }
       return this.renderInlineCommand({
-        kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '',
+        kind: cmd.kind, slug: cmd.slug, slugs: cmd.slugs, notes: cmd.args[0] || '',
         args: cmd.args, raw: cmd.raw, unknown: !!cmd.unknown,
       });
     });

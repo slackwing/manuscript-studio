@@ -42,8 +42,10 @@ func ValidateSentenceText(text string) error {
 			if strings.ContainsAny(text, "\n\t") {
 				return fmt.Errorf("command sentence must not contain \\n or \\t: %q", truncate(text))
 			}
-			if cmd.Slug != "" && !ValidSlug(cmd.Slug) {
-				return fmt.Errorf("command slug must match [a-z0-9-]+, got %q: %q", cmd.Slug, truncate(text))
+			for _, sl := range cmd.Slugs {
+				if !ValidSlug(sl) {
+					return fmt.Errorf("command slug must match [a-z0-9-]+, got %q: %q", sl, truncate(text))
+				}
 			}
 			return nil
 		}

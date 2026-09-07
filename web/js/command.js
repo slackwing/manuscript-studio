@@ -69,20 +69,23 @@ const WriteSysCommand = {
     }
     if (kind === 'snippet') kind = 'sketch'; // legacy spelling — one internal kind
 
-    let slug = '';
-    if (i < chars.length && chars[i] === '#') {
+    // ANY number of #slugs (&marker#slug-1#other-slug{…} is valid general
+    // syntax; single-slug consumers read slugs[0] via slug). Mirror of Go.
+    const slugs = [];
+    while (i < chars.length && chars[i] === '#') {
       i++;
       const start = i;
       if (kind === 'end' || unknown) {
         // 'end' — and any UNKNOWN command (&marker#interesting) — may be a
-        // bare #slug token with no {...} groups, so its slug self-terminates
+        // bare #slug token with no {...} groups, so each slug self-terminates
         // on the slug charset [a-z0-9-].
         while (i < chars.length && /[a-z0-9-]/.test(chars[i])) i++;
       } else {
-        while (i < chars.length && chars[i] !== '{') i++;
+        while (i < chars.length && chars[i] !== '{' && chars[i] !== '#') i++;
       }
-      slug = chars.slice(start, i).join('');
+      slugs.push(chars.slice(start, i).join(''));
     }
+    const slug = slugs[0] || '';
 
     const args = [];
     while (i < chars.length && chars[i] === '{') {
@@ -101,7 +104,7 @@ const WriteSysCommand = {
     }
     if (args.length === 0 && !((kind === 'end' || unknown) && slug)) return null;
 
-    return { kind, slug, args, raw: chars.slice(0, i).join(''), unknown };
+    return { kind, slug, slugs, args, raw: chars.slice(0, i).join(''), unknown };
   },
 
   // isBlockCommandText: the whole sentence is one block command (nothing
@@ -268,7 +271,7 @@ const WriteSysCommand = {
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
       if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'sketch' || cmd.kind === 'end' || cmd.unknown) {
-        out.push({ kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end, unknown: !!cmd.unknown });
+        out.push({ kind: cmd.kind, slug: cmd.slug, slugs: cmd.slugs, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end, unknown: !!cmd.unknown });
       }
       i = end;
     }

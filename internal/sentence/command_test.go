@@ -23,6 +23,9 @@ func TestParseCommand(t *testing.T) {
 		// Generic grammar: ANY &[a-z]+ with the '#'/'{' delimiter parses
 		// (Unknown=true — invisible by default; see TestParseCommand_Unknown).
 		{"&marker#interesting", true, "marker", "interesting", nil}, // the usage: bare #tag
+		{"&marker#slug-1#other-slug", true, "marker", "slug-1", nil}, // multi-slug, Slug = first
+		{"&marker#a#b{x}{y}", true, "marker", "a", []string{"x", "y"}},
+		{"&chapter#p1#alt{1.}{Smoke}", true, CmdChapter, "p1", []string{"1.", "Smoke"}},
 		{"&marker#digression", true, "marker", "digression", nil},
 		{"&marker{interesting}", true, "marker", "", []string{"interesting"}}, // brace form parses too
 		{"&custom#s1{x}", true, "custom", "s1", []string{"x"}},            // full general shape
@@ -370,5 +373,19 @@ func TestParseCommand_Unknown(t *testing.T) {
 	known, ok := ParseCommand("&title{The Wildfire}")
 	if !ok || known.Unknown {
 		t.Fatalf("ParseCommand(&title{...}) = %+v, %v; want ok with Unknown=false", known, ok)
+	}
+}
+
+// Multi-slug general syntax: every #slug lands in Slugs, Slug is the first.
+func TestParseCommand_MultiSlug(t *testing.T) {
+	cmd, ok := ParseCommand("&marker#slug-1#other-slug{unused}{more}")
+	if !ok || cmd.Slug != "slug-1" || len(cmd.Slugs) != 2 || cmd.Slugs[1] != "other-slug" || len(cmd.Args) != 2 {
+		t.Fatalf("multi-slug parse = %+v, %v", cmd, ok)
+	}
+	if err := ValidateSentenceText("&marker#slug-1#other-slug"); err != nil {
+		t.Fatalf("multi-slug standalone should validate, got %v", err)
+	}
+	if err := ValidateSentenceText("&chapter#ok#BAD{1.}{X}"); err == nil {
+		t.Fatalf("invalid second slug must fail validation")
 	}
 }

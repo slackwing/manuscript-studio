@@ -65,7 +65,8 @@ var blockCommandKinds = map[CommandKind]bool{
 // Args are the brace groups in order: e.g. chapter → [label, desc?].
 type Command struct {
 	Kind    CommandKind
-	Slug    string   // "" when no #slug was written
+	Slug    string   // first slug; "" when no #slug was written
+	Slugs   []string // ALL #slugs in order (multi-slug general syntax)
 	Args    []string // brace-group contents, in source order
 	Raw     string   // the exact matched command token
 	Unknown bool     // generic-grammar match, not a keyword we process
@@ -276,24 +277,30 @@ func ParseCommand(s string) (Command, bool) {
 		kind, after, unknown = CommandKind(string(runes[1:j])), j, true
 	}
 
+	// ANY number of #slugs (&marker#slug-1#other-slug{…} is valid general
+	// syntax; commands that only use one read Slugs[0] via Slug).
 	i := after
-	var slug string
-	if i < len(runes) && runes[i] == '#' {
+	var slugs []string
+	for i < len(runes) && runes[i] == '#' {
 		i++
 		start := i
 		if kind == CmdEnd || unknown {
 			// 'end' — and any UNKNOWN command (&marker#interesting) — may be a
-			// bare #slug token with no {...} groups, so its slug
+			// bare #slug token with no {...} groups, so each slug
 			// self-terminates on the slug charset [a-z0-9-].
 			for i < len(runes) && isSlugRune(runes[i]) {
 				i++
 			}
 		} else {
-			for i < len(runes) && runes[i] != '{' {
+			for i < len(runes) && runes[i] != '{' && runes[i] != '#' {
 				i++
 			}
 		}
-		slug = string(runes[start:i])
+		slugs = append(slugs, string(runes[start:i]))
+	}
+	var slug string
+	if len(slugs) > 0 {
+		slug = slugs[0]
 	}
 
 	// One or more {...} groups.
@@ -326,6 +333,7 @@ func ParseCommand(s string) (Command, bool) {
 	return Command{
 		Kind:    kind,
 		Slug:    slug,
+		Slugs:   slugs,
 		Args:    args,
 		Raw:     string(runes[:i]),
 		Unknown: unknown,
