@@ -168,6 +168,25 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       && !document.querySelector('#ms-tab-panels iframe');
   }));
 
+  // ---- settings opens as a NORMAL tab from the header gear ----
+  await page.click('#settings-link');
+  await page.waitForSelector('#ms-tab-panels iframe[src*="settings.html"].active', { timeout: 10000 });
+  check('gear opens Settings as a live panel tab (gear icon on the tab)', await page.evaluate(() =>
+    document.querySelectorAll('#ms-tabs .ms-tab-settings').length === 1
+    && !!document.querySelector('#ms-tabs .ms-tab-settings .ms-tab-label svg')));
+  await page.click('#ms-tabs .ms-tab-home');
+  await page.waitForFunction(() => document.getElementById('ms-tab-panels').hidden === true);
+  await page.click('#settings-link');
+  await page.waitForSelector('#ms-tab-panels iframe[src*="settings.html"].active', { timeout: 8000 });
+  check('second gear click focuses the existing tab — never two instances', await page.evaluate(() =>
+    document.querySelectorAll('#ms-tabs .ms-tab-settings').length === 1
+    && document.querySelectorAll('#ms-tab-panels iframe[src*="settings.html"]').length === 1));
+  await page.hover('#ms-tabs .ms-tab-settings');
+  await page.click('#ms-tabs .ms-tab-settings .ms-tab-x');
+  await page.waitForFunction(() => !document.querySelector('#ms-tab-panels iframe[src*="settings.html"]'));
+  check('settings tab closes like any tab', await page.evaluate(() =>
+    document.querySelectorAll('#ms-tabs .ms-tab').length === 1));
+
   // ---- standalone book page (old link): pins, and its tabs route to the shell ----
   await page.goto(TEST_URL);
   await page.waitForSelector('#ms-tabs .ms-tab-manuscript', { timeout: 30000 });

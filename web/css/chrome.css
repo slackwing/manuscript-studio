@@ -422,9 +422,9 @@ html.embedded #controls, html.embedded #ms-tabs { display: none !important; }
   a#brand::after { bottom: -3px; }
 }
 
-/* Icon-only Home tab: center the glyph, trim the padding. */
-.ms-tab-home .ms-tab-label { display: inline-flex; align-items: center; }
-.ms-tab-home { padding: 0 12px; --edge: transparent; }
+/* Icon-only tabs (Home, Settings): center the glyph, trim the padding. */
+.ms-tab-home .ms-tab-label, .ms-tab-settings .ms-tab-label { display: inline-flex; align-items: center; }
+.ms-tab-home, .ms-tab-settings { padding: 0 12px; --edge: transparent; }
 
 /* Icon pair, right side: gear + exit door, equal height, roomy gap. */
 #controls .control-group-right { display: flex; align-items: center; gap: 18px; }

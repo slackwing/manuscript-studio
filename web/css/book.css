@@ -1132,6 +1132,18 @@ p.section-break {
   min-height: 120px;
 }
 
+/* The read-only body (someone else's locked note) is a DIV, not the
+   .note-input textarea — it must wear the SAME hand or it drifts to the
+   book serif. (home.css's card rule patched this locally for the landing
+   grid; this is the component-level base.) */
+.note-readonly-body {
+  font-family: "Caveat", "Helvetica", sans-serif;
+  font-size: 18px;
+  line-height: 1.2;
+  color: #333;
+  white-space: pre-wrap;
+}
+
 .note-input {
   width: 100%;
   font-family: "Caveat", "Helvetica", sans-serif;
@@ -2223,6 +2235,10 @@ p.section-break {
    the diamond exists only while diffing. Hover reveals the raw command. */
 .cmd-diamond {
   display: inline-block;
+  /* text-indent INHERITS, and an inline-block applies it to its own first
+     line — inside p.indented that grew the span by a phantom 2em (the
+     "double indent" / mystery gap). */
+  text-indent: 0;
   /* UNSCOPED + fixed px: the suggest-edit modal's diff pane isn't inside
      .sentence, so an em-scoped rule would size the two differently. The
      glyph is an SVG lozenge (renderCmdTokensInHtml) — no font metrics, so

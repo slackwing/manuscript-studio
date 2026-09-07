@@ -59,7 +59,8 @@ window.WriteSysTabs = (function () {
   const bookId = () => parseInt(new URLSearchParams(location.search).get('manuscript_id'), 10) || null;
   const onHomePage = () => /home\.html$/.test(location.pathname);
   const SHELL = !EMBED && onHomePage();
-  const keyOf = (p) => p.type[0] + p.id; // 'm42' / 's7877'
+  // 'm42' / 's7877' / 'g1' — settings takes 'g' (gear); 's' is scratchpads'.
+  const keyOf = (p) => (p.type === 'settings' ? 'g' : p.type[0]) + p.id;
   const findByKey = (key) => read().find((p) => keyOf(p) === key);
   // WriteSysScratchpadModal starts as a lazy-loader shim (scratchpad-modal.js)
   // that only grows currentId/close once the real module loads — and nothing
@@ -156,7 +157,7 @@ window.WriteSysTabs = (function () {
 
   const panelSrc = (p) => (p.type === 'manuscript'
     ? './?manuscript_id=' + p.id
-    : 'pad.html?scratchpad_id=' + p.id);
+    : (p.type === 'settings' ? 'settings.html' : 'pad.html?scratchpad_id=' + p.id));
 
   const ensureFrame = (key) => {
     if (!key || panels.has(key)) return;
@@ -376,7 +377,7 @@ window.WriteSysTabs = (function () {
   const openTab = (type, id, name) => {
     const existed = isPinned(type, id);
     pin(type, id, name);
-    const key = type[0] + id;
+    const key = keyOf({ type, id });
     // A NEW tab lands in the focused pane; an existing one stays put.
     if (SHELL && !existed && isSplit() && focused === 'right') {
       const s = splitRead();
@@ -387,6 +388,9 @@ window.WriteSysTabs = (function () {
   };
   const openManuscript = (id, name) => openTab('manuscript', id, name);
   const openPad = (id, name) => openTab('scratchpad', id, name);
+  // Settings is a NORMAL tab (drags, closes, one instance — pin() dedupes
+  // the singleton id); the gear in the header opens it instead of navigating.
+  const openSettings = () => openTab('settings', 1, 'Settings');
 
   const goHome = () => {
     if (SHELL) { activate(null); return; }
@@ -456,6 +460,13 @@ window.WriteSysTabs = (function () {
     };
     const mkPinTab = (bar, p, active) => {
       const tab = mkTab(bar, 'ms-tab-' + p.type, p.name, active, () => go(p));
+      if (p.type === 'settings') {
+        // Icon tab, like Home — the gear; title carries the name.
+        tab.querySelector('.ms-tab-label').innerHTML =
+          '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+          + '<path fill="currentColor" d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.5 8a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/>'
+          + '<path fill="currentColor" d="M9.4 1l.35 1.8c.4.14.78.33 1.13.55l1.73-.63 1.4 2.42-1.38 1.17a5.6 5.6 0 010 1.38l1.38 1.17-1.4 2.42-1.73-.63c-.35.22-.73.41-1.13.55L9.4 13H6.6l-.35-1.8a5.6 5.6 0 01-1.13-.55l-1.73.63L2 8.86l1.38-1.17a5.6 5.6 0 010-1.38L2 5.14l1.4-2.42 1.73.63c.35-.22.73-.41 1.13-.55L6.6 1h2.8z"/></svg>';
+      }
       const x = document.createElement('span');
       x.className = 'ms-tab-x';
       x.title = 'Close';
@@ -485,6 +496,7 @@ window.WriteSysTabs = (function () {
 
     const activeOf = (p) => {
       if (!SHELL) {
+        if (p.type === 'settings') return /settings\.html$/.test(location.pathname);
         return p.type === 'manuscript' ? p.id === bookId() && !openPadId() : p.id === openPadId();
       }
       const k = keyOf(p);
@@ -528,6 +540,10 @@ window.WriteSysTabs = (function () {
 
   document.addEventListener('DOMContentLoaded', () => {
     if (EMBED) return;
+    // The header gear opens Settings as a TAB (pin + panel in the shell;
+    // elsewhere it routes to the shell like any tab click).
+    const gear = document.getElementById('settings-link');
+    if (gear) gear.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
     if (SHELL) {
       // Manuscript cards open IN PLACE as live panels — never a navigation.
       document.addEventListener('click', (e) => {
@@ -548,7 +564,7 @@ window.WriteSysTabs = (function () {
       // browser tab's session, then let #tab=m42 (link compat) win focus.
       loadSession();
       reconcileSplit();
-      const m = (location.hash || '').match(/[#&]tab=([ms]\d+)/);
+      const m = (location.hash || '').match(/[#&]tab=([msg]\d+)/);
       if (m && read().some((p) => keyOf(p) === m[1])) activate(m[1]);
       [leftActive, rightActive].forEach((k) => touchMru(k));
       applyLayout();
@@ -573,5 +589,5 @@ window.WriteSysTabs = (function () {
   });
   render();
 
-  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, activate };
+  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, activate };
 })();
