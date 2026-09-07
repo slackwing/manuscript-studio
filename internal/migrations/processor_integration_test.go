@@ -948,3 +948,47 @@ func TestMigration_CommandArgChangeKeepsSuggestionPaired(t *testing.T) {
 		t.Errorf("changed-text pairing must arrive STALE")
 	}
 }
+
+// A note whose sentence is truly DELETED rides the confidence-0 fallback
+// to a nearby sentence — and arrives wearing a real "stale" TAG (the
+// user-namespace kind, exactly as if the owner typed it; no special
+// downstream logic). Notes on surviving sentences stay untagged.
+func TestMigration_FallbackPlacedNoteGetsStaleTag(t *testing.T) {
+	f := newFixture(t)
+
+	v1 := "Alpha stays put here. Bravo will be deleted. Charlie stays put here."
+	v2 := "Alpha stays put here. Charlie stays put here."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v1", v1)
+	bravoOld := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Bravo will be deleted")
+	alphaOld := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Alpha stays put")
+	doomed := insertNote(t, f.ctx, f.db, bravoOld, f.username, "note on the doomed sentence")
+	safe := insertNote(t, f.ctx, f.db, alphaOld, f.username, "note on a survivor")
+
+	runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "v2", v2)
+
+	tagNames := func(noteID int) []string {
+		tags, err := f.db.GetTagsForNote(f.ctx, noteID)
+		if err != nil {
+			t.Fatalf("GetTagsForNote(%d): %v", noteID, err)
+		}
+		names := make([]string, len(tags))
+		for i, tg := range tags {
+			names[i] = tg.TagName
+		}
+		return names
+	}
+	doomedTags := tagNames(doomed)
+	found := false
+	for _, n := range doomedTags {
+		if n == "stale" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("fallback-placed note must carry the stale tag, got %v", doomedTags)
+	}
+	if ns := tagNames(safe); len(ns) != 0 {
+		t.Errorf("survivor's note must stay untagged, got %v", ns)
+	}
+}

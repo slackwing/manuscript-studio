@@ -296,6 +296,15 @@ func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog
 		return 0, fmt.Errorf("get notes for mapped sentences: %w", err)
 	}
 	var items []database.NoteMigrationItem
+	// A confidence-0 move is the nearby-sentence FALLBACK (the note's real
+	// sentence is gone) — those notes get a "stale" tag after the move: an
+	// ordinary user-namespace tag, exactly as if the owner typed it, so
+	// there is no special logic downstream (filter it, delete it, reuse it).
+	type staleNote struct {
+		noteID int
+		userID string
+	}
+	var stale []staleNote
 	sources := 0
 	for oldID, move := range plan {
 		annots := notesByOld[oldID]
@@ -309,6 +318,9 @@ func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog
 				NewSentenceID: move.NewSentenceID,
 				Confidence:    move.Confidence,
 			})
+			if move.Confidence == 0 {
+				stale = append(stale, staleNote{noteID: a.NoteID, userID: a.UserID})
+			}
 		}
 	}
 
@@ -323,6 +335,17 @@ func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog
 	migrated, err := db.MigrateNotes(ctx, items)
 	if err != nil {
 		return 0, fmt.Errorf("atomic write rolled back: %w", err)
+	}
+	// Tag the fallback-placed notes "stale" — best-effort decoration: a tag
+	// failure must not fail the (already committed) migration.
+	for _, s := range stale {
+		if err := db.AddTagToNote(ctx, s.noteID, "stale", s.userID); err != nil {
+			log.Warn("stale tag failed (continuing)",
+				slog.Int("note_id", s.noteID), slog.String("err", err.Error()))
+		}
+	}
+	if len(stale) > 0 {
+		log.Info("tagged fallback-placed notes stale", slog.Int("count", len(stale)))
 	}
 	log.Info("note migration committed", slog.Int("migrated", migrated))
 	return migrated, nil
