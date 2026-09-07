@@ -72,6 +72,17 @@ a#brand {
   color: #222;
 }
 .gs-item:hover, .gs-item.active { background: #eef4fa; }
+/* Anchored under #controls to BEAT book.css's legacy `#controls button`
+   blue (same trap the manuscript picker and logout hit) — without this,
+   every result row paints #007bff/white as if selected. */
+#controls .gs-item {
+  background: transparent;
+  color: #222;
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+#controls .gs-item:hover, #controls .gs-item.active { background: #eef4fa; }
 .gs-item .gs-kind {
   font-size: 10px;
   color: #fff;
@@ -259,7 +270,9 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
      substitutes a dated URW/DejaVu face that reads word-processor, not
      chrome. Medium (500) + a hair of tracking is what makes a label read
      as a TAB; the active tab steps to 600, never faux-bold 700. */
-  font: 500 13px/1 system-ui, "Segoe UI", "Helvetica Neue", sans-serif;
+  /* line-height must clear descenders — the label span is overflow:hidden
+     for ellipsis, and /1 clipped every lowercase g. */
+  font: 500 13px/1.4 system-ui, "Segoe UI", "Helvetica Neue", sans-serif;
   letter-spacing: 0.012em;
   color: #333;
   cursor: pointer;

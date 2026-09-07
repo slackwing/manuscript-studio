@@ -83,6 +83,11 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     const kinds = await page.evaluate(() =>
       Array.from(document.querySelectorAll('.gs-item .gs-kind')).map(k => k.textContent));
     check('search lists the manuscript', kinds.includes('Book'), kinds.join(','));
+    // Result rows are buttons INSIDE #controls — book.css's legacy
+    // `#controls button` blue once painted every row as if selected.
+    check('result rows are quiet (only .active highlights)', await page.evaluate(() =>
+      [...document.querySelectorAll('.gs-item:not(.active)')]
+        .every(i => getComputedStyle(i).backgroundColor === 'rgba(0, 0, 0, 0)')));
     await page.click('.gs-item');
     await page.waitForSelector('.sentence', { timeout: 30000 });
     check('picking a manuscript opens it', /manuscript_id=/.test(page.url()), page.url());
