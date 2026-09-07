@@ -55,8 +55,14 @@ async function measure(page, width, height) {
       outlineHasClass: outline ? outline.classList.contains('has-outline') : false,
       brandLines: (() => {
         const b = q('#brand'); if (!b) return 0;
-        const lh = parseFloat(getComputedStyle(b).lineHeight) || 20;
-        return Math.round(b.getBoundingClientRect().height / lh);
+        const cs = getComputedStyle(b);
+        const lh = parseFloat(cs.lineHeight) || 20;
+        // Content height only — the LOA band wears padding + borders that
+        // would read as a phantom second line.
+        const inner = b.getBoundingClientRect().height
+          - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+          - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth);
+        return Math.round(inner / lh);
       })(),
       docWidth: document.documentElement.scrollWidth,
       winWidth: window.innerWidth,

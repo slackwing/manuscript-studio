@@ -395,3 +395,15 @@ html.ms-divider-drag .ms-panel { pointer-events: none; }
 html.embedded #controls, html.embedded #ms-tabs { display: none !important; }
 /* Pin buttons (pad header + book strip) read pressed when pinned. */
 #spm-pin.pinned { color: #2a6fb0; }
+
+/* Mobile: the title band slims down to fit the short bar (N12: media
+   overrides live at the end of the file). */
+@media (max-width: 1239px) {
+  #controls a#brand, #controls a#brand:visited {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    padding: 3px 9px 2px;
+  }
+  a#brand::before { top: -3px; }
+  a#brand::after { bottom: -3px; }
+}
