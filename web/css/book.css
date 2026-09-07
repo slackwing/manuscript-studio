@@ -956,6 +956,11 @@ p.section-break {
   pointer-events: auto; /* Re-enable clicks on actual content */
 }
 
+/* Note nav slot: the flipper buttons live at the TOP of the band, a
+   clear step above the preview + notes below. */
+.note-nav-slot { margin-bottom: 18px; }
+.note-nav-slot:empty { display: none; }
+
 /* Sentence preview (first 3 words) */
 .sentence-preview {
   display: none;
@@ -3563,25 +3568,32 @@ body.range-delete-mode .pagedjs_pages {
 /* Hidden notes (per-viewer): dimmed, sorted below by the margin code. */
 .sn-note.note-hidden, .card-note.note-hidden { opacity: 0.5; }
 
-/* Others' notes wear a tiny owner chip. */
-.note-owner-chip {
-  font: 9px "Helvetica", sans-serif;
-  color: #8a8378;
-  margin-left: 6px;
-}
-.note-hide-btn {
+/* Others' notes: the owner line — "admin hide" — top-right, and a light
+   diagonal-stripe wash over the note color (the "not yours" texture:
+   2px lines, 20px apart, a whisper darker than the face). */
+.note-owner-line {
   position: absolute;
   top: 4px;
   right: 6px;
-  border: none;
-  background: none;
   font: 9px "Helvetica", sans-serif;
   color: #8a8378;
+  white-space: nowrap;
+}
+.note-owner-chip { font: inherit; color: inherit; }
+.note-hide-btn {
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
   cursor: pointer;
   text-decoration: underline;
   padding: 0;
 }
 .note-hide-btn:hover { color: #2a6fb0; }
+.sticky-note.note-foreign {
+  background-image: repeating-linear-gradient(45deg,
+    rgba(60, 45, 10, 0.05) 0 2px, transparent 2px 20px);
+}
 
 /* Settings-modal access section (v3). */
 #msm-overlay .msm-access { margin-top: 14px; border-top: 1px solid #e4e1d8; padding-top: 10px; }

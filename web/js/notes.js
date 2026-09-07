@@ -123,7 +123,7 @@ const WriteSysNotes = {
     if (!container) return;
     if (!this.annotatedOrdered().length) { container.classList.remove('visible'); return; }
     container.innerHTML = '';
-    container.appendChild(this.createNoteNav());
+    this.renderNoteNav();
     container.classList.add('visible');
   },
 
@@ -270,9 +270,7 @@ const WriteSysNotes = {
 
     // Nav on TOP — the idle "– / n" and the counter occupy the same spot,
     // so entering the tour reads as the dash becoming a number.
-    if (this.annotatedOrdered().length) {
-      container.appendChild(this.createNoteNav());
-    }
+    this.renderNoteNav();
 
     // v3 multi-user: hidden notes (per-viewer) sink below unhidden ones,
     // preserving position order within each group.
@@ -342,11 +340,13 @@ const WriteSysNotes = {
     const wrap = document.createElement('div');
     wrap.className = 'pw-nav note-nav';
     const count = i < 0 ? `– / ${list.length}` : `${i + 1} / ${list.length}`;
-    const prevTarget = i > 0 ? list[i - 1] : null;
-    const nextTarget = i < 0 ? list[0] : (list[i + 1] || null);
-    wrap.innerHTML = `<button type="button" class="pw-nav-prev" title="Previous note"${prevTarget ? '' : ' disabled'}>&lsaquo;</button>
+    // WRAPAROUND: prev from the first (or nothing selected) → the last;
+    // next from the last → back to the first. Never disabled.
+    const prevTarget = i > 0 ? list[i - 1] : list[list.length - 1];
+    const nextTarget = i < 0 ? list[0] : (list[i + 1] || list[0]);
+    wrap.innerHTML = `<button type="button" class="pw-nav-prev" title="Previous note">&lsaquo;</button>
       <span class="pw-nav-count">${count}</span>
-      <button type="button" class="pw-nav-next" title="${i < 0 ? 'First note' : 'Next note'}"${nextTarget ? '' : ' disabled'}>&rsaquo;</button>`;
+      <button type="button" class="pw-nav-next" title="${i < 0 ? 'First note' : 'Next note'}">&rsaquo;</button>`;
     wrap.querySelector('.pw-nav-prev').addEventListener('click', (e) => {
       e.stopPropagation();
       if (prevTarget) this.gotoAnnotated(prevTarget);
@@ -356,6 +356,15 @@ const WriteSysNotes = {
       if (nextTarget) this.gotoAnnotated(nextTarget);
     });
     return wrap;
+  },
+
+  // The nav lives in its own slot ABOVE the sentence preview (buttons at
+  // the top of the band, preview hugging the first note below it).
+  renderNoteNav() {
+    const slot = document.getElementById('note-nav-slot');
+    if (!slot) return;
+    if (!this.annotatedOrdered().length) { slot.replaceChildren(); return; }
+    slot.replaceChildren(this.createNoteNav());
   },
 
   // The manuscript margin now renders notes through the SHARED note-widget
@@ -436,12 +445,14 @@ const WriteSysNotes = {
       : { readOnly: true });
     noteEl.dataset.annotationId = note.note_id;
     if (note.hidden) noteEl.classList.add('note-hidden');
+    noteEl.classList.add('note-foreign'); // diagonal-stripe "not yours" wash
 
-    // Owner chip + hide/unhide — margin-specific chrome.
+    // Owner line — "admin hide" — margin-specific chrome.
+    const ownerLine = document.createElement('span');
+    ownerLine.className = 'note-owner-line';
     const chip = document.createElement('span');
     chip.className = 'note-owner-chip';
     chip.textContent = note.user_id;
-    noteEl.appendChild(chip);
     const hideBtn = document.createElement('button');
     hideBtn.type = 'button';
     hideBtn.className = 'note-hide-btn';
@@ -458,7 +469,10 @@ const WriteSysNotes = {
         alert('Failed: ' + (err.message || err));
       }
     });
-    noteEl.appendChild(hideBtn);
+    ownerLine.appendChild(chip);
+    ownerLine.appendChild(document.createTextNode(' '));
+    ownerLine.appendChild(hideBtn);
+    noteEl.appendChild(ownerLine);
     return noteEl;
   },
 

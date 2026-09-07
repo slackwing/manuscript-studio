@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Book-style CSS -->
-  <link rel="stylesheet" href="css/book.css?v=200">
+  <link rel="stylesheet" href="css/book.css?v=201">
   <link rel="stylesheet" href="scratchpad/scratchpad.css?v=68">
   <link rel="stylesheet" href="css/chrome.css?v=21">
 
@@ -40,7 +40,9 @@
   <!-- Note margin container (floating in right grey margin) -->
   <div id="note-margin" class="pagedjs_ignore">
     <div class="note-margin-inner">
-      <!-- Sentence preview (first 3 words) -->
+      <!-- Note nav (‹ i/n ›) — at the TOP of the band, above the preview -->
+      <div id="note-nav-slot" class="note-nav-slot"></div>
+      <!-- Sentence preview (first 3 words) — hugs the first note below -->
       <div id="sentence-preview" class="sentence-preview"></div>
 
       <!-- Container for all sticky notes (rendered dynamically) -->
@@ -132,7 +134,7 @@
        renders through it). -->
   <script src="notes/note-api.js?v=5"></script>
   <script src="notes/note-widget.js?v=25"></script>
-  <script src="js/notes.js?v=69"></script>
+  <script src="js/notes.js?v=70"></script>
   <script src="js/vendor/diff-match-patch.js"></script>
   <script src="js/history.js?v=12"></script>
   <script src="js/pane-widget.js?v=11"></script>
