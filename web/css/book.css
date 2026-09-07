@@ -2221,11 +2221,16 @@ p.section-break {
    inherits from the wrapping del (red) / strong (green); inline-block keeps
    the del strikethrough off the glyph. Committed commands render nothing —
    the diamond exists only while diffing. Hover reveals the raw command. */
-.sentence .cmd-diamond {
+.cmd-diamond {
   display: inline-block;
-  font-size: 0.72em;
+  /* UNSCOPED + fixed px: the suggest-edit modal's diff pane isn't inside
+     .sentence, so an em-scoped rule left the book's ◆ smaller than the
+     modal's. One absolute size everywhere (the larger), centered on the
+     text line. */
+  font-size: 13px;
+  line-height: 1;
   font-weight: 400;
-  vertical-align: 0.08em;
+  vertical-align: middle;
   cursor: default;
 }
 
