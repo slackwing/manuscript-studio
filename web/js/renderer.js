@@ -969,6 +969,13 @@ const WriteSysRenderer = {
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
+    if (c.kind === 'fix') {
+      // &fix{…} is a DISPLAY command: its contents render exactly as the
+      // unwrapped prose would (escape + *emphasis*), bold and purple — a
+      // fix-me the author can SEE without hunting a note.
+      const content = (c.args || []).join('');
+      return `<span class="cmd-fix" title="fix">${this.emphasize(escapeHTML(content))}</span>`;
+    }
     if (c.unknown) {
       // Unknown command (generic grammar, e.g. &marker{tag}): commands are
       // invisible by default — only display commands show. The kind/args
@@ -1066,7 +1073,7 @@ const WriteSysRenderer = {
       const cmd = window.WriteSysCommand && window.WriteSysCommand.parse(unescape(m));
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
-      if (cmd.unknown && diffState) {
+      if (cmd.unknown && diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
         // An SVG lozenge (taller than wide), not the ◆ glyph — font metrics
         // for U+25C6 differ per platform (Firefox/DejaVu drew it sunk to
         // the baseline), an inline SVG centers identically everywhere.

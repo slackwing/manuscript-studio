@@ -151,6 +151,12 @@ const { suggestEditor } = require('./test-utils');
     const midUnk = await render([{ id: 'r6c', text: 'before &marker{tag} after' }]);
     check('R6: mid-text unknown command invisible, no literal leaks',
       midUnk.includes('inline-cmd') && midUnk.includes('before') && midUnk.includes('after') && !midUnk.includes('&amp;marker'), midUnk);
+    // &fix{…} is a DISPLAY command: contents render in place (with
+    // emphasis), bold-purple span, no literal, no invisible span.
+    const fix = await render([{ id: 'r6d', text: 'sound so far away, &fix{like an *echo* from another lifetime}.' }]);
+    check('R6: &fix renders its prose bold-purple in place (emphasis intact)',
+      fix.includes('<span class="cmd-fix" title="fix">like an <em>echo</em> from another lifetime</span>')
+      && !fix.includes('&amp;fix') && !fix.includes('inline-cmd'), fix);
   }
 
   // ---- R7: placeholder block branches -----------------------------------
@@ -305,6 +311,7 @@ const { suggestEditor } = require('./test-utils');
         unkRemoved: R.renderInlineCommandsInHtml('was <del>&amp;marker#interesting</del> here'),
         unkBrace: R.renderInlineCommandsInHtml('was &amp;marker{interesting} here'),
         knownInDiff: R.renderInlineCommandsInHtml('<strong>&amp;end#zz</strong>'),
+        fixInDiff: R.renderInlineCommandsInHtml('<strong>&amp;fix{keep this prose}</strong>'),
         blockMidProse: R.renderInlineCommandsInHtml('x &amp;title{The Fire} y'),
       };
       window.WriteSysOutline.slugMap = prevMap;
@@ -332,6 +339,22 @@ const { suggestEditor } = require('./test-utils');
       out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker') && !out.unkBrace.includes('cmd-diamond'), out.unkBrace);
     check('R14: KNOWN invisible kind (&end) in a diff keeps its usual render (no ◆)',
       out.knownInDiff.includes('inline-end') && !out.knownInDiff.includes('cmd-diamond'), out.knownInDiff);
+    check('R14: &fix in a diff shows its prose (display command — never a ◆)',
+      out.fixInDiff.includes('cmd-fix') && out.fixInDiff.includes('keep this prose')
+      && !out.fixInDiff.includes('cmd-diamond'), out.fixInDiff);
+    // WRAP case (the leak): a suggestion that wraps EXISTING words in a
+    // multi-word command must not let the word-diff straddle the token —
+    // commands are atomic diff tokens now.
+    const wrapMk = await render(
+      [{ id: 'r14w', text: 'sound so far away, like an echo.' }],
+      { r14w: 'sound so far away, &marker{like an echo}.' });
+    check('R14: wrapping words in &marker{…} → ◆, literal never leaks',
+      wrapMk.includes('cmd-diamond-added') && !/>[^<]*&amp;marker/.test(wrapMk), wrapMk);
+    const wrapFix = await render(
+      [{ id: 'r14x', text: 'sound so far away, like an echo.' }],
+      { r14x: 'sound so far away, &fix{like an echo}.' });
+    check('R14: wrapping words in &fix{…} → purple prose, no literal',
+      wrapFix.includes('cmd-fix') && wrapFix.includes('like an echo') && !wrapFix.includes('&amp;fix'), wrapFix);
     check('R14: KNOWN block kind mid-prose stays literal (no inline renderer for it)',
       out.blockMidProse === 'x &amp;title{The Fire} y', out.blockMidProse);
   }

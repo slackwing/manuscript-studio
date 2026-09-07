@@ -28,6 +28,8 @@ func TestCountProseWords(t *testing.T) {
 		{"inline unknown command removed (bare #tag)", "It was &marker#interesting a strange night.", 5},
 		{"inline unknown command removed (brace form)", "It was &marker{interesting} a strange night.", 5},
 		{"unknown command alone → 0", "&marker#digression", 0},
+		{"&fix contents COUNT (display command)", "so far away, &fix{like an echo from another lifetime}.", 9},
+		{"&fix alone counts its prose", "&fix{Three word sentence.}", 3},
 		{"unknown command with slug+args removed", "The end &custom#s1{x} came slowly.", 4},
 		{"empty", "", 0},
 		{"whitespace only", "   ", 0},

@@ -2238,6 +2238,10 @@ p.section-break {
    inherits from the wrapping del (red) / strong (green); inline-block keeps
    the del strikethrough off the glyph. Committed commands render nothing —
    the diamond exists only while diffing. Hover reveals the raw command. */
+/* &fix{…}: the author's visible fix-me — the wrapped prose, bold purple. */
+.cmd-fix { font-weight: 700; color: #7d35a5; }
+.cmd-fix em { color: inherit; }
+
 .cmd-diamond {
   display: inline-block;
   /* text-indent INHERITS, and an inline-block applies it to its own first

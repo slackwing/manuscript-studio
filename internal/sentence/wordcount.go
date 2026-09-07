@@ -44,6 +44,12 @@ func CountProseWords(text string) int {
 				i += len([]rune(cmd.Raw))
 				// Leave a space so "word&ref{x}word" doesn't fuse into one.
 				b.WriteByte(' ')
+				// DISPLAY commands whose args ARE the prose (&fix{…} renders
+				// its contents bold-purple in place): the words inside count.
+				if cmd.Kind == "fix" {
+					b.WriteString(strings.Join(cmd.Args, " "))
+					b.WriteByte(' ')
+				}
 				continue
 			}
 		}

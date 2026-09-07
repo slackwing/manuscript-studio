@@ -1230,10 +1230,22 @@ function formatFallbackHTML(text) {
       let chars = '';
       let lineArrayLength = lineArray.length;
       // Tokenize ws-runs AND non-ws-runs so missing/extra spaces show up too.
+      // A whole &-COMMAND is ONE atomic token: word-splitting a multi-word
+      // command (&fix{like an echo…} wrapped around existing prose) used to
+      // straddle it across diff segments, so no later pass could recognize
+      // it — the literal leaked into the rendered diff.
       const re = /\s+|\S+/g;
+      const cmdLib = window.WriteSysCommand;
       let m;
       while ((m = re.exec(text)) !== null) {
-        const token = m[0];
+        let token = m[0];
+        if (cmdLib && token[0] === '&') {
+          const cmd = cmdLib.parse(text.slice(m.index));
+          if (cmd && cmd.raw.length > token.length) {
+            token = cmd.raw;
+            re.lastIndex = m.index + token.length;
+          }
+        }
         if (lineHash.hasOwnProperty(token)) {
           chars += String.fromCharCode(lineHash[token]);
         } else {
