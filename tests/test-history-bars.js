@@ -191,9 +191,9 @@ async function syncToHead() {
     });
     await page.reload();
     await page.waitForSelector('.pagedjs_page', { timeout: 30000 });
-    await page.waitForTimeout(2500);
-    const editBar = page.locator(`.history-bar-container[data-sentence-id="${sid}"] .history-bar[data-lane="edit"]`);
-    assert(await editBar.count() > 0, 'EDIT bar renders for the suggested sentence');
+    await page.waitForSelector(`.history-bar-container[data-sentence-id="${sid}"] .history-bar[data-lane="edit"]`,
+      { timeout: 15000 });
+    assert(true, 'EDIT bar renders for the suggested sentence');
     await page.locator(`.history-bar-container[data-sentence-id="${sid}"]`).first().hover();
     await page.waitForSelector('#history-popup', { timeout: 3000 });
     const editText = await page.locator('#history-popup .history-popup-edit .history-popup-text').textContent();
