@@ -301,8 +301,10 @@ const { suggestEditor } = require('./test-utils');
         straddle: R.renderInlineCommandsInHtml('x &amp;refer<del>ence#a{n}</del>'),
         end: R.renderInlineCommandsInHtml('x &amp;end#zz y'),
         ph: R.renderInlineCommandsInHtml('&amp;placeholder#p{sentences}{s}'),
-        unkBare: R.renderInlineCommandsInHtml('was <span class="diff-added">&amp;marker#interesting</span> here'),
+        unkAdded: R.renderInlineCommandsInHtml('was <strong>&amp;marker#interesting</strong> here'),
+        unkRemoved: R.renderInlineCommandsInHtml('was <del>&amp;marker#interesting</del> here'),
         unkBrace: R.renderInlineCommandsInHtml('was &amp;marker{interesting} here'),
+        knownInDiff: R.renderInlineCommandsInHtml('<strong>&amp;end#zz</strong>'),
         blockMidProse: R.renderInlineCommandsInHtml('x &amp;title{The Fire} y'),
       };
       window.WriteSysOutline.slugMap = prevMap;
@@ -317,11 +319,17 @@ const { suggestEditor } = require('./test-utils');
     check('R14: escaped &end#slug form → inline-end', out.end.includes('inline-end') && out.end.includes('data-slug="zz"'), out.end);
     check('R14: escaped placeholder → ph run', out.ph.includes('class="ph"'), out.ph.slice(0, 80));
     // The generic grammar in the diff stream — a suggested &marker must NOT
-    // print its literal in green (the bug that prompted the feature).
-    check('R14: unknown bare &marker#tag in a diff-added span → invisible',
-      out.unkBare.includes('inline-cmd') && out.unkBare.includes('data-slug="interesting"') && !out.unkBare.includes('&amp;marker'), out.unkBare);
-    check('R14: unknown brace form → invisible, args preserved',
-      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker'), out.unkBrace);
+    // print its literal in green; an ADDED/REMOVED one shows the ◆ (the
+    // diamond is the command, diff color says which way), an unchanged one
+    // stays invisible, and the ◆ never appears outside diffing.
+    check('R14: ADDED &marker → green-side ◆ with the raw as tooltip',
+      out.unkAdded === 'was <strong><span class="cmd-diamond cmd-diamond-added" title="&amp;marker#interesting">◆</span></strong> here', out.unkAdded);
+    check('R14: REMOVED &marker → del-side ◆',
+      out.unkRemoved === 'was <del><span class="cmd-diamond cmd-diamond-removed" title="&amp;marker#interesting">◆</span></del> here', out.unkRemoved);
+    check('R14: unchanged unknown (outside del/strong) → invisible, args preserved',
+      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker') && !out.unkBrace.includes('◆'), out.unkBrace);
+    check('R14: KNOWN invisible kind (&end) in a diff keeps its usual render (no ◆)',
+      out.knownInDiff.includes('inline-end') && !out.knownInDiff.includes('◆'), out.knownInDiff);
     check('R14: KNOWN block kind mid-prose stays literal (no inline renderer for it)',
       out.blockMidProse === 'x &amp;title{The Fire} y', out.blockMidProse);
   }

@@ -2216,6 +2216,19 @@ p.section-break {
   font-weight: 600;
 }
 
+/* An added/removed INVISIBLE command in a diff shows as a small diamond —
+   the diamond IS the command; the diff color says which way it went. Color
+   inherits from the wrapping del (red) / strong (green); inline-block keeps
+   the del strikethrough off the glyph. Committed commands render nothing —
+   the diamond exists only while diffing. Hover reveals the raw command. */
+.sentence .cmd-diamond {
+  display: inline-block;
+  font-size: 0.72em;
+  font-weight: 400;
+  vertical-align: 0.08em;
+  cursor: default;
+}
+
 /* A del/ins whose content is ONLY emphasis markers (a moved `*` or `_`) —
    real change, but noise at full weight. Keep the red/green so it's still
    reviewable, drop it to whisper volume so the prose reads through. */

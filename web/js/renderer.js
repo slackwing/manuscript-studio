@@ -1025,13 +1025,38 @@ const WriteSysRenderer = {
   // reference in edited prose still renders as a link. Tokens that straddle a
   // <del>/<strong> boundary are left as-is (rare; they read as diff text).
   renderInlineCommandsInHtml(html) {
-    // Find CANDIDATE tokens in the escaped diff stream (&amp;word, optional
-    // #slug, any brace groups), then let command.js parse() — the grammar's
-    // one owner — decide. This retired the hand-duplicated keyword regex
-    // (CODE_REVIEW_AUG_2026.md §3.1/#15): new keywords and the generic
-    // unknown-command grammar flow through automatically. Only kinds the
-    // inline renderer actually handles are replaced; anything else (a block
-    // command riding mid-prose, a parse failure) stays literal, as before.
+    // The diff stream wraps removals in <del> and additions in <strong>.
+    // Split on those wrappers and process each piece EXACTLY once with its
+    // diff context — an invisible command that was ADDED or REMOVED shows a
+    // DIAMOND in the diff color (otherwise the reviewer can't tell anything
+    // changed); unchanged ones stay invisible. One pass per piece also
+    // guarantees generated markup (diamond tooltips carry the raw command)
+    // is never re-scanned.
+    const wrap = /(<del\b[^>]*>)([\s\S]*?)(<\/del>)|(<strong\b[^>]*>)([\s\S]*?)(<\/strong>)/g;
+    let out = '';
+    let pos = 0;
+    let m;
+    while ((m = wrap.exec(html)) !== null) {
+      out += this.renderCmdTokensInHtml(html.slice(pos, m.index), '');
+      if (m[1]) out += m[1] + this.renderCmdTokensInHtml(m[2], 'removed') + m[3];
+      else out += m[4] + this.renderCmdTokensInHtml(m[5], 'added') + m[6];
+      pos = m.index + m[0].length;
+    }
+    out += this.renderCmdTokensInHtml(html.slice(pos), '');
+    return out;
+  },
+
+  // renderCmdTokensInHtml replaces command tokens in one escaped-HTML piece.
+  // Find CANDIDATE tokens (&amp;word, optional #slug, any brace groups),
+  // then let command.js parse() — the grammar's one owner — decide. This
+  // retired the hand-duplicated keyword regex (CODE_REVIEW_AUG_2026.md
+  // §3.1/#15): new keywords and the generic unknown-command grammar flow
+  // through automatically. Only kinds the inline renderer actually handles
+  // are replaced; anything else (a block command riding mid-prose, a parse
+  // failure) stays literal, as before. diffState ('added'/'removed'/'')
+  // turns an added/removed UNKNOWN command into a diff-colored ◆ (color
+  // inherits from the surrounding del/strong; hover shows the raw command).
+  renderCmdTokensInHtml(html, diffState) {
     const re = /&amp;[a-z]+(?:#[a-z0-9-]+)?(?:\{[^{}]*\})*/g;
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -1041,6 +1066,9 @@ const WriteSysRenderer = {
       const cmd = window.WriteSysCommand && window.WriteSysCommand.parse(unescape(m));
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
+      if (cmd.unknown && diffState) {
+        return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">◆</span>`;
+      }
       return this.renderInlineCommand({
         kind: cmd.kind, slug: cmd.slug, notes: cmd.args[0] || '',
         args: cmd.args, raw: cmd.raw, unknown: !!cmd.unknown,
