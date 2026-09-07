@@ -15,6 +15,18 @@
   if (!host || host.children.length) return;
   const extras = (host.dataset.extras || '').split(/\s+/).filter(Boolean);
 
+  // Library-of-America binding: the chrome wears a real buckram tile
+  // (web/img/cloth-*.jpg, cut from an actual LOA spine photo), a random
+  // dye each load — red, green, or blue. Set synchronously (this script
+  // runs right after the #controls div) so the header never flashes.
+  // The tile url() literals live in chrome.css (a url() smuggled through an
+  // inline-style custom property resolves against the STYLESHEET base in
+  // Chromium and the document base in Firefox — a class dodges both).
+  const DYES = { red: '#8f676f', green: '#529576', blue: '#456982' };
+  const dye = Object.keys(DYES)[Math.floor(Math.random() * 3)];
+  document.documentElement.classList.add('cloth-' + dye);
+  document.documentElement.style.setProperty('--cloth-dye', DYES[dye]);
+
   const CHEATSHEET_ICON = `
       <span id="cheatsheet-icon" tabindex="0" role="button" aria-label="Syntax cheatsheet" aria-expanded="false" title="Syntax cheatsheet">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -25,11 +37,6 @@
 
   host.innerHTML = `
     <div class="control-group control-group-left">
-      <a id="home-link" href="home.html" title="Home" aria-label="Home">
-        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true">
-          <path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/>
-        </svg>
-      </a>
       <a id="brand" href="home.html">manuscript studio</a>
       <div id="global-search">
         <input id="gs-input" type="text" placeholder="Search" autocomplete="off">

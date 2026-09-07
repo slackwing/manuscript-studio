@@ -40,14 +40,13 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       sections: document.querySelectorAll('.home-section').length,
       manuscriptCard: !!Array.from(document.querySelectorAll('.card-manuscript .card-title'))
         .find(t => t.textContent === name),
-      homeLink: (document.getElementById('home-link') || {}).getAttribute
-        ? document.getElementById('home-link').getAttribute('href') : null,
+      homeLink: !!document.getElementById('home-link'),
       brandLink: document.getElementById('brand').getAttribute('href'),
     }), DISPLAY_NAME);
     check('four sections render (Points / Manuscripts / Scratchpads / Notes)', cards.sections === 4, String(cards.sections));
     check('test manuscript card present', cards.manuscriptCard);
-    check('home icon and wordmark both link home',
-      cards.homeLink === 'home.html' && cards.brandLink === 'home.html');
+    check('no home icon (the Home tab owns that); wordmark links home',
+      !cards.homeLink && cards.brandLink === 'home.html');
 
     // --- create pad via + New (opens the modal) ---
     await page.click('.card-ghost[data-ghost="scratchpad"]');

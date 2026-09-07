@@ -10,21 +10,13 @@
   min-width: 0;
 }
 
-#home-link {
-  display: inline-flex;
-  align-items: center;
-  color: #666;
-  text-decoration: none;
-  padding: 4px;
-  border-radius: 6px;
-}
-#home-link:hover { color: #222; background: #f0ece4; }
+/* (The home icon is gone — the Home tab is always present; the wordmark
+   band still links home.) */
 
 a#brand {
   text-decoration: none;
   color: inherit;
 }
-a#brand:hover { color: #000; }
 
 /* ---- global search ---- */
 #global-search {
@@ -120,16 +112,65 @@ a#brand, a#brand:visited { color: inherit; }
    the whole top reads as a book's endpaper, and the ACTIVE tab's white face
    is the open page against it. (book.css paints #controls white; this
    later-loading override wins.) */
+/* Library-of-America binding chrome: the header + strip wear a REAL buckram
+   cloth tile (web/img/cloth-*.jpg, cut and made seamless from an LOA spine
+   photo). chrome.js picks the dye — red, green, or blue — each load and
+   sets --cloth-img/--cloth-dye before first paint. background-attachment:
+   fixed keeps the weave continuous across header and strip. Gold is the
+   spine's foil. */
 :root {
-  --chrome-tan: #f3ebd7;
-  /* Leather-ish surface grain: inline SVG fractal noise (two octless-coarse
-     octaves for mottle + implicit fine speckle), greyscale, ~6% alpha —
-     texture without shifting the tan. Tiles at 160px. */
-  --chrome-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.22' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.08'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  /* Defined HERE (not via JS inline style) so the url() base is this
+     stylesheet in every engine → ../img works in dev and under the
+     /manuscripts/ prod prefix alike. chrome.js picks the class. */
+  --cloth-img: url("../img/cloth-blue.jpg");
+  --cloth-dye: #456982;
+  --gold: #d3c08c;
 }
-#controls { background: var(--chrome-grain), linear-gradient(var(--chrome-tan), var(--chrome-tan)); }
-#controls #gs-input { background-color: #faf6ec; }
-#controls #gs-input:focus { background-color: #fff; }
+html.cloth-red { --cloth-img: url("../img/cloth-red.jpg"); }
+html.cloth-green { --cloth-img: url("../img/cloth-green.jpg"); }
+html.cloth-blue { --cloth-img: url("../img/cloth-blue.jpg"); }
+#controls {
+  background: var(--cloth-img) repeat fixed, var(--cloth-dye);
+  background-size: 260px auto;
+}
+#controls #gs-input {
+  background-color: rgba(253, 250, 242, 0.94);
+  border-color: rgba(211, 192, 140, 0.75);
+}
+#controls #gs-input:focus { background-color: #fff; border-color: var(--gold); }
+
+/* The wordmark as the spine's title band: gold serif caps, wide-tracked,
+   on the black label with DOUBLE gold rules above and below (the element's
+   own borders + hairlines floated 3px out). */
+#controls a#brand, #controls a#brand:visited {
+  position: relative;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: #191712;
+  padding: 6px 16px 5px;
+  border-top: 1px solid var(--gold);
+  border-bottom: 1px solid var(--gold);
+  white-space: nowrap;
+}
+#controls a#brand:hover { color: #e9dcb4; }
+a#brand::before, a#brand::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--gold);
+}
+a#brand::before { top: -4px; }
+a#brand::after { bottom: -4px; }
+
+/* Light ink for the cloth: bar links, gear, logout. */
+#controls a#settings-link, #controls a#settings-link:visited { color: #e8dcbd; }
+#controls a#settings-link:hover { color: #fff; }
+#controls #logout-btn { color: #e8dcbd; border-color: rgba(211, 192, 140, 0.55); }
+#controls #logout-btn:hover { color: #fff; border-color: var(--gold); background: rgba(255, 255, 255, 0.08); }
 
 /* ---- Pinned tabs: the row under the top bar (tabs.js). Layout space is
    claimed only when pins exist: html.has-ms-tabs flips --tabs-h, and every
@@ -154,7 +195,11 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   /* The strip's bottom edge is a PAINTED 1px line (not a border): tabs sit
      above it (bar padding), and the ACTIVE tab alone extends 1px lower to
      cover it — no seam between the open tab and its panel below. */
-  background: var(--chrome-grain), linear-gradient(to top, #d9cdaf 1px, var(--chrome-tan) 1px);
+  /* Cloth continues from the header; the bottom edge is the spine's GOLD
+     rule — a painted line the active tab alone overlaps (the open page
+     breaks the gilding). */
+  background: linear-gradient(to top, var(--gold) 1px, #0000 1px), var(--cloth-img) repeat fixed, var(--cloth-dye);
+  background-size: auto, 260px auto, auto;
   display: flex;
   align-items: stretch;
   padding: 0 12px;
@@ -202,10 +247,8 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   border: 0;
   border-inline: var(--r) solid #0000;
   border-radius: calc(2 * var(--r)) calc(2 * var(--r)) 0 0 / var(--r);
-  /* Closed tabs wear the grain too; the ACTIVE tab clears it below — the
-     open page is smooth against the leather. */
-  background: var(--tab-grain, var(--chrome-grain)) padding-box,
-    linear-gradient(var(--edge) 0 3px, var(--bg) 3px) padding-box;
+  /* Smooth paper faces against the cloth — pages tucked into the binding. */
+  background: linear-gradient(var(--edge) 0 3px, var(--bg) 3px) padding-box;
   mask:
     radial-gradient(var(--r) at var(--r) 0, #0000 98%, #000 101%)
       calc(-1 * var(--r)) 100% / 100% var(--r) repeat-x,
@@ -234,7 +277,6 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   color: #1d1d1d;
   font-weight: 600;
   --bg: #fff;
-  --tab-grain: linear-gradient(#0000, #0000); /* smooth page, no grain */
   z-index: 3;
   /* Upward-biased silhouette: defines the white face on the white strip
      without shading the panel below (the bottom must fuse seamlessly). */
@@ -265,13 +307,13 @@ html.has-ms-tabs #controls { border-bottom-color: transparent; }
   display: inline-flex;
   border: none;
   background: none;
-  color: #8a8474;
+  color: rgba(233, 221, 184, 0.8);
   padding: 3px 6px;
   border-radius: 4px;
   cursor: pointer;
 }
-#ms-split-btn:hover { color: #333; background: #f6f4ee; }
-#ms-split-btn:disabled { color: #ddd8cc; cursor: default; background: none; }
+#ms-split-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+#ms-split-btn:disabled { color: rgba(233, 221, 184, 0.3); cursor: default; background: none; }
 
 /* ---- live tab panels (home shell) ----------------------------------------
    One kept-alive iframe per activated pin. Inactive panels stay MOUNTED
