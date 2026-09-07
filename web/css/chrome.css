@@ -189,14 +189,11 @@ a#brand::after { bottom: -4px; }
    fixed-top rule in book.css/home.css adds it on. ---- */
 :root { --tabs-h: 0px; }
 html.has-ms-tabs { --tabs-h: 36px; }
-/* Framed inside a shell panel: the page's own top bar (52px desktop, 40px
-   mobile — book.css constants) and tab strip are hidden, so every
+/* Framed inside a shell panel: the page's own top bar (52px at every
+   width — book.css constant) and tab strip are hidden, so every
    "calc(Xpx + var(--tabs-h))" fixed offset must LOSE the top-bar height.
    Setting --tabs-h to its negative does exactly that in one stroke. */
-html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
-@media (max-width: 1239px) {
-  html.embedded, html.embedded.has-ms-tabs { --tabs-h: -40px; }
-}
+html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; } /* one bar height at every width now */
 #ms-tabs {
   position: fixed;
   left: 0;
@@ -410,17 +407,7 @@ html.embedded #controls, html.embedded #ms-tabs { display: none !important; }
 /* Pin buttons (pad header + book strip) read pressed when pinned. */
 #spm-pin.pinned { color: #2a6fb0; }
 
-/* Mobile: the title band slims down to fit the short bar (N12: media
-   overrides live at the end of the file). */
-@media (max-width: 1239px) {
-  #controls a#brand, #controls a#brand:visited {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    padding: 3px 9px 2px;
-  }
-  a#brand::before { top: -3px; }
-  a#brand::after { bottom: -3px; }
-}
+/* (The title band keeps its DESKTOP size at every width — owner call.) */
 
 /* Icon-only tabs (Home, Settings): center the glyph, trim the padding. */
 .ms-tab-home .ms-tab-label, .ms-tab-settings .ms-tab-label { display: inline-flex; align-items: center; }

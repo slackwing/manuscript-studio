@@ -101,7 +101,11 @@ body {
   right: 0;
   background: white;
   border-bottom: 1px solid #ddd;
-  padding: 10px 20px;
+  /* ONE fixed height at every width (owner call: mobile keeps the same
+     header + wordmark as desktop) — content centers within it. */
+  height: 52px;
+  box-sizing: border-box;
+  padding: 0 20px;
   z-index: 10000;
   display: flex;
   justify-content: space-between;
@@ -2957,9 +2961,12 @@ p.section-break {
 @media (max-width: 1239px) {
   /* --- top bar: fixed short height so the second bar butts flush against it
          (no book showing through a gap). Smaller controls let it shrink. --- */
+  /* SAME height as desktop (52px) — the header and wordmark band no
+     longer shrink on mobile (owner call, 2026-09-07); only the search
+     and buttons compact. */
   #controls {
     box-sizing: border-box;
-    height: 40px;
+    height: 52px;
     padding: 0 10px;
     gap: 8px;
   }
@@ -2977,7 +2984,7 @@ p.section-break {
   /* --- second bar, left third: the info panel (name + updated line + push),
          centered both axes so it reads as a tidy little panel --- */
   #manuscript-chrome {
-    top: calc(40px + var(--tabs-h, 0px));
+    top: calc(52px + var(--tabs-h, 0px));
     left: 0 !important;          /* beat the inline left JS sets for desktop */
     width: 33.333%;
     height: 200px;               /* room for name + info + control rows */
@@ -3025,7 +3032,7 @@ p.section-break {
      content. (position:fixed escapes the chrome's overflow:hidden.) */
   #manuscript-chrome .pane-tabs {
     position: fixed;
-    top: calc(40px + var(--tabs-h, 0px));
+    top: calc(52px + var(--tabs-h, 0px));
     left: 33.333%;
     width: 66.667%;
     height: 26px;
