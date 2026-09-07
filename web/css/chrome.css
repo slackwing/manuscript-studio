@@ -147,6 +147,7 @@ html.cloth-blue { --cloth-img: url("../img/cloth-blue.jpg?v=2"); }
 #controls #gs-input {
   background-color: rgba(253, 250, 242, 0.94);
   border-color: rgba(211, 192, 140, 0.75);
+  border-width: 2px;
 }
 #controls #gs-input:focus { background-color: #fff; border-color: var(--gold); }
 
@@ -209,7 +210,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   /* Cloth continues from the header; the bottom edge is the spine's GOLD
      rule — a painted line the active tab alone overlaps (the open page
      breaks the gilding). */
-  background: linear-gradient(to top, var(--gold) 1px, #0000 1px), var(--cloth-img) repeat fixed, var(--cloth-dye);
+  background: linear-gradient(to top, var(--gold) 2px, #0000 2px), var(--cloth-img) repeat fixed, var(--cloth-dye);
   background-size: auto, 170px auto, auto;
   display: flex;
   align-items: stretch;
@@ -225,7 +226,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   flex: 1;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-bottom: 1px; /* tabs stop above the painted edge (active dips below) */
+  padding-bottom: 2px; /* tabs stop above the painted edge (active dips below) */
 }
 /* Split: the left bar ends exactly at the pane seam (--split-x is a
    viewport length; the strip's 12px padding offsets it). */
@@ -294,7 +295,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   /* Upward-biased silhouette: defines the white face on the white strip
      without shading the panel below (the bottom must fuse seamlessly). */
   filter: drop-shadow(0 -1px 1.5px rgba(76, 60, 20, 0.25));
-  margin-bottom: -1px; /* over the painted edge — fuses with the panel */
+  margin-bottom: -2px; /* over the painted edge — fuses with the panel */
 }
 
 /* The strip fuses with the header above it — one white chrome block, the
@@ -420,3 +421,20 @@ html.embedded #controls, html.embedded #ms-tabs { display: none !important; }
   a#brand::before { top: -3px; }
   a#brand::after { bottom: -3px; }
 }
+
+/* Icon-only Home tab: center the glyph, trim the padding. */
+.ms-tab-home .ms-tab-label { display: inline-flex; align-items: center; }
+.ms-tab-home { padding: 0 12px; --edge: transparent; }
+
+/* Icon pair, right side: gear + exit door, equal height, roomy gap. */
+#controls .control-group-right { display: flex; align-items: center; gap: 18px; }
+#controls #logout-btn {
+  font: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+}
+#controls a#settings-link { display: inline-flex; align-items: center; }

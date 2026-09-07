@@ -476,7 +476,12 @@ window.WriteSysTabs = (function () {
 
     const leftBar = mkBar('left');
     const homeActive = SHELL ? (!leftActive && !openPadId()) : onHomePage();
-    mkTab(leftBar, 'ms-tab-home', 'Home', homeActive, goHome);
+    // Home wears the house ICON, not a word — a smaller tab (the label
+    // span keeps the layout; title carries the name).
+    const homeTab = mkTab(leftBar, 'ms-tab-home', 'Home', homeActive, goHome);
+    homeTab.querySelector('.ms-tab-label').innerHTML =
+      '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+      + '<path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/></svg>';
 
     const activeOf = (p) => {
       if (!SHELL) {

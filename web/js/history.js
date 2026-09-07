@@ -28,12 +28,12 @@ const WriteSysHistory = {
   LANE_GAP_EM: 0.05,
   // Pre-flattened "color × opacity" RGB so adjacent same-lane bars don't
   // produce darker stripes where they overlap via alpha compositing.
-  // Opacity scheme: EDIT 100%, lane 1 (tier 0) 50%, lanes 2-4 25% — the
+  // Opacity scheme: EDIT 100%, lane 1 (tier 0) 40%, lanes 2-4 10% — the
   // live proposal shouts, the last commit speaks, deeper history whispers.
   COLORS: {
-    green: ['#AEDCAE', '#D6EDD6', '#D6EDD6', '#D6EDD6'],
-    blue:  ['#ADE0EF', '#D6EFF7', '#D6EFF7', '#D6EFF7'],
-    red:   ['#ECA9A7', '#F6D4D3', '#F6D4D3', '#F6D4D3'],
+    green: ['#BEE3BE', '#EFF8EF', '#EFF8EF', '#EFF8EF'],
+    blue:  ['#BDE6F2', '#EFF9FC', '#EFF9FC', '#EFF9FC'],
+    red:   ['#F0BAB9', '#FBEEED', '#FBEEED', '#FBEEED'],
   },
   EDIT_COLORS: { green: '#5CB85C', blue: '#5BC0DE', red: '#D9534F' },
 
