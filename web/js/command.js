@@ -74,7 +74,7 @@ const WriteSysCommand = {
       i++;
       const start = i;
       if (kind === 'end' || unknown) {
-        // 'end' — and any UNKNOWN command (&mark#interesting) — may be a
+        // 'end' — and any UNKNOWN command (&marker#interesting) — may be a
         // bare #slug token with no {...} groups, so its slug self-terminates
         // on the slug charset [a-z0-9-].
         while (i < chars.length && /[a-z0-9-]/.test(chars[i])) i++;

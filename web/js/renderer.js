@@ -970,7 +970,7 @@ const WriteSysRenderer = {
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
     if (c.unknown) {
-      // Unknown command (generic grammar, e.g. &mark{tag}): commands are
+      // Unknown command (generic grammar, e.g. &marker{tag}): commands are
       // invisible by default — only display commands show. The kind/args
       // land in data attributes so future tooling (mark-frequency plots)
       // can read them straight off the DOM.

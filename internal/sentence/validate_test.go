@@ -43,7 +43,7 @@ func TestValidateSentenceText(t *testing.T) {
 // A standalone UNKNOWN command is a valid sentence (it renders invisibly);
 // known inline-only kinds are still rejected as their own sentence.
 func TestValidateSentenceText_UnknownCommand(t *testing.T) {
-	if err := ValidateSentenceText("&mark{digression}"); err != nil {
+	if err := ValidateSentenceText("&marker{digression}"); err != nil {
 		t.Fatalf("standalone unknown command should validate, got %v", err)
 	}
 	if err := ValidateSentenceText("&reference#x{y}"); err == nil {

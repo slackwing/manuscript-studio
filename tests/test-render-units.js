@@ -145,12 +145,12 @@ const { suggestEditor } = require('./test-utils');
     // Unknown commands (generic grammar): invisible by default, kind/args
     // preserved as data attributes for future tooling.
     const unk = await page.evaluate(() =>
-      window.WriteSysRenderer.renderInlineCommand({ kind: 'mark', slug: '', notes: '', args: ['interesting'], raw: '&mark{interesting}', unknown: true }));
+      window.WriteSysRenderer.renderInlineCommand({ kind: 'marker', slug: '', notes: '', args: ['interesting'], raw: '&marker{interesting}', unknown: true }));
     check('R6: renderInlineCommand(unknown) → invisible inline-cmd span',
-      unk === '<span class="inline-cmd" data-kind="mark" data-args="interesting" aria-hidden="true"></span>', unk);
-    const midUnk = await render([{ id: 'r6c', text: 'before &mark{tag} after' }]);
+      unk === '<span class="inline-cmd" data-kind="marker" data-args="interesting" aria-hidden="true"></span>', unk);
+    const midUnk = await render([{ id: 'r6c', text: 'before &marker{tag} after' }]);
     check('R6: mid-text unknown command invisible, no literal leaks',
-      midUnk.includes('inline-cmd') && midUnk.includes('before') && midUnk.includes('after') && !midUnk.includes('&amp;mark'), midUnk);
+      midUnk.includes('inline-cmd') && midUnk.includes('before') && midUnk.includes('after') && !midUnk.includes('&amp;marker'), midUnk);
   }
 
   // ---- R7: placeholder block branches -----------------------------------
@@ -301,8 +301,8 @@ const { suggestEditor } = require('./test-utils');
         straddle: R.renderInlineCommandsInHtml('x &amp;refer<del>ence#a{n}</del>'),
         end: R.renderInlineCommandsInHtml('x &amp;end#zz y'),
         ph: R.renderInlineCommandsInHtml('&amp;placeholder#p{sentences}{s}'),
-        unkBare: R.renderInlineCommandsInHtml('was <span class="diff-added">&amp;mark#interesting</span> here'),
-        unkBrace: R.renderInlineCommandsInHtml('was &amp;mark{interesting} here'),
+        unkBare: R.renderInlineCommandsInHtml('was <span class="diff-added">&amp;marker#interesting</span> here'),
+        unkBrace: R.renderInlineCommandsInHtml('was &amp;marker{interesting} here'),
         blockMidProse: R.renderInlineCommandsInHtml('x &amp;title{The Fire} y'),
       };
       window.WriteSysOutline.slugMap = prevMap;
@@ -316,12 +316,12 @@ const { suggestEditor } = require('./test-utils');
       out.straddle === 'x &amp;refer<del>ence#a{n}</del>', out.straddle);
     check('R14: escaped &end#slug form → inline-end', out.end.includes('inline-end') && out.end.includes('data-slug="zz"'), out.end);
     check('R14: escaped placeholder → ph run', out.ph.includes('class="ph"'), out.ph.slice(0, 80));
-    // The generic grammar in the diff stream — a suggested &mark must NOT
+    // The generic grammar in the diff stream — a suggested &marker must NOT
     // print its literal in green (the bug that prompted the feature).
-    check('R14: unknown bare &mark#tag in a diff-added span → invisible',
-      out.unkBare.includes('inline-cmd') && out.unkBare.includes('data-slug="interesting"') && !out.unkBare.includes('&amp;mark'), out.unkBare);
+    check('R14: unknown bare &marker#tag in a diff-added span → invisible',
+      out.unkBare.includes('inline-cmd') && out.unkBare.includes('data-slug="interesting"') && !out.unkBare.includes('&amp;marker'), out.unkBare);
     check('R14: unknown brace form → invisible, args preserved',
-      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;mark'), out.unkBrace);
+      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker'), out.unkBrace);
     check('R14: KNOWN block kind mid-prose stays literal (no inline renderer for it)',
       out.blockMidProse === 'x &amp;title{The Fire} y', out.blockMidProse);
   }
