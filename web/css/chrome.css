@@ -120,8 +120,14 @@ a#brand, a#brand:visited { color: inherit; }
    the whole top reads as a book's endpaper, and the ACTIVE tab's white face
    is the open page against it. (book.css paints #controls white; this
    later-loading override wins.) */
-:root { --chrome-tan: #f3ebd7; }
-#controls { background: var(--chrome-tan); }
+:root {
+  --chrome-tan: #f3ebd7;
+  /* Leather-ish surface grain: inline SVG fractal noise (two octless-coarse
+     octaves for mottle + implicit fine speckle), greyscale, ~6% alpha —
+     texture without shifting the tan. Tiles at 160px. */
+  --chrome-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.22' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.08'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+#controls { background: var(--chrome-grain), linear-gradient(var(--chrome-tan), var(--chrome-tan)); }
 #controls #gs-input { background-color: #faf6ec; }
 #controls #gs-input:focus { background-color: #fff; }
 
@@ -148,7 +154,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   /* The strip's bottom edge is a PAINTED 1px line (not a border): tabs sit
      above it (bar padding), and the ACTIVE tab alone extends 1px lower to
      cover it — no seam between the open tab and its panel below. */
-  background: linear-gradient(to top, #d9cdaf 1px, var(--chrome-tan) 1px);
+  background: var(--chrome-grain), linear-gradient(to top, #d9cdaf 1px, var(--chrome-tan) 1px);
   display: flex;
   align-items: stretch;
   padding: 0 12px;
@@ -196,14 +202,22 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
   border: 0;
   border-inline: var(--r) solid #0000;
   border-radius: calc(2 * var(--r)) calc(2 * var(--r)) 0 0 / var(--r);
-  background: linear-gradient(var(--edge) 0 3px, var(--bg) 3px) padding-box;
+  /* Closed tabs wear the grain too; the ACTIVE tab clears it below — the
+     open page is smooth against the leather. */
+  background: var(--tab-grain, var(--chrome-grain)) padding-box,
+    linear-gradient(var(--edge) 0 3px, var(--bg) 3px) padding-box;
   mask:
     radial-gradient(var(--r) at var(--r) 0, #0000 98%, #000 101%)
       calc(-1 * var(--r)) 100% / 100% var(--r) repeat-x,
     conic-gradient(#000 0 0) padding-box;
   margin-inline: calc(-1 * var(--r) + 2px);
   padding: 0 14px;
-  font: 13.5px "Helvetica", sans-serif;
+  /* System UI stack, medium weight — "Helvetica" on Linux fontconfig
+     substitutes a dated URW/DejaVu face that reads word-processor, not
+     chrome. Medium (500) + a hair of tracking is what makes a label read
+     as a TAB; the active tab steps to 600, never faux-bold 700. */
+  font: 500 13px/1 system-ui, "Segoe UI", "Helvetica Neue", sans-serif;
+  letter-spacing: 0.012em;
   color: #333;
   cursor: pointer;
   white-space: nowrap;
@@ -218,8 +232,9 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; }
    follows the MASKED silhouette, unlike box-shadow) draws its outline. */
 .ms-tab.active {
   color: #1d1d1d;
-  font-weight: 700;
+  font-weight: 600;
   --bg: #fff;
+  --tab-grain: linear-gradient(#0000, #0000); /* smooth page, no grain */
   z-index: 3;
   /* Upward-biased silhouette: defines the white face on the white strip
      without shading the panel below (the bottom must fuse seamlessly). */
