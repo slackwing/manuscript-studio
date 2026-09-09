@@ -143,14 +143,15 @@ const { suggestEditor } = require('./test-utils');
     check('R6: mid-text &end invisible but present as inline-end',
       mid.includes('inline-end') && mid.includes('before') && mid.includes('after') && !mid.includes('&amp;end'), mid);
     // Unknown commands (generic grammar): invisible by default, kind/args
-    // preserved as data attributes for future tooling.
+    // preserved as data attributes for future tooling. (&marker is the
+    // exception — a display type — so it's tested separately in R14.)
     const unk = await page.evaluate(() =>
-      window.WriteSysRenderer.renderInlineCommand({ kind: 'marker', slug: '', notes: '', args: ['interesting'], raw: '&marker{interesting}', unknown: true }));
+      window.WriteSysRenderer.renderInlineCommand({ kind: 'widget', slug: '', notes: '', args: ['interesting'], raw: '&widget{interesting}', unknown: true }));
     check('R6: renderInlineCommand(unknown) → invisible inline-cmd span',
-      unk === '<span class="inline-cmd" data-kind="marker" data-args="interesting" aria-hidden="true"></span>', unk);
-    const midUnk = await render([{ id: 'r6c', text: 'before &marker{tag} after' }]);
+      unk === '<span class="inline-cmd" data-kind="widget" data-args="interesting" aria-hidden="true"></span>', unk);
+    const midUnk = await render([{ id: 'r6c', text: 'before &widget{tag} after' }]);
     check('R6: mid-text unknown command invisible, no literal leaks',
-      midUnk.includes('inline-cmd') && midUnk.includes('before') && midUnk.includes('after') && !midUnk.includes('&amp;marker'), midUnk);
+      midUnk.includes('inline-cmd') && midUnk.includes('before') && midUnk.includes('after') && !midUnk.includes('&amp;widget'), midUnk);
     // &fix{…} is a DISPLAY command: contents render in place (with
     // emphasis), bold-purple span, no literal, no invisible span.
     const fix = await render([{ id: 'r6d', text: 'sound so far away, &fix{like an *echo* from another lifetime}.' }]);
@@ -309,7 +310,8 @@ const { suggestEditor } = require('./test-utils');
         ph: R.renderInlineCommandsInHtml('&amp;placeholder#p{sentences}{s}'),
         unkAdded: R.renderInlineCommandsInHtml('was <strong>&amp;marker#interesting</strong> here'),
         unkRemoved: R.renderInlineCommandsInHtml('was <del>&amp;marker#interesting</del> here'),
-        unkBrace: R.renderInlineCommandsInHtml('was &amp;marker{interesting} here'),
+        unkBrace: R.renderInlineCommandsInHtml('was &amp;widget{interesting} here'),
+        markerBrace: R.renderInlineCommandsInHtml('was &amp;marker{interesting} here'),
         knownInDiff: R.renderInlineCommandsInHtml('<strong>&amp;end#zz</strong>'),
         fixInDiff: R.renderInlineCommandsInHtml('<strong>&amp;fix{keep this prose}</strong>'),
         blockMidProse: R.renderInlineCommandsInHtml('x &amp;title{The Fire} y'),
@@ -325,10 +327,11 @@ const { suggestEditor } = require('./test-utils');
       out.straddle === 'x &amp;refer<del>ence#a{n}</del>', out.straddle);
     check('R14: escaped &end#slug form → inline-end', out.end.includes('inline-end') && out.end.includes('data-slug="zz"'), out.end);
     check('R14: escaped placeholder → ph run', out.ph.includes('class="ph"'), out.ph.slice(0, 80));
-    // The generic grammar in the diff stream — a suggested &marker must NOT
-    // print its literal in green; an ADDED/REMOVED one shows the ◆ (the
-    // diamond is the command, diff color says which way), an unchanged one
-    // stays invisible, and the ◆ never appears outside diffing.
+    // The generic grammar in the diff stream — a suggested command must NOT
+    // print its literal in green; EVERY added/removed command (known or
+    // unknown) shows the ◆ (the diamond is the command, diff color says
+    // which way). Unchanged unknowns stay invisible — except &marker, the
+    // display type, which keeps its black diamond.
     check('R14: ADDED &marker → green-side diamond (SVG lozenge) with the raw as tooltip',
       out.unkAdded.includes('<strong><span class="cmd-diamond cmd-diamond-added" title="&amp;marker#interesting">')
       && out.unkAdded.includes('<svg') && !out.unkAdded.includes('&amp;marker#interesting<'), out.unkAdded);
@@ -336,9 +339,12 @@ const { suggestEditor } = require('./test-utils');
       out.unkRemoved.includes('<del><span class="cmd-diamond cmd-diamond-removed" title="&amp;marker#interesting">')
       && out.unkRemoved.includes('<svg'), out.unkRemoved);
     check('R14: unchanged unknown (outside del/strong) → invisible, args preserved',
-      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;marker') && !out.unkBrace.includes('cmd-diamond'), out.unkBrace);
-    check('R14: KNOWN invisible kind (&end) in a diff keeps its usual render (no ◆)',
-      out.knownInDiff.includes('inline-end') && !out.knownInDiff.includes('cmd-diamond'), out.knownInDiff);
+      out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;widget') && !out.unkBrace.includes('cmd-diamond'), out.unkBrace);
+    check('R14: unchanged &marker → BLACK diamond (marker is a display type)',
+      out.markerBrace.includes('cmd-diamond-marker') && out.markerBrace.includes('data-args="interesting"')
+      && !/>[^<]*&amp;marker/.test(out.markerBrace) && !out.markerBrace.includes('cmd-diamond-added'), out.markerBrace);
+    check('R14: KNOWN invisible kind (&end) in a diff shows the ◆ too',
+      out.knownInDiff.includes('cmd-diamond-added') && !out.knownInDiff.includes('inline-end'), out.knownInDiff);
     check('R14: &fix in a diff shows its prose (display command — never a ◆)',
       out.fixInDiff.includes('cmd-fix') && out.fixInDiff.includes('keep this prose')
       && !out.fixInDiff.includes('cmd-diamond'), out.fixInDiff);
@@ -350,6 +356,12 @@ const { suggestEditor } = require('./test-utils');
       { r14w: 'sound so far away, &marker{like an echo}.' });
     check('R14: wrapping words in &marker{…} → ◆, literal never leaks',
       wrapMk.includes('cmd-diamond-added') && !/>[^<]*&amp;marker/.test(wrapMk), wrapMk);
+    // COMMITTED marker: the display type survives commit as a BLACK diamond
+    // (every other unknown still renders as nothing once committed).
+    const committedMk = await render(
+      [{ id: 'r14c', text: 'sound so far away, &marker{like an echo}.' }]);
+    check('R14: committed &marker → black diamond persists',
+      committedMk.includes('cmd-diamond-marker') && !/>[^<]*&amp;marker/.test(committedMk), committedMk);
     // &fix CONTENT-level diff (the weird-by-design rules, 2026-09-07):
     // wrapping unchanged words → NO strike/repeat: purple ◆ at the wrap
     // point + the words in bold purple, nothing red, nothing green.

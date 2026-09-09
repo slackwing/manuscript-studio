@@ -8,6 +8,13 @@
 // measures is what the reader gets.
 const SENT_SEP = '<span class="sent-sp"> </span>';
 
+// The command diamond: an SVG lozenge (taller than wide), not the ◆ glyph —
+// font metrics for U+25C6 differ per platform (Firefox/DejaVu drew it sunk
+// to the baseline), an inline SVG centers identically everywhere. Color
+// comes from CSS currentColor.
+const CMD_DIAMOND_SVG = '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
+  + '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg>';
+
 const WriteSysRenderer = {
   apiBaseUrl: 'api',
   currentSentences: [],
@@ -969,6 +976,15 @@ const WriteSysRenderer = {
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
+    if (c.kind === 'marker') {
+      // &marker{…} is a DISPLAY command: a committed marker stays visible
+      // as a black diamond — a landmark the author can SEE in the prose.
+      // (Other unknowns render as nothing; marker is the display type.)
+      const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
+      const args = c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '';
+      return `<span class="cmd-diamond cmd-diamond-marker" data-kind="marker"${slug}${args}`
+        + ` title="${escapeHTML(c.raw || '&marker')}">${CMD_DIAMOND_SVG}</span>`;
+    }
     if (c.kind === 'fix') {
       // &fix{…} is a DISPLAY command: its contents render exactly as the
       // unwrapped prose would (escape + *emphasis*), bold and purple — a
@@ -1061,8 +1077,9 @@ const WriteSysRenderer = {
   // through automatically. Only kinds the inline renderer actually handles
   // are replaced; anything else (a block command riding mid-prose, a parse
   // failure) stays literal, as before. diffState ('added'/'removed'/'')
-  // turns an added/removed UNKNOWN command into a diff-colored ◆ (color
-  // inherits from the surrounding del/strong; hover shows the raw command).
+  // turns ANY added/removed command — known or unknown — into a
+  // diff-colored ◆ (color inherits from the surrounding del/strong; hover
+  // shows the raw command): in a suggested edit the diamond IS the command.
   renderCmdTokensInHtml(html, diffState) {
     const re = /&amp;[a-z]+(?:#[a-z0-9-]+)*(?:\{[^{}]*\})*/g;
     const unescape = (s) => String(s)
@@ -1073,13 +1090,9 @@ const WriteSysRenderer = {
       const cmd = window.WriteSysCommand && window.WriteSysCommand.parse(unescape(m));
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
-      if (cmd.unknown && diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
-        // An SVG lozenge (taller than wide), not the ◆ glyph — font metrics
-        // for U+25C6 differ per platform (Firefox/DejaVu drew it sunk to
-        // the baseline), an inline SVG centers identically everywhere.
+      if (diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
         return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
-          + '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
-          + '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg></span>';
+          + CMD_DIAMOND_SVG + '</span>';
       }
       return this.renderInlineCommand({
         kind: cmd.kind, slug: cmd.slug, slugs: cmd.slugs, notes: cmd.args[0] || '',
