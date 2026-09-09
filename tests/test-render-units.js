@@ -327,11 +327,11 @@ const { suggestEditor } = require('./test-utils');
       out.straddle === 'x &amp;refer<del>ence#a{n}</del>', out.straddle);
     check('R14: escaped &end#slug form → inline-end', out.end.includes('inline-end') && out.end.includes('data-slug="zz"'), out.end);
     check('R14: escaped placeholder → ph run', out.ph.includes('class="ph"'), out.ph.slice(0, 80));
-    // The generic grammar in the diff stream — a suggested command must NOT
-    // print its literal in green; EVERY added/removed command (known or
-    // unknown) shows the ◆ (the diamond is the command, diff color says
-    // which way). Unchanged unknowns stay invisible — except &marker, the
-    // display type, which keeps its black diamond.
+    // The generic grammar in the diff stream — a suggested &marker must NOT
+    // print its literal in green; an ADDED/REMOVED unknown shows the ◆ (the
+    // diamond is the command, diff color says which way). Known kinds keep
+    // their live rendering even in diffs. Unchanged unknowns stay invisible
+    // — except &marker, the display type, which keeps its black diamond.
     check('R14: ADDED &marker → green-side diamond (SVG lozenge) with the raw as tooltip',
       out.unkAdded.includes('<strong><span class="cmd-diamond cmd-diamond-added" title="&amp;marker#interesting">')
       && out.unkAdded.includes('<svg') && !out.unkAdded.includes('&amp;marker#interesting<'), out.unkAdded);
@@ -343,8 +343,8 @@ const { suggestEditor } = require('./test-utils');
     check('R14: unchanged &marker → BLACK diamond (marker is a display type)',
       out.markerBrace.includes('cmd-diamond-marker') && out.markerBrace.includes('data-args="interesting"')
       && !/>[^<]*&amp;marker/.test(out.markerBrace) && !out.markerBrace.includes('cmd-diamond-added'), out.markerBrace);
-    check('R14: KNOWN invisible kind (&end) in a diff shows the ◆ too',
-      out.knownInDiff.includes('cmd-diamond-added') && !out.knownInDiff.includes('inline-end'), out.knownInDiff);
+    check('R14: KNOWN invisible kind (&end) in a diff keeps its usual render (no ◆)',
+      out.knownInDiff.includes('inline-end') && !out.knownInDiff.includes('cmd-diamond'), out.knownInDiff);
     check('R14: &fix in a diff shows its prose (display command — never a ◆)',
       out.fixInDiff.includes('cmd-fix') && out.fixInDiff.includes('keep this prose')
       && !out.fixInDiff.includes('cmd-diamond'), out.fixInDiff);

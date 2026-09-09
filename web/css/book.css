@@ -2237,8 +2237,8 @@ p.section-break {
   font-weight: 600;
 }
 
-/* ANY added/removed command in a diff shows as a small diamond — the
-   diamond IS the command; the diff color says which way it went. Color
+/* An added/removed INVISIBLE command in a diff shows as a small diamond —
+   the diamond IS the command; the diff color says which way it went. Color
    inherits from the wrapping del (red) / strong (green); inline-block keeps
    the del strikethrough off the glyph. Committed commands render nothing —
    EXCEPT display types: &fix shows its prose, &marker keeps a black

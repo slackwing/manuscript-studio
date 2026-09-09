@@ -1077,9 +1077,11 @@ const WriteSysRenderer = {
   // through automatically. Only kinds the inline renderer actually handles
   // are replaced; anything else (a block command riding mid-prose, a parse
   // failure) stays literal, as before. diffState ('added'/'removed'/'')
-  // turns ANY added/removed command — known or unknown — into a
-  // diff-colored ◆ (color inherits from the surrounding del/strong; hover
-  // shows the raw command): in a suggested edit the diamond IS the command.
+  // turns an added/removed UNKNOWN command into a diff-colored ◆ (color
+  // inherits from the surrounding del/strong; hover shows the raw command).
+  // Known kinds keep their live rendering even while pending (glyphs,
+  // links, hatches — 2026-09-09: considered diamonding these too, decided
+  // against; the pending affordances are part of the product).
   renderCmdTokensInHtml(html, diffState) {
     const re = /&amp;[a-z]+(?:#[a-z0-9-]+)*(?:\{[^{}]*\})*/g;
     const unescape = (s) => String(s)
@@ -1090,14 +1092,7 @@ const WriteSysRenderer = {
       const cmd = window.WriteSysCommand && window.WriteSysCommand.parse(unescape(m));
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
-      if (diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
-        // A mis-syntaxed placeholder (or a paragraphs-form riding mid-line)
-        // is literal PROSE, not a command — leave it to the word diff, the
-        // same way renderInlineCommand prints it literal once committed.
-        if (cmd.kind === 'placeholder') {
-          const spec = window.WriteSysCommand.placeholderSpec(cmd.args || []);
-          if (!spec || !spec.valid || spec.unit !== 'sentences') return m;
-        }
+      if (cmd.unknown && diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
         return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
           + CMD_DIAMOND_SVG + '</span>';
       }

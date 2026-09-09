@@ -77,29 +77,7 @@ const psql = (sql) => execSync(
     FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text LIKE '%&sketch#${slug}{}%'`);
   check('opener joins inline (mid-paragraph) or own-line (marker-led) — never splits the paragraph', joinOk === 't', joinOk);
 
-  // --- Book: while PENDING the wrap shows diamonds (every changed command
-  // does); the glyph is a committed affordance. Commit the two wrap
-  // suggestions into local render state (renderManuscript renders from
-  // currentSentences/sentenceMap without refetching) to exercise it. ---
-  await page.waitForSelector('.cmd-diamond-added', { timeout: 20000 });
-  check('pending wrap shows ◆ (no glyph yet)',
-    await page.locator(`.cmd-sketch-glyph[data-slug="${slug}"]`).count() === 0);
-  await page.evaluate(async (sl) => {
-    const R = window.WriteSysRenderer;
-    const S = window.WriteSysSuggestions;
-    for (const map of [S.bySentenceId, S.renderBySentenceId]) {
-      if (!map) continue;
-      for (const [id, t] of Object.entries(map)) {
-        const text = typeof t === 'string' ? t : (t && t.text);
-        if (!text || (!text.includes(`&sketch#${sl}`) && !text.includes(`&end#${sl}`))) continue;
-        R.sentenceMap[id] = text;
-        const s = R.currentSentences.find((x) => (x.sentence_id || x.id) === id);
-        if (s) s.text = text;
-        delete map[id];
-      }
-    }
-    await R.renderManuscript();
-  }, slug);
+  // --- Book: margin glyph is the sketch icon; click navigates ---
   await page.waitForSelector(`.cmd-sketch-glyph[data-slug="${slug}"]`, { timeout: 20000 });
   check('placed region wears the sketch glyph in the margin', true);
   check('glyph is an svg (not the ⚓)', await page.locator(`.cmd-sketch-glyph[data-slug="${slug}"] svg`).count() === 1);

@@ -89,38 +89,7 @@ const {
     await page.waitForSelector('.sentence', { timeout: 30000 });
     await waitForPagination(page);
 
-    // While PENDING, the added inline placeholder diamonds like every
-    // changed command; the mis-syntaxed one stays literal prose (it isn't
-    // a functioning command). The hatch region only exists once committed.
-    const pending = await page.evaluate((id) => {
-      const span = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`);
-      return span ? {
-        diamond: !!span.querySelector('.cmd-diamond-added'),
-        ph: !!span.querySelector('.ph'),
-        literal: /&placeholder\{words\}/.test(span.textContent),
-      } : null;
-    }, inlineId);
-    check('pending inline placeholder shows the ◆ (no hatch yet)',
-      !!pending && pending.diamond && !pending.ph, JSON.stringify(pending));
-    check('pending mis-syntaxed &placeholder{words} still literal prose',
-      !!pending && pending.literal, JSON.stringify(pending));
-
-    // COMMIT the inline sentence into local render state (renderManuscript
-    // renders from currentSentences/sentenceMap without refetching) so the
-    // committed hatch-region feature below is exercised for real.
-    await page.evaluate(async ([id, t]) => {
-      const R = window.WriteSysRenderer;
-      delete window.WriteSysSuggestions.bySentenceId[id];
-      if (window.WriteSysSuggestions.renderBySentenceId) delete window.WriteSysSuggestions.renderBySentenceId[id];
-      R.sentenceMap[id] = t;
-      const s = R.currentSentences.find((x) => (x.sentence_id || x.id) === id);
-      if (s) s.text = t;
-      await R.renderManuscript();
-    }, [inlineId,
-      'She waited on the platform. &placeholder#reunion{sentences}{l}{Reunion beat}{They finally meet. Keep it wordless.} The end came quietly, and also &placeholder{words} stayed literal.']);
-    await waitForPagination(page);
-
-    // --- inline form (committed) ---
+    // --- inline form ---
     const inline = await page.evaluate((id) => {
       const span = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`);
       if (!span) return { found: false };
