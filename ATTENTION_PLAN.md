@@ -62,7 +62,7 @@ One constants block, one place, fat comment — `web/js/attention.js`:
 
     ATTENTION_ATTACK_WORDS = 7     // C² onset scale; peak ~13 words (~one line) out
     ATTENTION_DECAY_WORDS  = 120   // contribution falls to 1/e after this (calibrated down from 250)
-    ATTENTION_FULL_SCALE   = 25    // a=+25 lands on the sheet's right edge
+    ATTENTION_FULL_SCALE   = 10    // a=+10 lands on the sheet's right edge (back from 25 post-jading)
     JADE_SCALE             = 10    // this much recent J halves the next spike
     JADE_RECOVERY_WORDS    = 300   // novelty regrowth time-constant
 
@@ -116,7 +116,7 @@ function of the final page geometry.
    cutoff at 6×DECAY keeps it O(markers-in-window)).
 4. **Emit SVG.** Per page, one absolutely-positioned SVG with rotated
    axes — t downward, attention rightward. `a=0` at the SHEET's left
-   edge; `ATTENTION_FULL_SCALE` (+25, author-calibrated from 10) at the sheet's right edge; negative
+   edge; `ATTENTION_FULL_SCALE` (+10; briefly 25 pre-jading) at the sheet's right edge; negative
    attention spills OFF the sheet into the gray backdrop gutter left of
    the page (author-confirmed 2026-09-09: "the left margin of the
    website", not the sheet's inner margin) — the SVG canvas extends one
