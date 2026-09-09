@@ -44,6 +44,11 @@ function psql(sql) {
   check('card wears the note color (orange)', isOrange);
   const ctx = await card.locator('.note-card-ctx').textContent().catch(() => '');
   check('card shows the scratchpad context', /My Pad/.test(ctx), ctx.trim());
+  // Component-owned typography (notes/note-widget.css): ONE line-height
+  // everywhere — home.css once restated the body rule with 1.25 while the
+  // base said 1.2 (the drift the settings modal made visible).
+  const lh = await card.locator('.note-readonly-body').evaluate(el => getComputedStyle(el).lineHeight);
+  check('card body wears the component line-height (21.6px = 1.2 × 18px)', lh === '21.6px', lh);
 
   await page.screenshot({ path: `${OUT}/home-notes.png` });
 

@@ -195,12 +195,9 @@ body.home-page {
 }
 /* Body grows and clamps; chips + context are compact and never clipped. */
 .card-note .note-container { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+/* Typography comes from the component's notes/note-widget.css — the card
+   variant only CLAMPS (it once restated the face with drifted values). */
 .card-note .note-readonly-body {
-  font-family: "Caveat", "Helvetica", sans-serif;
-  font-size: 18px;
-  line-height: 1.25;
-  color: #2a2a2a;
-  white-space: pre-wrap;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 4;

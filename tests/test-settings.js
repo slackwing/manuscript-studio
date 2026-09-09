@@ -369,6 +369,13 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   const modalBody = await page.locator('.na-note-overlay .sticky-note').innerText();
   check('modal shows the note body',
     rowPrev !== '' && modalBody.includes(rowPrev.slice(0, 15)), `row=${rowPrev} modal=${modalBody}`);
+  // The component carries its own typography (notes/note-widget.css): the
+  // Caveat FACE must be genuinely loaded here — settings.html once lacked
+  // the font link, so the modal silently fell back to Helvetica while
+  // still computing "Caveat" in the stack.
+  await page.evaluate(() => document.fonts.load('18px Caveat'));
+  check('handwriting face loaded in settings (no silent fallback)',
+    await page.evaluate(() => document.fonts.check('18px Caveat')));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   check('Escape closes the note modal', await noteOverlay.count() === 0);

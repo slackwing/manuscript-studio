@@ -1141,27 +1141,14 @@ p.section-break {
   min-height: 120px;
 }
 
-/* The read-only body (someone else's locked note) is a DIV, not the
-   .note-input textarea — it must wear the SAME hand or it drifts to the
-   book serif. (home.css's card rule patched this locally for the landing
-   grid; this is the component-level base.) */
-.note-readonly-body {
-  font-family: "Caveat", "Helvetica", sans-serif;
-  font-size: 18px;
-  line-height: 1.2;
-  color: #333;
-  white-space: pre-wrap;
-}
-
+/* Body typography (Caveat hand, size, color) lives in the component's own
+   notes/note-widget.css — never restate it here (2026-09-09: the settings
+   modal lost the hand because typography was host-page property). */
 .note-input {
   width: 100%;
-  font-family: "Caveat", "Helvetica", sans-serif;
-  font-size: 18px;
-  line-height: 1.2;
   padding: 0;
   border: none;
   background: transparent;
-  color: #333;
   resize: none;
   overflow: hidden; /* Hide scrollbar - height is set explicitly by autoResizeTextarea */
   min-height: 80px;
@@ -1792,22 +1779,7 @@ p.section-break {
 }
 
 /* Individual Sticky Note */
-.sticky-note {
-  background: var(--sticky-default);
-  border-radius: 2px;
-  padding: 12px;
-  box-shadow:
-    2px 2px 4px rgba(0, 0, 0, 0.1),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-  position: relative;
-  width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;  /* Prevent compression when scrollable */
-  transition: all 0.2s ease;
-  overflow: visible;  /* Allow circles to extend beyond note bounds */
-}
+/* .sticky-note base moved to the component's notes/note-widget.css. */
 
 /* Collapsed "card" mode (NOTES_PLAN.md): the landing grid shows notes as
    compact cards — a color swatch + a clipped preview of the body — that expand

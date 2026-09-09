@@ -1,0 +1,48 @@
+/* note-widget.css — the note component's OWN stylesheet.
+ *
+ * Rule (2026-09-09, the settings-modal font loss): everything the note
+ * component needs to look like ITSELF travels in this file, included by
+ * every page that loads notes/note-widget.js. Hosts must never need to
+ * re-declare component typography — the copy-paste era left the same
+ * .note-readonly-body rule in book.css AND home.css with drifted values
+ * (line-height 1.2 vs 1.25), and settings.html simply forgot the Caveat
+ * <link>, so the modal fell back to Helvetica while computing "Caveat".
+ *
+ * The rest of the component's rules (chips, dims, stars, colors) still
+ * live in book.css — migrate them here opportunistically, never add new
+ * component rules there. */
+
+/* The handwriting face rides WITH the component — no per-page <link>. */
+@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap");
+
+/* Component base: explicit typography — nothing inherited from the host. */
+.sticky-note {
+  background: var(--sticky-default);
+  border-radius: 2px;
+  padding: 12px;
+  box-shadow:
+    2px 2px 4px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;  /* Prevent compression when scrollable */
+  transition: all 0.2s ease;
+  overflow: visible;  /* Allow circles to extend beyond note bounds */
+  font-family: "Helvetica", sans-serif;
+  font-size: 14px;
+}
+
+/* The note body wears the hand — textarea (editable) and read-only DIV
+   alike, in every host. ONE set of values; variants may clamp/clip but
+   never restate the face. */
+.note-readonly-body,
+.sticky-note .note-input {
+  font-family: "Caveat", "Helvetica", sans-serif;
+  font-size: 18px;
+  line-height: 1.2;
+  color: #333;
+}
+.note-readonly-body { white-space: pre-wrap; }
