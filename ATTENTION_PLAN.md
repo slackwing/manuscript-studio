@@ -1,6 +1,6 @@
 # ATTENTION_PLAN — the reader-attention envelope
 
-Status: **draft 2026-09-09** (planning iteration; nothing implemented yet).
+Status: **shipped 2026-09-09** (same-day: plan → implementation → prod). Calibration ongoing by feel.
 
 A completely novel feature with no common pattern to lean on — this doc is
 the pattern. Read it before touching `web/js/attention.js` (future home of
@@ -46,7 +46,7 @@ where the markers sit.
 
 One constants block, one place, fat comment — `web/js/attention.js`:
 
-    ATTENTION_ATTACK_WORDS = 12    // rise ~feels instant but smooth
+    ATTENTION_ATTACK_WORDS = 3     // rise ~one line (12 read as "keeps climbing past the peak")
     ATTENTION_DECAY_WORDS  = 250   // contribution falls to 1/e after this
     ATTENTION_FULL_SCALE   = 25    // a=+25 lands on the sheet's right edge
 
