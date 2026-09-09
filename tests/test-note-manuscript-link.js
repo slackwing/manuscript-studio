@@ -25,17 +25,26 @@ function psql(sql) {
   await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
 
-  // Make a scratchpad note and open its float.
+  // Make a scratchpad note and open its float. Under parallel suite load
+  // the select→colorbar gesture itself can lose its race (selection
+  // cleared before the colorbar click lands) — retry the WHOLE gesture,
+  // bounded, until the ref exists (same flake family as
+  // test-noteref-survives-edits).
   const pm = page.locator('.spm-editor .ProseMirror');
   await pm.click();
   await page.keyboard.type('Link me to a manuscript.');
-  await page.keyboard.press('Home');
-  await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
-  await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
-  // Wait for the ref to actually land — under parallel suite load a fixed
-  // pause isn't enough (same flake as test-noteref-survives-edits).
-  await page.waitForSelector('.sn-note-ref', { timeout: 15000 });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await pm.click();
+    await page.keyboard.press('Home');
+    await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
+    await page.waitForTimeout(250);
+    const btn = page.locator('.sn-note-colorbar .sn-note-colorbtn').first();
+    if (await btn.count()) await btn.click();
+    try {
+      await page.waitForSelector('.sn-note-ref', { timeout: 6000 });
+      break;
+    } catch (e) { if (attempt === 2) throw e; }
+  }
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');
   const float = page.locator('.sn-note-float .sticky-note');
 
