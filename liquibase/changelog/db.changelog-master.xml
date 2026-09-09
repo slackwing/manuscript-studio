@@ -53,5 +53,6 @@
     <include file="changelog/044-suggestion-pushed-commit.xml"/>
     <include file="changelog/045-marker-symbols.xml"/>
     <include file="changelog/046-user-pref.xml"/>
+    <include file="changelog/047-marker-attention.xml"/>
 
 </databaseChangeLog>

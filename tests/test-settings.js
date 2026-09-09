@@ -363,7 +363,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   check('display toggle defaults OFF (new user)',
     !(await page.locator('#mk-display').isChecked()));
   check('picker offers all 8 shapes (suits included)', await page.evaluate(() =>
-    Object.keys(window.WriteSysMarkerSymbols.SHAPES).join(',')) === 'diamond,triangle-down,triangle-up,circle,square,spade,heart,club');
+    Object.keys(window.WriteSysMarkerSymbols.SHAPES).join(',')) === 'default,diamond,triangle-down,triangle-up,circle,square,spade,heart,club');
   await page.locator('#mk-display').check();
   await page.waitForFunction(() => document.getElementById('mk-status').textContent === '', null, { timeout: 5000 });
   check('toggle on persists',
@@ -378,12 +378,23 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.locator('#mk-input').fill('#weird');
   await page.locator('#mk-input').press('Enter');
   await page.waitForSelector('.mk-row[data-slug="weird"]', { timeout: 5000 });
-  check('Enter adds a marker row (diamond preselected)',
-    await page.locator('.mk-row[data-slug="weird"] .mk-shape.active[data-shape="diamond"]').count() === 1);
+  check('Enter adds a marker row (※ default preselected, attention 0)',
+    await page.locator('.mk-row[data-slug="weird"] .mk-shape.active[data-shape="default"]').count() === 1
+    && await page.locator('.mk-row[data-slug="weird"] .mk-att').inputValue() === '0');
   await page.locator('.mk-row[data-slug="weird"] .mk-shape[data-shape="triangle-down"]').click();
   await page.waitForFunction(() =>
     document.querySelector('.mk-row[data-slug="weird"] .mk-shape.active')?.dataset.shape === 'triangle-down', null, { timeout: 5000 });
   check('picking a shape persists it',
+    psql(`SELECT symbol FROM marker_symbol WHERE user_id='${TEST_USERNAME}' AND slug='weird'`).trim() === 'triangle-down');
+  // Attention value: signed integer, PARTIAL update — the shape survives.
+  await page.locator('.mk-row[data-slug="weird"] .mk-att').fill('-15');
+  await page.locator('.mk-row[data-slug="weird"] .mk-att').dispatchEvent('change');
+  await page.waitForFunction(() =>
+    document.querySelector('.mk-row[data-slug="weird"] .mk-att').value === '-15', null, { timeout: 5000 });
+  await page.waitForTimeout(300);
+  check('attention value persists (negative ok)',
+    psql(`SELECT attention FROM marker_symbol WHERE user_id='${TEST_USERNAME}' AND slug='weird'`).trim() === '-15');
+  check('attention edit leaves the shape alone (partial PUT)',
     psql(`SELECT symbol FROM marker_symbol WHERE user_id='${TEST_USERNAME}' AND slug='weird'`).trim() === 'triangle-down');
   await page.reload();
   await page.waitForSelector('.mk-row[data-slug="weird"]', { timeout: 8000 });

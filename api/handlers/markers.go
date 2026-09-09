@@ -22,23 +22,27 @@ type MarkerHandlers struct {
 
 var markerSlugRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 
-// markerSymbols mirrors web/js/marker-symbols.js SHAPES — keep in lockstep.
+// markerSymbols mirrors web/js/marker-symbols.js SHAPES — keep in
+// lockstep. 'default' = the ※ reference mark, the universal default
+// (a new row starts there; ATTENTION_PLAN.md §3).
 var markerSymbols = map[string]bool{
+	"default": true,
 	"diamond": true, "triangle-down": true, "triangle-up": true,
 	"circle": true, "square": true,
 	"spade": true, "heart": true, "club": true,
 }
 
-// HandleList: GET /api/marker-symbols → {"symbols": {slug: shape},
-// "display": bool}. display defaults OFF — a new user's markers stay
-// invisible until they opt in (settings "Markers" toggle).
+// HandleList: GET /api/marker-symbols →
+// {"markers": {slug: {"symbol": "...", "attention": n}}, "display": bool}.
+// display defaults OFF — a new user's markers stay invisible until they
+// opt in (settings "Markers" toggle).
 func (h *MarkerHandlers) HandleList(w http.ResponseWriter, r *http.Request) {
 	session, err := auth.GetSession(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	symbols, err := h.DB.ListMarkerSymbols(r.Context(), session.Username)
+	markers, err := h.DB.ListMarkerSymbols(r.Context(), session.Username)
 	if err != nil {
 		log.Printf("markers: list: %v", err)
 		http.Error(w, "Failed to list marker symbols", http.StatusInternalServerError)
@@ -50,7 +54,7 @@ func (h *MarkerHandlers) HandleList(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"symbols": symbols, "display": display == "on",
+		"markers": markers, "display": display == "on",
 	})
 }
 
@@ -80,7 +84,10 @@ func (h *MarkerHandlers) HandleSetDisplay(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleSet: PUT /api/marker-symbols/{slug} {"symbol": "triangle-down"}.
+// HandleSet: PUT /api/marker-symbols/{slug} — PARTIAL update:
+// {"symbol"?: "...", "attention"?: n}. Omitted fields keep their value; a
+// fresh row starts at 'default' (※) / 0. Attention clamps to a sane
+// authorial range (−99..99 — an impulse, not a scoreboard).
 func (h *MarkerHandlers) HandleSet(w http.ResponseWriter, r *http.Request) {
 	session, err := auth.GetSession(r)
 	if err != nil {
@@ -93,13 +100,22 @@ func (h *MarkerHandlers) HandleSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Symbol string `json:"symbol"`
+		Symbol    *string `json:"symbol"`
+		Attention *int    `json:"attention"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !markerSymbols[body.Symbol] {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Bad body", http.StatusBadRequest)
+		return
+	}
+	if body.Symbol != nil && !markerSymbols[*body.Symbol] {
 		http.Error(w, "Bad symbol", http.StatusBadRequest)
 		return
 	}
-	if err := h.DB.UpsertMarkerSymbol(r.Context(), session.Username, slug, body.Symbol); err != nil {
+	if body.Attention != nil && (*body.Attention < -99 || *body.Attention > 99) {
+		http.Error(w, "Bad attention", http.StatusBadRequest)
+		return
+	}
+	if err := h.DB.UpsertMarkerSymbol(r.Context(), session.Username, slug, body.Symbol, body.Attention); err != nil {
 		log.Printf("markers: set %s: %v", slug, err)
 		http.Error(w, "Failed to save marker symbol", http.StatusInternalServerError)
 		return

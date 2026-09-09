@@ -314,6 +314,7 @@ WriteSysSettings.initMarkers = async function () {
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
     body: body ? JSON.stringify(body) : undefined,
   });
+  const cfg = (slug) => MS.map[slug] || { symbol: 'default', attention: 0 };
   const row = (slug) => {
     const div = document.createElement('div');
     div.className = 'mk-row';
@@ -327,20 +328,39 @@ WriteSysSettings.initMarkers = async function () {
     for (const key of Object.keys(MS.SHAPES)) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'mk-shape' + ((MS.map[slug] || 'diamond') === key ? ' active' : '');
+      b.className = 'mk-shape' + (cfg(slug).symbol === key ? ' active' : '');
       b.dataset.shape = key;
       b.title = key;
       b.innerHTML = `<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">${MS.SHAPES[key]}</svg>`;
       b.onclick = async () => {
         const r = await req('PUT', slug, { symbol: key });
         if (!r.ok) { status.textContent = 'Save failed.'; return; }
-        MS.map[slug] = key;
+        MS.map[slug] = { ...cfg(slug), symbol: key };
         shapes.querySelectorAll('.mk-shape').forEach(x => x.classList.toggle('active', x === b));
         status.textContent = '';
       };
       shapes.appendChild(b);
     }
     div.appendChild(shapes);
+    // Attention amplitude (ATTENTION_PLAN.md): a signed integer impulse —
+    // the number IS the affordance, no caption.
+    const att = document.createElement('input');
+    att.type = 'number';
+    att.className = 'mk-att';
+    att.min = '-99';
+    att.max = '99';
+    att.step = '1';
+    att.value = String(cfg(slug).attention);
+    att.title = 'attention';
+    att.addEventListener('change', async () => {
+      const v = Math.max(-99, Math.min(99, parseInt(att.value, 10) || 0));
+      att.value = String(v);
+      const r = await req('PUT', slug, { attention: v });
+      if (!r.ok) { status.textContent = 'Save failed.'; return; }
+      MS.map[slug] = { ...cfg(slug), attention: v };
+      status.textContent = '';
+    });
+    div.appendChild(att);
     const x = document.createElement('button');
     x.type = 'button';
     x.className = 'mk-remove';
@@ -379,9 +399,9 @@ WriteSysSettings.initMarkers = async function () {
     const slug = input.value.trim().replace(/^#/, '');
     if (!/^[a-z0-9-]{1,64}$/.test(slug)) { status.textContent = 'Slugs are a–z, 0–9, dashes.'; return; }
     if (rows.querySelector(`.mk-row[data-slug="${CSS.escape(slug)}"]`)) { input.value = ''; return; }
-    const r = await req('PUT', slug, { symbol: 'diamond' });
+    const r = await req('PUT', slug, {}); // server defaults: ※ / 0
     if (!r.ok) { status.textContent = 'Save failed.'; return; }
-    MS.map[slug] = 'diamond';
+    MS.map[slug] = { symbol: 'default', attention: 0 };
     rows.appendChild(row(slug));
     input.value = '';
     status.textContent = '';

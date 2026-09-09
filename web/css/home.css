@@ -572,3 +572,4 @@ body.home-page {
 #mk-input { margin-top: 6px; }
 .mk-display-row { display: block; margin-bottom: 8px; font-size: 14px; color: #57503f; cursor: pointer; }
 .mk-display-row input { vertical-align: -2px; margin-right: 6px; }
+.mk-att { width: 52px; text-align: right; }

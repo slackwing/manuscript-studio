@@ -73,7 +73,9 @@ FAST_TESTS=(
   test-command-units
   test-text-markers-units
   test-diff-units
+  test-attention-units
   test-render-units
+  test-attention
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

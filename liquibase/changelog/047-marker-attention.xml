@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 047 (2026-09-09): ATTENTION_PLAN.md — each marker slug carries a
+         signed attention value (impulse amplitude for the reader-attention
+         envelope). 0 = neutral, the default for unconfigured slugs. -->
+    <changeSet id="047-marker-attention" author="claude">
+        <addColumn tableName="marker_symbol">
+            <column name="attention" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

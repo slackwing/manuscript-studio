@@ -5,7 +5,15 @@
 // (api/handlers/markers.go) — keep in lockstep. All shapes live in the
 // same 9×13 box as the original lozenge so alignment CSS needs nothing new.
 window.WriteSysMarkerSymbols = {
+  // 'default' — the ※ reference mark — is the ONE universal default
+  // (ATTENTION_PLAN.md §3): unconfigured markers wear it, new settings
+  // rows start on it, and generic unknown commands use the same drawing
+  // (UNKNOWN below). Listed first so the picker leads with it.
   SHAPES: {
+    'default': '<g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none">'
+      + '<path d="M1.7 3.7 7.3 9.3M7.3 3.7 1.7 9.3"/></g>'
+      + '<g fill="currentColor"><circle cx="4.5" cy="1.4" r="1"/><circle cx="4.5" cy="11.6" r="1"/>'
+      + '<circle cx="0.9" cy="6.5" r="0.9"/><circle cx="8.1" cy="6.5" r="0.9"/></g>',
     diamond: '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/>',
     'triangle-down': '<path fill="currentColor" d="M0 2.5h9L4.5 11.5z"/>',
     'triangle-up': '<path fill="currentColor" d="M4.5 1.5 9 10.5H0z"/>',
@@ -22,13 +30,20 @@ window.WriteSysMarkerSymbols = {
     + '<path d="M1.7 3.7 7.3 9.3M7.3 3.7 1.7 9.3"/></g>'
     + '<g fill="currentColor"><circle cx="4.5" cy="1.4" r="1"/><circle cx="4.5" cy="11.6" r="1"/>'
     + '<circle cx="0.9" cy="6.5" r="0.9"/><circle cx="8.1" cy="6.5" r="0.9"/></g>',
-  map: {}, // slug → shape key, loaded per user
+  map: {}, // slug → { symbol, attention }, loaded per user
   display: false, // settings toggle — OFF is the new-user default
 
   svgFor(slug) {
-    const key = (slug && this.map[slug]) || 'diamond';
+    const cfg = (slug && this.map[slug]) || null;
+    const key = (cfg && cfg.symbol) || 'default';
     return '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
-      + (this.SHAPES[key] || this.SHAPES.diamond) + '</svg>';
+      + (this.SHAPES[key] || this.SHAPES['default']) + '</svg>';
+  },
+
+  // Attention amplitude for a slug (ATTENTION_PLAN.md §2); 0 = neutral.
+  attentionFor(slug) {
+    const cfg = (slug && this.map[slug]) || null;
+    return (cfg && cfg.attention) || 0;
   },
 
   unknownSvg() {
@@ -41,7 +56,7 @@ window.WriteSysMarkerSymbols = {
       const r = await fetch('api/marker-symbols', { credentials: 'same-origin' });
       if (r.ok) {
         const d = await r.json();
-        this.map = d.symbols || {};
+        this.map = d.markers || {};
         this.display = !!d.display;
       }
     } catch (e) { /* defaults — never block rendering */ }

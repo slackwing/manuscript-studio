@@ -34,6 +34,18 @@ func TestBundles(t *testing.T) {
 		{[]string{"admin"}, "see-markers", false},
 		{[]string{"beta-reader"}, "see-markers", false},
 		{[]string{"reader"}, "see-markers", false},
+		// Attention envelope (ATTENTION_PLAN.md): author/editor + the
+		// alpha-reader (beta-reader's bundle + see-attention, the trusted
+		// calibration confidant).
+		{[]string{"author"}, "see-attention", true},
+		{[]string{"editor"}, "see-attention", true},
+		{[]string{"alpha-reader"}, "see-attention", true},
+		{[]string{"alpha-reader"}, "see-others-edits", true},
+		{[]string{"alpha-reader"}, "see-markers", false},
+		{[]string{"alpha-reader"}, "manage-suggestions", false},
+		{[]string{"beta-reader"}, "see-attention", false},
+		{[]string{"admin"}, "manage-role-alpha-reader", true},
+		{[]string{"author"}, "manage-role-alpha-reader", true},
 		// Union across roles (the normal stacked case).
 		{[]string{"admin", "editor"}, "commit-and-push-suggestions", true},
 		{[]string{"admin", "editor"}, "manage-manuscript", true},
@@ -59,7 +71,7 @@ func TestSeniorityAndDerivation(t *testing.T) {
 	if !ValidRole("beta-reader") || ValidRole("superuser") {
 		t.Fatal("ValidRole broken")
 	}
-	if len(AllRoles()) != 6 {
-		t.Fatalf("expected 6 roles, got %v", AllRoles())
+	if len(AllRoles()) != 7 { // +alpha-reader (ATTENTION_PLAN.md, 2026-09-09)
+		t.Fatalf("expected 7 roles, got %v", AllRoles())
 	}
 }

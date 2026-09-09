@@ -3656,3 +3656,9 @@ body.range-delete-mode .pagedjs_pages {
    like every editable face; tan stays for truly read-only views. */
 .sgm-fmt-left:not(.sgm-fmt-ro) { background: #fff; }
 .sgm-fmt[hidden] { display: none; }
+
+/* Attention envelope (ATTENTION_PLAN.md): per-page overlays hide until
+   Tab is HELD. Geometry/z-order styling is inline (attention.js) — the
+   negative-z-behind-text mechanism is documented there. */
+.attention-overlay { display: none; }
+html.attention-held .attention-overlay { display: block; }

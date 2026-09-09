@@ -376,14 +376,14 @@ const { suggestEditor } = require('./test-utils');
       && !/>[^<]*&amp;mark/.test(committedBare), committedBare);
     // Custom marker symbols (settings "Markers"): a mapped slug wears its
     // shape — committed AND in diffs; unmapped slugs keep the diamond.
-    await page.evaluate(() => { window.WriteSysMarkerSymbols.map = { weird: 'triangle-down' }; });
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.map = { weird: { symbol: 'triangle-down', attention: 0 } }; });
     const TRI = 'M0 2.5h9L4.5 11.5z';
     const mapped = await render([{ id: 'r14m', text: 'so odd &marker#weird it was.' }]);
     check('R14: mapped slug → custom shape (triangle-down path)',
       mapped.includes(TRI) && mapped.includes('cmd-diamond-marker'), mapped);
     const unmapped = await render([{ id: 'r14n', text: 'so odd &marker#normal it was.' }]);
-    check('R14: unmapped slug keeps the diamond',
-      unmapped.includes('M4.5 0 9 6.5 4.5 13 0 6.5z') && !unmapped.includes(TRI), unmapped);
+    check('R14: unmapped slug wears the ※ default (2026-09-09: one default everywhere)',
+      unmapped.includes('M1.7 3.7') && !unmapped.includes(TRI), unmapped);
     const mappedDiff = await page.evaluate(() =>
       window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;marker#weird</strong> here'));
     check('R14: mapped slug keeps its shape in a diff (green triangle)',

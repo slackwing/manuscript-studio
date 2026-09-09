@@ -10,31 +10,45 @@ import (
 	"fmt"
 )
 
-// ListMarkerSymbols returns the user's slug → symbol map.
-func (db *DB) ListMarkerSymbols(ctx context.Context, username string) (map[string]string, error) {
+// MarkerConfig: one slug's row — its shape key plus its attention value
+// (the impulse amplitude of the reader-attention envelope,
+// ATTENTION_PLAN.md §2; 0 = neutral).
+type MarkerConfig struct {
+	Symbol    string `json:"symbol"`
+	Attention int    `json:"attention"`
+}
+
+// ListMarkerSymbols returns the user's slug → config map.
+func (db *DB) ListMarkerSymbols(ctx context.Context, username string) (map[string]MarkerConfig, error) {
 	rows, err := db.Pool.Query(ctx,
-		`SELECT slug, symbol FROM marker_symbol WHERE user_id = $1`, username)
+		`SELECT slug, symbol, attention FROM marker_symbol WHERE user_id = $1`, username)
 	if err != nil {
 		return nil, fmt.Errorf("list marker symbols: %w", err)
 	}
 	defer rows.Close()
-	out := map[string]string{}
+	out := map[string]MarkerConfig{}
 	for rows.Next() {
-		var slug, symbol string
-		if err := rows.Scan(&slug, &symbol); err != nil {
+		var slug string
+		var c MarkerConfig
+		if err := rows.Scan(&slug, &c.Symbol, &c.Attention); err != nil {
 			return nil, fmt.Errorf("scan marker symbol: %w", err)
 		}
-		out[slug] = symbol
+		out[slug] = c
 	}
 	return out, rows.Err()
 }
 
-// UpsertMarkerSymbol sets one slug's shape.
-func (db *DB) UpsertMarkerSymbol(ctx context.Context, username, slug, symbol string) error {
+// UpsertMarkerSymbol PARTIALLY updates one slug's row: nil leaves that
+// field alone (a fresh row gets 'default' / 0 — the ※ symbol and a
+// neutral attention value, ATTENTION_PLAN.md §3).
+func (db *DB) UpsertMarkerSymbol(ctx context.Context, username, slug string, symbol *string, attention *int) error {
 	if _, err := db.Pool.Exec(ctx, `
-		INSERT INTO marker_symbol (user_id, slug, symbol) VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, slug) DO UPDATE SET symbol = EXCLUDED.symbol
-	`, username, slug, symbol); err != nil {
+		INSERT INTO marker_symbol (user_id, slug, symbol, attention)
+		VALUES ($1, $2, COALESCE($3, 'default'), COALESCE($4, 0))
+		ON CONFLICT (user_id, slug) DO UPDATE SET
+			symbol    = COALESCE($3, marker_symbol.symbol),
+			attention = COALESCE($4, marker_symbol.attention)
+	`, username, slug, symbol, attention); err != nil {
 		return fmt.Errorf("upsert marker symbol: %w", err)
 	}
 	return nil

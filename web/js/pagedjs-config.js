@@ -32,6 +32,13 @@
           window.WriteSysRenderer.applyResponsiveScaling();
         }
 
+        // Attention envelope (ATTENTION_PLAN.md): pre-generate the
+        // per-page overlays from the FINAL geometry — after scaling, so
+        // harvested rects normalize consistently.
+        if (window.WriteSysAttention) {
+          window.WriteSysAttention.rebuild();
+        }
+
         // Suppress the folio (page number) on title/part divider pages: a
         // page whose content is a &title or &part heading is a book-style
         // blank divider and must carry no number. We tag such pages so CSS can
