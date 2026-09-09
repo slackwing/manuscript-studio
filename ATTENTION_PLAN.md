@@ -94,14 +94,16 @@ function of the final page geometry.
 3. **Sample.** Per page, for y from first-line-top to last-line-bottom in
    ~3px steps: invert y→t through the line map (piecewise linear), compute
    `a(t)` (kernel cutoff at 6×DECAY keeps it O(markers-in-window)).
-4. **Emit SVG.** Per page, one absolutely-positioned SVG spanning the
-   sheet: rotated axes — t downward, attention rightward. `a=0` at the
-   TEXT COLUMN's left edge; `ATTENTION_FULL_SCALE` at its right edge;
-   negatives spill into the left margin, >full-scale into the right
-   margin (resolved assumption: "left edge of the page" + "negative into
-   the left margin" only reconcile with the text-column origin). Two area
-   fills between the curve and the a=0 axis: `max(a,0)` light green,
-   `min(a,0)` light red, both translucent. Clipped to
+4. **Emit SVG.** Per page, one absolutely-positioned SVG with rotated
+   axes — t downward, attention rightward. `a=0` at the SHEET's left
+   edge; `ATTENTION_FULL_SCALE` (+10) at the sheet's right edge; negative
+   attention spills OFF the sheet into the gray backdrop gutter left of
+   the page (author-confirmed 2026-09-09: "the left margin of the
+   website", not the sheet's inner margin) — the SVG canvas extends one
+   sheet-width left and right of the sheet (negative-x viewBox) to hold
+   the spill. Two area fills between the curve and the a=0 axis:
+   `max(a,0)` light green, `min(a,0)` light red, both translucent, plus a
+   thin stroke of the curve itself. Clipped vertically to
    [first-line-top, last-line-bottom].
 5. **Cache.** SVGs stay in the DOM, hidden; regeneration replaces them.
 
