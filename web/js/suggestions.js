@@ -1272,14 +1272,19 @@ function renderStructuralMarkers(html) {
 // flow, and the visual result is the intended italics.
 function pairItalicsAcrossInserts(html) {
   // Find positions of `*` outside <del>...</del> and outside any tag.
-  // Each records whether it sits inside a <strong> (an INSERTED marker):
-  // those stay VISIBLE — the user just added emphasis and must see the
-  // green markers — while pre-existing (EQ) markers swap into pure <em>.
+  // Each records whether it sits inside a <strong> (an INSERTED marker) and
+  // WHICH <strong> (seg): a pair living in the SAME insert means the whole
+  // *word* is new prose — the green italics alone carry the change, so the
+  // syntax chars hide, same as committed rendering. Markers in DIFFERENT
+  // inserts wrap pre-existing text — the italicization itself IS the edit
+  // (non-italic → italic), so those stay VISIBLE green. Pre-existing (EQ)
+  // markers swap into pure <em> as always.
   const stars = [];
   const scores = []; // underscore positions — pair only with underscores
   let inDel = false;
   let inStrong = false;
   let inTag = false;
+  let seg = 0; // <strong> counter — same seg = same inserted run
   for (let i = 0; i < html.length; i++) {
     const c = html[i];
     if (c === '<') {
@@ -1287,7 +1292,7 @@ function pairItalicsAcrossInserts(html) {
       // Detect <del ...> open and </del> close.
       if (html.startsWith('<del', i)) inDel = true;
       else if (html.startsWith('</del>', i)) inDel = false;
-      else if (html.startsWith('<strong', i)) inStrong = true;
+      else if (html.startsWith('<strong', i)) { inStrong = true; seg++; }
       else if (html.startsWith('</strong>', i)) inStrong = false;
       continue;
     }
@@ -1295,13 +1300,13 @@ function pairItalicsAcrossInserts(html) {
       if (c === '>') inTag = false;
       continue;
     }
-    if (c === '*' && !inDel) stars.push({ i, ins: inStrong });
+    if (c === '*' && !inDel) stars.push({ i, ins: inStrong, seg: inStrong ? seg : 0 });
     if (c === '_' && !inDel) {
       // Underscore emphasis is never intraword: require a non-word char (or
       // edge/tag boundary) on at least the OUTER side of the would-be pair.
       const prev = html[i - 1], next = html[i + 1];
       const w = (ch) => ch !== undefined && /\w/.test(ch) && ch !== '_';
-      if (!(w(prev) && w(next))) scores.push({ i, ins: inStrong });
+      if (!(w(prev) && w(next))) scores.push({ i, ins: inStrong, seg: inStrong ? seg : 0 });
     }
   }
   // Pair greedily: 0+1, 2+3, etc. Replace from the right so earlier
@@ -1324,10 +1329,14 @@ function pairItalicsAcrossInserts(html) {
   }
   for (let p = pairs.length - 1; p >= 0; p--) {
     const [a, b] = pairs[p];
-    // Inserted marker (inside <strong>): KEEP the character so the added
-    // `*`/`_` shows green; pre-existing marker: swap it for the tag.
-    const closeRep = b.ins ? '</em>' + html[b.i] : '</em>';
-    const openRep = a.ins ? html[a.i] + '<em>' : '<em>';
+    // A pair inside the SAME <strong>: the whole *word* is inserted prose —
+    // hide the syntax, the green italics say it all. A marker inserted
+    // AROUND existing text (pair straddles inserts): KEEP the character so
+    // the italicization change shows green. Pre-existing marker: swap it
+    // for the tag.
+    const wholeInsert = a.ins && b.ins && a.seg === b.seg;
+    const closeRep = (b.ins && !wholeInsert) ? '</em>' + html[b.i] : '</em>';
+    const openRep = (a.ins && !wholeInsert) ? html[a.i] + '<em>' : '<em>';
     html = html.slice(0, a.i) + openRep + html.slice(a.i + 1, b.i) + closeRep + html.slice(b.i + 1);
   }
   // A pairing that consumed a marker living alone inside an md-marker

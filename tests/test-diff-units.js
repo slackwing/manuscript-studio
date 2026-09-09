@@ -163,15 +163,22 @@ console.log('=== S8 structural-markers-4-rules ===');
 // ---- S9: italics pairing across inserts --------------------------------
 console.log('=== S9 italics-pairing-across-inserts ===');
 {
-  // INSERTED markers (inside <strong>) stay VISIBLE — the user added the
-  // emphasis and must see the green asterisks, not just the italic result.
+  // Markers inserted AROUND existing text (pair straddles two <strong>
+  // blocks) stay VISIBLE — the italicization itself is the edit and the
+  // user must see the green asterisks.
   const paired = pairItalicsAcrossInserts('<strong>*A</strong> tesselated <strong>away*</strong>');
   check('pair spans two <strong> blocks; added stars stay visible',
     paired === '<strong>*<em>A</strong> tesselated <strong>away</em>*</strong>', paired);
 
+  // A pair inside ONE <strong> is wholly inserted prose — the green italics
+  // carry it; the syntax chars hide, same as committed rendering.
   const delMix = pairItalicsAcrossInserts('<del>*x*</del><strong>*y*</strong>');
-  check('in-del asterisks excluded from pairing; inserted pair keeps stars',
-    delMix === '<del>*x*</del><strong>*<em>y</em>*</strong>', delMix);
+  check('in-del asterisks excluded from pairing; whole-insert pair hides stars',
+    delMix === '<del>*x*</del><strong><em>y</em></strong>', delMix);
+
+  const midPhrase = pairItalicsAcrossInserts('<strong>He went *quietly* away.</strong>');
+  check('italic word inside an inserted phrase: no visible stars',
+    midPhrase === '<strong>He went <em>quietly</em> away.</strong>', midPhrase);
 
   const odd = pairItalicsAcrossInserts('a * b');
   check('odd count: unpaired star untouched', odd === 'a * b', odd);
@@ -229,6 +236,14 @@ console.log('=== S11 emphasis-add-visible + split-not-wholesale ===');
   check('split: old sentence not struck', !/<del/.test(h2), h2.slice(0, 120));
   check('split: old sentence not repeated in green', !new RegExp('<strong>[^<]*canyon').test(h2), h2.slice(0, 120));
   check('split: the addition is one green block', /<strong>[^<]*mill by the creek\./.test(h2), h2.slice(-120));
+
+  // (c) An italicized word arriving INSIDE new prose shows no syntax —
+  //     the whole *word* is inserted, so the italics alone carry it (the
+  //     visible-stars rule is only for emphasis added to EXISTING text).
+  const h3 = renderDiffHTML('He left.', 'He left. He went *quietly* away.', dmp());
+  const stars3 = (h3.replace(/<[^>]*>/g, '').match(/\*/g) || []).length;
+  check('insert with italics: no visible asterisks', stars3 === 0, h3);
+  check('insert with italics: word italicized in green', /<em>quietly<\/em>/.test(h3), h3);
 }
 
 console.log('');
