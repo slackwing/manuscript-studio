@@ -485,16 +485,17 @@ body.home-page {
 /* Ghost creation card (MANUSCRIPT_LIFECYCLE_PLAN §1): faint outline + big
    centered plus; hover "lights it up" and reveals the label. Shared by the
    manuscript and scratchpad grids (data-ghost distinguishes handlers). */
-/* Ghost cards: TRANSLUCENT at rest (the old solid fill read like a real
-   card); hovering turns them into the real card's white face — kind bar
+/* Ghost cards: translucent at rest (a solid fill reads like a real card),
+   but SOLID ENOUGH TO SPOT — 0.35 alpha + pale glyph vanished against the
+   backdrop. Hovering turns them into the real card's white face — kind bar
    on top, the + wearing the kind's color, nothing else. */
 .card-ghost {
-  background: rgba(237, 234, 225, 0.35);
-  border: 2px dashed #d9d4c7;
+  background: rgba(237, 234, 225, 0.7);
+  border: 2px dashed #c4bda9;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #c8c2b3;
+  color: #a49b85;
   font: inherit;
   overflow: hidden;
 }

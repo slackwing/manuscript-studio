@@ -48,6 +48,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     check('no home icon (the Home tab owns that); wordmark links home',
       !cards.homeLink && cards.brandLink === 'home.html');
 
+    // Ghost cards must be SPOTTABLE at rest — the 0.35-alpha fill + pale
+    // glyph disappeared against the parchment backdrop.
+    const ghost = await page.evaluate(() => {
+      const g = document.querySelector('.card-ghost');
+      const cs = getComputedStyle(g);
+      const alpha = (cs.backgroundColor.match(/rgba?\([^)]*?([\d.]+)\)/) && cs.backgroundColor.startsWith('rgba'))
+        ? parseFloat(cs.backgroundColor.split(',')[3]) : 1;
+      return { alpha, color: cs.color };
+    });
+    check('ghost card fill is solid enough to see (alpha ≥ 0.6)', ghost.alpha >= 0.6, JSON.stringify(ghost));
+
     // --- create pad via + New (opens the modal) ---
     await page.click('.card-ghost[data-ghost="scratchpad"]');
     await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 20000 });
