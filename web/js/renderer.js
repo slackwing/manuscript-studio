@@ -976,14 +976,15 @@ const WriteSysRenderer = {
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
   renderInlineCommand(c) {
-    if (c.kind === 'marker') {
-      // &marker{…} is a DISPLAY command: a committed marker stays visible
-      // as a black diamond — a landmark the author can SEE in the prose.
-      // (Other unknowns render as nothing; marker is the display type.)
+    if (c.kind === 'marker' || c.kind === 'mark') {
+      // &marker#slug / &mark#slug are DISPLAY commands: a committed marker
+      // stays visible as a black diamond — a landmark the author can SEE
+      // in the prose. Both spellings are live in real manuscripts; other
+      // unknowns still render as nothing.
       const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
       const args = c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '';
-      return `<span class="cmd-diamond cmd-diamond-marker" data-kind="marker"${slug}${args}`
-        + ` title="${escapeHTML(c.raw || '&marker')}">${CMD_DIAMOND_SVG}</span>`;
+      return `<span class="cmd-diamond cmd-diamond-marker" data-kind="${escapeHTML(c.kind)}"${slug}${args}`
+        + ` title="${escapeHTML(c.raw || '&' + c.kind)}">${CMD_DIAMOND_SVG}</span>`;
     }
     if (c.kind === 'fix') {
       // &fix{…} is a DISPLAY command: its contents render exactly as the

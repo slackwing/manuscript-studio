@@ -58,8 +58,9 @@ const WriteSysCommand = {
       // or '{' parses even when we don't process it; unknown commands render
       // as NOTHING (invisible by default — only display commands show).
       // Prose stays safe: "Smith & Sons", "R&D", "&chapter of accidents"
-      // still lack the delimiter. No bare-#slug form for unknowns (&end's
-      // privilege alone) — the ≥1-brace-group check below applies.
+      // still lack the delimiter. Unknowns share &end's bare-#slug form
+      // (&marker#interesting needs no braces) — the args check below
+      // accepts slug-only unknowns.
       let j = 1;
       while (j < chars.length && chars[j] >= 'a' && chars[j] <= 'z') j++;
       if (j === 1 || j >= chars.length || (chars[j] !== '#' && chars[j] !== '{')) return null;

@@ -362,6 +362,12 @@ const { suggestEditor } = require('./test-utils');
       [{ id: 'r14c', text: 'sound so far away, &marker{like an echo}.' }]);
     check('R14: committed &marker → black diamond persists',
       committedMk.includes('cmd-diamond-marker') && !/>[^<]*&amp;marker/.test(committedMk), committedMk);
+    // Both live spellings, both bare-#slug form: &mark#slug diamonds too.
+    const committedBare = await render(
+      [{ id: 'r14b', text: 'boarding his flight &mark#pressure with a plan.' }]);
+    check('R14: committed bare-slug &mark#slug → black diamond (both spellings display)',
+      committedBare.includes('cmd-diamond-marker') && committedBare.includes('data-slug="pressure"')
+      && !/>[^<]*&amp;mark/.test(committedBare), committedBare);
     // &fix CONTENT-level diff (the weird-by-design rules, 2026-09-07):
     // wrapping unchanged words → NO strike/repeat: purple ◆ at the wrap
     // point + the words in bold purple, nothing red, nothing green.
