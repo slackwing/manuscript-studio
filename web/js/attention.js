@@ -29,7 +29,13 @@ window.WriteSysAttention = {
   // calling rebuild()). Units are WORDS, not pixels: attention decays
   // with reading effort, and headings/blank space cost nothing.
   TUNING: {
-    ATTACK_WORDS: 12,   // rise time-constant — "fast smooth curve up"
+    // NOTE the peak does NOT sit at the marker: for a double-exponential
+    // kernel it lands at u* = (A·D/(D−A))·ln(D/A) words AFTER it. With
+    // A=3, D=250 that's ~13 words — about one line: quick accelerate,
+    // decelerate, turn. (The first calibration used A=12 → u*≈38 words,
+    // and the author read the 3–4 lines of continued climb as a math bug
+    // — 2026-09-09. Keep A small enough that u* stays near one line.)
+    ATTACK_WORDS: 3,    // rise time-constant — "fast smooth curve up"
     DECAY_WORDS: 250,   // fall to 1/e of the contribution after this many words
     FULL_SCALE: 10,     // a=+10 lands exactly on the sheet's right edge
     SAMPLE_STEP_PX: 3,  // vertical sampling resolution per page
