@@ -36,7 +36,9 @@ const psql = (sql) => execSync(
   await page.waitForTimeout(800);
   const box = await page.locator('.spm-editor').boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + 30); // close float
-  await page.waitForTimeout(300);
+  // Wait for the ref to actually land — under parallel suite load the
+  // fixed 800ms above isn't always enough (the dataset read crashed).
+  await page.waitForSelector('.sn-note-ref', { timeout: 15000 });
   const noteId = await page.evaluate(() => parseInt(document.querySelector('.sn-note-ref').dataset.noteId, 10));
   const alive = () => psql(`SELECT deleted_at IS NULL FROM note WHERE note_id=${noteId}`);
   check('note created', alive() === 't', `id=${noteId}`);
