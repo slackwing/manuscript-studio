@@ -296,6 +296,9 @@ const { suggestEditor } = require('./test-utils');
 
   // ---- R14: renderInlineCommandsInHtml regex over escaped diff HTML -----
   {
+    // Markers are visibility-gated (see-markers + display toggle); the
+    // test user is author+editor, so flip the toggle for the battery.
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.display = true; });
     const out = await page.evaluate(() => {
       const R = window.WriteSysRenderer;
       window.WriteSysOutline = window.WriteSysOutline || {};
@@ -358,6 +361,9 @@ const { suggestEditor } = require('./test-utils');
       wrapMk.includes('cmd-diamond-added') && !/>[^<]*&amp;marker/.test(wrapMk), wrapMk);
     // COMMITTED marker: the display type survives commit as a BLACK diamond
     // (every other unknown still renders as nothing once committed).
+    // Visibility needs the see-markers action (test user is author+editor)
+    // AND the display toggle — flip it on for these cases.
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.display = true; });
     const committedMk = await render(
       [{ id: 'r14c', text: 'sound so far away, &marker{like an echo}.' }]);
     check('R14: committed &marker → black diamond persists',
@@ -383,6 +389,35 @@ const { suggestEditor } = require('./test-utils');
     check('R14: mapped slug keeps its shape in a diff (green triangle)',
       mappedDiff.includes('cmd-diamond-added') && mappedDiff.includes(TRI), mappedDiff);
     await page.evaluate(() => { window.WriteSysMarkerSymbols.map = {}; });
+    // Non-marker unknowns in diffs wear the ※ reference mark (2026-09-09:
+    // the diamond belongs to markers now).
+    const refMark = await page.evaluate(() =>
+      window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;widget{x}</strong> here'));
+    check('R14: added non-marker unknown → ※ reference mark',
+      refMark.includes('cmd-diamond-added') && refMark.includes('M1.7 3.7'), refMark);
+    // VISIBILITY GATES. Toggle off (the new-user default): committed
+    // markers vanish into the invisible span.
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.display = false; });
+    const toggledOff = await render(
+      [{ id: 'r14g', text: 'sound so far away, &marker{like an echo}.' }]);
+    check('R14: display toggle off → committed marker renders invisible',
+      toggledOff.includes('inline-cmd') && !toggledOff.includes('cmd-diamond-marker'), toggledOff);
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.display = true; });
+    // Role gates: without see-markers no committed glyph; without
+    // manage-suggestions a diff leaves NO trace of the command.
+    await page.evaluate(() => {
+      window.__savedSession = window.currentSession;
+      window.currentSession = { accessible_manuscripts: [{ manuscript_id: 1, actions: ['see-manuscript'] }] };
+    });
+    const noRole = await render(
+      [{ id: 'r14h', text: 'sound so far away, &marker{like an echo}.' }]);
+    check('R14: no see-markers action → committed marker invisible',
+      noRole.includes('inline-cmd') && !noRole.includes('cmd-diamond-marker'), noRole);
+    const noRoleDiff = await page.evaluate(() =>
+      window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;marker#interesting</strong> here'));
+    check('R14: no manage-suggestions → diff glyph leaves no trace',
+      !noRoleDiff.includes('cmd-diamond') && noRoleDiff === 'was <strong></strong> here', noRoleDiff);
+    await page.evaluate(() => { window.currentSession = window.__savedSession; });
     // &fix CONTENT-level diff (the weird-by-design rules, 2026-09-07):
     // wrapping unchanged words → NO strike/repeat: purple ◆ at the wrap
     // point + the words in bold purple, nothing red, nothing green.

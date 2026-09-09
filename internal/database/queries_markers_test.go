@@ -46,3 +46,28 @@ func TestMarkerSymbols_CRUD(t *testing.T) {
 		t.Errorf("after delete: %v", m)
 	}
 }
+
+// user_pref (046): first tenant is marker_display. Empty value unsets.
+func TestUserPref_SetGetUnset(t *testing.T) {
+	f := newITFixture(t)
+	v, err := f.db.GetUserPref(f.ctx, f.username, "marker_display")
+	if err != nil || v != "" {
+		t.Fatalf("unset pref: %q err=%v", v, err)
+	}
+	if err := f.db.SetUserPref(f.ctx, f.username, "marker_display", "on"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if v, _ = f.db.GetUserPref(f.ctx, f.username, "marker_display"); v != "on" {
+		t.Errorf("get = %q, want on", v)
+	}
+	other := f.newUser(t)
+	if v, _ = f.db.GetUserPref(f.ctx, other, "marker_display"); v != "" {
+		t.Errorf("cross-user pref leaked: %q", v)
+	}
+	if err := f.db.SetUserPref(f.ctx, f.username, "marker_display", ""); err != nil {
+		t.Fatalf("unset: %v", err)
+	}
+	if v, _ = f.db.GetUserPref(f.ctx, f.username, "marker_display"); v != "" {
+		t.Errorf("after unset = %q, want empty", v)
+	}
+}

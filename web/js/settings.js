@@ -356,6 +356,23 @@ WriteSysSettings.initMarkers = async function () {
     return div;
   };
   await MS.load();
+  // Display toggle: off by default (a new user's markers stay invisible
+  // in the manuscript until they opt in here).
+  const disp = document.getElementById('mk-display');
+  if (disp) {
+    disp.checked = !!MS.display;
+    disp.addEventListener('change', async () => {
+      const r = await fetch('api/marker-display', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+        body: JSON.stringify({ on: disp.checked }),
+      });
+      if (!r.ok) { status.textContent = 'Save failed.'; disp.checked = !disp.checked; return; }
+      MS.display = disp.checked;
+      status.textContent = '';
+    });
+  }
   Object.keys(MS.map).sort().forEach((slug) => rows.appendChild(row(slug)));
   input.addEventListener('keydown', async (e) => {
     if (e.key !== 'Enter') return;

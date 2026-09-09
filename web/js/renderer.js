@@ -43,9 +43,14 @@ const WriteSysRenderer = {
     this.manuscriptId = idStr ? parseInt(idStr, 10) : null;
 
     if (window.WriteSysOutline) window.WriteSysOutline.init();
-    // Marker shapes before first render — a mapped slug must never flash
-    // the default diamond. Failure = default diamonds, never a block.
+    // Marker shapes + the session's action list before first render — a
+    // mapped slug must never flash the default diamond, and the marker/
+    // glyph gates read actions synchronously. Bounded wait (4s), then
+    // render regardless: no session = no glyphs, the safe default.
     if (window.WriteSysMarkerSymbols) await window.WriteSysMarkerSymbols.load();
+    for (let i = 0; i < 40 && !window.currentSession; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
 
     // Delegated click for inline references: scroll to the target sentence.
     // Attached once; survives re-renders since it's on document.
@@ -978,16 +983,33 @@ const WriteSysRenderer = {
   // reference resolves against the slug map (from the outline); a resolvable
   // one is a link that scrolls to its target, a dangling one shows a broken
   // marker. An inline anchor is an invisible target span.
+  // canSeeMarkers / canSeeCommandGlyphs: visibility gates (2026-09-09).
+  // Markers need the see-markers action (author/editor bundles) AND the
+  // user's display toggle (settings "Markers", off by default). General
+  // command glyphs in diffs ride "editingness" — manage-suggestions —
+  // because someone who reviews edits must know a command sits there.
+  // The server stays the real gate for data; these hide affordances.
+  canSeeMarkers() {
+    return !!(window.WriteSysActions
+      && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'see-markers')
+      && window.WriteSysMarkerSymbols && window.WriteSysMarkerSymbols.display);
+  },
+  canSeeCommandGlyphs() {
+    return !!(window.WriteSysActions
+      && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'manage-suggestions'));
+  },
+
   renderInlineCommand(c) {
     if (c.kind === 'marker' || c.kind === 'mark') {
       // &marker#slug / &mark#slug are DISPLAY commands: a committed marker
-      // stays visible as a black diamond — a landmark the author can SEE
-      // in the prose. Both spellings are live in real manuscripts; other
-      // unknowns still render as nothing.
+      // stays visible as its shape (settings "Markers") — but only for
+      // eyes with see-markers AND the display toggle on; everyone else
+      // gets the invisible span like any unknown.
       const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
       const args = c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '';
-      // Shape by slug (settings "Markers"): mapped slugs wear their custom
-      // symbol, everything else the default diamond.
+      if (!this.canSeeMarkers()) {
+        return `<span class="inline-cmd" data-kind="${escapeHTML(c.kind)}"${slug}${args} aria-hidden="true"></span>`;
+      }
       const glyph = window.WriteSysMarkerSymbols
         ? window.WriteSysMarkerSymbols.svgFor(c.slug) : CMD_DIAMOND_SVG;
       return `<span class="cmd-diamond cmd-diamond-marker" data-kind="${escapeHTML(c.kind)}"${slug}${args}`
@@ -1101,10 +1123,16 @@ const WriteSysRenderer = {
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
       if (cmd.unknown && diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
+        // Editingness gates the glyph: without manage-suggestions the
+        // command leaves no trace in the diff at all.
+        if (!this.canSeeCommandGlyphs()) return '';
         // A marker's custom shape rides into diffs too (color still says
-        // which way); non-marker unknowns keep the diamond.
-        const glyph = (cmd.kind === 'marker' || cmd.kind === 'mark') && window.WriteSysMarkerSymbols
-          ? window.WriteSysMarkerSymbols.svgFor(cmd.slug) : CMD_DIAMOND_SVG;
+        // which way); other unknowns wear the ※ reference mark.
+        const isMarker = cmd.kind === 'marker' || cmd.kind === 'mark';
+        const glyph = window.WriteSysMarkerSymbols
+          ? (isMarker ? window.WriteSysMarkerSymbols.svgFor(cmd.slug)
+            : window.WriteSysMarkerSymbols.unknownSvg())
+          : CMD_DIAMOND_SVG;
         return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
           + glyph + '</span>';
       }

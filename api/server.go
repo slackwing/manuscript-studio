@@ -354,6 +354,7 @@ func (s *Server) setupRouter() {
 			r.Get("/marker-symbols", s.markerHandlers.HandleList)
 			r.Put("/marker-symbols/{slug}", s.markerHandlers.HandleSet)
 			r.Delete("/marker-symbols/{slug}", s.markerHandlers.HandleDelete)
+			r.Put("/marker-display", s.markerHandlers.HandleSetDisplay)
 			// Note actions (settings audit table) + undos.
 			r.Get("/note-actions", s.noteActionHandlers.HandleList)
 			r.Put("/note-actions/date", s.noteActionHandlers.HandleSetDate)

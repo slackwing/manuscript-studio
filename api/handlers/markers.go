@@ -26,9 +26,12 @@ var markerSlugRe = regexp.MustCompile(`^[a-z0-9-]{1,64}$`)
 var markerSymbols = map[string]bool{
 	"diamond": true, "triangle-down": true, "triangle-up": true,
 	"circle": true, "square": true,
+	"spade": true, "heart": true, "club": true,
 }
 
-// HandleList: GET /api/marker-symbols → {"symbols": {slug: shape}}.
+// HandleList: GET /api/marker-symbols → {"symbols": {slug: shape},
+// "display": bool}. display defaults OFF — a new user's markers stay
+// invisible until they opt in (settings "Markers" toggle).
 func (h *MarkerHandlers) HandleList(w http.ResponseWriter, r *http.Request) {
 	session, err := auth.GetSession(r)
 	if err != nil {
@@ -41,8 +44,40 @@ func (h *MarkerHandlers) HandleList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to list marker symbols", http.StatusInternalServerError)
 		return
 	}
+	display, err := h.DB.GetUserPref(r.Context(), session.Username, "marker_display")
+	if err != nil {
+		log.Printf("markers: display pref: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"symbols": symbols})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"symbols": symbols, "display": display == "on",
+	})
+}
+
+// HandleSetDisplay: PUT /api/marker-display {"on": bool}.
+func (h *MarkerHandlers) HandleSetDisplay(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		On bool `json:"on"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Bad body", http.StatusBadRequest)
+		return
+	}
+	val := "" // unset = off (the default)
+	if body.On {
+		val = "on"
+	}
+	if err := h.DB.SetUserPref(r.Context(), session.Username, "marker_display", val); err != nil {
+		log.Printf("markers: set display: %v", err)
+		http.Error(w, "Failed to save", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleSet: PUT /api/marker-symbols/{slug} {"symbol": "triangle-down"}.

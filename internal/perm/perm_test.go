@@ -28,6 +28,12 @@ func TestBundles(t *testing.T) {
 		{[]string{"reader"}, "see-outline", false},
 		{[]string{"pointer"}, "award-points", true},
 		{[]string{"pointer"}, "see-manuscript", false},
+		// Command markers (2026-09-09): author/editor eyes only.
+		{[]string{"author"}, "see-markers", true},
+		{[]string{"editor"}, "see-markers", true},
+		{[]string{"admin"}, "see-markers", false},
+		{[]string{"beta-reader"}, "see-markers", false},
+		{[]string{"reader"}, "see-markers", false},
 		// Union across roles (the normal stacked case).
 		{[]string{"admin", "editor"}, "commit-and-push-suggestions", true},
 		{[]string{"admin", "editor"}, "manage-manuscript", true},

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 046 (2026-09-09): generic per-user preferences (key → value).
+         First tenant: marker_display ('on' — absent means off, the new-user
+         default: markers stay invisible until the author opts in). -->
+    <changeSet id="046-user-pref" author="claude">
+        <createTable tableName="user_pref">
+            <column name="user_id" type="TEXT"><constraints nullable="false"/></column>
+            <column name="key" type="TEXT"><constraints nullable="false"/></column>
+            <column name="value" type="TEXT"><constraints nullable="false"/></column>
+        </createTable>
+        <addPrimaryKey tableName="user_pref" columnNames="user_id, key"/>
+    </changeSet>
+
+</databaseChangeLog>

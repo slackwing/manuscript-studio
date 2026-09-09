@@ -570,3 +570,5 @@ body.home-page {
 .mk-remove { border: none; background: transparent; color: #b3ac9c; font-size: 16px; cursor: pointer; padding: 0 4px; }
 .mk-remove:hover { color: #b33b3a; }
 #mk-input { margin-top: 6px; }
+.mk-display-row { display: block; margin-bottom: 8px; font-size: 14px; color: #57503f; cursor: pointer; }
+.mk-display-row input { vertical-align: -2px; margin-right: 6px; }

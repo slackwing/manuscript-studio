@@ -356,7 +356,25 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.locator('.na-row.na-completed .na-undo').first().click();
   await page.waitForTimeout(700);
   check('undo complete restores the note', psql(`SELECT completed_at IS NULL FROM note WHERE note_id=${noteId}`).trim() === 't');
-  // --- Markers: slug → symbol picker rows ---
+  // --- Markers: display toggle (off by default) + slug → symbol rows ---
+  psql(`DELETE FROM user_pref WHERE user_id='${TEST_USERNAME}' AND key='marker_display'`);
+  await page.reload();
+  await page.waitForSelector('#mk-display', { timeout: 8000 });
+  check('display toggle defaults OFF (new user)',
+    !(await page.locator('#mk-display').isChecked()));
+  check('picker offers all 8 shapes (suits included)', await page.evaluate(() =>
+    Object.keys(window.WriteSysMarkerSymbols.SHAPES).join(',')) === 'diamond,triangle-down,triangle-up,circle,square,spade,heart,club');
+  await page.locator('#mk-display').check();
+  await page.waitForFunction(() => document.getElementById('mk-status').textContent === '', null, { timeout: 5000 });
+  check('toggle on persists',
+    psql(`SELECT value FROM user_pref WHERE user_id='${TEST_USERNAME}' AND key='marker_display'`).trim() === 'on');
+  await page.reload();
+  await page.waitForSelector('#mk-display', { timeout: 8000 });
+  check('reload keeps the toggle on', await page.locator('#mk-display').isChecked());
+  await page.locator('#mk-display').uncheck();
+  await page.waitForFunction(() => document.getElementById('mk-status').textContent === '', null, { timeout: 5000 });
+  check('toggle off unsets the pref (absent = default)',
+    psql(`SELECT count(*) FROM user_pref WHERE user_id='${TEST_USERNAME}' AND key='marker_display'`).trim() === '0');
   await page.locator('#mk-input').fill('#weird');
   await page.locator('#mk-input').press('Enter');
   await page.waitForSelector('.mk-row[data-slug="weird"]', { timeout: 5000 });
