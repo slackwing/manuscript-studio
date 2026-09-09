@@ -43,6 +43,16 @@ where the markers sit.
   whatever the first has decayed to.
 - Negative values use the same kernel with negative amplitude — a
   `#digression` (−15) is a smooth dip that recovers.
+- **Jading (habituation, 2026-09-09 evening):** a spike right after a
+  spike lands weaker — divisive normalization over leaky per-sign pools
+  (the textbook habituation model; hedonic adaptation). Before
+  superposition, each marker's amplitude becomes
+  `v̂ = v / (1 + J/JADE_SCALE)` where jadedness `J` decays
+  `e^(−Δt/JADE_RECOVERY_WORDS)` between markers and grows by `|v̂|` after
+  each. Positive and negative markers habituate INDEPENDENTLY (author
+  decision); pools are global across slugs for now (stimulus-specific
+  habituation is a someday). The maintained formula lives in the block
+  comment atop `web/js/attention.js` — keep both in lockstep.
 - Energy is **continuous across page breaks** (a page turn costs no words;
   revisit if that feels wrong).
 
@@ -53,6 +63,8 @@ One constants block, one place, fat comment — `web/js/attention.js`:
     ATTENTION_ATTACK_WORDS = 7     // C² onset scale; peak ~13 words (~one line) out
     ATTENTION_DECAY_WORDS  = 120   // contribution falls to 1/e after this (calibrated down from 250)
     ATTENTION_FULL_SCALE   = 25    // a=+25 lands on the sheet's right edge
+    JADE_SCALE             = 10    // this much recent J halves the next spike
+    JADE_RECOVERY_WORDS    = 300   // novelty regrowth time-constant
 
 Also mirrored live on `window.WriteSysAttention.TUNING` so values can be
 tweaked in the console mid-read (hold Tab, judge, tweak, re-hold) before

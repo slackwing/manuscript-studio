@@ -21,6 +21,25 @@
  * Pre-generation is deliberate: the math couples to pagination, so the
  * overlay is a pure function of the final page geometry — rebuilt from
  * the afterRendered hook (pagedjs-config.js), never during a render.
+ *
+ * ═══════════ THE FORMULA (maintained — update THIS block with every
+ * change to the math; ATTENTION_PLAN.md §2 mirrors it) ═══════════
+ *
+ *   a(t)  = Σᵢ v̂ᵢ · K(t − tᵢ)                       superposition
+ *   K(u)  = N · (1 − e^(−(u/A)³)) · e^(−u/D)   u≥0   C² onset, exp decay,
+ *           0                                  u<0   peak numerically = 1
+ *   v̂ᵢ    = vᵢ / (1 + J(tᵢ)/JADE_SCALE)             jading (divisive
+ *                                                    normalization)
+ *   J     — per-SIGN jadedness pools (positive and negative markers
+ *           habituate INDEPENDENTLY; author decision 2026-09-09):
+ *           between markers  J ← J · e^(−Δt/JADE_RECOVERY_WORDS)
+ *           after each marker J ← J + |v̂ᵢ|
+ *           (global across slugs for now — per-slug/stimulus-specific
+ *           habituation is a someday, per the author)
+ *   y→t   — Fritsch–Carlson monotone cubic through line centers (C¹)
+ *   t     — WORDS read;  x(a) = (a / FULL_SCALE) · sheetWidth, from the
+ *           sheet's left edge (negatives spill into the backdrop gutter)
+ * ══════════════════════════════════════════════════════════════════
  */
 window.WriteSysAttention = {
   // ---- TUNING — the author calibrates these BY FEEL while reading -----
@@ -41,6 +60,13 @@ window.WriteSysAttention = {
     FULL_SCALE: 25,     // a=+25 lands exactly on the sheet's right edge (author-calibrated 2026-09-09; was 10)
     SAMPLE_STEP_PX: 3,  // vertical sampling resolution per page
     CUTOFF_DECAYS: 6,   // ignore a marker beyond 6×DECAY_WORDS — contributes ~0.25%
+    // Jading (habituation): a spike right after a spike lands weaker.
+    // JADE_SCALE is "how much recent stimulation halves the next spike"
+    // (J equal to it → gain ½); JADE_RECOVERY_WORDS is how fast novelty
+    // regrows. Divisive normalization over leaky per-sign pools — the
+    // textbook habituation model (Thompson–Spencer; hedonic adaptation).
+    JADE_SCALE: 10,
+    JADE_RECOVERY_WORDS: 300,
   },
 
   _pages: [],   // [{el, svg}] — pages that received an overlay
@@ -70,6 +96,26 @@ window.WriteSysAttention = {
       c = this._kcache = { A, D, N: 1 / peak, uStar: uP };
     }
     return c.N * (1 - Math.exp(-((u / A) ** 3))) * Math.exp(-u / D);
+  },
+
+  // jade(markers): the habituation pass (see THE FORMULA). Sequential
+  // over t-sorted markers; two INDEPENDENT leaky pools (positive/negative
+  // — a #digression does not dull the next #picture), each decaying
+  // between its own events and charging by the EFFECTIVE amplitude it
+  // let through. First spike lands full; an immediate repeat of +10 at
+  // JADE_SCALE=10 lands as +5; spacing markers out restores novelty.
+  jade(markers) {
+    const S = this.TUNING.JADE_SCALE;
+    const R = this.TUNING.JADE_RECOVERY_WORDS;
+    const pools = { pos: { J: 0, t: null }, neg: { J: 0, t: null } };
+    return markers.map((m) => {
+      const p = m.v >= 0 ? pools.pos : pools.neg;
+      if (p.t !== null) p.J *= Math.exp(-(m.t - p.t) / R);
+      const vEff = m.v / (1 + p.J / S);
+      p.J += Math.abs(vEff);
+      p.t = m.t;
+      return { t: m.t, v: vEff };
+    });
   },
 
   // a(t) over events [{t, v}] — superposition with a cutoff window.
@@ -214,8 +260,9 @@ window.WriteSysAttention = {
   rebuild() {
     this.teardown();
     if (!this._gate()) return;
-    const { pages, lines, markers } = this._harvest();
+    const { pages, lines, markers: raw } = this._harvest();
     if (!lines.length) return;
+    const markers = this.jade(raw); // habituation before superposition
     const F = this.TUNING.FULL_SCALE;
     for (let pi = 0; pi < pages.length; pi++) {
       const pageLines = lines.filter((l) => l.pageIdx === pi);

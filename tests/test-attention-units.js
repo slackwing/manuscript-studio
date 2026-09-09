@@ -67,6 +67,33 @@ check('and recovers toward zero', A.attentionAt(5 * T.DECAY_WORDS, dip) > -0.2,
 check('future events contribute nothing', A.attentionAt(100, [{ t: 200, v: 50 }]) === 0);
 
 // ---- pchip (the smooth y→t map) ----------------------------------------
+console.log('\n=== jading units (habituation) ===');
+A.TUNING.JADE_SCALE = 10;
+A.TUNING.JADE_RECOVERY_WORDS = 300;
+{
+  // Immediate repeat lands weaker: +10 then +10 one word later → the
+  // second passes at 10/(1+10/10) ≈ 5 (divisive normalization).
+  const j = A.jade([{ t: 0, v: 10 }, { t: 1, v: 10 }]);
+  check('first spike lands full strength', Math.abs(j[0].v - 10) < 1e-9, String(j[0].v));
+  check('an immediate repeat is halved (JADE_SCALE worth of J)',
+    j[1].v > 4.5 && j[1].v < 5.5, String(j[1].v));
+  // Novelty regrows: same repeat 5 recovery-constants later ≈ full.
+  const far = A.jade([{ t: 0, v: 10 }, { t: 1500, v: 10 }]);
+  check('spacing markers out restores novelty', far[1].v > 9.5, String(far[1].v));
+  // Independent pools: a −15 right before a +10 does NOT dull it.
+  const mixed = A.jade([{ t: 0, v: -15 }, { t: 1, v: 10 }]);
+  check('negative markers do not jade positive ones (independent pools)',
+    Math.abs(mixed[1].v - 10) < 1e-9, String(mixed[1].v));
+  // …but a second negative IS dulled.
+  const negs = A.jade([{ t: 0, v: -15 }, { t: 1, v: -15 }]);
+  check('a second negative in a row is dulled', Math.abs(negs[1].v) < 8, String(negs[1].v));
+  // Effective values keep monotone recovery: wider gap → stronger second.
+  const near = A.jade([{ t: 0, v: 10 }, { t: 50, v: 10 }])[1].v;
+  const mid2 = A.jade([{ t: 0, v: 10 }, { t: 300, v: 10 }])[1].v;
+  check('recovery is monotone with spacing', near < mid2 && mid2 < far[1].v,
+    `50w=${near.toFixed(2)} 300w=${mid2.toFixed(2)} 1500w=${far[1].v.toFixed(2)}`);
+}
+
 console.log('\n=== pchip units ===');
 const knots = [[0, 0], [20, 10], [40, 10], [60, 30], [100, 60]];
 const f = A.pchip(knots);
