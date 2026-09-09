@@ -171,8 +171,33 @@ const WriteSysStats = {
       }
     }
 
-    this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}</div>`;
+    // Attention peek for touch devices (ATTENTION_PLAN.md §5): no Tab key
+    // on a phone, so the statistics pane offers a HOLD button — press and
+    // keep pressed to reveal the envelope, release to hide. Same gate as
+    // the key: see-attention.
+    const attnBtn = (window.WriteSysActions
+      && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'see-attention'))
+      ? '<button type="button" id="stats-attention" class="stats-attention" title="hold">attention</button>'
+      : '';
+
+    this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}${attnBtn}</div>`;
     this.wireHover();
+    this.wireAttentionHold();
+  },
+
+  // Press-and-hold semantics via pointer events (mouse + touch alike).
+  wireAttentionHold() {
+    const btn = document.getElementById('stats-attention');
+    if (!btn) return;
+    const off = () => document.documentElement.classList.remove('attention-held');
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      document.documentElement.classList.add('attention-held');
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+      btn.addEventListener(ev, off);
+    }
+    btn.addEventListener('contextmenu', (e) => e.preventDefault()); // no long-press menu
   },
 
   // buildGraph returns the SVG string. Flat: plain x/y axis lines, one

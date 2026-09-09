@@ -3662,3 +3662,20 @@ body.range-delete-mode .pagedjs_pages {
    negative-z-behind-text mechanism is documented there. */
 .attention-overlay { display: none; }
 html.attention-held .attention-overlay { display: block; }
+/* Attention hold-button (stats pane, the touch counterpart of Tab):
+   press-and-hold reveals the envelope. */
+.stats-attention {
+  margin-top: 8px;
+  padding: 4px 12px;
+  border: 1px solid #d9d4c7;
+  border-radius: 4px;
+  background: #faf8f2;
+  color: #57503f;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.stats-attention:active { background: #efece3; }

@@ -138,7 +138,14 @@ window.WriteSysAttention = {
         ? window.WriteSysMarkerSymbols.attentionFor(slug) : 0;
       if (!v) continue; // unconfigured/neutral markers shape no envelope
       const r = el.getBoundingClientRect();
-      const anchor = el.parentElement && r.width === 0 ? el.parentElement.getBoundingClientRect() : r;
+      // An INVISIBLE marker span has zero WIDTH but is still positioned —
+      // its inline box carries the font's height, and its top/left are the
+      // marker's true spot in the prose. Anchoring to the parent fragment
+      // instead put the impulse at the SENTENCE's first line (up to a few
+      // lines early — the bug the fast attack exposed, 2026-09-09). Only a
+      // fully degenerate rect (hidden subtree) falls back to the parent.
+      const anchor = (r.height > 0 || r.width > 0)
+        ? r : el.parentElement.getBoundingClientRect();
       const pi = pageOf(anchor.top + anchor.height / 2, anchor.left + 1);
       if (pi < 0) continue;
       const s = scaleOf(pi);

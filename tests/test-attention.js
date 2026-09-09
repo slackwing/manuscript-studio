@@ -96,7 +96,7 @@ const check = (name, ok, detail = '') => {
     return { markerY, peakY: best.y, peakX: best.x };
   });
   check('envelope peaks at/just below the +10 marker line',
-    align.peakX > 0 && align.peakY >= align.markerY - 4 && align.peakY < align.markerY + 400,
+    align.peakX > 0 && align.peakY >= align.markerY - 4 && align.peakY < align.markerY + 150,
     JSON.stringify(align));
 
   // Hold Tab → visible; release → hidden.
@@ -122,6 +122,24 @@ const check = (name, ok, detail = '') => {
   check('no see-attention → Tab is inert', await page.evaluate(() =>
     !document.documentElement.classList.contains('attention-held')));
   await page.keyboard.up('Tab');
+  await page.evaluate(() => { window.currentSession = window.__saved; });
+
+  // ---- stats-pane HOLD button (the touch counterpart of Tab) ----------
+  await page.evaluate(() => { window.currentSession = window.__saved; window.WriteSysAttention.rebuild(); });
+  await page.evaluate(() => window.WriteSysStats && window.WriteSysStats.setPane && window.WriteSysStats.setPane('stats'));
+  await page.waitForSelector('#stats-attention', { timeout: 8000 });
+  await page.dispatchEvent('#stats-attention', 'pointerdown');
+  await page.waitForFunction(() => document.documentElement.classList.contains('attention-held'));
+  check('holding the stats button reveals the overlays', true);
+  await page.dispatchEvent('#stats-attention', 'pointerup');
+  await page.waitForFunction(() => !document.documentElement.classList.contains('attention-held'));
+  check('releasing the stats button hides them', true);
+  const gated = await page.evaluate(() => {
+    window.currentSession = { accessible_manuscripts: [{ manuscript_id: 1, actions: ['see-manuscript'] }] };
+    window.WriteSysStats.render();
+    return !document.getElementById('stats-attention');
+  });
+  check('no see-attention → no stats button', gated);
   await page.evaluate(() => { window.currentSession = window.__saved; });
 
   await browser.close();
