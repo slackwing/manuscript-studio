@@ -231,14 +231,36 @@ const psql = (sql) => execSync(
       const late = ids.slice(Math.floor(ids.length * 0.7)).find(prose);
       return { early, late, earlyText: R.sentenceMap[early], lateText: R.sentenceMap[late] };
     });
-    await putSuggestion(pair.early, `&anchor#e2ereftarget{E2E ref target}\n${pair.earlyText.replace(/^(\n\n|\n\t)/, '')}`);
+    // While PENDING, an added &reference diamonds like every changed
+    // command — the live link only materializes on commit.
     await putSuggestion(pair.late, pair.lateText + ' &reference#e2ereftarget{see the target}');
+    await reloadSuggestionsAndRender();
+    const pendingRef = await page.evaluate(() => ({
+      diamond: !!document.querySelector('.pagedjs_pages .cmd-diamond-added'),
+      link: !!document.querySelector('.pagedjs_pages a.inline-ref[data-ref-target]'),
+    }));
+    check('R27: PENDING &reference shows the ◆, not a live link',
+      pendingRef.diamond && !pendingRef.link, JSON.stringify(pendingRef));
+    // Commit the pair into the local render state (renderManuscript renders
+    // from currentSentences/sentenceMap without refetching) so the link and
+    // its slugMap target exist for the delegated-click checks below.
+    psql(`DELETE FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
+    await page.evaluate(({ early, late }) => {
+      const R = window.WriteSysRenderer;
+      const set = (id, t) => {
+        R.sentenceMap[id] = t;
+        const s = R.currentSentences.find((x) => (x.sentence_id || x.id) === id);
+        if (s) s.text = t;
+      };
+      set(early, `&anchor#e2ereftarget{E2E ref target}\n${(R.sentenceMap[early] || '').replace(/^(\n\n|\n\t)/, '')}`);
+      set(late, (R.sentenceMap[late] || '') + ' &reference#e2ereftarget{see the target}');
+    }, pair);
     await reloadSuggestionsAndRender();
     const refState = await page.evaluate(() => {
       const a = document.querySelector('.pagedjs_pages a.inline-ref[data-ref-target]');
       return a ? { target: a.dataset.refTarget, text: a.textContent } : null;
     });
-    check('R27: suggested &reference resolves to a live link (slugMap)',
+    check('R27: committed &reference resolves to a live link (slugMap)',
       !!refState && refState.target === pair.early, refState && refState.target);
     if (refState) {
       await page.evaluate(() => {
@@ -277,6 +299,18 @@ const psql = (sql) => execSync(
       }, pair.early, { timeout: 10000 });
       check('R27: reference click still works after an in-place re-render', true);
     }
+    // Undo the local commit so the anchor doesn't linger in the outline
+    // for the remaining scenarios.
+    await page.evaluate(({ early, late, earlyText, lateText }) => {
+      const R = window.WriteSysRenderer;
+      const set = (id, t) => {
+        R.sentenceMap[id] = t;
+        const s = R.currentSentences.find((x) => (x.sentence_id || x.id) === id);
+        if (s) s.text = t;
+      };
+      set(early, earlyText);
+      set(late, lateText);
+    }, pair);
 
     // Clean the suggestions out before the remaining scenarios — IN PLACE
     // (refetch the now-empty suggestion set and re-render): the outline

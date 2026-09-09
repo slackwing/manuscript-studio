@@ -204,7 +204,10 @@ function resetMeta() {
     const el = document.getElementById('stats-margin');
     if (!el) return false;
     const r = el.getBoundingClientRect();
-    return getComputedStyle(el).display !== 'none' && r.top < 110 && r.left > 200; // top bar 40 + 36px tab strip + bar padding
+    const strip = document.querySelector('#manuscript-chrome .pane-tabs').getBoundingClientRect();
+    // The slot starts exactly where the pane-tabs strip ends (52 top bar +
+    // pinned-tabs strip + 26 tabs) — higher would paint over the tab labels.
+    return getComputedStyle(el).display !== 'none' && Math.abs(r.top - strip.bottom) < 4 && r.left > 200;
   });
   check('mobile: stats pane sits in the second bar', true);
 
