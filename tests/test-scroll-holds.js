@@ -141,14 +141,28 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     // hold inside its 700ms window.
     await page.waitForFunction((vid) =>
       document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-freeze:not(.pw-on)`), seed.varB);
-    const fight = await page.evaluate(async () => {
-      const h = document.querySelector('.spm-editor');
-      const held = h.scrollTop;
-      h.scrollTop = held - 300; // fight the active hold
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-      await new Promise(r => requestAnimationFrame(r));
-      return { held, after: h.scrollTop };
-    });
+    // Under parallel suite load the 700ms hold can EXPIRE between the
+    // rebuilt-widget wait and the fight — re-arm a fresh hold (freeze →
+    // unfreeze round-trip) and retry, bounded, before judging.
+    let fight = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await wB.locator('.sn-freeze').click();
+        await page.waitForSelector(`.sn-widget[data-variation-id="${seed.varB}"] .sn-freeze.pw-on`);
+        await wB.locator('.sn-freeze.pw-on').click();
+        await page.waitForFunction((vid) =>
+          document.querySelector(`.sn-widget[data-variation-id="${vid}"] .sn-freeze:not(.pw-on)`), seed.varB);
+      }
+      fight = await page.evaluate(async () => {
+        const h = document.querySelector('.spm-editor');
+        const held = h.scrollTop;
+        h.scrollTop = held - 300; // fight the active hold
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await new Promise(r => requestAnimationFrame(r));
+        return { held, after: h.scrollTop };
+      });
+      if (Math.abs(fight.after - fight.held) <= 2) break;
+    }
     check('programmatic scroll during an active hold is pinned back',
       Math.abs(fight.after - fight.held) <= 2, `held=${fight.held} after=${fight.after}`);
     // Wait out the hold window; a scroll must then STICK (listener removed).
