@@ -6,8 +6,11 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/slackwing/manuscript-studio/internal/models"
 )
@@ -34,6 +37,12 @@ type HomeNote struct {
 	// DoneToday: the daily-tasks page's "already worked" marker — points
 	// were awarded to this note today. Only ListDailyTaskNotes sets it.
 	DoneToday bool
+	// CompletedAt: set when the note is completed. The All-notes view shows
+	// completed notes (2026-09-09); the landing grid filters them client-side.
+	CompletedAt *time.Time
+	// DeletedAt: only GetHomeNoteByID sets it (the settings note modal can
+	// show a soft-deleted note from the actions audit table).
+	DeletedAt *time.Time
 }
 
 // homeNoteSelect is the shared column list of the two home-note readers
@@ -68,7 +77,8 @@ const homeNoteSelect = `
 		            FROM note_tag nt JOIN tag t ON t.tag_id = nt.tag_id
 		            WHERE nt.note_id = n.note_id),
 		           '[]'::json
-		       ) AS tags`
+		       ) AS tags,
+		       n.completed_at`
 
 const homeNoteFrom = `
 		FROM note n
@@ -79,10 +89,11 @@ const homeNoteFrom = `
 // display context. Scratchpad notes show the scratchpad title; manuscript/
 // sentence notes show the manuscript's display name (falls back to name).
 func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) ([]HomeNote, error) {
+	// Completed notes are INCLUDED (2026-09-09: All-notes shows them; the
+	// landing grid drops them client-side via completed_at).
 	rows, err := db.Pool.Query(ctx, homeNoteSelect+homeNoteFrom+`
 		WHERE n.user_id = $1
 		  AND n.deleted_at IS NULL
-		  AND n.completed_at IS NULL
 		ORDER BY n.updated_at DESC
 		LIMIT $2
 	`, username, limit)
@@ -95,7 +106,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
 		if len(tagsJSON) > 0 {
@@ -104,6 +115,29 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// GetHomeNoteByID: one note in the home-card shape, completed and
+// soft-deleted included — the settings note modal shows any note the
+// actions audit table references. Nil when the note isn't the user's.
+func (db *DB) GetHomeNoteByID(ctx context.Context, username string, noteID int) (*HomeNote, error) {
+	row := db.Pool.QueryRow(ctx, homeNoteSelect+`, n.deleted_at`+homeNoteFrom+`
+		WHERE n.user_id = $1 AND n.note_id = $2
+	`, username, noteID)
+	var h HomeNote
+	var tagsJSON []byte
+	if err := row.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+		&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON,
+		&h.CompletedAt, &h.DeletedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get home note %d: %w", noteID, err)
+	}
+	if len(tagsJSON) > 0 {
+		_ = json.Unmarshal(tagsJSON, &h.Tags)
+	}
+	return &h, nil
 }
 
 // ListDailyTaskNotes: the daily-tasks page's deterministic "random" pick of
@@ -138,7 +172,7 @@ func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscrip
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.DoneToday); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.DoneToday); err != nil {
 			return nil, fmt.Errorf("scan daily task note: %w", err)
 		}
 		if len(tagsJSON) > 0 {

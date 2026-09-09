@@ -75,6 +75,22 @@ function psql(sql) {
   check('color chip filters to the blue note',
     await page.locator('.card-note').evaluate(el => el.classList.contains('color-blue')));
 
+  // ---- Completed notes: shown in All notes (marked done), hidden from the
+  // landing grid (2026-09-09; filters later). ----
+  psql(`INSERT INTO note (user_id, color, body, priority, position, scratchpad_id, completed_at)
+        VALUES ('test','green','A finished thought.','can','a2',${padId}, NOW())`);
+  await page.goto(new URL('home.html?view=notes', HOME_URL).href);
+  await page.waitForSelector('.card-note');
+  const doneCard = page.locator('.card-note.note-done');
+  check('All notes lists the completed note', await doneCard.count() === 1);
+  check('completed card wears the done marker',
+    /A finished thought/.test(await doneCard.locator('.note-readonly-body').textContent().catch(() => '')));
+  await page.goto(HOME_URL);
+  await page.waitForSelector('.card-note');
+  check('landing grid hides the completed note',
+    await page.locator('.card-note.note-done').count() === 0
+    && !(await page.locator('body').innerText()).includes('A finished thought'));
+
   // cleanup
   psql(`DELETE FROM note WHERE scratchpad_id=${padId}; DELETE FROM scratchpad WHERE scratchpad_id=${padId};`);
   await browser.close();

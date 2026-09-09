@@ -269,6 +269,7 @@ const WriteSysHome = {
     const ctx = n.context || 'no context';
     const card = document.createElement('div');
     card.className = `card card-note color-${this.esc(n.color)}`;
+    if (n.completed_at) card.classList.add('note-done'); // All-notes shows completed
     card.dataset.noteId = n.note_id;
     if (n.scratchpad_id) card.dataset.scratchpadId = n.scratchpad_id;
     if (n.manuscript_id) card.dataset.manuscriptId = n.manuscript_id;
@@ -350,7 +351,10 @@ const WriteSysHome = {
       html = `<a class="home-back" href="home.html">← Home</a>` +
         this.section(this.esc(title), noteList.length, '', { notes: true });
     } else {
-      noteList = nt.slice(0, this.RECENT);
+      // The landing grid shows LIVE notes only; completed ones live in the
+      // All-notes view (filters later).
+      const live = nt.filter(n => !n.completed_at);
+      noteList = live.slice(0, this.RECENT);
       html = (this.points ? `<section class="home-section" id="points-section">
           <div id="points-grid" class="points-grid"></div>
           <div id="points-today" class="points-today-row"></div>
@@ -361,8 +365,8 @@ const WriteSysHome = {
         + this.section('Scratchpads', sp.length,
           sp.slice(0, this.RECENT).map(s => this.scratchpadCard(s)).join(''),
           { ghost: 'scratchpad', ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
-        + this.section('Notes', nt.length, '',
-          { notes: true, ...(nt.length > this.RECENT ? { seeAll: 'notes' } : {}) });
+        + this.section('Notes', live.length, '',
+          { notes: true, ...(live.length > this.RECENT ? { seeAll: 'notes' } : {}) });
     }
     root.innerHTML = html;
 

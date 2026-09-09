@@ -356,9 +356,24 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.locator('.na-row.na-completed .na-undo').first().click();
   await page.waitForTimeout(700);
   check('undo complete restores the note', psql(`SELECT completed_at IS NULL FROM note WHERE note_id=${noteId}`).trim() === 't');
-  // Points row: go-to arrow links to the note on the landing grid.
-  const gotoHref = await page.locator('.na-row.na-points .na-goto').first().getAttribute('href');
-  check('go-to arrow links to the note', gotoHref === `home.html?view=notes&note=${noteId}`, gotoHref);
+  // Points row: view arrow opens the note as a MODAL (the old href
+  // navigated the settings panel to a copy of the home page).
+  await page.locator('.na-row.na-points .na-goto').first().click();
+  const noteOverlay = page.locator('.na-note-overlay');
+  await noteOverlay.waitFor({ timeout: 5000 });
+  check('view arrow opens the note modal (darkened backdrop)',
+    await noteOverlay.count() === 1);
+  check('modal mounts the shared note component',
+    await page.locator('.na-note-overlay .sticky-note').count() === 1);
+  const rowPrev = (await page.locator('.na-row.na-points .na-prev').first().innerText()).trim();
+  const modalBody = await page.locator('.na-note-overlay .sticky-note').innerText();
+  check('modal shows the note body',
+    rowPrev !== '' && modalBody.includes(rowPrev.slice(0, 15)), `row=${rowPrev} modal=${modalBody}`);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  check('Escape closes the note modal', await noteOverlay.count() === 0);
+  check('settings page did NOT navigate away',
+    await page.locator('#na-rows').count() === 1);
   // "edit N points" → inline number input; a nonzero value EDITS in place.
   const editLabel = (await page.locator('.na-row.na-points .na-undo').first().innerText()).trim();
   check('points button reads "edit N points"', editLabel === 'edit 7 points', editLabel);

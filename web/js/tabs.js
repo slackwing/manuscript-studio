@@ -37,6 +37,34 @@ window.WriteSysTabs = (function () {
   const EMBED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
   if (EMBED) document.documentElement.classList.add('embedded');
 
+  // Home views belong to the HOME TAB. A plain href inside a panel iframe
+  // would navigate the PANEL to home.html — a second home page living
+  // inside the settings tab (the 2026-09-09 hijack). Intercept any
+  // home.html link in an embedded panel and route it to the shell: swap
+  // the shell's URL (view/note params intact), activate the home tab, and
+  // re-render the landing so deep-links (?view=notes&note=N) resolve.
+  if (EMBED) {
+    document.addEventListener('click', (e) => {
+      const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (!/^home\.html/.test(href)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const top = window.top;
+        top.history.replaceState(null, '', href);
+        top.WriteSysTabs.activate(null);
+        if (top.WriteSysHome) {
+          top.WriteSysHome._noteDeepLinked = false;
+          top.WriteSysHome.render();
+        }
+      } catch (err) {
+        location.href = href; // cross-origin surprise — degrade to old behavior
+      }
+    }, true);
+  }
+
   const read = () => {
     try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
   };

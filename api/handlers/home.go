@@ -63,6 +63,9 @@ type homeNote struct {
 	Tags         []models.Tag `json:"tags,omitempty"`
 	// Daily-tasks page only: points were awarded to this note today.
 	DoneToday bool `json:"done_today,omitempty"`
+	// Set for completed notes — shown in All notes, filtered from the
+	// landing grid client-side.
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 // joinContext renders a note's context label from its manuscript and scratchpad,
@@ -173,7 +176,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 				NoteID: n.NoteID, Color: n.Color, Priority: n.Priority,
 				TaskType: n.TaskType, Impact: n.Impact, Blocked: n.Blocked,
 				UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
-				SentenceID: n.SentenceID, Tags: n.Tags,
+				SentenceID: n.SentenceID, Tags: n.Tags, CompletedAt: n.CompletedAt,
 			}
 			if n.Body != nil {
 				hn.Body = *n.Body

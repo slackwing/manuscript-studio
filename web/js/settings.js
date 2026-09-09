@@ -299,6 +299,47 @@ WriteSysSettings.ACTION_ICONS = {
   completed: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
+// The note itself, centered over a darkened backdrop — the same DRY
+// component the landing grid mounts (read-only card). Completed and
+// deleted notes load too (the actions table references them).
+WriteSysSettings.openNoteModal = async function (noteId) {
+  let note;
+  try {
+    const r = await fetch(`api/notes/${noteId}`, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    note = await r.json();
+  } catch (e) {
+    alert('Could not load the note.');
+    return;
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'na-note-overlay';
+  const dialog = document.createElement('div');
+  dialog.className = 'na-note-dialog';
+  dialog.setAttribute('role', 'dialog');
+  if (window.WriteSysNoteWidget) {
+    dialog.appendChild(window.WriteSysNoteWidget.buildNoteElement(
+      note, {}, { readOnly: true, card: true, showComplete: false }));
+  } else {
+    const p = document.createElement('p');
+    p.textContent = note.body || '(empty note)';
+    dialog.appendChild(p);
+  }
+  const state = document.createElement('p');
+  state.className = 'na-note-state';
+  state.textContent = note.deleted ? 'deleted'
+    : note.completed_at
+      ? `completed ${new Date(note.completed_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+      : (note.context || '');
+  if (state.textContent) dialog.appendChild(state);
+  overlay.appendChild(dialog);
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+};
+
 WriteSysSettings.reloadActions = async function () {
   const status = document.getElementById('na-status');
   let actions;
@@ -359,14 +400,17 @@ WriteSysSettings.reloadActions = async function () {
       inp.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(false); });
     });
     tr.appendChild(when);
-    // Go-to arrow: the action's note itself, on the landing notes grid.
+    // View arrow: the note in a centered modal. Never a navigation — the
+    // old href hijacked the settings panel with a copy of the home page
+    // (and a completed note had no card there to land on anyway).
     const gotoTd = document.createElement('td');
     gotoTd.className = 'na-goto-cell';
     const gotoA = document.createElement('a');
     gotoA.className = 'na-goto';
-    gotoA.href = `home.html?view=notes&note=${a.note_id}`;
-    gotoA.title = 'Go to note';
+    gotoA.href = '#';
+    gotoA.title = 'View note';
     gotoA.innerHTML = window.WriteSysIcons.goto(13);
+    gotoA.addEventListener('click', (e) => { e.preventDefault(); this.openNoteModal(a.note_id); });
     gotoTd.appendChild(gotoA);
     tr.appendChild(gotoTd);
     const prev = document.createElement('td');

@@ -352,6 +352,7 @@ func (s *Server) setupRouter() {
 			r.Put("/point-events/{event_id}", s.noteActionHandlers.HandleEditPoints)
 			r.Post("/notes/{note_id}/restore", s.noteActionHandlers.HandleRestore)
 			r.Post("/notes/{note_id}/uncomplete", s.noteActionHandlers.HandleUncomplete)
+			r.Get("/notes/{note_id}", s.noteActionHandlers.HandleGetNote)
 			// Suggested-edit history (settings audit table).
 			r.Get("/suggestion-history", s.suggestionHandlers.HandleSuggestionHistory)
 

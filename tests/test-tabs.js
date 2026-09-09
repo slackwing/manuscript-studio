@@ -181,6 +181,27 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('second gear click focuses the existing tab — never two instances', await page.evaluate(() =>
     document.querySelectorAll('#ms-tabs .ms-tab-settings').length === 1
     && document.querySelectorAll('#ms-tab-panels iframe[src*="settings.html"]').length === 1));
+  // A home.html link INSIDE the panel iframe must open the HOME TAB —
+  // never navigate the panel itself (the 2026-09-09 hijack: a second home
+  // page living inside the settings tab).
+  await page.evaluate(() => {
+    const frame = document.querySelector('#ms-tab-panels iframe[src*="settings.html"]');
+    const doc = frame.contentDocument;
+    const a = doc.createElement('a');
+    a.href = 'home.html?view=notes';
+    a.id = 'embed-home-link';
+    a.textContent = 'x';
+    doc.body.appendChild(a);
+    doc.getElementById('embed-home-link').click();
+  });
+  await page.waitForFunction(() => document.getElementById('ms-tab-panels').hidden === true, null, { timeout: 5000 });
+  check('embedded home link activates the HOME tab (panel hidden)', true);
+  check('the settings panel did NOT navigate (still settings.html)', await page.evaluate(() =>
+    !!document.querySelector('#ms-tab-panels iframe[src*="settings.html"]')
+    && document.querySelector('#ms-tab-panels iframe[src*="settings.html"]')
+      .contentWindow.location.pathname.endsWith('settings.html')));
+  check('shell URL carries the view (All notes)',
+    await page.evaluate(() => new URLSearchParams(location.search).get('view')) === 'notes');
   await page.hover('#ms-tabs .ms-tab-settings');
   await page.click('#ms-tabs .ms-tab-settings .ms-tab-x');
   await page.waitForFunction(() => !document.querySelector('#ms-tab-panels iframe[src*="settings.html"]'));

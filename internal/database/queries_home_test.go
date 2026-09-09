@@ -915,3 +915,59 @@ func TestListCreateDeleteDailyRules_TagsAggregated(t *testing.T) {
 		t.Errorf("after delete: %+v", rules)
 	}
 }
+
+// 2026-09-09: completed notes ride the home payload (All notes shows them;
+// the landing grid filters client-side), and the settings note modal reads
+// single notes — completed and soft-deleted included.
+func TestHomeNotes_CompletedIncludedAndGetByID(t *testing.T) {
+	f := newITFixture(t)
+	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "Modal Pad")
+	if err != nil {
+		t.Fatalf("pad: %v", err)
+	}
+	live := f.createPadNote(t, pad.ScratchpadID, "still open")
+	done := f.createPadNote(t, pad.ScratchpadID, "finished thing")
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE note SET completed_at = NOW() WHERE note_id = $1`, done.NoteID); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	gone := f.createPadNote(t, pad.ScratchpadID, "trashed thing")
+	if _, err := f.pool.Exec(f.ctx,
+		`UPDATE note SET deleted_at = NOW() WHERE note_id = $1`, gone.NoteID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	rows, err := f.db.ListNotesForHome(f.ctx, f.username, 60)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	byID := map[int]HomeNote{}
+	for _, r := range rows {
+		byID[r.NoteID] = r
+	}
+	if _, ok := byID[live.NoteID]; !ok {
+		t.Error("live note missing from home payload")
+	}
+	d, ok := byID[done.NoteID]
+	if !ok || d.CompletedAt == nil {
+		t.Errorf("completed note must be included WITH completed_at (ok=%v row=%+v)", ok, d)
+	}
+	if _, ok := byID[gone.NoteID]; ok {
+		t.Error("soft-deleted note must stay excluded from the home payload")
+	}
+
+	// Single-note reader: completed and deleted both load; others' notes 404.
+	got, err := f.db.GetHomeNoteByID(f.ctx, f.username, done.NoteID)
+	if err != nil || got == nil || got.CompletedAt == nil || got.DeletedAt != nil {
+		t.Errorf("get completed: err=%v row=%+v", err, got)
+	}
+	got, err = f.db.GetHomeNoteByID(f.ctx, f.username, gone.NoteID)
+	if err != nil || got == nil || got.DeletedAt == nil {
+		t.Errorf("get deleted: err=%v row=%+v", err, got)
+	}
+	other := f.newUser(t)
+	got, err = f.db.GetHomeNoteByID(f.ctx, other, done.NoteID)
+	if err != nil || got != nil {
+		t.Errorf("cross-user read must return nil, got %+v (err=%v)", got, err)
+	}
+}

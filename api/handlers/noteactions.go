@@ -77,6 +77,50 @@ func (h *NoteActionHandlers) HandleList(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(map[string]interface{}{"actions": actions})
 }
 
+// HandleGetNote: GET /api/notes/{note_id} — one note in the home-card
+// shape, completed and soft-deleted included (the settings note modal
+// shows any note its actions table references). 404 for others' notes.
+func (h *NoteActionHandlers) HandleGetNote(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Bad note id", http.StatusBadRequest)
+		return
+	}
+	n, err := h.DB.GetHomeNoteByID(r.Context(), session.Username, noteID)
+	if err != nil {
+		log.Printf("note-actions: get note %d: %v", noteID, err)
+		http.Error(w, "Failed to load note", http.StatusInternalServerError)
+		return
+	}
+	if n == nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	body := ""
+	if n.Body != nil {
+		body = *n.Body
+	}
+	context := n.Context
+	if n.SketchID != nil {
+		context = joinContext(n.Context, "Sketch")
+	} else {
+		context = joinContext(n.Context, n.ScratchpadTitle)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"note_id": n.NoteID, "color": n.Color, "body": body,
+		"priority": n.Priority, "task_type": n.TaskType, "impact": n.Impact,
+		"blocked": n.Blocked, "updated_at": n.UpdatedAt, "tags": n.Tags,
+		"context": context, "completed_at": n.CompletedAt,
+		"deleted": n.DeletedAt != nil,
+	})
+}
+
 // HandleUnaward: DELETE /api/point-events/{event_id} — hard delete; the
 // award never happened.
 func (h *NoteActionHandlers) HandleUnaward(w http.ResponseWriter, r *http.Request) {
