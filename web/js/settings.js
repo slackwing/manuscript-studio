@@ -18,7 +18,7 @@ const WriteSysSettings = {
       if (!e.target.closest('.tt-chip')) this.disarmAll();
     });
     await Promise.all([this.reload(), this.reloadActions(), this.initRules(),
-      this.reloadSuggestionHistory()]);
+      this.initMarkers(), this.reloadSuggestionHistory()]);
   },
 
   csrf() {
@@ -297,6 +297,78 @@ WriteSysSettings.ACTION_ICONS = {
   points: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   deleted: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>',
   completed: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
+// ---- Markers: slug → symbol (settings "Markers") -------------------------
+// Each row: the slug + a shape picker (the catalog from marker-symbols.js)
+// + remove (back to the default diamond). Enter on the input adds a row.
+WriteSysSettings.initMarkers = async function () {
+  const rows = document.getElementById('mk-rows');
+  const input = document.getElementById('mk-input');
+  const status = document.getElementById('mk-status');
+  const MS = window.WriteSysMarkerSymbols;
+  if (!rows || !MS) return;
+  const req = (method, slug, body) => fetch(`api/marker-symbols/${encodeURIComponent(slug)}`, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const row = (slug) => {
+    const div = document.createElement('div');
+    div.className = 'mk-row';
+    div.dataset.slug = slug;
+    const chip = document.createElement('span');
+    chip.className = 'mk-slug';
+    chip.textContent = '#' + slug;
+    div.appendChild(chip);
+    const shapes = document.createElement('span');
+    shapes.className = 'mk-shapes';
+    for (const key of Object.keys(MS.SHAPES)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mk-shape' + ((MS.map[slug] || 'diamond') === key ? ' active' : '');
+      b.dataset.shape = key;
+      b.title = key;
+      b.innerHTML = `<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">${MS.SHAPES[key]}</svg>`;
+      b.onclick = async () => {
+        const r = await req('PUT', slug, { symbol: key });
+        if (!r.ok) { status.textContent = 'Save failed.'; return; }
+        MS.map[slug] = key;
+        shapes.querySelectorAll('.mk-shape').forEach(x => x.classList.toggle('active', x === b));
+        status.textContent = '';
+      };
+      shapes.appendChild(b);
+    }
+    div.appendChild(shapes);
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'mk-remove';
+    x.title = 'Remove';
+    x.textContent = '×';
+    x.onclick = async () => {
+      const r = await req('DELETE', slug);
+      if (!r.ok) { status.textContent = 'Remove failed.'; return; }
+      delete MS.map[slug];
+      div.remove();
+    };
+    div.appendChild(x);
+    return div;
+  };
+  await MS.load();
+  Object.keys(MS.map).sort().forEach((slug) => rows.appendChild(row(slug)));
+  input.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    const slug = input.value.trim().replace(/^#/, '');
+    if (!/^[a-z0-9-]{1,64}$/.test(slug)) { status.textContent = 'Slugs are a–z, 0–9, dashes.'; return; }
+    if (rows.querySelector(`.mk-row[data-slug="${CSS.escape(slug)}"]`)) { input.value = ''; return; }
+    const r = await req('PUT', slug, { symbol: 'diamond' });
+    if (!r.ok) { status.textContent = 'Save failed.'; return; }
+    MS.map[slug] = 'diamond';
+    rows.appendChild(row(slug));
+    input.value = '';
+    status.textContent = '';
+  });
 };
 
 // The note itself, centered over a darkened backdrop — the same DRY

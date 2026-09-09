@@ -547,3 +547,26 @@ body.home-page {
 /* A completed note's card in All notes: present but visibly done. */
 .card-note.note-done { opacity: 0.65; }
 .card-note.note-done .note-card-ctx::before { content: '✓ '; color: #1f6f1f; }
+
+/* Markers section (settings): slug → shape-picker rows. */
+.mk-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; }
+.mk-slug { min-width: 140px; color: #57503f; font-size: 14px; }
+.mk-shapes { display: flex; gap: 4px; }
+.mk-shape {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #6b6353;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.mk-shape:hover { background: #efece3; }
+.mk-shape.active { border-color: #57503f; color: #1a1a1a; background: #efece3; }
+.mk-remove { border: none; background: transparent; color: #b3ac9c; font-size: 16px; cursor: pointer; padding: 0 4px; }
+.mk-remove:hover { color: #b33b3a; }
+#mk-input { margin-top: 6px; }

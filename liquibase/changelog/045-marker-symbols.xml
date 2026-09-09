@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 045 (2026-09-09): per-user marker symbols. A &marker#slug renders a
+         black diamond by default; this table lets the author map specific
+         slugs to other shapes (triangle-down for #weird / #digression,
+         etc.). Symbol is a shape KEY from the frontend catalog
+         (web/js/marker-symbols.js), validated by the handler. -->
+    <changeSet id="045-marker-symbols" author="claude">
+        <createTable tableName="marker_symbol">
+            <column name="user_id" type="TEXT"><constraints nullable="false"/></column>
+            <column name="slug" type="TEXT"><constraints nullable="false"/></column>
+            <column name="symbol" type="TEXT"><constraints nullable="false"/></column>
+        </createTable>
+        <addPrimaryKey tableName="marker_symbol" columnNames="user_id, slug"/>
+    </changeSet>
+
+</databaseChangeLog>

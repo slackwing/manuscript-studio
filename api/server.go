@@ -36,6 +36,7 @@ type Server struct {
 	scratchpadHandlers *handlers.ScratchpadHandlers
 	variationHandlers    *handlers.VariationHandlers
 	taskTypeHandlers     *handlers.TaskTypeHandlers
+	markerHandlers       *handlers.MarkerHandlers
 	noteActionHandlers   *handlers.NoteActionHandlers
 	dailyRuleHandlers    *handlers.DailyRuleHandlers
 	homeHandlers       *handlers.HomeHandlers
@@ -92,6 +93,10 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			Config:       cfg,
 		},
 		taskTypeHandlers: &handlers.TaskTypeHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+		},
+		markerHandlers: &handlers.MarkerHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
 		},
@@ -345,6 +350,10 @@ func (s *Server) setupRouter() {
 			r.Put("/task-types/order", s.taskTypeHandlers.HandleReorder)
 			r.Put("/task-types/{name}/color", s.taskTypeHandlers.HandleSetColor)
 			r.Delete("/task-types/{name}", s.taskTypeHandlers.HandleDelete)
+			// Marker symbols (settings "Markers" section).
+			r.Get("/marker-symbols", s.markerHandlers.HandleList)
+			r.Put("/marker-symbols/{slug}", s.markerHandlers.HandleSet)
+			r.Delete("/marker-symbols/{slug}", s.markerHandlers.HandleDelete)
 			// Note actions (settings audit table) + undos.
 			r.Get("/note-actions", s.noteActionHandlers.HandleList)
 			r.Put("/note-actions/date", s.noteActionHandlers.HandleSetDate)

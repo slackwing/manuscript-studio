@@ -33,7 +33,9 @@ function psql(sql) {
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
   await page.waitForTimeout(150);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
-  await page.waitForTimeout(600);
+  // Wait for the ref to actually land — under parallel suite load a fixed
+  // pause isn't enough (same flake as test-noteref-survives-edits).
+  await page.waitForSelector('.sn-note-ref', { timeout: 15000 });
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');
   const float = page.locator('.sn-note-float .sticky-note');
 

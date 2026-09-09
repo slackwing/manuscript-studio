@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="css/book.css?v=207">
   <link rel="stylesheet" href="notes/note-widget.css?v=1">
   <link rel="stylesheet" href="css/chrome.css?v=22">
-  <link rel="stylesheet" href="css/home.css?v=36">
+  <link rel="stylesheet" href="css/home.css?v=37">
   <!-- Pane-widget layout (sn-cols/rails) for the suggested-edit history
        dialog — same sheet the book page loads. -->
   <link rel="stylesheet" href="scratchpad/scratchpad.css?v=68">
@@ -52,6 +52,16 @@
     </section>
     <section class="home-section">
       <div class="home-section-head">
+        <h2>Markers</h2>
+      </div>
+      <div class="settings-section">
+        <div id="mk-rows"></div>
+        <input id="mk-input" type="text" placeholder="#slug …" autocomplete="off">
+        <div id="mk-status" class="settings-hint"></div>
+      </div>
+    </section>
+    <section class="home-section">
+      <div class="home-section-head">
         <h2>Note actions</h2>
       </div>
       <div class="settings-section na-section">
@@ -90,6 +100,7 @@
       if (session.csrf_token) sessionStorage.setItem('csrf_token', session.csrf_token);
     })();
   </script>
-  <script src="js/settings.js?v=14"></script>
+  <script src="js/marker-symbols.js?v=1"></script>
+  <script src="js/settings.js?v=15"></script>
 </body>
 </html>

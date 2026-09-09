@@ -43,6 +43,9 @@ const WriteSysRenderer = {
     this.manuscriptId = idStr ? parseInt(idStr, 10) : null;
 
     if (window.WriteSysOutline) window.WriteSysOutline.init();
+    // Marker shapes before first render — a mapped slug must never flash
+    // the default diamond. Failure = default diamonds, never a block.
+    if (window.WriteSysMarkerSymbols) await window.WriteSysMarkerSymbols.load();
 
     // Delegated click for inline references: scroll to the target sentence.
     // Attached once; survives re-renders since it's on document.
@@ -983,8 +986,12 @@ const WriteSysRenderer = {
       // unknowns still render as nothing.
       const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
       const args = c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '';
+      // Shape by slug (settings "Markers"): mapped slugs wear their custom
+      // symbol, everything else the default diamond.
+      const glyph = window.WriteSysMarkerSymbols
+        ? window.WriteSysMarkerSymbols.svgFor(c.slug) : CMD_DIAMOND_SVG;
       return `<span class="cmd-diamond cmd-diamond-marker" data-kind="${escapeHTML(c.kind)}"${slug}${args}`
-        + ` title="${escapeHTML(c.raw || '&' + c.kind)}">${CMD_DIAMOND_SVG}</span>`;
+        + ` title="${escapeHTML(c.raw || '&' + c.kind)}">${glyph}</span>`;
     }
     if (c.kind === 'fix') {
       // &fix{…} is a DISPLAY command: its contents render exactly as the
@@ -1094,8 +1101,12 @@ const WriteSysRenderer = {
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
       if (cmd.unknown && diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
+        // A marker's custom shape rides into diffs too (color still says
+        // which way); non-marker unknowns keep the diamond.
+        const glyph = (cmd.kind === 'marker' || cmd.kind === 'mark') && window.WriteSysMarkerSymbols
+          ? window.WriteSysMarkerSymbols.svgFor(cmd.slug) : CMD_DIAMOND_SVG;
         return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
-          + CMD_DIAMOND_SVG + '</span>';
+          + glyph + '</span>';
       }
       return this.renderInlineCommand({
         kind: cmd.kind, slug: cmd.slug, slugs: cmd.slugs, notes: cmd.args[0] || '',

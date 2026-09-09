@@ -368,6 +368,21 @@ const { suggestEditor } = require('./test-utils');
     check('R14: committed bare-slug &mark#slug → black diamond (both spellings display)',
       committedBare.includes('cmd-diamond-marker') && committedBare.includes('data-slug="pressure"')
       && !/>[^<]*&amp;mark/.test(committedBare), committedBare);
+    // Custom marker symbols (settings "Markers"): a mapped slug wears its
+    // shape — committed AND in diffs; unmapped slugs keep the diamond.
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.map = { weird: 'triangle-down' }; });
+    const TRI = 'M0 2.5h9L4.5 11.5z';
+    const mapped = await render([{ id: 'r14m', text: 'so odd &marker#weird it was.' }]);
+    check('R14: mapped slug → custom shape (triangle-down path)',
+      mapped.includes(TRI) && mapped.includes('cmd-diamond-marker'), mapped);
+    const unmapped = await render([{ id: 'r14n', text: 'so odd &marker#normal it was.' }]);
+    check('R14: unmapped slug keeps the diamond',
+      unmapped.includes('M4.5 0 9 6.5 4.5 13 0 6.5z') && !unmapped.includes(TRI), unmapped);
+    const mappedDiff = await page.evaluate(() =>
+      window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;marker#weird</strong> here'));
+    check('R14: mapped slug keeps its shape in a diff (green triangle)',
+      mappedDiff.includes('cmd-diamond-added') && mappedDiff.includes(TRI), mappedDiff);
+    await page.evaluate(() => { window.WriteSysMarkerSymbols.map = {}; });
     // &fix CONTENT-level diff (the weird-by-design rules, 2026-09-07):
     // wrapping unchanged words → NO strike/repeat: purple ◆ at the wrap
     // point + the words in bold purple, nothing red, nothing green.

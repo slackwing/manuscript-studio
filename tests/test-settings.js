@@ -49,8 +49,8 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
 
   // --- Copy: bare section heads (non-task first), no descriptions ---
   const heads = await page.locator('.home-section-head h2').allInnerTexts();
-  check('sections: non-task, task, daily rules, note actions, suggested edits',
-    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Daily task rules|Note actions|Suggested edits', heads.join('|'));
+  check('sections: non-task, task, daily rules, markers, note actions, suggested edits',
+    heads.map(h => h.trim()).join('|') === 'Non-task types|Task types|Daily task rules|Markers|Note actions|Suggested edits', heads.join('|'));
 
   // --- Suggested-edit history: section loads; read-only dialog reuses the
   // manuscript modal's shell + diff (suggestions.js openHistoryDialog) ---
@@ -356,6 +356,26 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.locator('.na-row.na-completed .na-undo').first().click();
   await page.waitForTimeout(700);
   check('undo complete restores the note', psql(`SELECT completed_at IS NULL FROM note WHERE note_id=${noteId}`).trim() === 't');
+  // --- Markers: slug → symbol picker rows ---
+  await page.locator('#mk-input').fill('#weird');
+  await page.locator('#mk-input').press('Enter');
+  await page.waitForSelector('.mk-row[data-slug="weird"]', { timeout: 5000 });
+  check('Enter adds a marker row (diamond preselected)',
+    await page.locator('.mk-row[data-slug="weird"] .mk-shape.active[data-shape="diamond"]').count() === 1);
+  await page.locator('.mk-row[data-slug="weird"] .mk-shape[data-shape="triangle-down"]').click();
+  await page.waitForFunction(() =>
+    document.querySelector('.mk-row[data-slug="weird"] .mk-shape.active')?.dataset.shape === 'triangle-down', null, { timeout: 5000 });
+  check('picking a shape persists it',
+    psql(`SELECT symbol FROM marker_symbol WHERE user_id='${TEST_USERNAME}' AND slug='weird'`).trim() === 'triangle-down');
+  await page.reload();
+  await page.waitForSelector('.mk-row[data-slug="weird"]', { timeout: 8000 });
+  check('reload restores the picked shape',
+    await page.locator('.mk-row[data-slug="weird"] .mk-shape.active[data-shape="triangle-down"]').count() === 1);
+  await page.locator('.mk-row[data-slug="weird"] .mk-remove').click();
+  await page.waitForFunction(() => !document.querySelector('.mk-row[data-slug="weird"]'), null, { timeout: 5000 });
+  check('remove reverts the slug to default (row gone, no DB row)',
+    psql(`SELECT count(*) FROM marker_symbol WHERE user_id='${TEST_USERNAME}' AND slug='weird'`).trim() === '0');
+
   // Points row: view arrow opens the note as a MODAL (the old href
   // navigated the settings panel to a copy of the home page).
   await page.locator('.na-row.na-points .na-goto').first().click();
