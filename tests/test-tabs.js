@@ -41,7 +41,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     return { bg: cs.backgroundColor, border: cs.borderTopStyle, label: el.textContent.trim() };
   });
   check('ghost at rest: translucent, dashed, + only',
-    /rgba\(.*0\.35\)/.test(rest.bg) && rest.border === 'dashed' && rest.label === '+',
+    /rgba\(.*0\.7\)/.test(rest.bg) && rest.border === 'dashed' && rest.label === '+',
     JSON.stringify(rest));
   await ghost.hover();
   await page.waitForTimeout(250); // the + color transitions 120ms

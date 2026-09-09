@@ -38,8 +38,14 @@ const { TEST_URL, loginAsTestUser,
   // the spaces — no margin pull, no paragraph class.
   {
     const id = 'syn-flush';
-    const html = await render([{ id, text: 'We probably recounted tales.' }],
+    // While PENDING, the added anchor diamonds like every changed command —
+    // the ⚓ only rides in the prose once committed.
+    const pendingHtml = await render([{ id, text: 'We probably recounted tales.' }],
       { [id]: '&anchor{The salvia night} We probably recounted tales.' });
+    check('flush: PENDING anchor shows the ◆, not the ⚓',
+      /cmd-diamond-added/.test(pendingHtml) && !/cmd-anchor-inline/.test(pendingHtml), pendingHtml);
+    const html = await render(
+      [{ id, text: '&anchor{The salvia night} We probably recounted tales.' }], {});
     check('flush: ⚓ rides inline in the prose', /cmd-anchor-inline/.test(html));
     check('flush: no margin glyph for a marker-less anchor', !/cmd-anchor-margin/.test(html));
     check('flush: paragraph has no has-anchor-margin class', !/<p class="[^"]*has-anchor-margin/.test(html));

@@ -1091,6 +1091,13 @@ const WriteSysRenderer = {
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
       if (diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
+        // A mis-syntaxed placeholder (or a paragraphs-form riding mid-line)
+        // is literal PROSE, not a command — leave it to the word diff, the
+        // same way renderInlineCommand prints it literal once committed.
+        if (cmd.kind === 'placeholder') {
+          const spec = window.WriteSysCommand.placeholderSpec(cmd.args || []);
+          if (!spec || !spec.valid || spec.unit !== 'sentences') return m;
+        }
         return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
           + CMD_DIAMOND_SVG + '</span>';
       }
