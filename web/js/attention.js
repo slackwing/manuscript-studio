@@ -11,7 +11,7 @@
  *   After Paged.js finishes, we harvest the page geometry, sample a(t)
  *   down each page, and pre-render one rotated-axes SVG per page:
  *   t runs DOWN the page, attention runs RIGHT. a=0 sits on the sheet's
- *   LEFT EDGE; +FULL_SCALE on the sheet's right edge; negative attention
+ *   LEFT EDGE; +FULL_SCALE (25) on the sheet's right edge; negative attention
  *   spills OFF the sheet into the gray backdrop gutter (the author's
  *   explicit wish — hence the SVG canvas extends a sheet-width beyond
  *   each side). Positive area fills light green, negative light red.
@@ -37,7 +37,7 @@ window.WriteSysAttention = {
     // — 2026-09-09. Keep A small enough that u* stays near one line.)
     ATTACK_WORDS: 3,    // rise time-constant — "fast smooth curve up"
     DECAY_WORDS: 250,   // fall to 1/e of the contribution after this many words
-    FULL_SCALE: 10,     // a=+10 lands exactly on the sheet's right edge
+    FULL_SCALE: 25,     // a=+25 lands exactly on the sheet's right edge (author-calibrated 2026-09-09; was 10)
     SAMPLE_STEP_PX: 3,  // vertical sampling resolution per page
     CUTOFF_DECAYS: 6,   // ignore a marker beyond 6×DECAY_WORDS — contributes ~0.25%
   },

@@ -48,7 +48,7 @@ One constants block, one place, fat comment — `web/js/attention.js`:
 
     ATTENTION_ATTACK_WORDS = 12    // rise ~feels instant but smooth
     ATTENTION_DECAY_WORDS  = 250   // contribution falls to 1/e after this
-    ATTENTION_FULL_SCALE   = 10    // a=+10 lands on the text column's right edge
+    ATTENTION_FULL_SCALE   = 25    // a=+25 lands on the sheet's right edge
 
 Also mirrored live on `window.WriteSysAttention.TUNING` so values can be
 tweaked in the console mid-read (hold Tab, judge, tweak, re-hold) before
@@ -96,7 +96,7 @@ function of the final page geometry.
    `a(t)` (kernel cutoff at 6×DECAY keeps it O(markers-in-window)).
 4. **Emit SVG.** Per page, one absolutely-positioned SVG with rotated
    axes — t downward, attention rightward. `a=0` at the SHEET's left
-   edge; `ATTENTION_FULL_SCALE` (+10) at the sheet's right edge; negative
+   edge; `ATTENTION_FULL_SCALE` (+25, author-calibrated from 10) at the sheet's right edge; negative
    attention spills OFF the sheet into the gray backdrop gutter left of
    the page (author-confirmed 2026-09-09: "the left margin of the
    website", not the sheet's inner margin) — the SVG canvas extends one
