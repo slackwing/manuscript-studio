@@ -713,6 +713,8 @@ func (h *SuggestionHandlers) HandlePushSuggestions(w http.ResponseWriter, r *htt
 		return
 	}
 
+	stampPushedSuggestions(ctx, h.DB, results, session.Username, commitSHA)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pushSuggestionsResponse{
 		Branch:     branch,
@@ -766,6 +768,10 @@ func (h *SuggestionHandlers) commitLocalSuggestions(
 		return
 	}
 
+	// Stamp BEFORE enqueueing — local mode migrates immediately, and the
+	// provenance must be on the rows when settle reads them.
+	stampPushedSuggestions(ctx, h.DB, results, username, commitSHA)
+
 	migrationID, err := h.Admin.enqueueMigration(ctx, manuscript, commitSHA)
 	if err != nil && !errors.Is(err, database.ErrMigrationInProgress) {
 		// The commit landed; the migration can be retried via sync. Surface
@@ -782,6 +788,21 @@ func (h *SuggestionHandlers) commitLocalSuggestions(
 		Results:     results,
 		MigrationID: migrationID,
 	})
+}
+
+// stampPushedSuggestions records push provenance on every row the push
+// applied (see StampSuggestionsPushed). Best-effort: a failed stamp only
+// degrades the eventual settle to fuzzy matching, so log and continue.
+func stampPushedSuggestions(ctx context.Context, db *database.DB, results []sentence.SuggestionApplyResult, username, commitSHA string) {
+	var appliedIDs []string
+	for _, r := range results {
+		if r.Applied {
+			appliedIDs = append(appliedIDs, r.SentenceID)
+		}
+	}
+	if _, err := db.StampSuggestionsPushed(ctx, appliedIDs, username, commitSHA); err != nil {
+		log.Printf("suggestions: stamp pushed rows (%s): %v", commitSHA, err)
+	}
 }
 
 // canonicalSuggestionsBranch is the one-and-only branch name that push and

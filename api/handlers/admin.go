@@ -537,7 +537,27 @@ func (h *AdminHandlers) runMigration(migrationID int, m *models.Manuscript, comm
 		slog.Int("bytes", len(prepared.Content)),
 	)
 
-	result, err := h.Processor.Run(ctx, mlog, migrationID, m.ManuscriptID, prepared.CommitHash, prepared.BranchName, prepared.Content)
+	// Push provenance: suggestions the push handler stamped with the commit
+	// it wrote are applied BY CONSTRUCTION once that commit is in the
+	// migrated history — verify ancestry here (the one place holding both
+	// the git checkout and the incoming commit) and hand the verified SHAs
+	// to the processor's settle. A squash merge discards the pushed
+	// commit's object, so IsAncestor fails and settle falls back to fuzzy
+	// matching — degraded, never wrong.
+	var appliedPushCommits []string
+	if parentMig, pErr := h.DB.GetLatestMigration(ctx, m.ManuscriptID); pErr == nil && parentMig != nil {
+		if shas, sErr := h.DB.GetPendingPushedCommits(ctx, parentMig.MigrationID); sErr == nil {
+			for _, sha := range shas {
+				if gitRepo.IsAncestor(ctx, sha, prepared.CommitHash) {
+					appliedPushCommits = append(appliedPushCommits, sha)
+				}
+			}
+		} else {
+			mlog.Warn("pending pushed commits lookup failed (fuzzy settle only)", slog.Any("err", sErr))
+		}
+	}
+
+	result, err := h.Processor.Run(ctx, mlog, migrationID, m.ManuscriptID, prepared.CommitHash, prepared.BranchName, prepared.Content, appliedPushCommits)
 	if err != nil {
 		// Processor.Run has already marked the row as error.
 		mlog.Warn("processor failed", slog.Any("err", err))

@@ -7,6 +7,7 @@ package database
 // TestMigration_UnappliedSuggestionSurvivesWindowPrune.)
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/slackwing/manuscript-studio/internal/models"
@@ -149,7 +150,7 @@ func TestSettle_EmptyNormalizedSuggestionSurvives(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestSettle_NilOrderedIDsFallsBack(t *testing.T) {
 		t.Fatalf("accept: %v", err)
 	}
 
-	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, nil)
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, nil, nil)
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -211,7 +212,7 @@ func TestSettle_ScopedToMigration(t *testing.T) {
 		t.Fatalf("accept new: %v", err)
 	}
 
-	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, newMigID, newSids)
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, newMigID, newSids, nil)
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -246,7 +247,7 @@ func TestSettle_UnreviewedSiblingKeepsGroupWhole(t *testing.T) {
 		t.Fatalf("theirs: %v", err)
 	}
 
-	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -282,7 +283,7 @@ func TestSettle_BrokenAcceptanceResetsAndLogs(t *testing.T) {
 		t.Fatalf("mark stale: %v", err)
 	}
 
-	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -323,7 +324,7 @@ func TestSettle_AllRejectedGroupRetires(t *testing.T) {
 		t.Fatalf("reject: %v", err)
 	}
 
-	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids)
+	retired, unaccepted, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
 	if err != nil {
 		t.Fatalf("settle: %v", err)
 	}
@@ -607,5 +608,161 @@ func TestNormalizeTextPremise(t *testing.T) {
 	}
 	if got := sentence.NormalizeText("?!... ---"); got != "" {
 		t.Errorf("punctuation-only should normalize empty, got %q", got)
+	}
+}
+
+// ---- 2026-09-09 zombie-suggestion incident battery -----------------------
+// A 43-edit push left 8 rows haunting the manuscript: 5 accepted DELETIONS
+// (empty text never fuzzy-matches "applied"), 2 edits that resegmented into
+// merged sentences, and 1 nine-sentence rewrite past the join window. Push
+// provenance retires all of them by construction; the widened window covers
+// externally-applied rewrites.
+
+// An accepted deletion is only recognizable as applied via provenance.
+func TestSettle_PushProvenanceRetiresAcceptedDeletion(t *testing.T) {
+	f := newITFixture(t)
+	migID, sids := f.makeDoneMigration(t, "c1", "Neighbor that survives.", "Another survivor.")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, ""); err != nil {
+		t.Fatalf("upsert deletion: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	if n, err := f.db.StampSuggestionsPushed(f.ctx, []string{sids[0]}, f.username, "push-sha-del"); err != nil || n != 1 {
+		t.Fatalf("stamp: n=%d err=%v", n, err)
+	}
+
+	// Without provenance the deletion is unmatchable and survives — the
+	// exact haunting from the incident.
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
+	if err != nil {
+		t.Fatalf("settle (no provenance): %v", err)
+	}
+	if retired != 0 {
+		t.Fatalf("retired %d without provenance, want 0 (premise)", retired)
+	}
+	// With the pushed commit verified in history: applied by construction.
+	retired, _, err = f.db.SettleSuggestionsForMigration(f.ctx, migID, sids,
+		map[string]bool{"push-sha-del": true})
+	if err != nil {
+		t.Fatalf("settle (provenance): %v", err)
+	}
+	if retired != 1 {
+		t.Errorf("retired %d with provenance, want 1", retired)
+	}
+}
+
+// A rewrite whose text bears no window relation to its sentence still
+// retires under provenance.
+func TestSettle_PushProvenanceRetiresUnmatchableRewrite(t *testing.T) {
+	f := newITFixture(t)
+	migID, sids := f.makeDoneMigration(t, "c1", "Sentence one.", "Sentence two.")
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username,
+		"Totally new passage that shares no words with anything committed."); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	if _, err := f.db.StampSuggestionsPushed(f.ctx, []string{sids[0]}, f.username, "push-sha-rw"); err != nil {
+		t.Fatalf("stamp: %v", err)
+	}
+
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids,
+		map[string]bool{"push-sha-rw": true})
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 1 {
+		t.Errorf("retired %d, want 1", retired)
+	}
+}
+
+// No provenance (external commit / squash merge): a rewrite that
+// resegmented into NINE sentences must still window-match — the old w=3
+// cap missed it and the un-consummated acceptance would have re-applied
+// and duplicated the passage on the next push.
+func TestSettle_WindowCoversNineSentenceRewrite(t *testing.T) {
+	f := newITFixture(t)
+	texts := []string{
+		"Rewrite part one.", "Rewrite part two.", "Rewrite part three.",
+		"Rewrite part four.", "Rewrite part five.", "Rewrite part six.",
+		"Rewrite part seven.", "Rewrite part eight.", "Rewrite part nine.",
+	}
+	migID, sids := f.makeDoneMigration(t, "c1", texts...)
+
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username,
+		strings.Join(texts, "\n")); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	acc := models.ReviewAccepted
+	if _, err := f.db.SetSuggestionReview(f.ctx, sids[0], f.username, &acc, f.username); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if retired != 1 {
+		t.Errorf("retired %d, want 1 (9-sentence join must be inside the window)", retired)
+	}
+}
+
+// Provenance survives the carry to the next migration's sentences.
+func TestCarry_PreservesPushProvenance(t *testing.T) {
+	f := newITFixture(t)
+	_, sids1 := f.makeDoneMigration(t, "c1", "Original sentence.")
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids1[0], f.username, "Edited sentence."); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := f.db.StampSuggestionsPushed(f.ctx, []string{sids1[0]}, f.username, "push-sha-carry"); err != nil {
+		t.Fatalf("stamp: %v", err)
+	}
+
+	mig2, sids2 := f.makeDoneMigration(t, "c2", "Original sentence.")
+	if _, err := f.db.CarrySuggestionsForwardBulk(f.ctx,
+		[]string{sids1[0]}, []string{sids2[0]}, []bool{false}); err != nil {
+		t.Fatalf("carry: %v", err)
+	}
+
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, mig2, f.username)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(rows) != 1 || rows[0].PushedInCommit == nil || *rows[0].PushedInCommit != "push-sha-carry" {
+		t.Errorf("carried row = %+v, want pushed_in_commit preserved", rows)
+	}
+	// The pending-commit sweep the migration runner uses must surface it.
+	shas, err := f.db.GetPendingPushedCommits(f.ctx, mig2)
+	if err != nil {
+		t.Fatalf("pending commits: %v", err)
+	}
+	if len(shas) != 1 || shas[0] != "push-sha-carry" {
+		t.Errorf("pending commits = %v", shas)
+	}
+}
+
+// Editing a pushed suggestion is a NEW proposal — the stamp must clear, or
+// the stale text would consummate as if the new text had been pushed.
+func TestUpsert_ClearsPushProvenance(t *testing.T) {
+	f := newITFixture(t)
+	_, sids := f.makeDoneMigration(t, "c1", "A sentence.")
+	if _, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "First text."); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := f.db.StampSuggestionsPushed(f.ctx, []string{sids[0]}, f.username, "push-sha-x"); err != nil {
+		t.Fatalf("stamp: %v", err)
+	}
+	edited, err := f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "Second text.")
+	if err != nil {
+		t.Fatalf("re-upsert: %v", err)
+	}
+	if edited.PushedInCommit != nil {
+		t.Errorf("pushed_in_commit = %q after edit, want cleared", *edited.PushedInCommit)
 	}
 }

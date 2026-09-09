@@ -67,7 +67,7 @@ func TestRun_MarksErrorEvenIfMarkRunningFails(t *testing.T) {
 	dead, cancel := context.WithCancel(f.ctx)
 	cancel()
 
-	if _, err := f.processor.Run(dead, slog.Default(), id, f.manuscriptID, "doomed-run", "main", "Some content."); err == nil {
+	if _, err := f.processor.Run(dead, slog.Default(), id, f.manuscriptID, "doomed-run", "main", "Some content.", nil); err == nil {
 		t.Fatal("Run with dead context should return an error")
 	}
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 044 (2026-09-09): push provenance. When push-suggestions writes a
+         commit, it stamps every row it applied with that commit's SHA. At
+         migration time, a stamped row whose commit is an ancestor of the
+         migrated commit is applied BY CONSTRUCTION — no fuzzy text match.
+         This is what retires accepted deletions (empty text can never
+         fuzzy-match) and giant multi-sentence rewrites (which resegment
+         past any join window) instead of letting them haunt neighboring
+         sentences as zombie suggestions. NULL = never pushed. -->
+    <changeSet id="044-suggestion-pushed-commit" author="claude">
+        <addColumn tableName="suggested_change">
+            <column name="pushed_in_commit" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

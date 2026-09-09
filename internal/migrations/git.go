@@ -276,6 +276,19 @@ func (g *GitRepository) PathExistsAtCommit(ctx context.Context, commitHash, path
 	return strings.TrimSpace(string(out)) != "", nil
 }
 
+// IsAncestor reports whether `ancestor` is an ancestor of (or equal to)
+// `descendant` in this checkout. Unknown SHAs are NOT errors — a squash
+// merge discards the pushed commit's object, and the caller treats
+// "unknown" as "not an ancestor" (falling back to fuzzy applied-matching).
+func (g *GitRepository) IsAncestor(ctx context.Context, ancestor, descendant string) bool {
+	if ancestor == descendant {
+		return true
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", g.Path, "merge-base",
+		"--is-ancestor", ancestor, descendant)
+	return cmd.Run() == nil
+}
+
 // WriteCommitPushBranch creates (or force-updates) a branch from a given
 // base commit, with each entry in `files` (path → content) staged as a
 // modification, committed as `message` and pushed to `origin`. Uses git

@@ -47,7 +47,11 @@ type MigrationResult struct {
 }
 
 // Run always leaves the row at 'done' or 'error'.
-func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName, content string) (result *MigrationResult, err error) {
+//
+// appliedPushCommits: pushed_in_commit SHAs the caller verified to be
+// ancestors of commitHash (push provenance — see SettleSuggestionsForMigration).
+// Nil is fine: settle falls back to fuzzy applied-matching alone.
+func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName, content string, appliedPushCommits []string) (result *MigrationResult, err error) {
 	db := &database.DB{Pool: p.db}
 	if log == nil {
 		log = slog.Default()
@@ -87,7 +91,7 @@ func (p *Processor) Run(ctx context.Context, log *slog.Logger, migrationID, manu
 		slog.Int("parent_migration_id", parent.MigrationID),
 		slog.String("parent_commit", parent.CommitHash),
 	)
-	return p.migrate(ctx, db, log, migrationID, manuscriptID, commitHash, branchName, parent, newSentences, newSentenceIDs, newSentenceMap)
+	return p.migrate(ctx, db, log, migrationID, manuscriptID, commitHash, branchName, parent, newSentences, newSentenceIDs, newSentenceMap, appliedPushCommits)
 }
 
 // bootstrap handles the first commit: every sentence is "added".
@@ -135,7 +139,7 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 }
 
 // migrate handles a commit with a prior migration to carry notes from.
-func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName string, parent *models.Migration, newSentences []models.Sentence, newSentenceIDs []string, newSentenceMap map[string]string) (*MigrationResult, error) {
+func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logger, migrationID, manuscriptID int, commitHash, branchName string, parent *models.Migration, newSentences []models.Sentence, newSentenceIDs []string, newSentenceMap map[string]string, appliedPushCommits []string) (*MigrationResult, error) {
 	oldSentences, err := db.GetSentencesByMigration(ctx, parent.MigrationID)
 	if err != nil {
 		return nil, fmt.Errorf("get old sentences: %w", err)
@@ -225,7 +229,11 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("suggestion migration: %w", err)
 	}
 
-	suggestionsRetired, suggestionsUnaccepted, err := db.SettleSuggestionsForMigration(ctx, migrationID, newSentenceIDs)
+	appliedCommits := make(map[string]bool, len(appliedPushCommits))
+	for _, sha := range appliedPushCommits {
+		appliedCommits[sha] = true
+	}
+	suggestionsRetired, suggestionsUnaccepted, err := db.SettleSuggestionsForMigration(ctx, migrationID, newSentenceIDs, appliedCommits)
 	if err != nil {
 		return nil, fmt.Errorf("settle suggestion groups: %w", err)
 	}

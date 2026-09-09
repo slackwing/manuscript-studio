@@ -17,13 +17,13 @@ import (
 // suggestionCols is the canonical SELECT list for suggested_change (v3);
 // suggestionColsSC is the sc.-qualified twin for JOINed queries.
 const suggestionCols = `suggestion_id, sentence_id, user_id, text, created_at, updated_at,
-	review_status, COALESCE(reviewed_by, ''), reviewed_at, stale, base_text`
+	review_status, COALESCE(reviewed_by, ''), reviewed_at, stale, base_text, pushed_in_commit`
 const suggestionColsSC = `sc.suggestion_id, sc.sentence_id, sc.user_id, sc.text, sc.created_at, sc.updated_at,
-	sc.review_status, COALESCE(sc.reviewed_by, ''), sc.reviewed_at, sc.stale, sc.base_text`
+	sc.review_status, COALESCE(sc.reviewed_by, ''), sc.reviewed_at, sc.stale, sc.base_text, sc.pushed_in_commit`
 
 func scanSuggestion(row interface{ Scan(...any) error }, s *models.SuggestedChange) error {
 	return row.Scan(&s.SuggestionID, &s.SentenceID, &s.UserID, &s.Text, &s.CreatedAt, &s.UpdatedAt,
-		&s.ReviewStatus, &s.ReviewedBy, &s.ReviewedAt, &s.Stale, &s.BaseText)
+		&s.ReviewStatus, &s.ReviewedBy, &s.ReviewedAt, &s.Stale, &s.BaseText, &s.PushedInCommit)
 }
 
 // UpsertSuggestion stores text as-given; collapsing empty / original-equals-text
@@ -44,7 +44,8 @@ func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text str
 			SET text = EXCLUDED.text, updated_at = NOW(),
 			    review_status = NULL, reviewed_by = NULL, reviewed_at = NULL,
 			    stale = FALSE,
-			    base_text = EXCLUDED.base_text
+			    base_text = EXCLUDED.base_text,
+			    pushed_in_commit = NULL
 		RETURNING ` + suggestionCols
 	var s models.SuggestedChange
 	if err := scanSuggestion(db.Pool.QueryRow(ctx, query, sentenceID, userID, text), &s); err != nil {
@@ -266,7 +267,14 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 // orderedIDs is the migration's sentence order. The processor passes it
 // directly because settling runs BEFORE MarkMigrationDone stores
 // sentence_id_array; pass nil to fall back to the stored array.
-func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int, orderedIDs []string) (int, int, error) {
+//
+// appliedCommits: pushed_in_commit SHAs verified to be ancestors of the
+// migrated commit — rows stamped with one are applied BY CONSTRUCTION
+// (push provenance), bypassing the fuzzy text match entirely. This is the
+// only path that can recognize an applied DELETION (empty text) or a
+// rewrite that resegmented past the join window. Pass nil when no
+// provenance is available (external commits, squash merges).
+func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int, orderedIDs []string, appliedCommits map[string]bool) (int, int, error) {
 	// Document order + texts, for the neighbor-window rule.
 	if len(orderedIDs) == 0 {
 		mig, err := db.GetMigrationByID(ctx, migrationID)
@@ -308,7 +316,13 @@ func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int
 	// windowApplied: does the suggestion equal some contiguous run of
 	// committed sentences that includes its own (index j)? See doc comment.
 	windowApplied := func(normSugg string, j int) bool {
-		const w = 3
+		// 12: a large multi-sentence rewrite resegments into many committed
+		// sentences (a real 500-char rewrite split into 9 — the 2026-09-09
+		// zombie-suggestion incident); 3 missed it and the un-consummated
+		// row would have re-applied and duplicated the passage on the next
+		// push. Provenance (appliedCommits) is the primary detector now;
+		// this window serves externally-applied edits.
+		const w = 12
 		for start := max(0, j-w); start <= j; start++ {
 			for end := j; end <= min(len(orderedTexts)-1, j+w); end++ {
 				if start == j && end == j {
@@ -335,7 +349,7 @@ func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int
 	sentTextByID := map[string]string{}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT sc.suggestion_id, sc.user_id, sc.text, sc.review_status, sc.stale,
-		       s.sentence_id, s.text
+		       sc.pushed_in_commit, s.sentence_id, s.text
 		FROM suggested_change sc
 		JOIN sentence s ON s.sentence_id = sc.sentence_id
 		WHERE s.migration_id = $1
@@ -346,16 +360,25 @@ func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int
 	defer rows.Close()
 	for rows.Next() {
 		var r row
+		var pushedIn *string
 		var sentenceID, sentText string
-		if err := rows.Scan(&r.id, &r.userID, &r.text, &r.status, &r.stale, &sentenceID, &sentText); err != nil {
+		if err := rows.Scan(&r.id, &r.userID, &r.text, &r.status, &r.stale, &pushedIn, &sentenceID, &sentText); err != nil {
 			return 0, 0, fmt.Errorf("scan suggestion row: %w", err)
 		}
-		normSugg := sentence.NormalizeText(r.text)
-		if normSugg == sentence.NormalizeText(sentText) {
+		// Push provenance: this row's text rode a push commit that is now
+		// in the migrated history — applied by construction, no text match
+		// needed (the ONLY way an applied deletion is recognizable).
+		if pushedIn != nil && appliedCommits[*pushedIn] {
 			r.applied = true
-		} else if normSugg != "" { // empty carries no comparable content
-			if j, ok := orderByID[sentenceID]; ok && windowApplied(normSugg, j) {
+		}
+		normSugg := sentence.NormalizeText(r.text)
+		if !r.applied {
+			if normSugg == sentence.NormalizeText(sentText) {
 				r.applied = true
+			} else if normSugg != "" { // empty carries no comparable content
+				if j, ok := orderByID[sentenceID]; ok && windowApplied(normSugg, j) {
+					r.applied = true
+				}
 			}
 		}
 		groups[sentenceID] = append(groups[sentenceID], r)
@@ -465,9 +488,11 @@ func (db *DB) CarrySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []
 	}
 	tag, err := db.Pool.Exec(ctx, `
 		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at,
-		                              review_status, reviewed_by, reviewed_at, stale, base_text)
+		                              review_status, reviewed_by, reviewed_at, stale, base_text,
+		                              pushed_in_commit)
 		SELECT m.to_id, sc.user_id, sc.text, NOW(), NOW(),
-		       sc.review_status, sc.reviewed_by, sc.reviewed_at, (sc.stale OR m.fuzzy), sc.base_text
+		       sc.review_status, sc.reviewed_by, sc.reviewed_at, (sc.stale OR m.fuzzy), sc.base_text,
+		       sc.pushed_in_commit
 		FROM unnest($1::text[], $2::text[], $3::boolean[]) AS m(from_id, to_id, fuzzy)
 		JOIN suggested_change sc ON sc.sentence_id = m.from_id
 		ON CONFLICT (sentence_id, user_id) DO NOTHING
@@ -476,6 +501,50 @@ func (db *DB) CarrySuggestionsForwardBulk(ctx context.Context, fromIDs, toIDs []
 		return 0, fmt.Errorf("carry suggestions forward: %w", err)
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+// StampSuggestionsPushed records push provenance: these (sentence, user)
+// rows' texts were written into commitSHA by push-suggestions. When that
+// commit later migrates (is an ancestor of the migrated commit), settle
+// consummates the rows by construction — no fuzzy text matching, which is
+// what deletions (empty text) and multi-sentence rewrites defeat.
+func (db *DB) StampSuggestionsPushed(ctx context.Context, sentenceIDs []string, userID, commitSHA string) (int, error) {
+	if len(sentenceIDs) == 0 {
+		return 0, nil
+	}
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE suggested_change SET pushed_in_commit = $3
+		WHERE sentence_id = ANY($1) AND user_id = $2`,
+		sentenceIDs, userID, commitSHA)
+	if err != nil {
+		return 0, fmt.Errorf("stamp suggestions pushed: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// GetPendingPushedCommits: the distinct pushed_in_commit SHAs still carried
+// by suggestions on the given migration's sentences. The migration runner
+// ancestor-checks each against the incoming commit before settle.
+func (db *DB) GetPendingPushedCommits(ctx context.Context, migrationID int) ([]string, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT DISTINCT sc.pushed_in_commit
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		WHERE s.migration_id = $1 AND sc.pushed_in_commit IS NOT NULL
+	`, migrationID)
+	if err != nil {
+		return nil, fmt.Errorf("get pending pushed commits: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var sha string
+		if err := rows.Scan(&sha); err != nil {
+			return nil, fmt.Errorf("scan pushed commit: %w", err)
+		}
+		out = append(out, sha)
+	}
+	return out, rows.Err()
 }
 
 // GetSuggestionReviewEvents: newest-first history events the caller may

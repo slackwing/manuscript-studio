@@ -264,9 +264,9 @@ func ParseCommand(s string) (Command, bool) {
 		// when we don't process it — unknown commands are stripped from word
 		// counts and render as nothing (invisible by default; only display
 		// commands show). Prose stays safe: "Smith & Sons", "R&D", and
-		// "&chapter of accidents" still lack the '#'/'{' delimiter. Unknown
-		// commands have no bare-#slug form (that privilege is &end's alone),
-		// so the ≥1-brace-group check below still applies to them.
+		// "&chapter of accidents" still lack the '#'/'{' delimiter. Unknowns
+		// share &end's bare-#slug form (&marker#interesting needs no
+		// braces) — the args check below accepts slug-only unknowns.
 		j := 1
 		for j < len(runes) && runes[j] >= 'a' && runes[j] <= 'z' {
 			j++

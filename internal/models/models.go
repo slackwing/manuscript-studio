@@ -174,6 +174,12 @@ type SuggestedChange struct {
 	// Stale: carried across a migration onto a sentence whose text changed
 	// — kept visible for review, but never rendered as a live diff.
 	Stale bool `json:"stale"`
+	// PushedInCommit: the commit SHA a push-suggestions run wrote this
+	// row's text into (nil = never pushed; cleared when the text is edited
+	// again). When that commit becomes an ancestor of a migrated commit,
+	// the row is applied BY CONSTRUCTION — settle consummates it without
+	// fuzzy text matching (deletions and giant rewrites included).
+	PushedInCommit *string `json:"pushed_in_commit,omitempty"`
 	// BaseText: the committed sentence text this suggestion was WRITTEN
 	// AGAINST (nil on legacy rows = unknown basis → NEW badge). Raw text,
 	// not a hash — displayable, and usually shorter than a digest anyway.

@@ -121,7 +121,7 @@ func runProcessor(t *testing.T, ctx context.Context, p *Processor, db *database.
 	if err != nil {
 		t.Fatalf("CreatePendingMigration: %v", err)
 	}
-	if _, err := p.Run(ctx, slog.Default(), id, manuscriptID, commitHash, "main", content); err != nil {
+	if _, err := p.Run(ctx, slog.Default(), id, manuscriptID, commitHash, "main", content, nil); err != nil {
 		t.Fatalf("Processor.Run: %v", err)
 	}
 	return id
