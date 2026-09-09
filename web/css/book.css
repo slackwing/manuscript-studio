@@ -2237,11 +2237,13 @@ p.section-break {
   font-weight: 600;
 }
 
-/* An added/removed INVISIBLE command in a diff shows as a small diamond —
-   the diamond IS the command; the diff color says which way it went. Color
+/* ANY added/removed command in a diff shows as a small diamond — the
+   diamond IS the command; the diff color says which way it went. Color
    inherits from the wrapping del (red) / strong (green); inline-block keeps
    the del strikethrough off the glyph. Committed commands render nothing —
-   the diamond exists only while diffing. Hover reveals the raw command. */
+   EXCEPT display types: &fix shows its prose, &marker keeps a black
+   diamond after commit. Hover reveals the raw command. */
+.cmd-diamond-marker { color: #1a1a1a; }
 /* &fix{…}: the author's visible fix-me — the wrapped prose, bold purple. */
 .cmd-fix { font-weight: 700; color: #7d35a5; }
 /* The fix wrapper's own diff diamonds sit in EQUAL (bare) text, so they
@@ -3062,7 +3064,7 @@ p.section-break {
          structure — an outline-less manuscript shows no empty bar) --- */
   #outline-margin.has-outline {
     display: block !important;
-    top: calc(66px + var(--tabs-h, 0px));  /* 40 top bar + 26 tab strip */
+    top: calc(78px + var(--tabs-h, 0px));  /* 52 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 174px;               /* 200 bar − 26 tabs */
@@ -3086,7 +3088,7 @@ p.section-break {
      (visibility itself is decided by the .pane-on/.pane-off rules at the
      very end of the file). */
   #stats-margin.pane-on {
-    top: calc(66px + var(--tabs-h, 0px));  /* 40 top bar + 26 tab strip */
+    top: calc(78px + var(--tabs-h, 0px));  /* 52 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 174px;               /* 200 bar − 26 tabs */
@@ -3112,7 +3114,7 @@ p.section-break {
              version stripped all of these to "maximize" width — that made the
              pages stop looking like pages. Don't do that again; a dedicated
              mobile UI comes later.) --- */
-  #app-container { padding-top: calc(240px + var(--tabs-h, 0px)); }   /* 40 top bar + 200 second bar */
+  #app-container { padding-top: calc(252px + var(--tabs-h, 0px)); }   /* 52 top bar + 200 second bar */
   .pagedjs_pages {
     margin-top: 0 !important;
     /* small top/bottom breathing room; the horizontal fit is handled by the
@@ -3519,7 +3521,7 @@ body.range-delete-mode .pagedjs_pages {
    detached piece. (Lives here, after the base rules, to win source order.) */
 @media (max-width: 1239px) {
   #people-margin.pane-on {
-    top: calc(66px + var(--tabs-h, 0px));  /* 40 top bar + 26 tab strip */
+    top: calc(78px + var(--tabs-h, 0px));  /* 52 top bar + 26 tab strip */
     left: 33.333% !important;    /* beat the inline left JS sets for desktop */
     width: 66.667%;
     height: 174px;               /* 200 bar − 26 tabs */

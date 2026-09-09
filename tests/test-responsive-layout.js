@@ -186,11 +186,12 @@ function overlaps(a, b) {
       document.querySelector('#pane-tabs .pane-tab[data-pane="people"]').click();
       const pm = document.getElementById('people-margin');
       const pr = pm.getBoundingClientRect();
-      // The pinned-tabs strip (auto-pin on book load) shifts every fixed bar
-      // down by --tabs-h; the slot follows it.
-      const tabsH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabs-h')) || 0;
+      // The slot begins exactly where the pane-tabs strip ends — a pane that
+      // starts higher paints over the tab labels (the 40px-era 66px offset
+      // clipped their bottom halves after the bar grew to 52px).
+      const strip = document.querySelector('#manuscript-chrome .pane-tabs').getBoundingClientRect();
       const peopleInSlot = getComputedStyle(pm).display !== 'none'
-        && Math.abs(pr.left - window.innerWidth / 3) < 8 && Math.abs(pr.top - (66 + tabsH)) < 4
+        && Math.abs(pr.left - window.innerWidth / 3) < 8 && Math.abs(pr.top - strip.bottom) < 4
         && pr.width < window.innerWidth * 0.75;
       document.querySelector('#pane-tabs .pane-tab[data-pane="outline"]').click();
       return { rows, stacked, hashOwnLine, shortGrew, doomWraps, peopleInSlot, cellW: Math.round(cell.width) };
