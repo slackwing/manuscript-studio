@@ -51,7 +51,7 @@ where the markers sit.
 One constants block, one place, fat comment — `web/js/attention.js`:
 
     ATTENTION_ATTACK_WORDS = 7     // C² onset scale; peak ~13 words (~one line) out
-    ATTENTION_DECAY_WORDS  = 250   // contribution falls to 1/e after this
+    ATTENTION_DECAY_WORDS  = 120   // contribution falls to 1/e after this (calibrated down from 250)
     ATTENTION_FULL_SCALE   = 25    // a=+25 lands on the sheet's right edge
 
 Also mirrored live on `window.WriteSysAttention.TUNING` so values can be

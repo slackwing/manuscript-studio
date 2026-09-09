@@ -37,7 +37,7 @@ window.WriteSysAttention = {
     // STARTED with a kink — the C²-smooth onset below replaced it,
     // 2026-09-09 evening, "multiple levels of derivatives smooth".)
     ATTACK_WORDS: 7,    // onset scale of the C² rise ("fast smooth curve up")
-    DECAY_WORDS: 250,   // fall to 1/e of the contribution after this many words
+    DECAY_WORDS: 120,   // fall to 1/e after this many words (author: 250 "decreases too slowly")
     FULL_SCALE: 25,     // a=+25 lands exactly on the sheet's right edge (author-calibrated 2026-09-09; was 10)
     SAMPLE_STEP_PX: 3,  // vertical sampling resolution per page
     CUTOFF_DECAYS: 6,   // ignore a marker beyond 6×DECAY_WORDS — contributes ~0.25%
