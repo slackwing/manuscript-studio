@@ -23,15 +23,26 @@ console.log('=== attention kernel units ===');
 check('kernel is 0 before the marker', A.kernel(-1) === 0);
 check('kernel is 0 at the marker itself (smooth rise, not a step)',
   Math.abs(A.kernel(0)) < 1e-9, String(A.kernel(0)));
+// C² onset: near the marker K ~ (u/A)³ — first AND second derivative
+// vanish, so the impulse ACCELERATES from nothing (no kink).
+check('onset is derivative-smooth (K(0.5) is cubic-tiny)',
+  A.kernel(0.5) < 1e-3, String(A.kernel(0.5)));
 
-// Peak: exactly 1 at u* = (A·D/(D−A))·ln(D/A), and nothing exceeds it.
-const uStar = (T.ATTACK_WORDS * T.DECAY_WORDS) / (T.DECAY_WORDS - T.ATTACK_WORDS)
-  * Math.log(T.DECAY_WORDS / T.ATTACK_WORDS);
+// Peak: exactly 1 at the numerically-located u*, nothing exceeds it.
+A.kernel(1); // prime the cache
+const uStar = A._kcache.uStar;
+check('peak lands about a line out (~1.8×A words)',
+  uStar > T.ATTACK_WORDS && uStar < 3 * T.ATTACK_WORDS, String(uStar));
 check('kernel peaks at exactly 1 (a lone +15 marker peaks at 15)',
-  Math.abs(A.kernel(uStar) - 1) < 1e-9, String(A.kernel(uStar)));
+  Math.abs(A.kernel(uStar) - 1) < 1e-6, String(A.kernel(uStar)));
 let maxK = 0;
 for (let u = 0; u < 8 * T.DECAY_WORDS; u += 1) maxK = Math.max(maxK, A.kernel(u));
-check('nothing exceeds the peak', maxK <= 1 + 1e-9, String(maxK));
+check('nothing exceeds the peak', maxK <= 1 + 1e-6, String(maxK));
+let mono = true;
+for (let u = Math.ceil(uStar) + 1; u < 5 * T.DECAY_WORDS; u += 1) {
+  if (A.kernel(u) > A.kernel(u - 1) + 1e-12) { mono = false; break; }
+}
+check('monotone decay after the peak', mono);
 
 check('decay: far past the marker the contribution is ~0',
   A.kernel(T.CUTOFF_DECAYS * T.DECAY_WORDS) < 0.005, String(A.kernel(T.CUTOFF_DECAYS * T.DECAY_WORDS)));
@@ -54,6 +65,26 @@ check('and recovers toward zero', A.attentionAt(5 * T.DECAY_WORDS, dip) > -0.2,
 // Events beyond the cutoff stop contributing (and sorted-break correctness:
 // events after t contribute nothing).
 check('future events contribute nothing', A.attentionAt(100, [{ t: 200, v: 50 }]) === 0);
+
+// ---- pchip (the smooth y→t map) ----------------------------------------
+console.log('\n=== pchip units ===');
+const knots = [[0, 0], [20, 10], [40, 10], [60, 30], [100, 60]];
+const f = A.pchip(knots);
+check('hits every knot exactly', knots.every(([y, t]) => Math.abs(f(y) - t) < 1e-9));
+let monoT = true;
+let prev = -1;
+for (let y = 0; y <= 100; y += 0.25) { const t = f(y); if (t < prev - 1e-9) { monoT = false; break; } prev = t; }
+check('monotone — time never runs backwards (even across the flat knot pair)', monoT);
+check('clamps beyond the ends', f(-5) === 0 && f(200) === 60);
+// C¹: slopes from both sides of an interior knot agree (finite diff).
+const e = 0.001;
+const slopeL = (f(60) - f(60 - e)) / e;
+const slopeR = (f(60 + e) - f(60)) / e;
+check('C¹ at interior knots (one-sided slopes agree)',
+  Math.abs(slopeL - slopeR) < 0.05, `L=${slopeL.toFixed(4)} R=${slopeR.toFixed(4)}`);
+// No flat shelf between knots with distinct t (the line-gap fix).
+const mid = (f(80.5) - f(79.5));
+check('no flat shelf between distinct-t knots', mid > 0.05, String(mid));
 
 console.log('');
 if (failed) { console.log(`❌ ${failed} check(s) failed`); process.exit(1); }

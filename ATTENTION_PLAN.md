@@ -29,12 +29,16 @@ where the markers sit.
 
       a(t) = Σᵢ vᵢ · K(t − tᵢ)
 
-      K(u) = 0                                   for u < 0
-      K(u) = N · (e^(−u/DECAY) − e^(−u/ATTACK))  for u ≥ 0
+      K(u) = 0                                      for u < 0
+      K(u) = N · (1 − e^(−(u/ATTACK)³)) · e^(−u/DECAY)  for u ≥ 0
 
-  where `N` normalizes the kernel peak to exactly 1, so a lone `#twist`
-  (+15) *peaks* at 15. `ATTACK` is small (fast smooth rise — the "not a
-  hard spike"), `DECAY` large (the exponential fade). Superposition gives
+  where `N` normalizes the kernel peak to exactly 1 (numerically — no
+  closed form), so a lone `#twist` (+15) *peaks* at 15. The
+  cubic-exponential onset is C² at the marker — zero first and second
+  derivative, true acceleration — replacing the original
+  double-exponential whose rise had a kink at u=0 (2026-09-09 evening:
+  "multiple levels of derivatives smooth"). `ATTACK` is the onset scale
+  (peak ≈ 1.8×ATTACK words out), `DECAY` the exponential fade. Superposition gives
   the requested behavior for free: a second `#picture` adds +5 on top of
   whatever the first has decayed to.
 - Negative values use the same kernel with negative amplitude — a
@@ -46,7 +50,7 @@ where the markers sit.
 
 One constants block, one place, fat comment — `web/js/attention.js`:
 
-    ATTENTION_ATTACK_WORDS = 3     // rise ~one line (12 read as "keeps climbing past the peak")
+    ATTENTION_ATTACK_WORDS = 7     // C² onset scale; peak ~13 words (~one line) out
     ATTENTION_DECAY_WORDS  = 250   // contribution falls to 1/e after this
     ATTENTION_FULL_SCALE   = 25    // a=+25 lands on the sheet's right edge
 
@@ -92,8 +96,12 @@ function of the final page geometry.
    span), each with `data-slug`. Marker `tᵢ` = cumulative words at its
    line, interpolated by its x-offset within the line.
 3. **Sample.** Per page, for y from first-line-top to last-line-bottom in
-   ~3px steps: invert y→t through the line map (piecewise linear), compute
-   `a(t)` (kernel cutoff at 6×DECAY keeps it O(markers-in-window)).
+   ~3px steps: invert y→t through a MONOTONE CUBIC (Fritsch–Carlson)
+   through the line centers — C¹, never time-reversing. (The first
+   piecewise-linear map froze t in the leading between lines, printing a
+   flat shelf at every line gap; smoothness deliberately outranks strict
+   "gaps cost nothing" — 2026-09-09 evening.) Then compute `a(t)` (kernel
+   cutoff at 6×DECAY keeps it O(markers-in-window)).
 4. **Emit SVG.** Per page, one absolutely-positioned SVG with rotated
    axes — t downward, attention rightward. `a=0` at the SHEET's left
    edge; `ATTENTION_FULL_SCALE` (+25, author-calibrated from 10) at the sheet's right edge; negative

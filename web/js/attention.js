@@ -29,13 +29,14 @@ window.WriteSysAttention = {
   // calling rebuild()). Units are WORDS, not pixels: attention decays
   // with reading effort, and headings/blank space cost nothing.
   TUNING: {
-    // NOTE the peak does NOT sit at the marker: for a double-exponential
-    // kernel it lands at u* = (A·D/(D−A))·ln(D/A) words AFTER it. With
-    // A=3, D=250 that's ~13 words — about one line: quick accelerate,
-    // decelerate, turn. (The first calibration used A=12 → u*≈38 words,
-    // and the author read the 3–4 lines of continued climb as a math bug
-    // — 2026-09-09. Keep A small enough that u* stays near one line.)
-    ATTACK_WORDS: 3,    // rise time-constant — "fast smooth curve up"
+    // NOTE the peak does NOT sit at the marker: it lands ~1.8×A words
+    // AFTER it (numerically located — see kernel()). A=7 → ~13 words,
+    // about one line: accelerate, decelerate, turn. (History: the first
+    // double-exponential kernel at A=12 peaked 38 words out and read as
+    // "keeps climbing past the peak"; its A=3 successor peaked right but
+    // STARTED with a kink — the C²-smooth onset below replaced it,
+    // 2026-09-09 evening, "multiple levels of derivatives smooth".)
+    ATTACK_WORDS: 7,    // onset scale of the C² rise ("fast smooth curve up")
     DECAY_WORDS: 250,   // fall to 1/e of the contribution after this many words
     FULL_SCALE: 25,     // a=+25 lands exactly on the sheet's right edge (author-calibrated 2026-09-09; was 10)
     SAMPLE_STEP_PX: 3,  // vertical sampling resolution per page
@@ -46,17 +47,29 @@ window.WriteSysAttention = {
   _armed: false,
 
   // ---- The kernel (pure math — unit-tested in test-attention-units) ---
-  // K(u) = N · (e^(−u/DECAY) − e^(−u/ATTACK)) for u ≥ 0, else 0, with N
-  // chosen so the peak is EXACTLY 1: a lone #twist (+15) peaks at 15.
-  // Peak sits at u* = (A·D/(D−A))·ln(D/A) — a few words after the marker,
-  // which is the "not a hard spike" the author asked for.
+  // K(u) = N · (1 − e^(−(u/A)³)) · e^(−u/DECAY) for u ≥ 0, else 0, with N
+  // chosen (numerically — no closed form) so the peak is EXACTLY 1: a
+  // lone #twist (+15) peaks at 15. The cubic-exponential onset is C² at
+  // the marker — zero first AND second derivative — so each impulse
+  // ACCELERATES from nothing, decelerates into the peak, then decays:
+  // "multiple levels of derivatives smooth". The old double-exponential
+  // rose with a kink at u=0. Peak sits ~1.8×A words after the marker.
+  _kcache: null, // { A, D, N, uStar } — recomputed when TUNING changes
   kernel(u) {
     if (u < 0) return 0;
     const A = this.TUNING.ATTACK_WORDS;
     const D = this.TUNING.DECAY_WORDS;
-    const uStar = (A * D) / (D - A) * Math.log(D / A);
-    const N = 1 / (Math.exp(-uStar / D) - Math.exp(-uStar / A));
-    return N * (Math.exp(-u / D) - Math.exp(-u / A));
+    let c = this._kcache;
+    if (!c || c.A !== A || c.D !== D) {
+      let peak = 0;
+      let uP = 0;
+      for (let x = 0.05; x < 12 * A + D; x += 0.05) {
+        const k = (1 - Math.exp(-((x / A) ** 3))) * Math.exp(-x / D);
+        if (k > peak) { peak = k; uP = x; }
+      }
+      c = this._kcache = { A, D, N: 1 / peak, uStar: uP };
+    }
+    return c.N * (1 - Math.exp(-((u / A) ** 3))) * Math.exp(-u / D);
   },
 
   // a(t) over events [{t, v}] — superposition with a cutoff window.
@@ -70,6 +83,43 @@ window.WriteSysAttention = {
       a += e.v * this.kernel(u);
     }
     return a;
+  },
+
+  // pchip(knots): monotone cubic interpolation (Fritsch–Carlson) through
+  // [[y, t], …] with strictly increasing y and nondecreasing t. Returns
+  // an evaluator y→t that is C¹, hits every knot exactly, and NEVER
+  // overshoots — t must not decrease or the envelope would sample time
+  // running backwards. This is what smooths the y→t map: the old
+  // piecewise map froze t in the leading between lines, printing a flat
+  // shelf into the curve at every line gap (the author's 2026-09-09
+  // "between every line there's a flat part").
+  pchip(knots) {
+    const n = knots.length;
+    if (n === 1) return () => knots[0][1];
+    const h = [];
+    const delta = [];
+    for (let i = 0; i < n - 1; i++) {
+      h.push(knots[i + 1][0] - knots[i][0]);
+      delta.push((knots[i + 1][1] - knots[i][1]) / h[i]);
+    }
+    const d = [delta[0]];
+    for (let i = 1; i < n - 1; i++) {
+      if (delta[i - 1] * delta[i] <= 0) { d.push(0); continue; }
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      d.push((w1 + w2) / (w1 / delta[i - 1] + w2 / delta[i]));
+    }
+    d.push(delta[n - 2]);
+    return (y) => {
+      if (y <= knots[0][0]) return knots[0][1];
+      if (y >= knots[n - 1][0]) return knots[n - 1][1];
+      let i = 0;
+      while (i < n - 2 && y > knots[i + 1][0]) i++;
+      const s = y - knots[i][0];
+      const c2 = (3 * delta[i] - 2 * d[i] - d[i + 1]) / h[i];
+      const c3 = (d[i] + d[i + 1] - 2 * delta[i]) / (h[i] * h[i]);
+      return knots[i][1] + d[i] * s + c2 * s * s + c3 * s * s * s;
+    };
   },
 
   _gate() {
@@ -175,18 +225,24 @@ window.WriteSysAttention = {
       const H = page.offsetHeight;
       const y0 = pageLines[0].top;
       const y1 = pageLines[pageLines.length - 1].bottom;
-      // y → t: within a line, t advances linearly down its height; in the
-      // gaps BETWEEN lines t freezes (no words there — paragraph breaks
-      // and headings cost no attention, by design).
-      const tOf = (y) => {
-        let t = pageLines[0].tStart;
-        for (const l of pageLines) {
-          if (y >= l.bottom) { t = l.tStart + l.words; continue; }
-          if (y >= l.top) return l.tStart + l.words * ((y - l.top) / (l.bottom - l.top));
-          break;
+      // y → t: a MONOTONE CUBIC through the line CENTERS (plus exact
+      // page-edge anchors). The leading between lines absorbs into the
+      // flow — words smear smoothly across gaps instead of freezing, so
+      // no flat shelves print between lines. (Strict "gaps cost nothing"
+      // lost a little literalness to smoothness here, deliberately —
+      // 2026-09-09 evening.)
+      const lastLn = pageLines[pageLines.length - 1];
+      const knots = [[y0, pageLines[0].tStart]];
+      for (const l of pageLines) {
+        const y = (l.top + l.bottom) / 2;
+        if (y > knots[knots.length - 1][0] + 0.5) {
+          knots.push([y, l.tStart + l.words / 2]);
         }
-        return t;
-      };
+      }
+      if (y1 > knots[knots.length - 1][0] + 0.5) {
+        knots.push([y1, lastLn.tStart + lastLn.words]);
+      }
+      const tOf = this.pchip(knots);
       // Sample the envelope down the page.
       const pts = [];
       for (let y = y0; y <= y1; y += this.TUNING.SAMPLE_STEP_PX) {
