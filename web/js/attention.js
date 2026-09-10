@@ -14,7 +14,8 @@
  *   LEFT EDGE; +FULL_SCALE (10) on the sheet's right edge; negative attention
  *   spills OFF the sheet into the gray backdrop gutter (the author's
  *   explicit wish — hence the SVG canvas extends a sheet-width beyond
- *   each side). Positive area fills light green, negative light red.
+ *   each side). Positive area fills green, negative red — shading only,
+ *   no outline stroke.
  *   Holding Tab (book page, see-attention holders only) reveals the
  *   overlays BEHIND the text; releasing hides them.
  *
@@ -302,7 +303,6 @@ window.WriteSysAttention = {
       const area = (clampFn) => 'M0 ' + pts[0][0].toFixed(1)
         + pts.map(([y, a]) => `L${x(clampFn(a)).toFixed(2)} ${y.toFixed(1)}`).join('')
         + `L0 ${pts[pts.length - 1][0].toFixed(1)}Z`;
-      const curve = 'M' + pts.map(([y, a]) => `${x(a).toFixed(2)} ${y.toFixed(1)}`).join('L');
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'attention-overlay');
       // Canvas spans one sheet-width beyond BOTH edges (negative min-x
@@ -311,9 +311,8 @@ window.WriteSysAttention = {
       svg.setAttribute('preserveAspectRatio', 'none');
       svg.style.cssText = `position:absolute;top:0;left:${-W}px;width:${3 * W}px;height:${H}px;`
         + 'z-index:-1;pointer-events:none;';
-      svg.innerHTML = `<path d="${area((a) => Math.max(a, 0))}" fill="rgba(46,125,50,0.16)"/>`
-        + `<path d="${area((a) => Math.min(a, 0))}" fill="rgba(179,59,58,0.14)"/>`
-        + `<path d="${curve}" fill="none" stroke="rgba(60,50,30,0.28)" stroke-width="1"/>`;
+      svg.innerHTML = `<path d="${area((a) => Math.max(a, 0))}" fill="rgba(27,94,32,0.32)"/>`
+        + `<path d="${area((a) => Math.min(a, 0))}" fill="rgba(146,38,36,0.30)"/>`;
       // Behind the text: the page becomes its own stacking context and
       // the negative-z child paints above the sheet's white background
       // but below all in-flow prose. Do NOT "simplify" to a positive

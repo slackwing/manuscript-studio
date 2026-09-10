@@ -59,7 +59,8 @@ const check = (name, ok, detail = '') => {
       z: first.style.zIndex,
       pageZ: page0.style.zIndex,
       pos: getComputedStyle(page0).position,
-      green: paths[0], red: paths[1], curve: paths[2],
+      green: paths[0], red: paths[1], pathCount: paths.length,
+      hasStroke: [...first.querySelectorAll('path')].some((p) => (p.getAttribute('stroke') || 'none') !== 'none'),
       anyNegative: svgs.some((s2) => (s2.querySelectorAll('path')[1].getAttribute('d') || '').includes('L-')),
       firstLineTop,
       startY: parseFloat((paths[0].match(/^M0 ([\d.]+)/) || [])[1]),
@@ -71,14 +72,17 @@ const check = (name, ok, detail = '') => {
     info.z === '-1' && info.pageZ === '0' && info.pos === 'relative',
     `z=${info.z} pageZ=${info.pageZ} pos=${info.pos}`);
   check('green (positive) area path present', !!info.green && info.green.length > 40);
+  check('shading only — two area paths, no stroked plot line',
+    info.pathCount === 2 && !info.hasStroke,
+    `paths=${info.pathCount} stroke=${info.hasStroke}`);
   check('negative attention dips left of the sheet edge (into the gutter)',
     info.anyNegative);
   check('clipped to the first line of text (plot starts at its top edge)',
     Math.abs(info.startY - info.firstLineTop) < 6,
     `start=${info.startY} firstLine=${info.firstLineTop}`);
 
-  // The +10 marker's swell: the curve's widest point on page 1 sits at or
-  // below the marker's line (attack peaks a few words AFTER the impulse).
+  // The +10 marker's swell: the green area's widest point on page 1 sits at
+  // or below the marker's line (attack peaks a few words AFTER the impulse).
   const align = await page.evaluate(() => {
     const svg = document.querySelector('.attention-overlay');
     const page0 = svg.closest('.pagedjs_page');
@@ -87,7 +91,7 @@ const check = (name, ok, detail = '') => {
     const mk = document.querySelector('.pagedjs_pages .inline-cmd[data-kind="marker"], .pagedjs_pages .cmd-diamond-marker');
     const mr = (mk.getClientRects()[0] || mk.parentElement.getBoundingClientRect());
     const markerY = (mr.top - pr.top) / s;
-    const d = svg.querySelectorAll('path')[2].getAttribute('d');
+    const d = svg.querySelectorAll('path')[0].getAttribute('d');
     let best = { x: -1, y: 0 };
     for (const m of d.matchAll(/([\d.-]+) ([\d.]+)/g)) {
       const x = parseFloat(m[1]);
