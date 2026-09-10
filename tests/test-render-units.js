@@ -335,11 +335,14 @@ const { suggestEditor } = require('./test-utils');
     // diamond is the command, diff color says which way). Known kinds keep
     // their live rendering even in diffs. Unchanged unknowns stay invisible
     // — except &marker, the display type, which keeps its black diamond.
-    check('R14: ADDED &marker → green-side diamond (SVG lozenge) with the raw as tooltip',
-      out.unkAdded.includes('<strong><span class="cmd-diamond cmd-diamond-added" title="&amp;marker#interesting">')
+    // The diff diamond carries the marker's data-kind/data-slug plus
+    // data-diff: the attention harvest reads a SUGGESTED marker off the
+    // same attributes as a committed one (added fires, removed is skipped).
+    check('R14: ADDED &marker → green-side diamond (SVG lozenge) with the raw as tooltip + marker data',
+      out.unkAdded.includes('<strong><span class="cmd-diamond cmd-diamond-added" data-kind="marker" data-slug="interesting" data-diff="added" title="&amp;marker#interesting">')
       && out.unkAdded.includes('<svg') && !out.unkAdded.includes('&amp;marker#interesting<'), out.unkAdded);
-    check('R14: REMOVED &marker → del-side diamond',
-      out.unkRemoved.includes('<del><span class="cmd-diamond cmd-diamond-removed" title="&amp;marker#interesting">')
+    check('R14: REMOVED &marker → del-side diamond + data-diff="removed"',
+      out.unkRemoved.includes('<del><span class="cmd-diamond cmd-diamond-removed" data-kind="marker" data-slug="interesting" data-diff="removed" title="&amp;marker#interesting">')
       && out.unkRemoved.includes('<svg'), out.unkRemoved);
     check('R14: unchanged unknown (outside del/strong) → invisible, args preserved',
       out.unkBrace.includes('inline-cmd') && out.unkBrace.includes('data-args="interesting"') && !out.unkBrace.includes('&amp;widget') && !out.unkBrace.includes('cmd-diamond'), out.unkBrace);
@@ -415,8 +418,17 @@ const { suggestEditor } = require('./test-utils');
       noRole.includes('inline-cmd') && !noRole.includes('cmd-diamond-marker'), noRole);
     const noRoleDiff = await page.evaluate(() =>
       window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;marker#interesting</strong> here'));
-    check('R14: no manage-suggestions → diff glyph leaves no trace',
-      !noRoleDiff.includes('cmd-diamond') && noRoleDiff === 'was <strong></strong> here', noRoleDiff);
+    // A marker keeps an INVISIBLE data span (the attention envelope of an
+    // alpha-reader must follow the suggested text); every other unknown
+    // leaves nothing at all.
+    check('R14: no manage-suggestions → suggested marker shows no glyph, keeps its data span',
+      !noRoleDiff.includes('cmd-diamond') && !noRoleDiff.includes('<svg')
+      && noRoleDiff === 'was <strong><span class="inline-cmd" data-kind="marker" data-slug="interesting" data-diff="added" aria-hidden="true"></span></strong> here',
+      noRoleDiff);
+    const noRoleDiffUnk = await page.evaluate(() =>
+      window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;widget{x}</strong> here'));
+    check('R14: no manage-suggestions → non-marker unknown leaves no trace',
+      noRoleDiffUnk === 'was <strong></strong> here', noRoleDiffUnk);
     await page.evaluate(() => { window.currentSession = window.__savedSession; });
     // &fix CONTENT-level diff (the weird-by-design rules, 2026-09-07):
     // wrapping unchanged words → NO strike/repeat: purple ◆ at the wrap

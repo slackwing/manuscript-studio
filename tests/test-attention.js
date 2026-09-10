@@ -160,6 +160,80 @@ const check = (name, ok, detail = '') => {
   check('no see-attention → no stats button', gated);
   await page.evaluate(() => { window.currentSession = window.__saved; });
 
+  // ---- Suggested edits: the envelope follows the EFFECTIVE text -------
+  // A suggestion swaps sentence 3's +10 #vivid for the −15 #digression.
+  // The rendered diff carries BOTH markers (struck old, green new); only
+  // the added one may fire. Winner per sentence = accepted, else the
+  // People-order first — the top person in the People tab.
+  const sug = await page.evaluate(async () => {
+    const R = window.WriteSysRenderer;
+    const S = window.WriteSysSuggestions;
+    const A = window.WriteSysAttention;
+    const s3 = R.sentenceMap['att-3'];
+    const swapped = s3.replace('&marker#vivid', '&marker#digression');
+    const rerender = async () => {
+      const before = document.body.dataset.paginated;
+      S.rebuildMaps();
+      await R.renderManuscript();
+      // The afterRendered hook bumps data-paginated, then rebuilds the
+      // overlays in the same tick — wait for the bump.
+      await new Promise((res) => {
+        const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
+        tick();
+      });
+      return A._harvest().markers.map((m) => m.v);
+    };
+    const saved = { rows: S.rows, viewer: S.viewer, rank: S.peopleRank };
+    S.viewer = 'test';
+    // Two people suggest on sentence 3: alice swaps the marker, bob only
+    // rewords. People order decides which one the page shows.
+    S.rows = [
+      { sentence_id: 'att-3', user_id: 'alice', text: swapped },
+      { sentence_id: 'att-3', user_id: 'bob', text: s3.replace('carries', 'still carries') },
+    ];
+    S.peopleRank = { bob: 0, alice: 1 };
+    const bobOnTop = await rerender();
+    S.peopleRank = { alice: 0, bob: 1 };
+    const aliceOnTop = await rerender();
+    const dom = {
+      struck: !!document.querySelector('.pagedjs_pages .cmd-diamond-removed[data-kind="marker"][data-slug="vivid"][data-diff="removed"]'),
+      added: !!document.querySelector('.pagedjs_pages .cmd-diamond-added[data-kind="marker"][data-slug="digression"][data-diff="added"]'),
+    };
+    // An ACCEPTED suggestion beats People order.
+    S.rows[1].review_status = 'accepted';
+    const bobAccepted = await rerender();
+    delete S.rows[1].review_status;
+    // Without manage-suggestions (an alpha-reader) the diff shows no
+    // glyph, yet the added marker still shapes the envelope.
+    window.currentSession = {
+      ...window.__saved,
+      accessible_manuscripts: (window.__saved.accessible_manuscripts || []).map((m) => ({
+        ...m, actions: ['see-manuscript', 'see-attention', 'see-others-edits'],
+      })),
+    };
+    const alphaReader = await rerender();
+    const alphaDom = {
+      glyphs: document.querySelectorAll('.pagedjs_pages .cmd-diamond-added, .pagedjs_pages .cmd-diamond-removed').length,
+      invisibleAdded: !!document.querySelector('.pagedjs_pages .inline-cmd[data-kind="marker"][data-slug="digression"][data-diff="added"]'),
+    };
+    window.currentSession = window.__saved;
+    S.rows = saved.rows; S.viewer = saved.viewer; S.peopleRank = saved.rank;
+    const restored = await rerender();
+    return { bobOnTop, aliceOnTop, dom, bobAccepted, alphaReader, alphaDom, restored };
+  });
+  const vals = (a) => JSON.stringify(a);
+  check('People order: bob (reword only) on top → committed +10 still fires',
+    vals(sug.bobOnTop) === '[10,-15]', vals(sug.bobOnTop));
+  check('People order: alice (marker swap) on top → suggested −15 fires, struck +10 does not',
+    vals(sug.aliceOnTop) === '[-15,-15]', vals(sug.aliceOnTop));
+  check('diff carries both markers with data-diff (struck one present but skipped)',
+    sug.dom.struck && sug.dom.added, JSON.stringify(sug.dom));
+  check('accepted suggestion beats People order', vals(sug.bobAccepted) === '[10,-15]', vals(sug.bobAccepted));
+  check('no manage-suggestions → no diff glyph, added marker still fires',
+    vals(sug.alphaReader) === '[-15,-15]' && sug.alphaDom.glyphs === 0 && sug.alphaDom.invisibleAdded,
+    `${vals(sug.alphaReader)} ${JSON.stringify(sug.alphaDom)}`);
+  check('suggestions withdrawn → committed markers again', vals(sug.restored) === '[10,-15]', vals(sug.restored));
+
   await browser.close();
   console.log('');
   if (failed) { console.log(`❌ ${failed} check(s) failed`); process.exit(1); }

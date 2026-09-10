@@ -249,10 +249,17 @@ window.WriteSysAttention = {
 
     // Markers: the spans exist even when their glyphs are hidden (the
     // invisible .inline-cmd keeps data-kind/data-slug — visibility gating
-    // never removes them). t interpolates by x-offset within the line.
-    const sel = '.pagedjs_pages .cmd-diamond-marker, '
-      + '.pagedjs_pages .inline-cmd[data-kind="marker"], .pagedjs_pages .inline-cmd[data-kind="mark"]';
+    // never removes them). A SUGGESTED edit's markers ride in the diff as
+    // .cmd-diamond-added / -removed (or an invisible .inline-cmd without
+    // manage-suggestions) wearing the same data-kind/data-slug plus
+    // data-diff (renderer.js renderCmdTokensInHtml). The envelope follows
+    // the EFFECTIVE text — the rendered suggestion (accepted, else the
+    // People-order winner), which is what the page shows — so an added
+    // marker fires and a struck one is skipped. t interpolates by
+    // x-offset within the line.
+    const sel = '.pagedjs_pages [data-kind="marker"], .pagedjs_pages [data-kind="mark"]';
     for (const el of document.querySelectorAll(sel)) {
+      if (el.dataset.diff === 'removed') continue; // struck in the diff — not read
       const slug = el.dataset.slug || '';
       const v = window.WriteSysMarkerSymbols
         ? window.WriteSysMarkerSymbols.attentionFor(slug) : 0;

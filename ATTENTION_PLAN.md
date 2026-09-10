@@ -107,6 +107,14 @@ function of the final page geometry.
    with `data-kind="marker"|"mark"` — visibility gating never removes the
    span), each with `data-slug`. Marker `tᵢ` = cumulative words at its
    line, interpolated by its x-offset within the line.
+   **Suggested edits** (2026-09-10): the envelope follows the EFFECTIVE
+   text — the rendered suggestion per sentence (accepted, else the
+   People-order winner; the top person in the People tab). A suggested
+   marker rides in the diff as `.cmd-diamond-added` / `-removed` (or an
+   invisible `.inline-cmd` for eyes without manage-suggestions) wearing
+   the same `data-kind`/`data-slug` plus `data-diff`; the harvest selects
+   on `data-kind` alone and skips `data-diff="removed"` — the struck
+   marker is on the page but is not read.
 3. **Sample.** Per page, for y from first-line-top to last-line-bottom in
    ~3px steps: invert y→t through a MONOTONE CUBIC (Fritsch–Carlson)
    through the line centers — C¹, never time-reversing. (The first

@@ -1123,17 +1123,33 @@ const WriteSysRenderer = {
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
       if (!cmd.unknown && !INLINE_KINDS[cmd.kind]) return m; // block kind mid-prose → literal
       if (cmd.unknown && diffState && cmd.kind !== 'fix') { // &fix DISPLAYS, even in diffs
+        const isMarker = cmd.kind === 'marker' || cmd.kind === 'mark';
+        // A SUGGESTED marker carries the same data-kind/data-slug/data-args
+        // as a committed one, plus data-diff, so the attention envelope
+        // (attention.js _harvest) follows the EFFECTIVE text the reader
+        // sees: an added marker fires, a removed one is skipped. Without
+        // these the diff diamond was invisible to the harvest — a suggested
+        // #pressure→#twist shaped nothing (2026-09-10).
+        const dataAttrs = isMarker
+          ? ` data-kind="${escapeHTML(cmd.kind)}"`
+            + (cmd.slug ? ` data-slug="${escapeHTML(cmd.slug)}"` : '')
+            + (cmd.args && cmd.args.length ? ` data-args="${escapeHTML(cmd.args.join(''))}"` : '')
+            + ` data-diff="${diffState}"`
+          : '';
         // Editingness gates the glyph: without manage-suggestions the
-        // command leaves no trace in the diff at all.
-        if (!this.canSeeCommandGlyphs()) return '';
+        // command leaves no VISIBLE trace in the diff. A marker still keeps
+        // its invisible data span — an alpha-reader's envelope must track
+        // the suggested text they are shown.
+        if (!this.canSeeCommandGlyphs()) {
+          return isMarker ? `<span class="inline-cmd"${dataAttrs} aria-hidden="true"></span>` : '';
+        }
         // A marker's custom shape rides into diffs too (color still says
         // which way); other unknowns wear the ※ reference mark.
-        const isMarker = cmd.kind === 'marker' || cmd.kind === 'mark';
         const glyph = window.WriteSysMarkerSymbols
           ? (isMarker ? window.WriteSysMarkerSymbols.svgFor(cmd.slug)
             : window.WriteSysMarkerSymbols.unknownSvg())
           : CMD_DIAMOND_SVG;
-        return `<span class="cmd-diamond cmd-diamond-${diffState}" title="${escapeHTML(cmd.raw)}">`
+        return `<span class="cmd-diamond cmd-diamond-${diffState}"${dataAttrs} title="${escapeHTML(cmd.raw)}">`
           + glyph + '</span>';
       }
       return this.renderInlineCommand({
