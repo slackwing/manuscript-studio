@@ -19,10 +19,14 @@ Then loop:
    second server from your worktree: build, start with
    `MANUSCRIPT_STUDIO_CONFIG_FILE` pointing at a copy of the dev config with
    `port: 5002`, then run tests with `MS_TEST_PORT=5002`.
-3. **Commit and push.**
-4. **Tell the user** — in the session AND via Telegram.
-5. **Run the full suite** (`./test-all.sh`).
-6. Any issues → fix and go back to step 2.
+3. **Commit and push.** Bump the `?v=` cache-buster in `web/index.html`
+   for every JS/CSS file you changed (prod browsers cache aggressively).
+4. **Deploy** — `./remote-deploy.sh`, always (owner's standing rule,
+   2026-09-10). Then confirm `/manuscripts/readyz` is 200 and the served
+   `?v=` matches what you bumped.
+5. **Tell the user** — in the session AND via Telegram.
+6. **Run the full suite** (`./test-all.sh`).
+7. Any issues → fix and go back to step 2.
 
 ---
 
