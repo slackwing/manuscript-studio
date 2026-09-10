@@ -257,8 +257,15 @@ window.WriteSysAttention = {
     return { pages, lines, markers };
   },
 
-  // ---- Emit: one rotated-axes SVG per page -----------------------------
   rebuild() {
+    this._rebuild();
+    // Fires on EVERY exit path (gate denied, no lines, success): the stats
+    // pane's HOLD button waits disabled on this to enable or drop out.
+    document.dispatchEvent(new CustomEvent('ms:attention-rebuilt'));
+  },
+
+  // ---- Emit: one rotated-axes SVG per page -----------------------------
+  _rebuild() {
     this.teardown();
     if (!this._gate()) return;
     const { pages, lines, markers: raw } = this._harvest();
@@ -311,8 +318,8 @@ window.WriteSysAttention = {
       svg.setAttribute('preserveAspectRatio', 'none');
       svg.style.cssText = `position:absolute;top:0;left:${-W}px;width:${3 * W}px;height:${H}px;`
         + 'z-index:-1;pointer-events:none;';
-      svg.innerHTML = `<path d="${area((a) => Math.max(a, 0))}" fill="rgba(27,94,32,0.32)"/>`
-        + `<path d="${area((a) => Math.min(a, 0))}" fill="rgba(146,38,36,0.30)"/>`;
+      svg.innerHTML = `<path d="${area((a) => Math.max(a, 0))}" fill="rgba(40,150,60,0.24)"/>`
+        + `<path d="${area((a) => Math.min(a, 0))}" fill="rgba(180,45,42,0.22)"/>`;
       // Behind the text: the page becomes its own stacking context and
       // the negative-z child paints above the sheet's white background
       // but below all in-flow prose. Do NOT "simplify" to a positive

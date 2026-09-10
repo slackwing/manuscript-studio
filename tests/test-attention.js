@@ -138,6 +138,20 @@ const check = (name, ok, detail = '') => {
   await page.dispatchEvent('#stats-attention', 'pointerup');
   await page.waitForFunction(() => !document.documentElement.classList.contains('attention-held'));
   check('releasing the stats button hides them', true);
+
+  // Pending state: before the overlays exist the button renders disabled
+  // (spinner); the ms:attention-rebuilt dispatch flips it live in place.
+  const pending = await page.evaluate(() => {
+    window.WriteSysAttention.teardown();
+    window.WriteSysStats.render();
+    const b1 = document.getElementById('stats-attention');
+    const wasDisabled = !!(b1 && b1.disabled);
+    window.WriteSysAttention.rebuild(); // synchronous event → stats re-render
+    const b2 = document.getElementById('stats-attention');
+    return { wasDisabled, enabledAfter: !!(b2 && !b2.disabled) };
+  });
+  check('button disabled while overlays are pending', pending.wasDisabled);
+  check('ms:attention-rebuilt enables the button', pending.enabledAfter);
   const gated = await page.evaluate(() => {
     window.currentSession = { accessible_manuscripts: [{ manuscript_id: 1, actions: ['see-manuscript'] }] };
     window.WriteSysStats.render();

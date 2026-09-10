@@ -48,6 +48,11 @@ const WriteSysStats = {
     // Birthday/word-goal edits now happen in the settings modal
     // (MANUSCRIPT_LIFECYCLE_PLAN §4) — refresh when it saves.
     window.addEventListener('manuscript-modal-saved', () => this.load());
+    // Overlay build lands after pagination — flip the HOLD button from
+    // its disabled/spinner state (or drop it, if the session said no).
+    document.addEventListener('ms:attention-rebuilt', () => {
+      if (this.pane === 'stats') this.render();
+    });
 
     const saved = localStorage.getItem('ms_pane');
     this.setPane(saved === 'stats' || saved === 'people' ? saved : 'outline');
@@ -174,11 +179,15 @@ const WriteSysStats = {
     // Attention peek for touch devices (ATTENTION_PLAN.md §5): no Tab key
     // on a phone, so the statistics pane offers a HOLD button — press and
     // keep pressed to reveal the envelope, release to hide. Same gate as
-    // the key: see-attention.
-    const attnBtn = (window.WriteSysActions
-      && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'see-attention'))
-      ? '<button type="button" id="stats-attention" class="stats-attention" title="hold">attention</button>'
-      : '';
+    // the key: see-attention. The session bootstrap and the overlay build
+    // both land async — until then the button sits disabled with a spinner
+    // (ms:attention-rebuilt re-renders) instead of popping in later; it
+    // drops out only once the session actually denies the action.
+    const attnDenied = window.currentSession && !(window.WriteSysActions
+      && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'see-attention'));
+    const attnReady = !!(window.WriteSysAttention && window.WriteSysAttention._pages.length);
+    const attnBtn = attnDenied ? ''
+      : `<button type="button" id="stats-attention" class="stats-attention" title="hold"${attnReady ? '' : ' disabled'}>attention</button>`;
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}${attnBtn}</div>`;
     this.wireHover();
