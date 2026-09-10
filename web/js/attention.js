@@ -68,6 +68,12 @@ window.WriteSysAttention = {
     // textbook habituation model (Thompson–Spencer; hedonic adaptation).
     JADE_SCALE: 10,
     JADE_RECOVERY_WORDS: 300,
+    // Final smoothing layer over the SUMMED envelope (2026-09-10 "sharp
+    // valley"): where a decay meets an opposite-sign onset the sum turns
+    // around within ~ATTACK_WORDS — each piece is smooth but the curvature
+    // concentrates into a visible V. A Gaussian blur of σ SMOOTH_WORDS
+    // spreads that turn. 0 disables.
+    SMOOTH_WORDS: 6,
   },
 
   _pages: [],   // [{el, svg}] — pages that received an overlay
@@ -130,6 +136,23 @@ window.WriteSysAttention = {
       a += e.v * this.kernel(u);
     }
     return a;
+  },
+
+  // The smoothing layer: a(t) convolved with a Gaussian of σ=SMOOTH_WORDS,
+  // by 13-point quadrature across ±3σ. Evaluated in t (words), so it is
+  // seamless across page breaks — attentionAt answers for any t, including
+  // beyond the current page's span.
+  attentionSmoothAt(t, events) {
+    const s = this.TUNING.SMOOTH_WORDS;
+    if (!s) return this.attentionAt(t, events);
+    let num = 0;
+    let den = 0;
+    for (let i = -3; i <= 3; i += 0.5) {
+      const w = Math.exp(-(i * i) / 2);
+      num += w * this.attentionAt(t + i * s, events);
+      den += w;
+    }
+    return num / den;
   },
 
   // pchip(knots): monotone cubic interpolation (Fritsch–Carlson) through
@@ -301,9 +324,9 @@ window.WriteSysAttention = {
       // Sample the envelope down the page.
       const pts = [];
       for (let y = y0; y <= y1; y += this.TUNING.SAMPLE_STEP_PX) {
-        pts.push([y, this.attentionAt(tOf(y), markers)]);
+        pts.push([y, this.attentionSmoothAt(tOf(y), markers)]);
       }
-      if (pts[pts.length - 1][0] !== y1) pts.push([y1, this.attentionAt(tOf(y1), markers)]);
+      if (pts[pts.length - 1][0] !== y1) pts.push([y1, this.attentionSmoothAt(tOf(y1), markers)]);
       // a → x: 0 at the sheet's left edge, FULL_SCALE at its right edge;
       // negatives run off-sheet into the backdrop gutter.
       const x = (a) => (a / F) * W;

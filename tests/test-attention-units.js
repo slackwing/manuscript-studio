@@ -94,6 +94,41 @@ A.TUNING.JADE_RECOVERY_WORDS = 300;
     `50w=${near.toFixed(2)} 300w=${mid2.toFixed(2)} 1500w=${far[1].v.toFixed(2)}`);
 }
 
+console.log('\n=== smoothing layer units ===');
+{
+  // The 2026-09-10 complaint: mid-decay, an opposite-sign marker turns the
+  // sum around within ~ATTACK_WORDS — a sharp valley. The Gaussian layer
+  // must round it: max curvature (2nd difference) drops, the valley's
+  // level barely moves, and σ=0 is the identity.
+  const ev = [{ t: 0, v: 10 }, { t: 60, v: -8 }];
+  const curvature = (fn) => {
+    let worst = 0;
+    for (let t = 40; t <= 120; t += 1) {
+      worst = Math.max(worst, Math.abs(fn(t - 1) + fn(t + 1) - 2 * fn(t)));
+    }
+    return worst;
+  };
+  const saved = T.SMOOTH_WORDS;
+  T.SMOOTH_WORDS = 0;
+  check('σ=0 is the identity',
+    A.attentionSmoothAt(70, ev) === A.attentionAt(70, ev));
+  const rawCurv = curvature((t) => A.attentionAt(t, ev));
+  T.SMOOTH_WORDS = saved;
+  const smoothCurv = curvature((t) => A.attentionSmoothAt(t, ev));
+  check('smoothing rounds the valley (max curvature drops sharply)',
+    smoothCurv < rawCurv / 2, `raw=${rawCurv.toFixed(4)} smooth=${smoothCurv.toFixed(4)}`);
+  // The valley's depth is preserved within tolerance — smoothing reshapes,
+  // it does not erase the dip.
+  let rawMin = Infinity, smMin = Infinity;
+  for (let t = 40; t <= 200; t += 0.5) {
+    rawMin = Math.min(rawMin, A.attentionAt(t, ev));
+    smMin = Math.min(smMin, A.attentionSmoothAt(t, ev));
+  }
+  check('the dip survives (level within 25%)',
+    smMin < 0 && Math.abs(smMin - rawMin) < Math.abs(rawMin) * 0.25,
+    `raw=${rawMin.toFixed(3)} smooth=${smMin.toFixed(3)}`);
+}
+
 console.log('\n=== pchip units ===');
 const knots = [[0, 0], [20, 10], [40, 10], [60, 30], [100, 60]];
 const f = A.pchip(knots);
