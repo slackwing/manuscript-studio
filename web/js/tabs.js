@@ -37,33 +37,9 @@ window.WriteSysTabs = (function () {
   const EMBED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
   if (EMBED) document.documentElement.classList.add('embedded');
 
-  // Home views belong to the HOME TAB. A plain href inside a panel iframe
-  // would navigate the PANEL to home.html — a second home page living
-  // inside the settings tab (the 2026-09-09 hijack). Intercept any
-  // home.html link in an embedded panel and route it to the shell: swap
-  // the shell's URL (view/note params intact), activate the home tab, and
-  // re-render the landing so deep-links (?view=notes&note=N) resolve.
-  if (EMBED) {
-    document.addEventListener('click', (e) => {
-      const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-      if (!a) return;
-      const href = a.getAttribute('href') || '';
-      if (!/^home\.html/.test(href)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        const top = window.top;
-        top.history.replaceState(null, '', href);
-        top.WriteSysTabs.activate(null);
-        if (top.WriteSysHome) {
-          top.WriteSysHome._noteDeepLinked = false;
-          top.WriteSysHome.render();
-        }
-      } catch (err) {
-        location.href = href; // cross-origin surprise — degrade to old behavior
-      }
-    }, true);
-  }
+  // Links — in the shell and inside every panel iframe — go through the
+  // LINK ROUTER below (route / onLinkClick): a link to a page the shell
+  // hosts becomes a tab move, never a navigation.
 
   const read = () => {
     try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
@@ -171,6 +147,7 @@ window.WriteSysTabs = (function () {
 
   // ---- panels (shell only): one kept-alive iframe per activated pin ------
   const panels = new Map(); // key → iframe
+  const pendingHash = new Map(); // key → '#…' to load a NEW panel with (link router)
 
   const panelsHost = () => {
     let host = document.getElementById('ms-tab-panels');
@@ -193,7 +170,8 @@ window.WriteSysTabs = (function () {
     if (!p) return;
     const frame = document.createElement('iframe');
     frame.className = 'ms-panel';
-    frame.src = panelSrc(p);
+    frame.src = panelSrc(p) + (pendingHash.get(key) || ''); // deep link rides in
+    pendingHash.delete(key);
     // Clicks inside an iframe never bubble out — reach in (same-origin) so
     // interacting with a pane focuses it. Pane is computed at event time
     // (the tab may have been dragged across since load).
@@ -420,6 +398,134 @@ window.WriteSysTabs = (function () {
   // the singleton id); the gear in the header opens it instead of navigating.
   const openSettings = () => openTab('settings', 1, 'Settings');
 
+  // ---- LINK ROUTER (2026-09-11) ------------------------------------------
+  // ONE layer for every same-origin link: a click on any <a href> in the
+  // shell or inside a panel iframe, and every programmatic jump through
+  // route(href). A target the shell hosts becomes a TAB MOVE, never a
+  // navigation:
+  //   home.html[?view=…]          → the HOME tab: shell URL swapped in
+  //                                 (history entry), landing re-rendered
+  //   home.html#tab=k             → tab k (link compat)
+  //   ./?manuscript_id=N[#hash]   → that manuscript's tab, pinned on demand;
+  //                                 the hash is forwarded into the panel
+  //                                 (#note-sentence deep links)
+  //   pad.html?scratchpad_id=N    → that pad's tab, pinned on demand
+  //   settings.html               → the Settings tab
+  //   anything else               → not ours (null): the browser navigates
+  // Before this, eight hand-rolled jumps across five files each decided
+  // on their own whether to stay in the shell — "← Home" from an All view
+  // reloaded the whole site. Panels delegate to the shell's router (its
+  // state, its panels); a standalone page pins and lands in the shell.
+  const classify = (href, base) => {
+    let u;
+    try { u = new URL(href, base || location.href); } catch (e) { return null; }
+    if (u.origin !== location.origin) return null;
+    const file = u.pathname.split('/').pop();
+    const q = u.searchParams;
+    if (file === 'home.html') return { kind: 'home', url: u };
+    if (file === 'settings.html') return { kind: 'tab', type: 'settings', id: 1, name: 'Settings', hash: u.hash };
+    if (file === 'pad.html' && +q.get('scratchpad_id')) {
+      return { kind: 'tab', type: 'scratchpad', id: +q.get('scratchpad_id'), hash: u.hash };
+    }
+    if ((file === '' || file === 'index.html') && +q.get('manuscript_id')) {
+      return { kind: 'tab', type: 'manuscript', id: +q.get('manuscript_id'), hash: u.hash };
+    }
+    return null;
+  };
+  // A tab pinned from a bare link still deserves its real name: the
+  // landing page's data has it.
+  const nameFor = (type, id) => {
+    try {
+      const d = window.WriteSysHome && window.WriteSysHome.data;
+      if (!d) return '';
+      if (type === 'manuscript') {
+        const m = (d.manuscripts || []).find((x) => x.manuscript_id === id);
+        return m ? (m.display_name || m.name || '') : '';
+      }
+      if (type === 'scratchpad') {
+        const s = (d.scratchpads || []).find((x) => x.scratchpad_id === id);
+        return s ? (s.title || '') : '';
+      }
+    } catch (e) { /* no landing data */ }
+    return '';
+  };
+  // Forward a hash into a LIVE panel; the same hash again re-dispatches
+  // hashchange so the page follows it anew (a new panel loads with the
+  // hash in its src — see ensureFrame / pendingHash).
+  const forwardHash = (key, hash) => {
+    const f = panels.get(key);
+    if (!f || !hash) return;
+    try {
+      const w = f.contentWindow;
+      if (w.location.hash === hash) w.dispatchEvent(new Event('hashchange'));
+      else w.location.hash = hash;
+    } catch (e) { /* teardown race */ }
+  };
+  const route = (href, opts = {}) => {
+    const c = classify(href, opts.base);
+    if (!c) return false;
+    if (EMBED) {
+      try {
+        return window.top.WriteSysTabs.route(new URL(href, opts.base || location.href).href, { name: opts.name });
+      } catch (e) { return false; } // cross-origin surprise — caller navigates
+    }
+    if (!SHELL) {
+      // Standalone page: tabs live in the shell — pin here, land there.
+      if (c.kind === 'tab') {
+        pin(c.type, c.id, opts.name || c.name);
+        location.href = 'home.html#tab=' + keyOf(c);
+      } else {
+        location.href = c.url.href;
+      }
+      return true;
+    }
+    if (c.kind === 'home') {
+      const m = (c.url.hash || '').match(/[#&]tab=([msg]\d+)/);
+      if (m && findByKey(m[1])) { activate(m[1]); return true; }
+      if (location.search !== c.url.search) history.pushState(null, '', 'home.html' + c.url.search);
+      activate(null); // its updateHash keeps the search, drops the hash
+      if (window.WriteSysHome) {
+        // reload(), not render(): a view's data is fetched per URL (the
+        // daily view pulls api/daily-tasks) — and the landing should be
+        // fresh after whatever happened in a panel.
+        window.WriteSysHome._noteDeepLinked = false;
+        if (typeof window.WriteSysHome.reload === 'function') window.WriteSysHome.reload();
+        else window.WriteSysHome.render();
+      }
+      return true;
+    }
+    const key = keyOf(c);
+    const live = panels.has(key);
+    if (c.hash && !live) pendingHash.set(key, c.hash); // consumed by ensureFrame
+    openTab(c.type, c.id, opts.name || c.name || nameFor(c.type, c.id) || undefined);
+    if (c.hash && live) forwardHash(key, c.hash);
+    return true;
+  };
+  // Plain left-clicks only: modified clicks, other targets and downloads
+  // stay with the browser. The name for a fresh pin comes off the link
+  // (a card's title, else the title attribute).
+  const onLinkClick = (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
+    // A control INSIDE the link (a card's gear, its "daily tasks" span —
+    // role=button) has its own handler; the link itself is not the target.
+    const ctl = e.target.closest('a[href], button, [role="button"], input, select, textarea, label');
+    if (ctl !== a) return;
+    // A same-document fragment ("#", "#note-3") resolves to THIS page's URL
+    // and would classify as its own tab — inline references, the edit
+    // pane and the settings go-to arrow use such hrefs with their own
+    // handlers. Not ours.
+    const raw = a.getAttribute('href') || '';
+    if (raw.startsWith('#') || /^javascript:/i.test(raw)) return;
+    if (!classify(a.href)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const name = ((a.querySelector('.card-title') || {}).textContent || a.getAttribute('title') || '').trim();
+    if (!route(a.href, { name: name || undefined })) location.href = a.href;
+  };
+  if (EMBED || SHELL) document.addEventListener('click', onLinkClick, true);
+
   const goHome = () => {
     if (SHELL) { activate(null); return; }
     location.href = 'home.html';
@@ -592,16 +698,8 @@ window.WriteSysTabs = (function () {
     const gear = document.getElementById('settings-link');
     if (gear) gear.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
     if (SHELL) {
-      // Manuscript cards open IN PLACE as live panels — never a navigation.
-      document.addEventListener('click', (e) => {
-        const card = e.target.closest && e.target.closest('a.card-manuscript');
-        if (!card) return;
-        const id = parseInt((new URL(card.href, location.href)).searchParams.get('manuscript_id'), 10);
-        if (!id) return;
-        e.preventDefault();
-        const name = (card.querySelector('.card-title') || {}).textContent || 'Manuscript';
-        openManuscript(id, name.trim());
-      }, true);
+      // Manuscript cards (and every other link) open IN PLACE as tabs —
+      // the link router above, installed at module init.
       // Clicking the landing page focuses the left pane.
       document.addEventListener('pointerdown', (e) => {
         if (e.target.closest && (e.target.closest('#ms-tabs') || e.target.closest('#ms-split-divider'))) return;
@@ -636,5 +734,6 @@ window.WriteSysTabs = (function () {
   });
   render();
 
-  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, activate };
+  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, activate,
+    route, _classify: classify };
 })();

@@ -65,22 +65,11 @@
           if (window.WriteSysHistory && window.WriteSysRenderer.currentMigrationID) {
             window.WriteSysHistory.loadHistory(window.WriteSysRenderer.currentMigrationID);
           }
-          // Deep link from the landing Notes grid: #note-sentence=<sid> scrolls
-          // to the noted sentence and opens its notes (once, on first render).
-          if (!window.WriteSysRenderer._noteDeepLinkDone) {
-            const m = (window.location.hash || '').match(/[#&]note-sentence=([^&]+)/);
-            if (m) {
-              window.WriteSysRenderer._noteDeepLinkDone = true;
-              const sid = decodeURIComponent(m[1]);
-              setTimeout(() => {
-                window.WriteSysRenderer.scrollToSentence(sid);
-                const frag = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
-                if (frag && window.WriteSysNotes) {
-                  frag.click(); // opens the note panel for that sentence
-                }
-              }, 300);
-            }
-          }
+          // Deep link from the landing Notes grid: #note-sentence=<sid>
+          // scrolls to the noted sentence and opens its notes — once per
+          // hash after a render; a kept-alive panel gets NEW hashes from
+          // the tabs link router, followed on hashchange (below).
+          followNoteDeepLink(false);
         }
 
         console.log(`Paged.js rendered ${pages.length} pages`);
@@ -93,3 +82,25 @@
 
   setupPagedJS();
 })();
+
+// #note-sentence=<sid> deep link: scroll to the sentence and open its
+// notes. After a render it runs once per hash (re-renders must not yank
+// the scroll back); on hashchange it always runs — the tabs link router
+// sets a live panel's hash (or re-dispatches hashchange for the same one)
+// when a note card is clicked again.
+function followNoteDeepLink(force) {
+  const R = window.WriteSysRenderer;
+  const m = (window.location.hash || '').match(/[#&]note-sentence=([^&]+)/);
+  if (!R || !m) return;
+  if (!force && R._noteDeepLinkDone === window.location.hash) return;
+  R._noteDeepLinkDone = window.location.hash;
+  const sid = decodeURIComponent(m[1]);
+  setTimeout(() => {
+    R.scrollToSentence(sid);
+    const frag = document.querySelector(`.sentence[data-sentence-id="${sid}"]`);
+    if (frag && window.WriteSysNotes) frag.click(); // opens the note panel for that sentence
+  }, 300);
+}
+window.addEventListener('hashchange', () => {
+  if (document.querySelector('.pagedjs_page')) followNoteDeepLink(true);
+});

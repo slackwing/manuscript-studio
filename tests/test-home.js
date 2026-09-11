@@ -100,10 +100,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       [...document.querySelectorAll('.gs-item:not(.active)')]
         .every(i => getComputedStyle(i).backgroundColor === 'rgba(0, 0, 0, 0)')));
     await page.click('.gs-item');
-    await page.waitForSelector('.sentence', { timeout: 30000 });
-    check('picking a manuscript opens it', /manuscript_id=/.test(page.url()), page.url());
+    // The link router (tabs.js, 2026-09-11) opens the pick as a TAB in the
+    // shell — a live panel, never a navigation away from home.html.
+    await page.waitForSelector('#ms-tab-panels iframe[src*="manuscript_id"].active', { timeout: 30000 });
+    const picked = page.frames().find((f) => f.url().includes('manuscript_id'));
+    await picked.waitForSelector('.sentence', { timeout: 30000 });
+    check('picking a manuscript opens it as a tab (shell URL, live panel)',
+      /home\.html/.test(page.url()) && /#tab=m\d+/.test(page.url()), page.url());
 
-    // --- search from the BOOK page: scratchpad opens the modal here too ---
+    // --- search from the BOOK page (standalone): scratchpad opens the modal here too ---
+    await page.goto(TEST_URL);
+    await page.waitForSelector('.sentence', { timeout: 30000 });
     await page.fill('#gs-input', 'SearchMe42');
     await page.waitForSelector('.gs-item', { timeout: 10000 });
     await page.click('.gs-item');

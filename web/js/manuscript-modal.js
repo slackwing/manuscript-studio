@@ -291,7 +291,14 @@ const WriteSysManuscriptModal = {
     for (let i = 0; i < 30; i++) {
       try {
         const lr = await fetch(`api/migrations/latest?manuscript_id=${id}`);
-        if (lr.ok) { window.location.href = `./?manuscript_id=${id}`; return; }
+        if (lr.ok) {
+          // Open the new book as a TAB (shell) — the modal must be gone first.
+          this.close();
+          const href = `./?manuscript_id=${id}`;
+          const name = created.manuscript.display_name || created.manuscript.name;
+          if (!(window.WriteSysTabs && window.WriteSysTabs.route(href, { name }))) window.location.href = href;
+          return;
+        }
       } catch (e) { /* keep polling */ }
       await new Promise(res => setTimeout(res, 500));
     }
@@ -350,8 +357,10 @@ if (typeof window !== 'undefined') {
       daily.addEventListener('click', () => {
         const id = new URLSearchParams(window.location.search).get('manuscript_id');
         if (!id) return;
+        const href = 'home.html?view=daily&manuscript_id=' + id;
+        if (window.WriteSysTabs && window.WriteSysTabs.route(href)) return; // shell tab move (from a panel too)
         let top = window; try { top = window.top || window; } catch (e) { /* keep window */ }
-        top.location.href = 'home.html?view=daily&manuscript_id=' + id;
+        top.location.href = href;
       });
     }
   };

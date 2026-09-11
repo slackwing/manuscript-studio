@@ -52,11 +52,16 @@ function cleanup() {
     check('slug derives from title', derived === `lifecycle-book-${TEST_USERNAME}`, derived);
     await page.fill('#msm-overlay [name="name"]', SLUG); // worker-scoped override
     await page.fill('#msm-overlay [name="word_goal"]', '50000');
-    await Promise.all([
-      page.waitForURL(/manuscript_id=\d+/, { timeout: 30000 }),
-      page.click('#msm-overlay #msm-go'),
-    ]);
-    check('create navigates into the new book', true, page.url());
+    await page.click('#msm-overlay #msm-go');
+    // The link router (tabs.js, 2026-09-11) opens the new book as a TAB in
+    // the shell (modal closed, no navigation). The rest of this lifecycle
+    // drives the standalone book page, so hop to it explicitly.
+    await page.waitForSelector('#ms-tab-panels iframe[src*="manuscript_id"].active', { timeout: 30000 });
+    check('create opens the new book as a tab (shell URL, modal gone)',
+      /home\.html/.test(page.url()) && !(await page.$('#msm-overlay')), page.url());
+    const createdSrc = await page.$eval('#ms-tab-panels iframe[src*="manuscript_id"].active', (f) => f.getAttribute('src'));
+    await page.goto(new URL(createdSrc, page.url()).href);
+    await page.waitForURL(/manuscript_id=\d+/, { timeout: 30000 });
 
     // v3.2: the creator lands as ADMIN + AUTHOR — no self-granting needed
     // before working on the book.

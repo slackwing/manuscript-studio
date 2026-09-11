@@ -20,7 +20,7 @@ const WriteSysHome = {
       clearTimeout(this._pgResize);
       this._pgResize = setTimeout(() => this.renderPointsGrid(), 150);
     });
-    window.addEventListener('popstate', () => this.render());
+    window.addEventListener('popstate', () => { this._noteDeepLinked = false; this.reload(); });
     // After an in-place re-login (session-guard), the page's data fetches
     // had 401'd — reload them, else the landing page stays broken until a
     // manual refresh.
@@ -179,7 +179,7 @@ const WriteSysHome = {
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.display_name || m.name)}</p>
       <p class="card-sketch">${words}</p>
-      <p class="ms-daily-row"><span class="ms-daily-link" data-daily="${m.manuscript_id}">daily tasks</span>
+      <p class="ms-daily-row"><span class="ms-daily-link" data-daily="${m.manuscript_id}" role="button" tabindex="0">daily tasks</span>
         <span class="ms-gear" data-settings="${m.manuscript_id}" title="Manuscript settings" role="button" tabindex="0">${this.GEAR_SVG}</span></p>
       <p class="card-meta"><span>${this.esc(updated)}</span>${created ? `<span>${this.esc(created)}</span>` : ''}</p>
     </a>`;
@@ -415,11 +415,14 @@ const WriteSysHome = {
     // Manuscript card's "daily tasks" link (a span — the card itself is an
     // anchor, so stop the card navigation and go to the daily view).
     root.querySelectorAll('.ms-daily-link').forEach(el => {
-      el.addEventListener('click', (e) => {
+      const go = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        window.location.href = 'home.html?view=daily&manuscript_id=' + el.dataset.daily;
-      });
+        const href = 'home.html?view=daily&manuscript_id=' + el.dataset.daily;
+        if (!(window.WriteSysTabs && window.WriteSysTabs.route(href))) window.location.href = href;
+      };
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(e); });
     });
 
     // Card gear → settings modal (same stop-the-anchor dance).
@@ -448,20 +451,16 @@ const WriteSysHome = {
         } else if (mId) {
           // Manuscript note → open the book and scroll to the noted sentence.
           const sid = card.dataset.sentenceId;
-          window.location.href = `./?manuscript_id=${mId}` + (sid ? `#note-sentence=${encodeURIComponent(sid)}` : '');
+          const href = `./?manuscript_id=${mId}` + (sid ? `#note-sentence=${encodeURIComponent(sid)}` : '');
+          if (!(window.WriteSysTabs && window.WriteSysTabs.route(href))) window.location.href = href;
         }
       };
       card.addEventListener('click', open);
       card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
     });
 
-    root.querySelectorAll('a[data-view]').forEach(a => {
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        history.pushState(null, '', a.getAttribute('href'));
-        this.render();
-      });
-    });
+    // "See all" / "← Home" links are plain hrefs: the tabs link router
+    // (tabs.js) turns them into in-place view changes with history entries.
     // Ghost cards: scratchpad → create immediately (as the old + did);
     // manuscript → the creation modal.
     root.querySelectorAll('.card-ghost').forEach(g => {

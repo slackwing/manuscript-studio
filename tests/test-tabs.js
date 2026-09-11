@@ -244,6 +244,111 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('settings tab closes like any tab', await page.evaluate(() =>
     document.querySelectorAll('#ms-tabs .ms-tab').length === 1));
 
+  // ---- LINK ROUTER (2026-09-11): every same-origin link is a tab move ----
+  // The shell is on ?view=notes with Home alone. A reload would wipe the
+  // sentinel; every step below must keep it.
+  await page.evaluate(() => { window.__shellSentinel = 'alive'; });
+  await page.waitForSelector('a.home-back', { timeout: 5000 });
+  await page.click('a.home-back');
+  await page.waitForSelector('a.home-seeall', { timeout: 5000 });
+  check('← Home from an All view re-renders the landing in place (no reload)',
+    await page.evaluate(() => window.__shellSentinel === 'alive'
+      && !new URLSearchParams(location.search).get('view')
+      && document.getElementById('ms-tab-panels').hidden === true));
+  // Whichever section offers "See all" (the fixture may hold no pads now).
+  const seeAllView = await page.evaluate(() => document.querySelector('a.home-seeall').dataset.view);
+  await page.click('a.home-seeall');
+  await page.waitForSelector('a.home-back', { timeout: 5000 });
+  check('See all → All view in place', await page.evaluate((v) =>
+    window.__shellSentinel === 'alive' && new URLSearchParams(location.search).get('view') === v, seeAllView),
+  seeAllView);
+  await page.goBack();
+  await page.waitForSelector('a.home-seeall', { timeout: 5000 });
+  check('browser Back returns to the landing (popstate re-render, no reload)',
+    await page.evaluate(() => window.__shellSentinel === 'alive' && !new URLSearchParams(location.search).get('view')));
+  await page.click('a.home-seeall');
+  await page.waitForSelector('a.home-back', { timeout: 5000 });
+  await page.click('#brand');
+  await page.waitForSelector('a.home-seeall', { timeout: 5000 });
+  check('brand link → landing in place', await page.evaluate(() =>
+    window.__shellSentinel === 'alive' && !new URLSearchParams(location.search).get('view')));
+  // A manuscript link with a note deep link → its tab; the hash lands in the panel.
+  const mid = await page.evaluate(() =>
+    new URL(document.querySelector('a.card-manuscript').href).searchParams.get('manuscript_id'));
+  await page.evaluate((mid) => {
+    const a = document.createElement('a');
+    a.href = './?manuscript_id=' + mid + '#note-sentence=deep-1';
+    a.id = 'deep-link';
+    a.textContent = 'deep';
+    document.body.appendChild(a);
+  }, mid);
+  await page.click('#deep-link');
+  await page.waitForFunction(() => {
+    const f = document.querySelector('#ms-tab-panels iframe[src*="manuscript_id"].active');
+    try { return !!f && f.contentWindow.location.hash === '#note-sentence=deep-1'; } catch (e) { return false; }
+  }, null, { timeout: 15000 });
+  check('manuscript link → its tab (no navigation), hash forwarded into the panel',
+    page.url().includes('home.html') && await page.evaluate(() => window.__shellSentinel === 'alive'
+      && document.querySelector('#ms-tabs .ms-tab-manuscript.active') !== null));
+  // The same deep link again: the live panel gets a hashchange to follow anew.
+  await page.evaluate(() => {
+    const f = document.querySelector('#ms-tab-panels iframe[src*="manuscript_id"].active');
+    f.contentWindow.__hc = 0;
+    f.contentWindow.addEventListener('hashchange', () => { f.contentWindow.__hc += 1; });
+  });
+  await page.click('#ms-tabs .ms-tab-home');
+  await page.click('#deep-link');
+  await page.waitForFunction(() => {
+    const f = document.querySelector('#ms-tab-panels iframe[src*="manuscript_id"].active');
+    try { return !!f && f.contentWindow.__hc >= 1; } catch (e) { return false; }
+  }, null, { timeout: 5000 });
+  check('re-clicking the same deep link re-fires hashchange in the live panel', true);
+  // A manuscript link INSIDE a panel routes to the shell's tab — the panel never navigates.
+  await page.click('#settings-link');
+  await page.waitForSelector('#ms-tab-panels iframe[src*="settings.html"].active', { timeout: 8000 });
+  await page.waitForFunction(() => { // the recreated panel must have LOADED
+    const f = document.querySelector('#ms-tab-panels iframe[src*="settings.html"]');
+    try { return !!f && f.contentDocument.readyState === 'complete' && !!f.contentDocument.body; } catch (e) { return false; }
+  }, null, { timeout: 15000 });
+  await page.evaluate((mid) => {
+    const doc = document.querySelector('#ms-tab-panels iframe[src*="settings.html"]').contentDocument;
+    const a = doc.createElement('a');
+    a.href = './?manuscript_id=' + mid;
+    a.id = 'embed-ms-link';
+    a.textContent = 'm';
+    doc.body.appendChild(a);
+    doc.getElementById('embed-ms-link').click();
+  }, mid);
+  await page.waitForSelector('#ms-tab-panels iframe[src*="manuscript_id"].active', { timeout: 8000 });
+  check('embedded manuscript link → the manuscript TAB; settings panel untouched', await page.evaluate(() =>
+    document.querySelector('#ms-tab-panels iframe[src*="settings.html"]').contentWindow.location.pathname.endsWith('settings.html')
+    && window.__shellSentinel === 'alive'));
+  const cls = await page.evaluate(() => {
+    const c = window.WriteSysTabs._classify;
+    return {
+      ms: c('./?manuscript_id=5#x'), pad: c('pad.html?scratchpad_id=9'), set: c('settings.html'),
+      home: (c('home.html?view=notes') || {}).kind, ext: c('https://example.com/'), other: c('login.html'),
+    };
+  });
+  check('classify: manuscript / pad / settings / home / external / other',
+    !!cls.ms && cls.ms.type === 'manuscript' && cls.ms.id === 5 && cls.ms.hash === '#x'
+    && !!cls.pad && cls.pad.type === 'scratchpad' && cls.pad.id === 9
+    && !!cls.set && cls.set.type === 'settings' && cls.home === 'home' && cls.ext === null && cls.other === null,
+    JSON.stringify(cls));
+  // Fragment links are never ours (inline refs and go-to arrows use href="#").
+  await page.evaluate(() => {
+    const a = document.createElement('a');
+    a.href = '#frag-x';
+    a.id = 'frag-link';
+    a.textContent = 'f';
+    document.body.appendChild(a);
+  });
+  await page.evaluate(() => document.getElementById('frag-link').click()); // under the panel layer
+  check('fragment link left to the browser (hash set, no reload, tab untouched)',
+    await page.evaluate(() => location.hash === '#frag-x' && window.__shellSentinel === 'alive'
+      && document.querySelector('#ms-tabs .ms-tab-manuscript.active') !== null));
+  await page.evaluate(() => history.replaceState(null, '', location.pathname + location.search));
+
   // ---- standalone book page (old link): pins, and its tabs route to the shell ----
   await page.goto(TEST_URL);
   await page.waitForSelector('#ms-tabs .ms-tab-manuscript', { timeout: 30000 });

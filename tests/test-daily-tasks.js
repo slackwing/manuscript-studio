@@ -42,9 +42,14 @@ function psql(sql) {
   check('manuscript card shows "daily tasks" link', await link.count() === 1);
   check('link reads "daily tasks"', (await link.innerText()).trim() === 'daily tasks');
   await link.click();
-  await page.waitForURL(/view=daily/);
+  // In the shell the link router swaps the view IN PLACE (history entry,
+  // no load) — wait on the URL itself, not a navigation.
+  await page.waitForFunction(() => /view=daily/.test(location.search), null, { timeout: 15000 });
+  // The URL flips first; the daily payload renders when its fetch lands —
+  // its "← Home" link marks the view (the landing has none).
+  await page.waitForSelector('a.home-back', { timeout: 15000 });
   await page.waitForSelector('.card-note', { timeout: 8000 });
-  check('link navigates to the daily view', page.url().includes(`manuscript_id=${M}`));
+  check('link shows the daily view in place', page.url().includes(`manuscript_id=${M}`) && /home\.html/.test(page.url()));
 
   // --- 16 of the 18 eligible; none from today, none non-task ---
   const bodies = await page.locator('.card-note').allInnerTexts();

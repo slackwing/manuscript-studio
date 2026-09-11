@@ -99,7 +99,8 @@ const WriteSysGlobalSearch = {
     this.hide();
     this.input.value = '';
     if (item.type === 'manuscript') {
-      window.location.href = `./?manuscript_id=${item.id}`;
+      const href = `./?manuscript_id=${item.id}`;
+      if (!(window.WriteSysTabs && window.WriteSysTabs.route(href, { name: item.title }))) window.location.href = href;
     } else if (window.WriteSysScratchpadModal) {
       window.WriteSysScratchpadModal.open(item.id);
     }
