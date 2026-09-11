@@ -87,6 +87,38 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('manuscript kept its state across the flip (no reload)',
     (await mFrame.evaluate(() => window.__sentinel).catch(() => 'GONE')) === 'alive');
 
+  // ---- Home's refresh (2026-09-11): like any active tab, Home carries a
+  // hover-revealed ↻ — it reloads the landing's data (points grid) in place.
+  check('a panel is active → the Home tab carries no refresh', await page.evaluate(() =>
+    !document.querySelector('#ms-tabs .ms-tab-home .ms-tab-refresh')
+    && !!document.querySelector('#ms-tabs .ms-tab-manuscript.active .ms-tab-refresh')));
+  await page.click('#ms-tabs .ms-tab-home');
+  await page.waitForFunction(() => document.getElementById('ms-tab-panels').hidden === true);
+  await page.evaluate(() => {
+    const H = window.WriteSysHome;
+    window.__homeReloads = 0;
+    window.__homeShell = 'alive';
+    const orig = H.reload.bind(H);
+    window.__homeReloadDone = 0;
+    H.reload = async () => { window.__homeReloads += 1; await orig(); window.__homeReloadDone += 1; };
+  });
+  await page.hover('#ms-tabs .ms-tab-home');
+  const homeRf = await page.evaluate(() => {
+    const r = document.querySelector('#ms-tabs .ms-tab-home.active .ms-tab-refresh');
+    return r ? { visible: getComputedStyle(r).visibility === 'visible', box: [r.getBoundingClientRect().width, r.getBoundingClientRect().height] } : null;
+  });
+  check('Home active → hover reveals its refresh, boxed like the others',
+    !!homeRf && homeRf.visible && Math.round(homeRf.box[0]) === 17 && Math.round(homeRf.box[1]) === 19, JSON.stringify(homeRf));
+  await page.click('#ms-tabs .ms-tab-home .ms-tab-refresh');
+  await page.waitForFunction(() => window.__homeReloadDone === 1, null, { timeout: 15000 }); // re-rendered
+  await page.waitForSelector('a.home-seeall', { timeout: 8000 });
+  check('Home refresh reloads the landing data in place (no navigation, still Home)',
+    await page.evaluate(() => window.__homeReloads === 1 && window.__homeShell === 'alive'
+      && document.getElementById('ms-tab-panels').hidden === true
+      && document.querySelector('#ms-tabs .ms-tab-home').classList.contains('active')));
+  await page.click('#ms-tabs .ms-tab-manuscript'); // back where the next section expects us
+  await page.waitForSelector('#ms-tab-panels .ms-panel.active', { timeout: 8000 });
+
   // ---- the ACTIVE tab's refresh (2026-09-11): a second hover-revealed
   // button, boxed like the ×, that reloads the tab's iframe.
   await page.hover('#ms-tabs .ms-tab-manuscript');

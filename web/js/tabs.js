@@ -592,6 +592,19 @@ window.WriteSysTabs = (function () {
       bar.appendChild(tab);
       return tab;
     };
+    // The active tab's refresh control: same box as the ×, same hover
+    // reveal (chrome.css). Pinned tabs reload their iframe; Home — which
+    // has no iframe and no other refresh affordance — reloads the landing
+    // page's data (points grid, recents) in place (2026-09-11).
+    const mkRefresh = (tab, onRefresh) => {
+      const r = document.createElement('span');
+      r.className = 'ms-tab-refresh';
+      r.title = 'Refresh';
+      r.textContent = '↻';
+      r.addEventListener('click', (e) => { e.stopPropagation(); onRefresh(); });
+      tab.appendChild(r);
+      return r;
+    };
     const mkPinTab = (bar, p, active) => {
       const tab = mkTab(bar, 'ms-tab-' + p.type, p.name, active, () => go(p));
       if (p.type === 'settings') {
@@ -602,15 +615,10 @@ window.WriteSysTabs = (function () {
           + '<path fill="currentColor" d="M9.4 1l.35 1.8c.4.14.78.33 1.13.55l1.73-.63 1.4 2.42-1.38 1.17a5.6 5.6 0 010 1.38l1.38 1.17-1.4 2.42-1.73-.63c-.35.22-.73.41-1.13.55L9.4 13H6.6l-.35-1.8a5.6 5.6 0 01-1.13-.55l-1.73.63L2 8.86l1.38-1.17a5.6 5.6 0 010-1.38L2 5.14l1.4-2.42 1.73.63c.35-.22.73-.41 1.13-.55L6.6 1h2.8z"/></svg>';
       }
       if (active) {
-        // The ACTIVE tab (only) carries a refresh beside its ×: same box,
-        // same hover-reveal. In the shell it reloads the tab's iframe; on
-        // a direct page (no panels) it reloads the page (2026-09-11).
-        const r = document.createElement('span');
-        r.className = 'ms-tab-refresh';
-        r.title = 'Refresh';
-        r.textContent = '↻';
-        r.addEventListener('click', (e) => {
-          e.stopPropagation();
+        // The ACTIVE tab (only) carries a refresh beside its ×. In the
+        // shell it reloads the tab's iframe; on a direct page (no panels)
+        // it reloads the page (2026-09-11).
+        mkRefresh(tab, () => {
           const f = SHELL ? panels.get(keyOf(p)) : null;
           if (f) {
             try { f.contentWindow.location.reload(); } catch (err) { f.setAttribute('src', f.getAttribute('src')); }
@@ -618,7 +626,6 @@ window.WriteSysTabs = (function () {
             location.reload();
           }
         });
-        tab.appendChild(r);
       }
       const x = document.createElement('span');
       x.className = 'ms-tab-x';
@@ -646,6 +653,14 @@ window.WriteSysTabs = (function () {
     homeTab.querySelector('.ms-tab-label').innerHTML =
       '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
       + '<path fill="currentColor" d="M8 1 1 7h2v7h4v-4h2v4h4V7h2L8 1z"/></svg>';
+    if (SHELL && homeActive) {
+      mkRefresh(homeTab, () => {
+        const H = window.WriteSysHome;
+        if (!H) return;
+        H._noteDeepLinked = false;
+        if (typeof H.reload === 'function') H.reload(); else H.render();
+      });
+    }
 
     const activeOf = (p) => {
       if (!SHELL) {
