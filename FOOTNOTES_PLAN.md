@@ -25,7 +25,7 @@ reusing one note from two call sites.
 
 ## 2. Syntax
 
-    &footnote{Any length of text. *Italics* or _italics_ only.}
+    &footnote{Any length of text. *Italics*, **bold** — the Markdown subset.}
     &endnote{Same rules.}
     &endnotes                         ← optional: print the collected endnotes HERE
 
@@ -34,8 +34,10 @@ reusing one note from two call sites.
   tracked in both the JS and Go parsers), and segman's RULE 10 keeps a
   command token atomic, so a multi-sentence note never splits its host
   sentence. Nothing in the parsers changes for v1.
-- Text inside: the existing `emphasize()` rules (`*x*` / `_x_` → em).
-  No bold (decided), no other Markdown, no nested commands (a `&fix` or
+- Text inside: the existing `emphasize()` rules — `*x*` / `_x_` → em and,
+  since 2026-09-11 (the author reversed the earlier "no bold"), `**x**` /
+  `__x__` → b, everywhere the subset renders. No other Markdown, no
+  nested commands (a `&fix` or
   `&reference` inside a note is left literal in v1).
 - **No square brackets.** TeX's `\footnote[7]{…}` bracket sets the
   NUMBER, not the style; style and reset scope are document-level in TeX

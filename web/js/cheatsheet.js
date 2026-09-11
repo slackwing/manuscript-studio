@@ -69,7 +69,7 @@ const WriteSysCheatsheet = {
         { code: 'See &reference#origin{the opening}.', desc: 'Link to a #slug.' },
         { code: 'The fire &anchor#mark{} spread.', desc: 'Inline marker.' },
         { code: 'It rained. &marker#weird{weak}', desc: 'Attention marker — {weak} 70%, {strong} 130%.' },
-        { code: 'He left.&footnote{A note. *Italics* only.}', desc: 'Footnote — attaches to the sentence it follows.' },
+        { code: 'He left.&footnote{A note. *Italics* and **bold**.}', desc: 'Footnote — attaches to the sentence it follows.' },
         { code: 'She waited. &placeholder{sentences}{l}', desc: 'Inline hatched space.' },
       ],
     },
@@ -78,6 +78,7 @@ const WriteSysCheatsheet = {
       note: '',
       rows: [
         { code: '*emphasis*  or  _emphasis_', desc: 'Italics.' },
+        { code: '**strong**  or  __strong__', desc: 'Bold.' },
         { code: '#my-slug-2', desc: 'Slugs: lowercase letters, digits, dashes.' },
       ],
     },

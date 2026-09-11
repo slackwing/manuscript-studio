@@ -264,6 +264,34 @@ const { suggestEditor } = require('./test-utils');
       out.anchor.includes('inline-anchor') && out.anchor.includes('cmd-anchor-inline'), out.anchor);
   }
 
+  // ---- R21: bold (**x** / __x__) everywhere the Markdown subset renders ---
+  {
+    const out = await page.evaluate(() => {
+      const R = window.WriteSysRenderer;
+      return {
+        b: R.emphasize('a **b** c'), u: R.emphasize('a __b__ c'), nest: R.emphasize('*it **bold** it*'),
+        triple: R.emphasize('***x***'), intra: R.emphasize('snake__case__name'), lone: R.emphasize('a ** b'),
+        prose: R.applyInlineFormatting('He **left** and *stayed*.'),
+      };
+    });
+    check('R21: **x** → <b>', out.b === 'a <b>b</b> c', out.b);
+    check('R21: __x__ → <b>', out.u === 'a <b>b</b> c', out.u);
+    check('R21: bold nests inside italics', out.nest === '<em>it <b>bold</b> it</em>', out.nest);
+    check('R21: ***x*** → italic bold', out.triple === '<em><b>x</b></em>', out.triple);
+    check('R21: intraword underscores untouched', out.intra === 'snake__case__name', out.intra);
+    check('R21: unpaired ** untouched', out.lone === 'a ** b', out.lone);
+    check('R21: prose path renders both', out.prose === 'He <b>left</b> and <em>stayed</em>.', out.prose);
+    const fnB = await render([{ id: 'r21a', text: 'He left.&footnote{A **bold** note.} She stayed.' }]);
+    check('R21: bold inside a footnote body', fnB.includes('data-fn-ordinal="0">A <b>bold</b> note.</span>'), fnB);
+    const head = await render([{ id: 'r21b', text: '&chapter#b{The **Bold** One}' }]);
+    check('R21: bold in a heading label', head.includes('The <b>Bold</b> One'), head);
+    const fix = await render([{ id: 'r21c', text: 'x &fix{make it **pop**} y' }]);
+    check('R21: bold inside &fix', fix.includes('make it <b>pop</b>'), fix);
+    const sug = await render([{ id: 'r21d', text: 'He left the valley.' }], { r21d: 'He **left** the valley.' });
+    check('R21: a suggestion bolding a word shows the ** reviewable in green with <b> straddling them',
+      /\*\*<b><\/strong>left<strong class="md-marker"><\/b>\*\*/.test(sug), sug);
+  }
+
   // ---- R13: renderInlineCommand all kinds -------------------------------
   {
     const out = await page.evaluate(() => {

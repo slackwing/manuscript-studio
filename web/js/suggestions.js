@@ -1355,37 +1355,36 @@ function renderStructuralMarkers(html) {
   return out;
 }
 
-// Replace *x* with <em>x</em> across the assembled diff HTML. The naïve
-// per-segment substitution misses the common case where the user wraps
-// existing text in asterisks: the diff splits the open and close `*`
-// into separate <strong> inserts with unchanged text between, e.g.
+// Replace the Markdown subset's markers across the assembled diff HTML:
+// `**x**` / `__x__` → <b>, `*x*` / `_x_` → <em> (`***x***` → both). The
+// naïve per-segment substitution misses the common case where the user
+// wraps existing text in markers: the diff splits the open and close
+// marker into separate <strong> inserts with unchanged text between, e.g.
 //   <strong>fixtures. *A</strong> tesselated ... <strong>away*.</strong>
 // Pair these by scanning the full HTML, tracking whether we're inside
-// a <del> (whose asterisks are "deleted markdown" and must not pair
-// with surviving ones), and inserting <em> tags around the matched
-// content. The resulting <em> may straddle a <strong> boundary —
-// browsers handle <em>foo<strong>bar</strong>baz</em> fine in inline
-// flow, and the visual result is the intended italics.
+// a <del> (whose markers are "deleted markdown" and must not pair with
+// surviving ones), and inserting tags around the matched content. A tag
+// may straddle a <strong> boundary — browsers handle
+// <em>foo<strong>bar</strong>baz</em> fine in inline flow. Bold is <b>,
+// never <strong>: here <strong> means "inserted text".
 function pairItalicsAcrossInserts(html) {
-  // Find positions of `*` outside <del>...</del> and outside any tag.
-  // Each records whether it sits inside a <strong> (an INSERTED marker) and
-  // WHICH <strong> (seg): a pair living in the SAME insert means the whole
-  // *word* is new prose — the green italics alone carry the change, so the
-  // syntax chars hide, same as committed rendering. Markers in DIFFERENT
-  // inserts wrap pre-existing text — the italicization itself IS the edit
-  // (non-italic → italic), so those stay VISIBLE green. Pre-existing (EQ)
-  // markers swap into pure <em> as always.
-  const stars = [];
-  const scores = []; // underscore positions — pair only with underscores
+  // Each marker records whether it sits inside a <strong> (an INSERTED
+  // marker) and WHICH <strong> (seg): a pair living in the SAME insert
+  // means the whole *word* is new prose — the green styling alone carries
+  // the change, so the syntax chars hide, same as committed rendering.
+  // Markers in DIFFERENT inserts wrap pre-existing text — the styling
+  // itself IS the edit, so those stay VISIBLE green. Pre-existing (EQ)
+  // markers swap into pure tags as always.
+  const lists = { '***': [], '___': [], '**': [], '__': [], '*': [], '_': [] };
   let inDel = false;
   let inStrong = false;
   let inTag = false;
   let seg = 0; // <strong> counter — same seg = same inserted run
+  const w = (ch) => ch !== undefined && /\w/.test(ch) && ch !== '_';
   for (let i = 0; i < html.length; i++) {
     const c = html[i];
     if (c === '<') {
       inTag = true;
-      // Detect <del ...> open and </del> close.
       if (html.startsWith('<del', i)) inDel = true;
       else if (html.startsWith('</del>', i)) inDel = false;
       else if (html.startsWith('<strong', i)) { inStrong = true; seg++; }
@@ -1396,49 +1395,45 @@ function pairItalicsAcrossInserts(html) {
       if (c === '>') inTag = false;
       continue;
     }
-    if (c === '*' && !inDel) stars.push({ i, ins: inStrong, seg: inStrong ? seg : 0 });
-    if (c === '_' && !inDel) {
+    if (inDel || (c !== '*' && c !== '_')) continue;
+    const len = (html[i + 1] === c && html[i + 2] === c) ? 3 : (html[i + 1] === c ? 2 : 1);
+    if (c === '_') {
       // Underscore emphasis is never intraword: require a non-word char (or
       // edge/tag boundary) on at least the OUTER side of the would-be pair.
-      const prev = html[i - 1], next = html[i + 1];
-      const w = (ch) => ch !== undefined && /\w/.test(ch) && ch !== '_';
-      if (!(w(prev) && w(next))) scores.push({ i, ins: inStrong, seg: inStrong ? seg : 0 });
+      const prev = html[i - 1];
+      const next = html[i + len];
+      if (w(prev) && w(next)) { i += len - 1; continue; }
     }
+    lists[c.repeat(len)].push({ i, len, ins: inStrong, seg: inStrong ? seg : 0 });
+    i += len - 1;
   }
-  // Pair greedily: 0+1, 2+3, etc. Replace from the right so earlier
-  // indices stay valid.
+  // Pair greedily within each marker kind: 0+1, 2+3, etc.
   const pairs = [];
-  for (let i = 0; i + 1 < stars.length; i += 2) {
-    pairs.push([stars[i], stars[i + 1]]);
+  Object.keys(lists).forEach((k) => {
+    const L = lists[k];
+    for (let i = 0; i + 1 < L.length; i += 2) pairs.push({ a: L[i], b: L[i + 1], k });
+  });
+  // Nesting (bold inside italics) is fine — edits are per MARKER, ranges
+  // never overlap. CROSSING pairs would mis-nest tags: earliest-open wins.
+  pairs.sort((p, q) => p.a.i - q.a.i);
+  const kept = [];
+  for (const p of pairs) {
+    if (!kept.some((q) => p.a.i > q.a.i && p.a.i < q.b.i && p.b.i > q.b.i)) kept.push(p);
   }
-  for (let i = 0; i + 1 < scores.length; i += 2) {
-    pairs.push([scores[i], scores[i + 1]]);
+  const OPEN = { '***': '<b><em>', '___': '<b><em>', '**': '<b>', '__': '<b>', '*': '<em>', '_': '<em>' };
+  const CLOSE = { '***': '</em></b>', '___': '</em></b>', '**': '</b>', '__': '</b>', '*': '</em>', '_': '</em>' };
+  const edits = [];
+  for (const p of kept) {
+    const whole = p.a.ins && p.b.ins && p.a.seg === p.b.seg;
+    edits.push({ i: p.a.i, len: p.a.len, rep: (p.a.ins && !whole) ? p.k + OPEN[p.k] : OPEN[p.k] });
+    edits.push({ i: p.b.i, len: p.b.len, rep: (p.b.ins && !whole) ? CLOSE[p.k] + p.k : CLOSE[p.k] });
   }
-  // Crossing/nested star-vs-underscore pairs would corrupt the index math
-  // of the right-to-left replacement below — keep only non-overlapping
-  // pairs, earliest-start wins.
-  pairs.sort((a, b) => a[0].i - b[0].i);
-  let lastEnd = -1;
-  for (let i = 0; i < pairs.length; i++) {
-    if (pairs[i][0].i <= lastEnd) { pairs.splice(i, 1); i--; continue; }
-    lastEnd = pairs[i][1].i;
-  }
-  for (let p = pairs.length - 1; p >= 0; p--) {
-    const [a, b] = pairs[p];
-    // A pair inside the SAME <strong>: the whole *word* is inserted prose —
-    // hide the syntax, the green italics say it all. A marker inserted
-    // AROUND existing text (pair straddles inserts): KEEP the character so
-    // the italicization change shows green. Pre-existing marker: swap it
-    // for the tag.
-    const wholeInsert = a.ins && b.ins && a.seg === b.seg;
-    const closeRep = (b.ins && !wholeInsert) ? '</em>' + html[b.i] : '</em>';
-    const openRep = (a.ins && !wholeInsert) ? html[a.i] + '<em>' : '<em>';
-    html = html.slice(0, a.i) + openRep + html.slice(a.i + 1, b.i) + closeRep + html.slice(b.i + 1);
-  }
+  edits.sort((x, y) => y.i - x.i); // right to left keeps earlier indices valid
+  for (const e of edits) html = html.slice(0, e.i) + e.rep + html.slice(e.i + e.len);
   // A pairing that consumed a marker living alone inside an md-marker
-  // wrapper leaves the wrapper holding only the inserted <em>/</em> tag —
-  // hoist the tag out and drop the husk.
-  html = html.replace(/<(del|strong) class="md-marker">\s*(<\/?em>)\s*<\/\1>/g, '$2');
+  // wrapper leaves the wrapper holding only the inserted tag(s) — hoist
+  // them out and drop the husk.
+  html = html.replace(/<(del|strong) class="md-marker">\s*((?:<\/?(?:em|b)>)+)\s*<\/\1>/g, '$2');
   html = html.replace(/<(del|strong) class="md-marker">\s*<\/\1>/g, '');
   return html;
 }
@@ -1451,6 +1446,8 @@ function pairItalicsAcrossInserts(html) {
 // italic pairs.
 function formatFallbackHTML(text) {
   return escapeHTML(text)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^\w])__([^_]+)__(?=[^\w]|$)/g, '$1<b>$2</b>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/(^|[^\w])_([^_]+)_(?=[^\w]|$)/g, '$1<em>$2</em>');
 }

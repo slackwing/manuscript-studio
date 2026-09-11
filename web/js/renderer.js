@@ -962,8 +962,14 @@ const WriteSysRenderer = {
   // *text* and _text_ both italicize (markdown's two spellings). Underscore
   // emphasis never applies INTRAWORD (snake_case stays literal) — the
   // lookarounds require a non-word (or edge) character on the outside.
+  // emphasize: the manuscript's Markdown subset — **bold** / __bold__ and
+  // *italics* / _italics_ (underscores never intraword). Bold runs first so
+  // `***x***` and `*it **bold** it*` nest. Bold is <b>, never <strong>:
+  // in the diff renderer <strong> means "inserted text" (green).
   emphasize(escaped) {
     return escaped
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/(^|[^\w])__([^_]+)__(?=[^\w]|$)/g, '$1<b>$2</b>')
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
       .replace(/(^|[^\w])_([^_]+)_(?=[^\w]|$)/g, '$1<em>$2</em>');
   },
@@ -1033,7 +1039,7 @@ const WriteSysRenderer = {
       // host sentence's HTML; Paged.js floats it (float: footnote, book.css)
       // into the page's footnote area and leaves the call at this spot.
       // stampNoteHosts() gives it the host's sentence id — a footnote IS
-      // its host sentence (§5). Italics only inside (emphasize).
+      // its host sentence (§5). The Markdown subset applies inside (emphasize).
       const text = (c.args || []).join('');
       return `<span class="fn-body">${this.emphasize(escapeHTML(text))}</span>`;
     }

@@ -194,6 +194,35 @@ console.log('=== S9 italics-pairing-across-inserts ===');
 }
 
 
+// ---- S9b: bold pairing across inserts (2026-09-11) ----------------------
+console.log('=== S9b bold-pairing-across-inserts ===');
+{
+  const p = pairItalicsAcrossInserts('<strong>**A</strong> tesselated <strong>away**</strong>');
+  check('bold pair spanning two inserts keeps the ** visible',
+    p === '<strong>**<b>A</strong> tesselated <strong>away</b>**</strong>', p);
+  const w = pairItalicsAcrossInserts('<strong>He went **quietly** away.</strong>');
+  check('bold word inside an inserted phrase: no visible markers',
+    w === '<strong>He went <b>quietly</b> away.</strong>', w);
+  const n = pairItalicsAcrossInserts('*a **b** c*');
+  check('bold nests inside italics', n === '<em>a <b>b</b> c</em>', n);
+  const u = pairItalicsAcrossInserts('__x__ and _y_ and snake_case_name');
+  check('__ bold, _ italics, intraword underscores untouched',
+    u === '<b>x</b> and <em>y</em> and snake_case_name', u);
+  const t = pairItalicsAcrossInserts('***x***');
+  check('*** → bold italics', t === '<b><em>x</em></b>', t);
+  const x = pairItalicsAcrossInserts('*a __b* c__');
+  check('crossing pairs: earliest-open wins, the crosser is left literal',
+    x === '<em>a __b</em> c__', x);
+  const d = renderDiffHTML('the cat sat', 'the **cat** sat', dmp());
+  // The markers are the edit: they stay visible green (md-marker inserts)
+  // and the <b> straddles them — <b> opens inside the first insert, closes
+  // inside the second, "cat" bold in between (browsers render that fine).
+  check('diff: wrapping a word in ** → green ** markers with <b> straddling them',
+    /md-marker">\*\*<b><\/strong>cat<strong class="md-marker"><\/b>\*\*<\/strong>/.test(d), d);
+  const f = formatFallbackHTML('a **b** *c*');
+  check('fallback path renders bold and italics', f === 'a <b>b</b> <em>c</em>', f);
+}
+
 // ---- S10-md: markdown-aware diffs (moved markers, underscores) ----------
 console.log('=== S10-md markdown-aware diffs ===');
 {
