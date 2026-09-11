@@ -31,3 +31,19 @@ func TestExtractSettings(t *testing.T) {
 		t.Errorf("font should accept any value, got %q", s2.Values["font"])
 	}
 }
+
+// Footnote settings (FOOTNOTES_PLAN.md §3): the two properties validate
+// against their closed value sets; an unmappable value is dropped.
+func TestExtractSettingsFootnotes(t *testing.T) {
+	s := ExtractSettings([]string{"a", "b", "c"}, map[string]string{
+		"a": "&meta{footnote-marks}{symbols}",
+		"b": "&meta{footnote-reset}{page}",
+		"c": "&meta{footnote-reset}{book}", // bad syntax → ignored, "page" stands
+	})
+	if s.Values["footnote-marks"] != "symbols" {
+		t.Errorf("footnote-marks: got %q, want symbols", s.Values["footnote-marks"])
+	}
+	if s.Values["footnote-reset"] != "page" {
+		t.Errorf("footnote-reset: got %q, want page (the unmappable 'book' must not win)", s.Values["footnote-reset"])
+	}
+}

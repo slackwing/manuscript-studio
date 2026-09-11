@@ -742,6 +742,7 @@ const WriteSysRenderer = {
         } else {
           inner = this.applyInlineFormatting(body);
         }
+        inner = this.stampNoteHosts(inner, id); // footnote bodies carry the host id
         if (deletedLeadGlyph) {
           inner = deletedLeadGlyph + inner;
           deletedLeadGlyph = '';
@@ -1027,6 +1028,15 @@ const WriteSysRenderer = {
       return `<span class="cmd-diamond cmd-diamond-marker" data-kind="${escapeHTML(c.kind)}"${slug}${args}`
         + ` title="${escapeHTML(c.raw || '&' + c.kind)}">${glyph}</span>`;
     }
+    if (c.kind === 'footnote') {
+      // &footnote{text} (FOOTNOTES_PLAN.md): the body rides inline in the
+      // host sentence's HTML; Paged.js floats it (float: footnote, book.css)
+      // into the page's footnote area and leaves the call at this spot.
+      // stampNoteHosts() gives it the host's sentence id — a footnote IS
+      // its host sentence (§5). Italics only inside (emphasize).
+      const text = (c.args || []).join('');
+      return `<span class="fn-body">${this.emphasize(escapeHTML(text))}</span>`;
+    }
     if (c.kind === 'fix') {
       // &fix{…} is a DISPLAY command: its contents render exactly as the
       // unwrapped prose would (escape + *emphasis*), bold and purple — a
@@ -1084,6 +1094,23 @@ const WriteSysRenderer = {
     return `<span class="inline-ref broken" title="unresolved reference: ${escapeHTML(c.slug || '')}">${notes}</span>`;
   },
 
+  // stampNoteHosts: every footnote body in a sentence's rendered HTML —
+  // committed (renderInlineCommand) or diffed (suggestions.js renderDiffHTML)
+  // — becomes a fragment of the host sentence: same class, same
+  // data-sentence-id, so hover / selection / notes pane / the edit modal
+  // treat it as the sentence (FOOTNOTES_PLAN.md §5). data-fn-ordinal
+  // numbers the LIVE notes in order (the modal's caret target); a note
+  // struck by a suggestion (fn-removed) is not in the text being edited and
+  // gets none.
+  stampNoteHosts(html, id) {
+    if (!html || html.indexOf('fn-body') < 0) return html;
+    let k = 0;
+    return html.replace(/<span class="fn-body( fn-removed)?"/g, (m, removed) => {
+      const ord = removed ? '' : ` data-fn-ordinal="${k++}"`;
+      return `<span class="sentence fn-body${removed || ''}" data-sentence-id="${escapeHTML(id)}"${ord}`;
+    });
+  },
+
   // renderInlineCommandsInHtml post-processes diff HTML (already escaped, so
   // '&' is '&amp;') to turn any surviving inline &reference/&anchor tokens
   // into links/markers. Used on a suggested prose fragment's diff output so a
@@ -1129,7 +1156,7 @@ const WriteSysRenderer = {
     const unescape = (s) => String(s)
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-    const INLINE_KINDS = { reference: true, anchor: true, placeholder: true, sketch: true, end: true };
+    const INLINE_KINDS = { reference: true, anchor: true, placeholder: true, sketch: true, end: true, footnote: true };
     return html.replace(re, (m) => {
       const cmd = window.WriteSysCommand && window.WriteSysCommand.parse(unescape(m));
       if (!cmd || cmd.raw !== unescape(m)) return m; // not a command → literal
@@ -1210,6 +1237,13 @@ const WriteSysRenderer = {
     setAttr('data-part-align', settings['part-align'] || '');
     setAttr('data-title-align', settings['title-align'] || '');
     setAttr('data-divider-folios', settings['divider-folios'] || '');
+    // Footnotes (FOOTNOTES_PLAN.md §3): defaults — numbers restart per
+    // chapter, symbols per page. footnotes.js reads these to number the
+    // calls; a live &meta change renumbers in place, no re-pagination.
+    const fnMarks = settings['footnote-marks'] || 'numbers';
+    setAttr('data-footnote-marks', fnMarks);
+    setAttr('data-footnote-reset', settings['footnote-reset'] || (fnMarks === 'symbols' ? 'page' : 'chapter'));
+    if (window.WriteSysFootnotes) window.WriteSysFootnotes.relabel();
     if (settings['font']) {
       document.documentElement.style.setProperty('--book-font', settings['font']);
     } else {
@@ -1239,8 +1273,13 @@ const WriteSysRenderer = {
         const sentenceId = span.dataset.sentenceId;
 
         // Re-click on the selected sentence opens the suggested-edit modal.
+        // From a footnote body: the host's modal, caret at that note
+        // (FOOTNOTES_PLAN.md §5).
         if (sentenceId === this.currentSelectedSentenceId && window.WriteSysSuggestions) {
-          window.WriteSysSuggestions.openModal(sentenceId);
+          const opts = (span.classList.contains('fn-body') && span.dataset.fnOrdinal !== undefined)
+            ? { caret: { token: '&footnote{', ordinal: parseInt(span.dataset.fnOrdinal, 10) || 0 } }
+            : undefined;
+          window.WriteSysSuggestions.openModal(sentenceId, opts);
           return;
         }
 

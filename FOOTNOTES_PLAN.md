@@ -1,8 +1,9 @@
 # FOOTNOTES_PLAN — footnotes & endnotes
 
-Status: **planning** (2026-09-11). Design agreed with the author in
-conversation; no implementation yet. Progress tracker in §9 — tick it as
-phases land, and keep §3 (settings → mechanism) in lockstep with the code.
+Status: **footnotes shipped 2026-09-11** (same day as the plan). Endnotes
+deferred by the author ("forget endnotes" for now) — §3's endnote rows and
+§4's endnote paragraph stay as the agreed design for later. Progress in
+§9; §8a records what the spike found. Keep §3 in lockstep with the code.
 
 Read this before touching notes. The one design rule that governs
 everything below: **a note is part of its host sentence.** It shares the
@@ -80,13 +81,17 @@ list explicitly:
 3. **Per-page reset** — not a Paged knob, but pure CSS: override that
    stylesheet rule so each `.pagedjs_page` resets `footnote` and
    `footnote-marker` to 0 (keeping the `pages` counter intact).
-4. **Per-chapter reset** — not a Paged knob. Chapter headings already
-   start a new page (book.css `page-break-before`), so it is the per-page
-   reset applied only to pages that begin a chapter: the existing
-   after-render hook that tags divider pages (`no-folio`) also tags
-   `chapter-start` pages; a CSS rule on that class resets both counters.
-   No numbering JavaScript, no DOM surgery, no re-pagination (marks only
-   get shorter, never longer).
+4. **Per-chapter reset** — not a Paged knob, and (spike finding, §8a)
+   chapter headings do NOT start a new page in this book style (only
+   `&title` / `&part` break), so a chapter can begin mid-page and a
+   page-level CSS reset would misnumber the notes before the heading.
+   Numbering is therefore a small post-render pass (`footnotes.js
+   relabel()`): walk the pages in order, reset at every `.cmd-chapter`
+   heading (or every page, or never), and write `data-fn-mark` on each
+   call AND its body (Paged links them by `data-ref`); book.css paints
+   the attribute. No DOM surgery, no re-pagination — marks only get
+   shorter than Paged's continuous numbers — and a live `&meta` change
+   renumbers in place (renderer `applySettings` re-runs it).
 5. **Endnotes** — no Paged concept at all. Entirely ours, but simpler than
    footnotes: the bodies are ordinary content blocks emitted before
    pagination; calls and bodies count with our own CSS counters (a
@@ -197,19 +202,42 @@ counter override rules actually beat Paged's stylesheet rule; the
 responsive scaling, the attention overlay's per-page SVG and the
 `no-folio` tagging. Record findings here (§8a) before Phase 1.
 
+## 8a. Spike findings (2026-09-11)
+
+- `float: footnote` on a span nested inside a `.sentence` span works in
+  our pipeline: Paged moves the body (attributes intact, including
+  `data-sentence-id`) into `.pagedjs_footnote_inner_content` and leaves
+  an `<a data-footnote-call href="#note-…">` at the call site. It clones
+  the body's CLASS list onto that anchor but none of its data attributes,
+  so `relabel()` stamps the host id onto the call and swaps `fn-body` for
+  `fn-call` — the mark then hovers/clicks as the sentence.
+- Paged's counter reset lives in a runtime stylesheet rule on
+  `.pagedjs_pages` inserted AFTER book.css at equal specificity; our
+  `[data-fn-mark]` rules win by specificity. Counter styles were not
+  needed: the relabel pass writes symbol strings directly.
+- Chapter headings do not page-break (see §3 item 4) — hence the pass.
+- Split notes: the continuation piece keeps `data-footnote-marker` and
+  gains `data-split-from`; CSS prints no mark on it.
+- The segmenter had to learn one thing: RULE 11 (sentence-adjacent
+  commands stand alone) would have detached a note placed after a period
+  from its sentence. segman **v2.8.0 RULE 12** makes `&footnote` inline
+  always and attaches it to the sentence it follows (Go/JS/Rust, vendored
+  here). Regression scenarios for segman are the owner's to add via its
+  scenario tool.
+
 ## 9. Phases & progress
 
-- [ ] **0. Spike** (§8) — findings written to §8a.
-- [ ] **1. Footnotes** — parse, render, Paged CSS, `footnote-marks`,
-      `footnote-reset` (never / page / chapter), chapter-start tagging,
-      attention exclusion. Cheatsheet rows.
-- [ ] **2. Selection & editing** — fragment semantics verified, second
-      click opens the modal with the caret at the note.
-- [ ] **3. Diffs inside notes** — content-level diffing generalised from
-      `&fix`.
-- [ ] **4. Endnotes** — collection, placement (chapter / book / `&endnotes`),
-      counters, grouping headings.
-- [ ] **5. Ship** — tests green, prod, this doc's status flipped.
+- [x] **0. Spike** (§8) — findings in §8a.
+- [x] **1. Footnotes** — `command.js` kind, renderer body + host stamping,
+      Paged CSS, `footnote-marks` / `footnote-reset` (Go + JS whitelists),
+      `footnotes.js` relabel pass, attention exclusion, cheatsheet rows.
+- [x] **2. Selection & editing** — body and call are host fragments;
+      second click opens the modal with the caret inside `&footnote{`.
+- [x] **3. Diffs inside notes** — notes lifted to placeholder tokens, diffed
+      separately, re-wrapped (`renderDiffHTML` / `renderDiffHTMLCore`).
+- [ ] **4. Endnotes** — deferred.
+- [x] **5. Ship** — `tests/test-footnotes.js` (e2e), render-units R20,
+      diff-units S9, Go settings test; prod.
 
 ## 10. Open questions (non-blocking, defaulted)
 

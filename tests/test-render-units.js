@@ -867,6 +867,46 @@ const { suggestEditor } = require('./test-utils');
       out.pagesAfter === out.pagesBefore, `${out.pagesBefore} → ${out.pagesAfter}`);
   }
 
+  // ---- R20: footnotes (FOOTNOTES_PLAN.md) ---------------------------------
+  // A footnote IS its host sentence: the body is a fragment with the host's
+  // id (and an ordinal for the modal's caret); suggestions diff inside it.
+  {
+    const fnC = await render([{ id: 'r20a', text: 'He left the valley.&footnote{A note. *Two* sentences.} She stayed.' }]);
+    check('R20: committed footnote → body inside the host span, stamped with the host id + ordinal',
+      fnC.includes('<span class="sentence fn-body" data-sentence-id="r20a" data-fn-ordinal="0">A note. <em>Two</em> sentences.</span>')
+      && !fnC.includes('&amp;footnote'), fnC);
+    const fnTwo = await render([{ id: 'r20b', text: 'One,&footnote{First.} and two.&footnote{Second.}' }]);
+    check('R20: ordinals count the live notes in order',
+      fnTwo.includes('data-fn-ordinal="0">First.') && fnTwo.includes('data-fn-ordinal="1">Second.'), fnTwo);
+    const fnS = await render([{ id: 'r20c', text: 'He left.&footnote{A red note.} She stayed.' }],
+      { r20c: 'He left.&footnote{A blue note.} She stayed.' });
+    check('R20: suggested change inside a note → green/red inside the stamped body',
+      /<span class="sentence fn-body" data-sentence-id="r20c" data-fn-ordinal="0">A <del>red<\/del><strong>blue<\/strong> note\.<\/span>/.test(fnS), fnS);
+    const fnR = await render([{ id: 'r20d', text: 'He left.&footnote{Old.} She stayed.' }], { r20d: 'He left. She stayed.' });
+    check('R20: suggested removal → fn-removed body with the host id and no ordinal',
+      fnR.includes('<span class="sentence fn-body fn-removed" data-sentence-id="r20d"><del>Old.</del></span>'), fnR);
+    const fnSet = await page.evaluate(() => window.WriteSysCommand.extractSettings(['a', 'b', 'c'],
+      { a: '&meta{footnote-marks}{symbols}', b: '&meta{footnote-reset}{page}', c: '&meta{footnote-reset}{book}' }));
+    check('R20: footnote settings validate; an unmappable value is dropped',
+      fnSet['footnote-marks'] === 'symbols' && fnSet['footnote-reset'] === 'page', JSON.stringify(fnSet));
+    const fnAttr = await page.evaluate(() => {
+      const R = window.WriteSysRenderer;
+      const read = () => [document.body.getAttribute('data-footnote-marks'), document.body.getAttribute('data-footnote-reset')];
+      const r = {};
+      R.applySettings({}); r.def = read();
+      R.applySettings({ 'footnote-marks': 'symbols' }); r.sym = read();
+      R.applySettings({ 'footnote-marks': 'numbers', 'footnote-reset': 'never' }); r.never = read();
+      R.applySettings({});
+      return r;
+    });
+    check('R20: defaults — numbers restart per chapter, symbols per page; explicit reset wins',
+      JSON.stringify(fnAttr.def) === '["numbers","chapter"]' && JSON.stringify(fnAttr.sym) === '["symbols","page"]'
+      && JSON.stringify(fnAttr.never) === '["numbers","never"]', JSON.stringify(fnAttr));
+    const sym = await page.evaluate(() => [1, 2, 6, 7, 8, 13].map((n) => window.WriteSysFootnotes.symbolFor(n)));
+    check('R20: Chicago symbol sequence doubles past six, triples past twelve',
+      JSON.stringify(sym) === JSON.stringify(['*', '†', '¶', '**', '††', '***']), JSON.stringify(sym));
+  }
+
   // ---- P4: pagedjs-config late-load retry -------------------------------
   // A FRESH page (no app, no real Paged — setContent on the app page keeps
   // the window and its Paged global, defeating the late-load scenario).

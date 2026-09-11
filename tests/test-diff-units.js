@@ -24,6 +24,7 @@ const load = (rel) => {
 };
 load('web/js/vendor/diff-match-patch.js'); // defines diff_match_patch
 load('web/js/text-markers.js');            // defines escapeHTML (shared escaper)
+load('web/js/command.js');                 // WriteSysCommand — renderDiffHTML lifts &footnote{} via parse()
 load('web/js/suggestions.js');             // renderDiffHTML + helpers (+ patches dmp)
 
 let failed = 0;
@@ -247,6 +248,33 @@ console.log('=== S11 emphasis-add-visible + split-not-wholesale ===');
 }
 
 console.log('');
+// ---- S9: footnotes in diffs (FOOTNOTES_PLAN.md §6) ----------------------
+// A &footnote{…} is lifted to a placeholder token, the prose diffs around
+// it, and the notes diff separately inside their .fn-body spans.
+console.log('=== S9 footnotes-in-diffs ===');
+{
+  const same = renderDiffHTML('He left.&footnote{A note.} She stayed.', 'He left.&footnote{A note.} She stayed.', dmp());
+  check('unchanged note → plain body, no diff marks, no literal token',
+    same.includes('<span class="fn-body">A note.</span>') && !same.includes('<del>') && !same.includes('<strong>') && !same.includes('&footnote'), same);
+  const inner = renderDiffHTML('He left.&footnote{A red note.} She stayed.', 'He left.&footnote{A blue note.} She stayed.', dmp());
+  check('changed words INSIDE the note diff inside the body',
+    /<span class="fn-body">A <del>red<\/del><strong>blue<\/strong> note\.<\/span>/.test(inner) && !inner.includes('&footnote'), inner);
+  const both = renderDiffHTML('He left.&footnote{A note.} She stayed.', 'He went.&footnote{A remark.} She stayed.', dmp());
+  check('prose and note diff independently',
+    both.includes('<del>left.</del><strong>went.</strong>') && /fn-body">A <del>note\.<\/del><strong>remark\.<\/strong><\/span>/.test(both), both);
+  const added = renderDiffHTML('He left. She stayed.', 'He left.&footnote{New.} She stayed.', dmp());
+  check('note added → green body; the host word is not struck',
+    added.includes('<span class="fn-body"><strong>New.</strong></span>') && !added.includes('<del>'), added);
+  const removed = renderDiffHTML('He left.&footnote{Old.} She stayed.', 'He left. She stayed.', dmp());
+  check('note removed → red-struck fn-removed body; nothing turns green',
+    removed.includes('<span class="fn-body fn-removed"><del>Old.</del></span>') && !removed.includes('<strong>'), removed);
+  const two = renderDiffHTML('A.&footnote{One.} B.&footnote{Two.}', 'A.&footnote{One.} B.&footnote{Three.}', dmp());
+  check('two notes pair by order — only the second diffs',
+    two.includes('<span class="fn-body">One.</span>') && /fn-body"><del>Two\.<\/del><strong>Three\.<\/strong><\/span>/.test(two), two);
+  const tok = dmp().diff_linesToWords_('x. y', 'x. y');
+  check('a lifted note is its own diff token (never glued to the host word)', tok.lineArray.includes('x.') && tok.lineArray.includes(''), JSON.stringify(tok.lineArray));
+}
+
 if (failed === 0) {
   console.log('✅ suggestions.js diff units: all checks pass');
   process.exit(0);

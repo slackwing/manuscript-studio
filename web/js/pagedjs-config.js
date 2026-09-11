@@ -51,6 +51,10 @@
           }
         });
 
+        // Footnotes: number the calls and bodies by the book's policy
+        // (FOOTNOTES_PLAN.md — footnotes.js), from the FINAL page order.
+        if (window.WriteSysFootnotes) window.WriteSysFootnotes.relabel();
+
         // Re-bind handlers on the new spans. (Inter-sentence spaces live in
         // .sent-sp separator SPANS baked in at render time — elements survive
         // pagination, so no post-hoc space insertion that would re-wrap

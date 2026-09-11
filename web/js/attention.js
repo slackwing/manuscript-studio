@@ -222,7 +222,9 @@ window.WriteSysAttention = {
     const pageOf = (clientY, clientX) => pageRects.findIndex((r) =>
       clientY >= r.top - 1 && clientY <= r.bottom + 1 && clientX >= r.left - 1 && clientX <= r.right + 1);
 
-    for (const frag of document.querySelectorAll('.pagedjs_pages .sentence')) {
+    // Footnote bodies (.fn-body) sit in the page's footnote area, outside the
+    // reading flow at that point: not part of the envelope (FOOTNOTES_PLAN.md).
+    for (const frag of document.querySelectorAll('.pagedjs_pages .sentence:not(.fn-body):not(.fn-call)')) {
       const words = (frag.textContent.trim().match(/\S+/g) || []).length;
       const rects = [...frag.getClientRects()].filter((r) => r.width > 1 && r.height > 1);
       if (!rects.length) continue;

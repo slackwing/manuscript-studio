@@ -436,10 +436,14 @@ body {
   height: 720px !important;  /* 864 - 2*72 */
 }
 
-/* Page content area fills the area exactly */
+/* Page content area fills the area exactly — minus whatever Paged.js
+   reserves for the page's footnotes (--pagedjs-footnotes-height, set on
+   .pagedjs_area while it lays notes out; 0 on a page without notes).
+   Pinning a flat 720px here pushed the footnote area into the bottom
+   margin (FOOTNOTES_PLAN.md §8a, 2026-09-11). */
 .pagedjs_page_content {
   width: 480px !important;
-  height: 720px !important;
+  height: calc(720px - var(--pagedjs-footnotes-height, 0px)) !important;
   margin: 0 !important;  /* No margin - area handles spacing */
   padding: 0 !important;
 }
@@ -3702,3 +3706,50 @@ html.attention-held .attention-overlay { display: block; }
   animation: stats-attention-spin 0.8s linear infinite;
 }
 @keyframes stats-attention-spin { to { transform: rotate(360deg); } }
+
+
+/* ---- Footnotes (FOOTNOTES_PLAN.md) ------------------------------------
+   &footnote{…} renders as .fn-body INSIDE its host sentence's span; Paged.js
+   floats it into the page's footnote area (@footnote) and leaves a
+   [data-footnote-call] at the call site. footnotes.js numbers both ends
+   after pagination (data-fn-mark) by the &meta policy — the counters in
+   Paged's own stylesheet stand only until then (and for the first paint). */
+.fn-body { float: footnote; }
+@page {
+  @footnote {
+    border-top: 0.5pt solid #9a9a9a;
+    padding-top: 4pt;
+    margin-top: 10pt;
+  }
+}
+.pagedjs_footnote_area {
+  font-size: 9.5pt;
+  line-height: 1.35;
+}
+/* One note per line (Paged's footnote-display: block does not reach a
+   span body reliably); a little air between notes. */
+.pagedjs_footnote_area .fn-body { display: block; margin-bottom: 3pt; }
+/* Paged's rules are inserted at runtime AFTER book.css at equal specificity
+   — these win by specificity ([data-fn-mark] present = relabelled). The
+   call is a true superscript: Paged prefers font-variant-position: super,
+   which Chromium honours only for fonts with sups glyphs (ours have none)
+   and otherwise paints a full-size baseline digit. */
+.pagedjs_pages [data-footnote-call][data-fn-mark]::after {
+  content: attr(data-fn-mark);
+  font-variant-position: normal;
+  vertical-align: super;
+  font-size: 65%;
+  line-height: 0;
+}
+.pagedjs_pages [data-footnote-marker][data-fn-mark]::before { content: attr(data-fn-mark) ". "; }
+body[data-footnote-marks="symbols"] .pagedjs_pages [data-footnote-marker][data-fn-mark]::before { content: attr(data-fn-mark) " "; }
+/* A long note split across pages: its continuation carries no mark. */
+.pagedjs_pages [data-footnote-marker][data-split-from]::before { content: none; }
+/* A footnote is its host sentence: the body highlights with it. */
+.pagedjs_footnote_area .fn-body.hover,
+.pagedjs_footnote_area .fn-body.selected { border-radius: 2px; }
+/* Outside pagination (the edit modal's formatted panes, pre-render source)
+   float: footnote means nothing — show the note inline, bracketed. */
+.fn-body:not(.pagedjs_pages *) { font-size: 0.85em; color: #57503f; }
+.fn-body:not(.pagedjs_pages *)::before { content: " ⟦"; color: #a8a08c; }
+.fn-body:not(.pagedjs_pages *)::after { content: "⟧ "; color: #a8a08c; }

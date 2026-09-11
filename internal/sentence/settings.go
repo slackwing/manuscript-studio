@@ -14,6 +14,9 @@ var metaProperties = map[string]map[string]bool{
 	"part-align":     {"left": true, "center": true},
 	"title-align":    {"left": true, "center": true},
 	"divider-folios": {"on": true, "off": true},
+	// Footnotes (FOOTNOTES_PLAN.md §3): marks + where numbering restarts.
+	"footnote-marks": {"numbers": true, "symbols": true},
+	"footnote-reset": {"page": true, "chapter": true, "never": true},
 	// Open-valued (any non-empty string accepted):
 	"font": nil,
 }

@@ -275,8 +275,9 @@ const WriteSysSuggestions = {
     }
   },
 
-  openModal(sentenceId) {
+  openModal(sentenceId, opts) {
     if (document.getElementById('suggestion-modal')) return;
+    opts = opts || {};
     const original = (window.WriteSysRenderer && window.WriteSysRenderer.sentenceMap)
       ? window.WriteSysRenderer.sentenceMap[sentenceId] || ''
       : '';
@@ -724,6 +725,30 @@ const WriteSysSuggestions = {
       if (others.length) w.selectLeft('u:' + others[0].user_id);
       else if (stale.length) w.selectLeft('st:0');
     }
+    // Opened from a footnote body (renderer setupSentenceHover): land the
+    // caret just inside the k-th "&footnote{" of the text being edited —
+    // the note IS this sentence, so the modal is the sentence's, only the
+    // caret knows which note was clicked (FOOTNOTES_PLAN.md §5).
+    if (opts.caret && textarea) {
+      const tok = opts.caret.token || '&footnote{';
+      let at = -1;
+      for (let k = 0, from = 0; k <= (opts.caret.ordinal || 0); k++) {
+        at = textarea.value.indexOf(tok, from);
+        if (at < 0) break;
+        from = at + tok.length;
+      }
+      if (at >= 0) {
+        const p = at + tok.length;
+        setTimeout(() => {
+          try {
+            // Mono (raw text) mode is entered by clicking the formatted pane.
+            if (leftFmt && !(leftCtl && leftCtl.isMono && leftCtl.isMono())) leftFmt.click();
+            textarea.focus();
+            textarea.setSelectionRange(p, p);
+          } catch (e) { /* pane hidden (someone else's edit shown) — no caret */ }
+        }, 0);
+      }
+    }
     w.refresh();
 
     // Closing ALWAYS flushes first; a failing save keeps the modal open with
@@ -931,7 +956,78 @@ const WriteSysSuggestions = {
 //     because the diff often splits an italic pair across two inserts
 //     ("*A ... away*" becomes <strong>...*A</strong> ... <strong>away*</strong>)
 //     and per-segment substitution can't see the matching `*`.
+// ---- Footnotes in diffs (FOOTNOTES_PLAN.md §6) ----------------------------
+// Each &footnote{…} on either side is lifted out into a private-use
+// placeholder char (its own diff token — see the tokeniser) so the prose
+// diff treats the note as one unit; the notes are then diffed SEPARATELY,
+// index-paired in order, and put back as .fn-body spans (Paged floats them
+// into the footnote area; the renderer stamps the host sentence id): an
+// unchanged note plain, a changed one with its own green/red words inside,
+// a note only on the new side green, only on the old side red-struck
+// (fn-removed).
+const FN_PLACEHOLDER = '\uE000';
+function liftFootnotes(text) {
+  const lib = window.WriteSysCommand;
+  const notes = [];
+  const s = String(text == null ? '' : text);
+  if (!lib || s.indexOf('&footnote') < 0) return { text: s, notes };
+  const chars = Array.from(s);
+  let out = '';
+  let i = 0;
+  while (i < chars.length) {
+    if (chars[i] === '&') {
+      const cmd = lib.parse(chars.slice(i).join(''));
+      if (cmd && cmd.kind === 'footnote') {
+        notes.push((cmd.args || []).join(''));
+        out += FN_PLACEHOLDER;
+        i += Array.from(cmd.raw).length;
+        continue;
+      }
+    }
+    out += chars[i];
+    i++;
+  }
+  return { text: out, notes };
+}
 function renderDiffHTML(oldText, newText, dmp) {
+  const o = liftFootnotes(oldText);
+  const n = liftFootnotes(newText);
+  const html = renderDiffHTMLCore(o.text, n.text, dmp);
+  if (!o.notes.length && !n.notes.length) return html;
+  const emph = (t) => (window.WriteSysRenderer && window.WriteSysRenderer.emphasize)
+    ? window.WriteSysRenderer.emphasize(escapeHTML(t)) : escapeHTML(t);
+  const removed = (t) => `<span class="fn-body fn-removed"><del>${emph(t == null ? '' : t)}</del></span>`;
+  const added = (t) => `<span class="fn-body"><strong>${emph(t == null ? '' : t)}</strong></span>`;
+  let oi = 0;
+  let ni = 0;
+  let inDel = false;
+  let inIns = false;
+  let out = '';
+  let pos = 0;
+  const re = /<\/?del>|<\/?strong>|\uE000/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    out += html.slice(pos, m.index);
+    pos = m.index + m[0].length;
+    const t = m[0];
+    if (t === '<del>') { inDel = true; out += t; continue; }
+    if (t === '</del>') { inDel = false; out += t; continue; }
+    if (t === '<strong>') { inIns = true; out += t; continue; }
+    if (t === '</strong>') { inIns = false; out += t; continue; }
+    if (inDel) { out += removed(o.notes[oi++]); continue; }
+    if (inIns) { out += added(n.notes[ni++]); continue; }
+    const old = o.notes[oi++];
+    const nw = n.notes[ni++];
+    if (nw == null) out += removed(old);
+    else if (old == null) out += added(nw);
+    else if (old === nw) out += `<span class="fn-body">${emph(nw)}</span>`;
+    else out += `<span class="fn-body">${renderDiffHTMLCore(old, nw, dmp)}</span>`;
+  }
+  out += html.slice(pos);
+  return out;
+}
+
+function renderDiffHTMLCore(oldText, newText, dmp) {
   if (!dmp) return `<strong>${formatFallbackHTML(newText)}</strong>`;
 
   // ---- &fix{…} CONTENT-level diffing (a deliberately weird feature) ----
@@ -1376,7 +1472,9 @@ function formatFallbackHTML(text) {
       // command (&fix{like an echo…} wrapped around existing prose) used to
       // straddle it across diff segments, so no later pass could recognize
       // it — the literal leaked into the rendered diff.
-      const re = /\s+|\S+/g;
+      // A lifted footnote (renderDiffHTML: U+E000) is ALWAYS its own token,
+      // so removing a note never drags its host word into the diff.
+      const re = /\s+|\uE000|[^\s\uE000]+/g;
       const cmdLib = window.WriteSysCommand;
       let m;
       while ((m = re.exec(text)) !== null) {

@@ -24,7 +24,7 @@ const WriteSysCommand = {
   // 'snippet' is the legacy spelling of 'sketch' (the snippet→sketch
   // rename) — parsed as the SAME command and valid input forever; parse()
   // normalizes the kind to 'sketch' so every consumer stays single-kind.
-  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'sketch', 'snippet', 'end'],
+  KEYWORDS: ['title', 'part', 'chapter', 'anchor', 'reference', 'meta', 'placeholder', 'sketch', 'snippet', 'end', 'footnote'],
   // Block commands stand alone as their own sentence when on their own line.
   // &meta is block but renders as nothing (it carries a setting). anchor,
   // placeholder, and end are block only when sole line content (segman).
@@ -218,6 +218,10 @@ const WriteSysCommand = {
     'part-align': ['left', 'center'],
     'title-align': ['left', 'center'],
     'divider-folios': ['on', 'off'],
+    // Footnotes (FOOTNOTES_PLAN.md §3): marks + where numbering restarts.
+    // Anything outside these values is bad syntax → dropped (default stands).
+    'footnote-marks': ['numbers', 'symbols'],
+    'footnote-reset': ['page', 'chapter', 'never'],
     'font': null,
   },
 
@@ -271,7 +275,7 @@ const WriteSysCommand = {
       const cmd = this.parse(chars.slice(i).join(''));
       if (!cmd) { i++; continue; }
       const end = i + Array.from(cmd.raw).length;
-      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'sketch' || cmd.kind === 'end' || cmd.unknown) {
+      if (cmd.kind === 'reference' || cmd.kind === 'anchor' || cmd.kind === 'placeholder' || cmd.kind === 'sketch' || cmd.kind === 'end' || cmd.kind === 'footnote' || cmd.unknown) {
         out.push({ kind: cmd.kind, slug: cmd.slug, slugs: cmd.slugs, notes: cmd.args[0] || '', args: cmd.args, raw: cmd.raw, start: i, end, unknown: !!cmd.unknown });
       }
       i = end;
