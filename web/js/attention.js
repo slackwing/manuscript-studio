@@ -78,6 +78,7 @@ window.WriteSysAttention = {
 
   _pages: [],   // [{el, svg}] — pages that received an overlay
   _armed: false,
+  pinned: false, // stats-pane toggle: the envelope stays on until released
 
   // ---- The kernel (pure math — unit-tested in test-attention-units) ---
   // K(u) = N · (1 − e^(−(u/A)³)) · e^(−u/DECAY) for u ≥ 0, else 0, with N
@@ -297,9 +298,9 @@ window.WriteSysAttention = {
   // ---- Emit: one rotated-axes SVG per page -----------------------------
   _rebuild() {
     this.teardown();
-    if (!this._gate()) return;
+    if (!this._gate()) { this.pinned = false; return; }
     const { pages, lines, markers: raw } = this._harvest();
-    if (!lines.length) return;
+    if (!lines.length) { this.pinned = false; return; }
     const markers = this.jade(raw); // habituation before superposition
     const F = this.TUNING.FULL_SCALE;
     for (let pi = 0; pi < pages.length; pi++) {
@@ -359,8 +360,23 @@ window.WriteSysAttention = {
       page.appendChild(svg);
       this._pages.push({ el: page, svg });
     }
+    // A pinned envelope (stats-pane toggle) survives the re-render:
+    // teardown dropped the class, the fresh overlays put it back.
+    if (this.pinned) document.documentElement.classList.add('attention-held');
     this._armKeys();
   },
+
+  // ---- Stats-pane toggle: pin the envelope on --------------------------
+  // Click = on until clicked again (2026-09-11; was press-and-hold). Tab
+  // stays a hold-to-peek; its keyup and a window blur leave a pinned
+  // envelope alone. Only meaningful with overlays on the page.
+  setPinned(on) {
+    this.pinned = !!on && this._pages.length > 0;
+    document.documentElement.classList.toggle('attention-held', this.pinned);
+    document.dispatchEvent(new CustomEvent('ms:attention-pinned', { detail: { pinned: this.pinned } }));
+    return this.pinned;
+  },
+  togglePinned() { return this.setPinned(!this.pinned); },
 
   teardown() {
     for (const p of this._pages) p.svg.remove();
@@ -381,9 +397,10 @@ window.WriteSysAttention = {
       document.documentElement.classList.add('attention-held');
     });
     document.addEventListener('keyup', (e) => {
-      if (e.key === 'Tab') document.documentElement.classList.remove('attention-held');
+      if (e.key === 'Tab' && !this.pinned) document.documentElement.classList.remove('attention-held');
     });
-    window.addEventListener('blur', () =>
-      document.documentElement.classList.remove('attention-held'));
+    window.addEventListener('blur', () => {
+      if (!this.pinned) document.documentElement.classList.remove('attention-held');
+    });
   },
 };

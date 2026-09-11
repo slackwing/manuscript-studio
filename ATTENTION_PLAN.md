@@ -148,6 +148,11 @@ function of the final page geometry.
   documented CSS mechanism; do not "simplify" it to a positive z-index
   overlay with opacity, which would wash the prose.
 - Toggle = a `html.attention-held` class; SVGs are `display:none` without it.
+- **Stats-pane button = a TOGGLE** (2026-09-11; was press-and-hold): a
+  click pins the envelope on — Tab keyup and window blur leave a pinned
+  envelope alone, and a re-render restores it (`_rebuild` re-adds the
+  class when `pinned`); a second click releases. Gate denial or an empty
+  harvest drops the pin. `aria-pressed` on the button paints the on-state.
 
 ## 5b. Visibility (see-attention + the alpha-reader role)
 
@@ -199,3 +204,4 @@ function of the final page geometry.
 - Multi-column/mobile-scaled pages: v1 targets the desktop book layout;
   the scaled mobile sheet inherits the SVG (it scales with the page), but
   Tab-hold on mobile has no keyboard — future gesture, out of scope.
+  (Resolved 2026-09-11: the stats-pane toggle button.)

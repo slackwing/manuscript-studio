@@ -3658,12 +3658,14 @@ body.range-delete-mode .pagedjs_pages {
 .sgm-fmt[hidden] { display: none; }
 
 /* Attention envelope (ATTENTION_PLAN.md): per-page overlays hide until
-   Tab is HELD. Geometry/z-order styling is inline (attention.js) — the
-   negative-z-behind-text mechanism is documented there. */
+   Tab is HELD or the stats-pane toggle is on. Geometry/z-order styling is
+   inline (attention.js) — the negative-z-behind-text mechanism is
+   documented there. */
 .attention-overlay { display: none; }
 html.attention-held .attention-overlay { display: block; }
-/* Attention hold-button (stats pane, the touch counterpart of Tab):
-   press-and-hold reveals the envelope. */
+/* Attention toggle button (stats pane, the touch counterpart of Tab):
+   click pins the envelope on, click again releases; aria-pressed paints
+   the on-state. */
 .stats-attention {
   margin-top: 8px;
   padding: 4px 12px;
@@ -3674,11 +3676,16 @@ html.attention-held .attention-overlay { display: block; }
   font-size: 12px;
   letter-spacing: 0.06em;
   cursor: pointer;
-  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 .stats-attention:active { background: #efece3; }
+.stats-attention[aria-pressed="true"] {
+  background: #57503f;
+  border-color: #57503f;
+  color: #faf8f2;
+}
+.stats-attention[aria-pressed="true"]:active { background: #6a624f; }
 /* Session bootstrap / overlay build still pending: disabled + spinner. */
 .stats-attention:disabled { color: #a8a08c; cursor: default; }
 .stats-attention:disabled:active { background: #faf8f2; }

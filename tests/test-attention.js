@@ -128,16 +128,47 @@ const check = (name, ok, detail = '') => {
   await page.keyboard.up('Tab');
   await page.evaluate(() => { window.currentSession = window.__saved; });
 
-  // ---- stats-pane HOLD button (the touch counterpart of Tab) ----------
+  // ---- stats-pane TOGGLE button (the touch counterpart of Tab) --------
+  // Click pins the envelope on; it stays through pointer-leave, Tab
+  // release and re-renders; a second click releases.
   await page.evaluate(() => { window.currentSession = window.__saved; window.WriteSysAttention.rebuild(); });
   await page.evaluate(() => window.WriteSysStats && window.WriteSysStats.setPane && window.WriteSysStats.setPane('stats'));
   await page.waitForSelector('#stats-attention', { timeout: 8000 });
-  await page.dispatchEvent('#stats-attention', 'pointerdown');
+  const pressed = () => page.evaluate(() =>
+    document.getElementById('stats-attention').getAttribute('aria-pressed'));
+  check('button starts unpressed', (await pressed()) === 'false');
+  await page.click('#stats-attention');
   await page.waitForFunction(() => document.documentElement.classList.contains('attention-held'));
-  check('holding the stats button reveals the overlays', true);
-  await page.dispatchEvent('#stats-attention', 'pointerup');
+  check('clicking the stats button pins the overlays on', true);
+  check('button reads pressed', (await pressed()) === 'true');
+  await page.mouse.move(5, 5); // pointer leaves the button
+  await page.keyboard.down('Tab');
+  await page.keyboard.up('Tab');
+  await page.waitForTimeout(100);
+  check('pinned: pointer-leave and Tab release do not hide it', await page.evaluate(() =>
+    document.documentElement.classList.contains('attention-held')
+    && getComputedStyle(document.querySelector('.attention-overlay')).display === 'block'));
+  await page.evaluate(() => window.WriteSysAttention.rebuild()); // a re-render
+  check('pin survives a rebuild (overlays shown, button still pressed)', await page.evaluate(() =>
+    document.documentElement.classList.contains('attention-held')
+    && getComputedStyle(document.querySelector('.attention-overlay')).display === 'block')
+    && (await pressed()) === 'true');
+  await page.click('#stats-attention');
   await page.waitForFunction(() => !document.documentElement.classList.contains('attention-held'));
-  check('releasing the stats button hides them', true);
+  check('second click releases', (await pressed()) === 'false');
+  // Losing the action while pinned drops the pin with the overlays.
+  await page.click('#stats-attention');
+  await page.waitForFunction(() => document.documentElement.classList.contains('attention-held'));
+  const denied = await page.evaluate(() => {
+    window.currentSession = { accessible_manuscripts: [{ manuscript_id: 1, actions: ['see-manuscript'] }] };
+    window.WriteSysAttention.rebuild();
+    const r = { held: document.documentElement.classList.contains('attention-held'),
+      pinned: window.WriteSysAttention.pinned };
+    window.currentSession = window.__saved;
+    window.WriteSysAttention.rebuild();
+    return r;
+  });
+  check('gate denied while pinned → pin dropped, overlays hidden', !denied.held && !denied.pinned, JSON.stringify(denied));
 
   // Pending state: before the overlays exist the button renders disabled
   // (spinner); the ms:attention-rebuilt dispatch flips it live in place.

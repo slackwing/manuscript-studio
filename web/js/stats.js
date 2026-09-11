@@ -176,37 +176,35 @@ const WriteSysStats = {
       }
     }
 
-    // Attention peek for touch devices (ATTENTION_PLAN.md §5): no Tab key
-    // on a phone, so the statistics pane offers a HOLD button — press and
-    // keep pressed to reveal the envelope, release to hide. Same gate as
-    // the key: see-attention. The session bootstrap and the overlay build
-    // both land async — until then the button sits disabled with a spinner
-    // (ms:attention-rebuilt re-renders) instead of popping in later; it
-    // drops out only once the session actually denies the action.
+    // Attention toggle for touch devices (ATTENTION_PLAN.md §5): no Tab key
+    // on a phone, so the statistics pane offers a TOGGLE button — click to
+    // pin the envelope on, click again to release (2026-09-11; was
+    // press-and-hold). Same gate as the key: see-attention. The session
+    // bootstrap and the overlay build both land async — until then the
+    // button sits disabled with a spinner (ms:attention-rebuilt re-renders)
+    // instead of popping in later; it drops out only once the session
+    // actually denies the action. Pressed state comes from the pin itself
+    // so a re-render draws the button the way the page already is.
     const attnDenied = window.currentSession && !(window.WriteSysActions
       && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'see-attention'));
     const attnReady = !!(window.WriteSysAttention && window.WriteSysAttention._pages.length);
+    const attnOn = !!(window.WriteSysAttention && window.WriteSysAttention.pinned);
     const attnBtn = attnDenied ? ''
-      : `<button type="button" id="stats-attention" class="stats-attention" title="hold"${attnReady ? '' : ' disabled'}>attention</button>`;
+      : `<button type="button" id="stats-attention" class="stats-attention" aria-pressed="${attnOn}"${attnReady ? '' : ' disabled'}>attention</button>`;
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}${attnBtn}</div>`;
     this.wireHover();
-    this.wireAttentionHold();
+    this.wireAttentionToggle();
   },
 
-  // Press-and-hold semantics via pointer events (mouse + touch alike).
-  wireAttentionHold() {
+  // Click toggles the pin; aria-pressed mirrors it (CSS paints the on-state).
+  wireAttentionToggle() {
     const btn = document.getElementById('stats-attention');
     if (!btn) return;
-    const off = () => document.documentElement.classList.remove('attention-held');
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      document.documentElement.classList.add('attention-held');
+    btn.addEventListener('click', () => {
+      const on = window.WriteSysAttention.togglePinned();
+      btn.setAttribute('aria-pressed', String(on));
     });
-    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
-      btn.addEventListener(ev, off);
-    }
-    btn.addEventListener('contextmenu', (e) => e.preventDefault()); // no long-press menu
   },
 
   // buildGraph returns the SVG string. Flat: plain x/y axis lines, one
