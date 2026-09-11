@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.7.0"
+const Version = "2.8.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -588,6 +588,32 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 		if runes[i] != '&' {
 			continue
 		}
+		if commandKeywordAt(runes, i) == "footnote" {
+			// RULE 12 (v2.8.0): a footnote belongs to the sentence it
+			// annotates. Mid-sentence it is inline like any command (atomic
+			// by RULE 10). Right after a sentence's terminator — with or
+			// without a whitespace gap — it must neither stand alone (RULE
+			// 11) nor open the next sentence: drop any boundary in the gap
+			// between the terminator and the token, and end the host
+			// sentence right after the token instead.
+			if commandFollowsSentenceEnd(runes, i) {
+				ws := i
+				for ws > 0 && (runes[ws-1] == ' ' || runes[ws-1] == '\t' || runes[ws-1] == '\r' || runes[ws-1] == '\n') {
+					ws--
+				}
+				kept := boundaries[:0]
+				for _, b := range boundaries {
+					if b.pos < ws || b.pos > i {
+						kept = append(kept, b)
+					}
+				}
+				boundaries = kept
+				if end := commandTokenEnd(runes, i); end > 0 && end < len(runes) {
+					boundaries = append(boundaries, boundaryMark{pos: end, reason: "after &footnote"})
+				}
+			}
+			continue
+		}
 		if !isBlockCommandAt(runes, i) {
 			continue
 		}
@@ -672,7 +698,7 @@ func isBlockCommandAt(runes []rune, i int) bool {
 		return false
 	}
 	switch kw {
-	case "reference": // always inline
+	case "reference", "footnote": // always inline (footnote: RULE 12 attaches it)
 		return false
 	case "title", "part", "chapter": // structural headers: always block
 		return true
