@@ -299,16 +299,27 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; } /* one bar height 
    strip's own bottom border is the only edge. */
 html.has-ms-tabs #controls { border-bottom-color: transparent; }
 .ms-tab-label { overflow: hidden; text-overflow: ellipsis; }
-.ms-tab-x {
+/* × and the active tab's ↻ share ONE box (explicit size, glyph centered —
+   ↻ is a wider glyph than × and would otherwise draw a wider pill) and
+   one reveal: hidden until the tab is hovered. */
+.ms-tab-x, .ms-tab-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 17px;
+  height: 19px;
+  padding: 0;
   color: #b8b09e;
   font-size: 15px;
   line-height: 1;
-  padding: 2px 4px;
   border-radius: 3px;
   visibility: hidden;
 }
-.ms-tab:hover .ms-tab-x { visibility: visible; }
+.ms-tab-refresh { font-size: 13px; }
+.ms-tab:hover .ms-tab-x, .ms-tab:hover .ms-tab-refresh { visibility: visible; }
 .ms-tab-x:hover { color: #b03030; background: #eee9dd; }
+.ms-tab-refresh:hover { color: #1d1d1d; background: #eee9dd; }
 .ms-tab.dragging { opacity: 0.5; }
 
 /* The split button, far right of the strip (tabs.js, shell only). */

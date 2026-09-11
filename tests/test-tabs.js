@@ -87,6 +87,39 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('manuscript kept its state across the flip (no reload)',
     (await mFrame.evaluate(() => window.__sentinel).catch(() => 'GONE')) === 'alive');
 
+  // ---- the ACTIVE tab's refresh (2026-09-11): a second hover-revealed
+  // button, boxed like the ×, that reloads the tab's iframe.
+  await page.hover('#ms-tabs .ms-tab-manuscript');
+  const rf = await page.evaluate(() => {
+    const tab = document.querySelector('#ms-tabs .ms-tab-manuscript.active');
+    const r = tab.querySelector('.ms-tab-refresh');
+    const x = tab.querySelector('.ms-tab-x');
+    const box = (el) => el.getBoundingClientRect();
+    return {
+      present: !!r,
+      beforeX: !!r && r.nextElementSibling === x,
+      visible: !!r && getComputedStyle(r).visibility === 'visible',
+      sameSize: !!r && Math.abs(box(r).width - box(x).width) < 1 && Math.abs(box(r).height - box(x).height) < 1,
+      sizes: r ? [box(r).width, box(r).height, box(x).width, box(x).height] : null,
+    };
+  });
+  check('active tab carries a refresh beside its × (hover-revealed, same box)',
+    rf.present && rf.beforeX && rf.visible && rf.sameSize, JSON.stringify(rf));
+  await page.click('#ms-tabs .ms-tab-manuscript.active .ms-tab-refresh');
+  await page.waitForFunction(() => {
+    const f = document.querySelector('#ms-tab-panels .ms-panel.active');
+    try {
+      return !!f && f.contentWindow.__sentinel === undefined
+        && f.contentDocument.readyState === 'complete'
+        && !!f.contentDocument.querySelector('.pagedjs_page');
+    } catch (e) { return false; }
+  }, null, { timeout: 60000 });
+  check('refresh reloads the iframe (sentinel gone, book re-rendered)', true);
+  check('refresh keeps the shell URL and the active tab', page.url().includes('home.html')
+    && await page.evaluate(() => document.querySelectorAll('#ms-tabs .ms-tab').length === 2
+      && document.querySelector('#ms-tabs .ms-tab-manuscript').classList.contains('active')));
+  await mFrame.evaluate(() => { window.__sentinel = 'alive'; });
+
   // ---- pad: card → windowed modal; PIN → live panel ----
   await page.click('#ms-tabs .ms-tab-home');
   await page.click('.card-ghost[data-ghost="scratchpad"]');
@@ -106,6 +139,9 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   await page.waitForSelector('#ms-tab-panels iframe[src*="pad.html"].active', { timeout: 15000 });
   check('pin turns the modal into a live panel (modal gone)',
     await page.locator('.spm-overlay').count() === 0);
+  check('refresh rides only the ACTIVE tab (pad active → manuscript tab has none)',
+    await page.evaluate(() => !!document.querySelector('#ms-tabs .ms-tab-scratchpad.active .ms-tab-refresh')
+      && !document.querySelector('#ms-tabs .ms-tab-manuscript .ms-tab-refresh')));
   const padFrame = page.frames().find((f) => f.url().includes('pad.html'));
   await padFrame.waitForSelector('.spm-editor .ProseMirror', { timeout: 20000 });
   check('panel carries the pad content (typed text survived the pin flush)',

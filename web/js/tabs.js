@@ -495,6 +495,25 @@ window.WriteSysTabs = (function () {
           + '<path fill="currentColor" d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.5 8a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/>'
           + '<path fill="currentColor" d="M9.4 1l.35 1.8c.4.14.78.33 1.13.55l1.73-.63 1.4 2.42-1.38 1.17a5.6 5.6 0 010 1.38l1.38 1.17-1.4 2.42-1.73-.63c-.35.22-.73.41-1.13.55L9.4 13H6.6l-.35-1.8a5.6 5.6 0 01-1.13-.55l-1.73.63L2 8.86l1.38-1.17a5.6 5.6 0 010-1.38L2 5.14l1.4-2.42 1.73.63c.35-.22.73-.41 1.13-.55L6.6 1h2.8z"/></svg>';
       }
+      if (active) {
+        // The ACTIVE tab (only) carries a refresh beside its ×: same box,
+        // same hover-reveal. In the shell it reloads the tab's iframe; on
+        // a direct page (no panels) it reloads the page (2026-09-11).
+        const r = document.createElement('span');
+        r.className = 'ms-tab-refresh';
+        r.title = 'Refresh';
+        r.textContent = '↻';
+        r.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const f = SHELL ? panels.get(keyOf(p)) : null;
+          if (f) {
+            try { f.contentWindow.location.reload(); } catch (err) { f.setAttribute('src', f.getAttribute('src')); }
+          } else if (!SHELL) {
+            location.reload();
+          }
+        });
+        tab.appendChild(r);
+      }
       const x = document.createElement('span');
       x.className = 'ms-tab-x';
       x.title = 'Close';
