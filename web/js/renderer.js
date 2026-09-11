@@ -1111,9 +1111,9 @@ const WriteSysRenderer = {
   stampNoteHosts(html, id) {
     if (!html || html.indexOf('fn-body') < 0) return html;
     let k = 0;
-    return html.replace(/<span class="fn-body( fn-removed)?"/g, (m, removed) => {
-      const ord = removed ? '' : ` data-fn-ordinal="${k++}"`;
-      return `<span class="sentence fn-body${removed || ''}" data-sentence-id="${escapeHTML(id)}"${ord}`;
+    return html.replace(/<span class="fn-body( fn-removed| fn-added)?"/g, (m, mod) => {
+      const ord = mod === ' fn-removed' ? '' : ` data-fn-ordinal="${k++}"`;
+      return `<span class="sentence fn-body${mod || ''}" data-sentence-id="${escapeHTML(id)}"${ord}`;
     });
   },
 

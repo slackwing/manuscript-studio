@@ -55,3 +55,19 @@ func TestCountMigrationProseWords(t *testing.T) {
 		t.Errorf("CountMigrationProseWords = %d, want %d", got, want)
 	}
 }
+
+// Footnotes (FOOTNOTES_PLAN.md) are not prose for the reader-facing count:
+// the &footnote{…} token is removed whole, like any inline command.
+func TestCountProseWordsFootnotes(t *testing.T) {
+	cases := map[string]int{
+		"He left the valley.&footnote{A note with five words.} She stayed.": 6,
+		"Mid,&footnote{inline note here} way through.":                      3,
+		"Gap here. &footnote{Spaced *note* with **bold**.}":                 2,
+		"Only prose here.": 3,
+	}
+	for text, want := range cases {
+		if got := CountProseWords(text); got != want {
+			t.Errorf("CountProseWords(%q) = %d, want %d", text, got, want)
+		}
+	}
+}

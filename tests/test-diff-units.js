@@ -292,11 +292,13 @@ console.log('=== S9 footnotes-in-diffs ===');
   check('prose and note diff independently',
     both.includes('<del>left.</del><strong>went.</strong>') && /fn-body">A <del>note\.<\/del><strong>remark\.<\/strong><\/span>/.test(both), both);
   const added = renderDiffHTML('He left. She stayed.', 'He left.&footnote{New.} She stayed.', dmp());
-  check('note added → green body; the host word is not struck',
-    added.includes('<span class="fn-body"><strong>New.</strong></span>') && !added.includes('<del>'), added);
+  check('note added → green fn-added body PLUS an added-command icon carrying the note; host word not struck',
+    added.includes('<span class="fn-body fn-added"><strong>New.</strong></span><span class="cmd-diamond cmd-diamond-added fn-diamond" title="&#38;footnote{New.}">')
+    && !added.includes('<del>'), added);
   const removed = renderDiffHTML('He left.&footnote{Old.} She stayed.', 'He left. She stayed.', dmp());
-  check('note removed → red-struck fn-removed body; nothing turns green',
-    removed.includes('<span class="fn-body fn-removed"><del>Old.</del></span>') && !removed.includes('<strong>'), removed);
+  check('note removed → red-struck fn-removed body PLUS a removed-command icon; nothing turns green',
+    removed.includes('<span class="fn-body fn-removed"><del>Old.</del></span><span class="cmd-diamond cmd-diamond-removed fn-diamond" title="&#38;footnote{Old.}">')
+    && !removed.includes('<strong>'), removed);
   const two = renderDiffHTML('A.&footnote{One.} B.&footnote{Two.}', 'A.&footnote{One.} B.&footnote{Three.}', dmp());
   check('two notes pair by order — only the second diffs',
     two.includes('<span class="fn-body">One.</span>') && /fn-body"><del>Two\.<\/del><strong>Three\.<\/strong><\/span>/.test(two), two);

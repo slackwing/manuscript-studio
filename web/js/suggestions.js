@@ -996,8 +996,20 @@ function renderDiffHTML(oldText, newText, dmp) {
   if (!o.notes.length && !n.notes.length) return html;
   const emph = (t) => (window.WriteSysRenderer && window.WriteSysRenderer.emphasize)
     ? window.WriteSysRenderer.emphasize(escapeHTML(t)) : escapeHTML(t);
-  const removed = (t) => `<span class="fn-body fn-removed"><del>${emph(t == null ? '' : t)}</del></span>`;
-  const added = (t) => `<span class="fn-body"><strong>${emph(t == null ? '' : t)}</strong></span>`;
+  // A note added or removed WHOLE: on the page its body floats into the
+  // footnote area (green / red-struck) and Paged's call marks the spot; in
+  // the modal's diff pane — unpaginated, the body would sit inline — it
+  // shows as the added/removed COMMAND icon instead, the note on hover
+  // (2026-09-11). Both are emitted; book.css shows one per context.
+  const glyph = (window.WriteSysMarkerSymbols && window.WriteSysMarkerSymbols.unknownSvg)
+    ? window.WriteSysMarkerSymbols.unknownSvg()
+    : '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true"><path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg>';
+  // The tooltip carries the raw command — but renderInlineCommandsInHtml
+  // runs over this HTML afterwards and would re-render "&amp;footnote{…}"
+  // INSIDE the attribute; "&#38;" reads the same and never matches.
+  const icon = (state, t) => `<span class="cmd-diamond cmd-diamond-${state} fn-diamond" title="${escapeHTML('&footnote{' + (t == null ? '' : t) + '}').replace(/&amp;/g, '&#38;')}">${glyph}</span>`;
+  const removed = (t) => `<span class="fn-body fn-removed"><del>${emph(t == null ? '' : t)}</del></span>${icon('removed', t)}`;
+  const added = (t) => `<span class="fn-body fn-added"><strong>${emph(t == null ? '' : t)}</strong></span>${icon('added', t)}`;
   let oi = 0;
   let ni = 0;
   let inDel = false;

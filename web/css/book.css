@@ -3748,6 +3748,13 @@ body[data-footnote-marks="symbols"] .pagedjs_pages [data-footnote-marker][data-f
 /* A footnote is its host sentence: the body highlights with it. */
 .pagedjs_footnote_area .fn-body.hover,
 .pagedjs_footnote_area .fn-body.selected { border-radius: 2px; }
+/* A note added/removed WHOLE by a suggestion (suggestions.js emits both a
+   body and a diff-colored command icon): the page shows the body in the
+   footnote area — Paged's call marks the spot — and hides the icon; the
+   modal's diff pane, unpaginated, shows the icon and hides the body. */
+.pagedjs_pages .fn-diamond { display: none; }
+.fn-body.fn-added:not(.pagedjs_pages *),
+.fn-body.fn-removed:not(.pagedjs_pages *) { display: none; }
 /* Outside pagination (the edit modal's formatted panes, pre-render source)
    float: footnote means nothing — show the note inline, bracketed. */
 .fn-body:not(.pagedjs_pages *) { font-size: 0.85em; color: #57503f; }

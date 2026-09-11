@@ -50,6 +50,16 @@ const WriteSysScratchRender = {
       }
       .scratch-diff del { color: #b03030; text-decoration: line-through; text-decoration-thickness: 1px; }
       .scratch-diff strong { color: #2e7d32; font-weight: 600; }
+      /* Footnotes (FOOTNOTES_PLAN.md): nothing paginates in here, so a
+         note body shows inline, bracketed; a note ADDED or REMOVED whole by
+         a suggestion shows as the diff-colored command icon instead
+         (suggestions.js emits both; the page does the opposite). */
+      .scratch-book .fn-body { font-size: 0.85em; color: #57503f; }
+      .scratch-book .fn-body::before { content: " ⟦"; color: #a8a08c; }
+      .scratch-book .fn-body::after { content: "⟧ "; color: #a8a08c; }
+      .scratch-book .fn-body.fn-added, .scratch-book .fn-body.fn-removed { display: none; }
+      .scratch-book .cmd-diamond { display: inline-block; line-height: 0; cursor: default; }
+      .scratch-book .cmd-diamond svg { display: inline-block; vertical-align: middle; }
       .scratch-book .sentence,
       .scratch-book .sentence:not(.selected):hover {
         cursor: text;

@@ -913,6 +913,9 @@ const { suggestEditor } = require('./test-utils');
     const fnR = await render([{ id: 'r20d', text: 'He left.&footnote{Old.} She stayed.' }], { r20d: 'He left. She stayed.' });
     check('R20: suggested removal → fn-removed body with the host id and no ordinal',
       fnR.includes('<span class="sentence fn-body fn-removed" data-sentence-id="r20d"><del>Old.</del></span>'), fnR);
+    const fnA = await render([{ id: 'r20e', text: 'He left. She stayed.' }], { r20e: 'He left.&footnote{New.} She stayed.' });
+    check('R20: suggested addition → fn-added body stamped with the host id + ordinal, icon alongside',
+      fnA.includes('<span class="sentence fn-body fn-added" data-sentence-id="r20e" data-fn-ordinal="0"><strong>New.</strong></span><span class="cmd-diamond cmd-diamond-added fn-diamond"'), fnA);
     const fnSet = await page.evaluate(() => window.WriteSysCommand.extractSettings(['a', 'b', 'c'],
       { a: '&meta{footnote-marks}{symbols}', b: '&meta{footnote-reset}{page}', c: '&meta{footnote-reset}{book}' }));
     check('R20: footnote settings validate; an unmappable value is dropped',

@@ -159,6 +159,38 @@ const check = (name, ok, detail = '') => {
   });
   check('a suggestion removing the note shows it red-struck in the footnote area',
     !!removed && removed.removed && removed.struck, JSON.stringify(removed));
+  // ---- a note ADDED by a suggestion: body in the footnote area on the
+  // page (icon hidden); in the modal's diff pane the added-command icon
+  // stands in for the note (body hidden), its text on hover.
+  await build([{ sentence_id: 'fn-3', user_id: 'alice',
+    text: prose + 'Sentence number 3 carries the paragraph onward.&footnote{Added note.} ' }]);
+  const addedPage = await page.evaluate(() => {
+    const b = document.querySelector('.pagedjs_pages .pagedjs_footnote_area .fn-body.fn-added[data-sentence-id="fn-3"]');
+    const icons = [...document.querySelectorAll('.pagedjs_pages .fn-diamond')];
+    return { body: !!b && !!b.querySelector('strong') && getComputedStyle(b).display !== 'none',
+      iconsHidden: icons.length > 0 && icons.every((i) => getComputedStyle(i).display === 'none') };
+  });
+  check('page: an added note shows its green body in the footnote area, no icon', addedPage.body && addedPage.iconsHidden, JSON.stringify(addedPage));
+  const hostSel = '.pagedjs_pages .sentence[data-sentence-id="fn-3"]:not(.fn-body):not(.fn-call)';
+  await page.click(hostSel);
+  await page.click(hostSel);
+  await page.waitForSelector('#suggestion-modal .sgm-fmt-left', { timeout: 10000 });
+  const addedModal = await page.waitForFunction(() => {
+    // The formatted pane renders into a SHADOW tree (scratch-render.js).
+    const host = document.querySelector('#suggestion-modal .sgm-fmt-left');
+    const pane = host && host.shadowRoot;
+    const icon = pane && pane.querySelector('.fn-diamond.cmd-diamond-added');
+    const body = pane && pane.querySelector('.fn-body.fn-added');
+    if (!icon || !body) return null;
+    return { icon: getComputedStyle(icon).display !== 'none', body: getComputedStyle(body).display === 'none',
+      // innerText honours display:none (textContent would count the hidden body).
+      title: icon.getAttribute('title'), textInline: pane.querySelector('.scratch-book').innerText.includes('Added note.') };
+  }, null, { timeout: 8000 }).then((h) => h.jsonValue()).catch(() => null);
+  check('modal diff pane: the added note is an added-command icon (note on hover), not inline text',
+    !!addedModal && addedModal.icon && addedModal.body && addedModal.title === '&footnote{Added note.}' && !addedModal.textInline,
+    JSON.stringify(addedModal));
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { const m = document.getElementById('suggestion-modal'); if (m) m.remove(); });
   await build(); // committed again
 
   // ---- attention harvest ignores note bodies -----------------------------
