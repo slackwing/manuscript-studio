@@ -377,6 +377,21 @@ const { suggestEditor } = require('./test-utils');
     check('R14: committed bare-slug &mark#slug → black diamond (both spellings display)',
       committedBare.includes('cmd-diamond-marker') && committedBare.includes('data-slug="pressure"')
       && !/>[^<]*&amp;mark/.test(committedBare), committedBare);
+    // {weak}/{strong} argument → data-weight (attention scales 70%/130%);
+    // any other argument is a tag and gets no weight. Committed AND diff.
+    const committedWeak = await render(
+      [{ id: 'r14wk', text: 'boarding his flight &mark#pressure{weak} with a plan.' }]);
+    check('R14: {weak} argument → data-weight="weak" beside the slug',
+      committedWeak.includes('data-weight="weak"') && committedWeak.includes('data-slug="pressure"')
+      && committedWeak.includes('cmd-diamond-marker'), committedWeak);
+    const weightDiff = await page.evaluate(() => ({
+      strong: window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;marker#twist{strong}</strong> here'),
+      tag: window.WriteSysRenderer.renderInlineCommandsInHtml('was <strong>&amp;marker#twist{note}</strong> here'),
+    }));
+    check('R14: {strong} rides into the diff diamond as data-weight="strong"',
+      weightDiff.strong.includes('data-weight="strong"') && weightDiff.strong.includes('cmd-diamond-added'), weightDiff.strong);
+    check('R14: an unrelated argument carries no data-weight',
+      !weightDiff.tag.includes('data-weight') && weightDiff.tag.includes('data-args="note"'), weightDiff.tag);
     // Custom marker symbols (settings "Markers"): a mapped slug wears its
     // shape — committed AND in diffs; unmapped slugs keep the diamond.
     await page.evaluate(() => { window.WriteSysMarkerSymbols.map = { weird: { symbol: 'triangle-down', attention: 0 } }; });

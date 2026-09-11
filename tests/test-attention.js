@@ -265,6 +265,36 @@ const check = (name, ok, detail = '') => {
     `${vals(sug.alphaReader)} ${JSON.stringify(sug.alphaDom)}`);
   check('suggestions withdrawn → committed markers again', vals(sug.restored) === '[10,-15]', vals(sug.restored));
 
+  // ---- {weak} / {strong}: the marker argument scales its value --------
+  const weight = await page.evaluate(async (prose) => {
+    const R = window.WriteSysRenderer;
+    const A = window.WriteSysAttention;
+    const before = document.body.dataset.paginated;
+    const sentences = [];
+    for (let i = 0; i < 30; i++) {
+      let text = prose + `Sentence number ${i} carries the paragraph onward. `;
+      if (i === 3) text += '&marker#vivid{weak} ';
+      if (i === 12) text += '&marker#vivid{note} ';
+      if (i === 18) text += '&marker#digression{strong} ';
+      sentences.push({ id: `wt-${i}`, sentence_id: `wt-${i}`, text });
+    }
+    R.currentSentences = sentences;
+    R.sentenceMap = Object.fromEntries(sentences.map((s) => [s.id, s.text]));
+    await R.renderManuscript();
+    await new Promise((res) => {
+      const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
+      tick();
+    });
+    return {
+      values: A._harvest().markers.map((m) => Math.round(m.v * 1000) / 1000),
+      weights: [...document.querySelectorAll('.pagedjs_pages [data-kind="marker"]')].map((el) => el.dataset.weight || '-'),
+    };
+  }, prose);
+  check('{weak} → 70%, plain tag → 100%, {strong} → 130%',
+    JSON.stringify(weight.values) === '[7,10,-19.5]', JSON.stringify(weight.values));
+  check('data-weight rides only weak/strong arguments',
+    JSON.stringify(weight.weights) === '["weak","-","strong"]', JSON.stringify(weight.weights));
+
   await browser.close();
   console.log('');
   if (failed) { console.log(`❌ ${failed} check(s) failed`); process.exit(1); }

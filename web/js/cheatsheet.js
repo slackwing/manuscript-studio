@@ -68,6 +68,7 @@ const WriteSysCheatsheet = {
       rows: [
         { code: 'See &reference#origin{the opening}.', desc: 'Link to a #slug.' },
         { code: 'The fire &anchor#mark{} spread.', desc: 'Inline marker.' },
+        { code: 'It rained. &marker#weird{weak}', desc: 'Attention marker — {weak} 70%, {strong} 130%.' },
         { code: 'She waited. &placeholder{sentences}{l}', desc: 'Inline hatched space.' },
       ],
     },

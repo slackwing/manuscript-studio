@@ -12,6 +12,17 @@ const SENT_SEP = '<span class="sent-sp"> </span>';
 // font metrics for U+25C6 differ per platform (Firefox/DejaVu drew it sunk
 // to the baseline), an inline SVG centers identically everywhere. Color
 // comes from CSS currentColor.
+// markerWeightAttr: a marker's {weak} / {strong} argument scales its
+// attention value (attention.js TUNING.WEAK_SCALE / STRONG_SCALE — 70% /
+// 130%, 2026-09-11). It rides the DOM as data-weight on the same span
+// that carries data-slug, so the harvest reads both together. Any other
+// argument is just a tag and gets no weight.
+const markerWeightAttr = (args) => {
+  const w = (args || []).map((a) => String(a).trim().toLowerCase())
+    .find((a) => a === 'weak' || a === 'strong');
+  return w ? ` data-weight="${w}"` : '';
+};
+
 const CMD_DIAMOND_SVG = '<svg width="9" height="13" viewBox="0 0 9 13" aria-hidden="true">'
   + '<path fill="currentColor" d="M4.5 0 9 6.5 4.5 13 0 6.5z"/></svg>';
 
@@ -1006,7 +1017,8 @@ const WriteSysRenderer = {
       // eyes with see-markers AND the display toggle on; everyone else
       // gets the invisible span like any unknown.
       const slug = c.slug ? ` data-slug="${escapeHTML(c.slug)}"` : '';
-      const args = c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '';
+      const args = (c.args && c.args.length ? ` data-args="${escapeHTML(c.args.join(''))}"` : '')
+        + markerWeightAttr(c.args);
       if (!this.canSeeMarkers()) {
         return `<span class="inline-cmd" data-kind="${escapeHTML(c.kind)}"${slug}${args} aria-hidden="true"></span>`;
       }
@@ -1134,6 +1146,7 @@ const WriteSysRenderer = {
           ? ` data-kind="${escapeHTML(cmd.kind)}"`
             + (cmd.slug ? ` data-slug="${escapeHTML(cmd.slug)}"` : '')
             + (cmd.args && cmd.args.length ? ` data-args="${escapeHTML(cmd.args.join(''))}"` : '')
+            + markerWeightAttr(cmd.args)
             + ` data-diff="${diffState}"`
           : '';
         // Editingness gates the glyph: without manage-suggestions the

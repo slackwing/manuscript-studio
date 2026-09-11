@@ -74,6 +74,11 @@ window.WriteSysAttention = {
     // concentrates into a visible V. A Gaussian blur of σ SMOOTH_WORDS
     // spreads that turn. 0 disables.
     SMOOTH_WORDS: 6,
+    // {weak} / {strong} marker argument (&marker#weird{weak}): scales the
+    // slug's configured value — 70% / 130% (owner-specified, 2026-09-11).
+    // Read off data-weight (renderer.js markerWeightAttr) in _harvest.
+    WEAK_SCALE: 0.7,
+    STRONG_SCALE: 1.3,
   },
 
   _pages: [],   // [{el, svg}] — pages that received an overlay
@@ -262,8 +267,12 @@ window.WriteSysAttention = {
     for (const el of document.querySelectorAll(sel)) {
       if (el.dataset.diff === 'removed') continue; // struck in the diff — not read
       const slug = el.dataset.slug || '';
-      const v = window.WriteSysMarkerSymbols
+      const base = window.WriteSysMarkerSymbols
         ? window.WriteSysMarkerSymbols.attentionFor(slug) : 0;
+      // {weak} / {strong} (data-weight) scale the slug's value.
+      const w = el.dataset.weight;
+      const v = base * (w === 'weak' ? this.TUNING.WEAK_SCALE
+        : (w === 'strong' ? this.TUNING.STRONG_SCALE : 1));
       if (!v) continue; // unconfigured/neutral markers shape no envelope
       const r = el.getBoundingClientRect();
       // An INVISIBLE marker span has zero WIDTH but is still positioned —

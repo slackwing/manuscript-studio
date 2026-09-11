@@ -175,6 +175,11 @@ function of the final page geometry.
     #picture +5   #sconce +5   #vivid +10   #beacon +10   #pressure +8
     #twist  +15   #weird −5    #hard −5     #aside −8     #digression −15
 
+A `{weak}` / `{strong}` argument (`&marker#weird{weak}`) scales the slug's
+value to 70% / 130% — `TUNING.WEAK_SCALE` / `STRONG_SCALE` (2026-09-11).
+The renderer stamps it as `data-weight` beside `data-slug`; the harvest
+multiplies. Any other brace argument is a plain tag (no weight).
+
 (Normal users add their own; unconfigured = 0. Existing shape mappings —
 #weird/#digression → triangle-down — keep their shapes, gain values.)
 
