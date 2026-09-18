@@ -645,8 +645,12 @@ const WriteSysSuggestions = {
     const glyphizeWS = (html) => html
       .replace(/\t/g, '<span class="sd-tab"><span class="sd-g">→</span>\t</span>')
       .replace(/\n/g, '<span class="sd-nl"><span class="sd-g">↵</span></span>\n');
+    // fmtRaw paints text as it READS: inline commands wear their live
+    // renders (renderCommandsHTML — a committed &marker its symbol) on top
+    // of the →/↵ structure glyphs; the literal command is for the mono
+    // view a click away.
     const fmtRaw = (host, text) => {
-      const html = glyphizeWS(escapeHTML(text));
+      const html = glyphizeWS(renderCommandsHTML(escapeHTML(text)));
       if (window.WriteSysScratchRender) window.WriteSysScratchRender.renderHTML(host, html);
       else host.textContent = text;
     };
@@ -660,10 +664,7 @@ const WriteSysSuggestions = {
           fmtRaw(leftFmt, txt);
           return;
         }
-        let html = renderDiffHTML(src, txt, dmpInst);
-        if (window.WriteSysRenderer && window.WriteSysRenderer.renderInlineCommandsInHtml) {
-          html = window.WriteSysRenderer.renderInlineCommandsInHtml(html);
-        }
+        const html = renderCommandsHTML(renderDiffHTML(src, txt, dmpInst));
         // Same renderer as the plain view — one typography truth. (No
         // glyphize here: the diff pipeline renders structure via its own
         // ¶/§ markers — renderStructuralMarkers — the on-page diff idiom.)
@@ -911,16 +912,16 @@ const WriteSysSuggestions = {
     };
     leftCtl = window.WriteSysPaneWidget.formattedMono({
       fmtEl: leftFmt,
-      render: () => paint(leftFmt, suggested === committed
+      render: () => paint(leftFmt, renderCommandsHTML(suggested === committed
         ? escapeHTML(suggested)
-        : renderDiffHTML(committed, suggested, dmp)),
+        : renderDiffHTML(committed, suggested, dmp))),
       showMono: () => { leftPane.wrap.hidden = false; leftPane.autoGrow(); },
       hideMono: () => { leftPane.wrap.hidden = true; },
       focusMono: () => leftPane.textarea.focus(),
     });
     rightCtl = window.WriteSysPaneWidget.formattedMono({
       fmtEl: rightFmt,
-      render: () => paint(rightFmt, escapeHTML(committed)),
+      render: () => paint(rightFmt, renderCommandsHTML(escapeHTML(committed))),
       showMono: () => { rightPane.wrap.hidden = false; rightPane.autoGrow(); },
       hideMono: () => { rightPane.wrap.hidden = true; },
       focusMono: () => rightPane.textarea.focus(),
@@ -941,6 +942,18 @@ const WriteSysSuggestions = {
     w.refresh();
   },
 };
+
+// renderCommandsHTML: inline commands in escaped (or diffed) HTML wear
+// their live renders — a committed &marker its symbol, a reference its
+// link — exactly as the page shows them. Every formatted pane in the
+// modal and the history dialog paints through this, so a command reads
+// literally ONLY in the mono (raw) view a click away. Before 2026-09-18 a
+// pane with nothing to diff (the committed version; your own not-yet-
+// edited copy) escaped the raw text and printed "&marker#picture" as prose.
+function renderCommandsHTML(html) {
+  const R = window.WriteSysRenderer;
+  return (R && R.renderInlineCommandsInHtml) ? R.renderInlineCommandsInHtml(html) : html;
+}
 
 // Render a word-level diff as <del>removed</del><strong>added</strong>.
 // Falls back to a single <strong> wrap when diff-match-patch isn't loaded.
