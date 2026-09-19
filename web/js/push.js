@@ -13,11 +13,20 @@
  *     (local, git glyph). Disabled at zero.
  *   - VIEW: the GitHub compare page — github mode only, disabled until the
  *     suggestions branch exists. Absent entirely on local manuscripts.
+ *     Opens in ONE named browser tab (GITHUB_TARGET): GitHub can't be
+ *     framed, so the app can't host it, but every click lands in the
+ *     same tab wherever it has wandered since.
  *
  * All labels are icons; hover titles carry the words + counts.
  */
 
-const ICON_EXTERNAL = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3a.75.75 0 0 0-1.5 0v3a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3a.75.75 0 0 0 0-1.5h-3zm6.854-1a.75.75 0 0 0 0 1.5h1.836L8.22 7.22a.75.75 0 1 0 1.06 1.06L13.5 4.06v1.836a.75.75 0 0 0 1.5 0V1.75A.75.75 0 0 0 14.25 1h-3.646z"/></svg>`;
+// The View link's browser target. GitHub refuses to be framed
+// (X-Frame-Options: deny), so the compare page can't live in an app tab;
+// a NAMED target is the one-tab rule at the browser level: every click
+// lands in the same browser tab, wherever it has navigated since (a
+// merge, a browse). No rel=noopener — reuse rides the opener link (a
+// noopener window is a stranger to us; each click would open a fresh one).
+const GITHUB_TARGET = 'ms-github';
 const ICON_GITHUB = `<svg class="mc-ic-github" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
 const ICON_SPINNER = `<svg class="push-btn-spinner" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.3"/><path d="M14 8a6 6 0 0 0-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 // Git commit glyph (dot on a line) for LOCAL manuscripts.
@@ -137,8 +146,8 @@ const WriteSysPush = {
       if (!this._isLocal()) {
         const viewable = this._branchExists && !!this._compareURL;
         html += viewable
-          ? `<a class="mc-btn" id="view-btn" href="${this._compareURL}" target="_blank" rel="noopener" title="View on GitHub">${ICON_EXTERNAL}</a>`
-          : `<button type="button" class="mc-btn" id="view-btn" disabled title="View on GitHub — nothing pushed yet">${ICON_EXTERNAL}</button>`;
+          ? `<a class="mc-btn" id="view-btn" href="${this._compareURL}" target="${GITHUB_TARGET}" title="View on GitHub">${ICON_GITHUB}</a>`
+          : `<button type="button" class="mc-btn" id="view-btn" disabled title="View on GitHub — nothing pushed yet">${ICON_GITHUB}</button>`;
       }
     }
     this._container.innerHTML = html;

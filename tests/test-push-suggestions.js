@@ -212,6 +212,14 @@ function teardownBareRemote(bareDir) {
     const viewHref = await page.getAttribute('a#view-btn', 'href');
     assert(typeof viewHref === 'string' && viewHref.includes(`/compare/${branch}`),
       `View points at /compare/${branch} (got "${viewHref}")`);
+    // ONE GitHub tab: a named browser target (never _blank / noopener) so
+    // every click reuses the same tab; the button wears the GitHub mark.
+    const viewLink = await page.evaluate(() => {
+      const a = document.querySelector('a#view-btn');
+      return { target: a.target, rel: a.rel, github: !!a.querySelector('.mc-ic-github') };
+    });
+    assert(viewLink.target === 'ms-github' && !/noopener/.test(viewLink.rel) && viewLink.github,
+      `View opens in the one named GitHub tab, wearing the GitHub mark (got ${JSON.stringify(viewLink)})`);
 
     // Without a sibling .segman in the source tree, the pushed commit
     // should NOT include one — we don't presume on repos that don't use
