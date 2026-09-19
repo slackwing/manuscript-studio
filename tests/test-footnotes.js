@@ -38,7 +38,8 @@ const check = (name, ok, detail = '') => {
       if (i === 2) text += '&footnote{First note, page one. *Italic* inside.}';
       if (i === 5) text += '&footnote{Second note.}';
       if (i === 22) text += '&footnote{Third note, after the chapter break.}';
-      if (i === 35) text += '&footnote{Fourth note.}';
+      // The fourth note WRAPS — the typography checks measure its lines.
+      if (i === 35) text += '&footnote{Fourth note, long enough to wrap onto a second line so the hanging indent can be measured: every line of a note starts at the same left edge, after the mark column.}';
       push(`fn-${i}`, text + ' ');
     }
     R.currentSentences = sentences;
@@ -89,6 +90,37 @@ const check = (name, ok, detail = '') => {
   check('the relabelled mark is what the call paints (beats Paged\'s counter)',
     JSON.stringify(info.painted) === '["\\"1\\"","\\"2\\"","\\"1\\"","\\"2\\""]', JSON.stringify(info.painted));
   check('spans more than one page', info.pages >= 2, String(info.pages));
+
+  // ---- typography (2026-09-19): hanging indent + justified ---------------
+  // The mark sits in its own column (an inline-block as wide as the hang)
+  // and every line of the note starts at the same left edge; notes justify
+  // like the body text.
+  const typo = await page.evaluate(() => {
+    const b = document.querySelector('.pagedjs_pages .pagedjs_footnote_area .fn-body[data-sentence-id="fn-35"]');
+    if (!b) return null;
+    const cs = getComputedStyle(b);
+    const mk = getComputedStyle(b, '::before');
+    const range = document.createRange();
+    range.selectNodeContents(b); // content only — the ::before mark is not in the range
+    const lines = [];
+    for (const rc of range.getClientRects()) {
+      if (rc.width < 1) continue;
+      const l = lines.find((x) => Math.abs(x.top - rc.top) < 3);
+      if (l) l.left = Math.min(l.left, rc.left); else lines.push({ top: rc.top, left: rc.left });
+    }
+    const left0 = b.getBoundingClientRect().left;
+    const pad = parseFloat(cs.paddingLeft);
+    return {
+      justify: cs.textAlign === 'justify',
+      hang: pad > 0 && Math.abs(pad + parseFloat(cs.textIndent)) < 0.5,
+      column: mk.display === 'inline-block' && parseFloat(mk.width) >= pad - 0.5,
+      lefts: lines.map((l) => +(l.left - left0).toFixed(1)),
+    };
+  });
+  check('a wrapping note hangs: every line starts at the same left edge, past the mark column',
+    !!typo && typo.lefts.length >= 2 && typo.hang && typo.column && typo.lefts[0] > 10
+    && typo.lefts.every((x) => Math.abs(x - typo.lefts[0]) < 0.5), JSON.stringify(typo));
+  check('notes are justified like the body text', !!typo && typo.justify);
 
   // Policies re-number in place — no re-pagination (data-paginated unchanged).
   const pol = await page.evaluate(() => {

@@ -3727,8 +3727,18 @@ html.attention-held .attention-overlay { display: block; }
   line-height: 1.35;
 }
 /* One note per line (Paged's footnote-display: block does not reach a
-   span body reliably); a little air between notes. */
-.pagedjs_footnote_area .fn-body { display: block; margin-bottom: 3pt; }
+   span body reliably); a little air between notes. Book typography: the
+   mark sits in its own column and every line of the note starts at the
+   same left edge (hanging indent — padding pulls the block in, the
+   negative text-indent hangs the first line back out and the mark's
+   inline-block fills exactly that gap), justified like the body text. */
+.pagedjs_footnote_area .fn-body {
+  display: block;
+  margin-bottom: 3pt;
+  padding-left: 1.6em;
+  text-indent: -1.6em;
+  text-align: justify;
+}
 /* Paged's rules are inserted at runtime AFTER book.css at equal specificity
    — these win by specificity ([data-fn-mark] present = relabelled). The
    call is a true superscript: Paged prefers font-variant-position: super,
@@ -3741,10 +3751,20 @@ html.attention-held .attention-overlay { display: block; }
   font-size: 65%;
   line-height: 0;
 }
-.pagedjs_pages [data-footnote-marker][data-fn-mark]::before { content: attr(data-fn-mark) ". "; }
+.pagedjs_pages [data-footnote-marker][data-fn-mark]::before {
+  content: attr(data-fn-mark) ". ";
+  /* The mark column: as wide as the hanging indent, so the note's first
+     line starts where its other lines do. A wider mark (‡‡‡, 12.) grows
+     the column and nudges only that first line. */
+  display: inline-block;
+  min-width: 1.6em;
+  text-indent: 0;
+}
 body[data-footnote-marks="symbols"] .pagedjs_pages [data-footnote-marker][data-fn-mark]::before { content: attr(data-fn-mark) " "; }
-/* A long note split across pages: its continuation carries no mark. */
+/* A long note split across pages: its continuation carries no mark — and
+   with no mark to fill the hang, its first line aligns with the rest. */
 .pagedjs_pages [data-footnote-marker][data-split-from]::before { content: none; }
+.pagedjs_pages .fn-body[data-split-from] { text-indent: 0; }
 /* A footnote is its host sentence: the body highlights with it. */
 .pagedjs_footnote_area .fn-body.hover,
 .pagedjs_footnote_area .fn-body.selected { border-radius: 2px; }
