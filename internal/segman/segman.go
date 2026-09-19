@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.8.0"
+const Version = "2.9.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -588,17 +588,22 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 		if runes[i] != '&' {
 			continue
 		}
-		if commandKeywordAt(runes, i) == "footnote" {
-			// RULE 12 (v2.8.0): a footnote belongs to the sentence it
-			// annotates. Mid-sentence it is inline like any command (atomic
-			// by RULE 10). Right after a sentence's terminator — with or
-			// without a whitespace gap — it must neither stand alone (RULE
-			// 11) nor open the next sentence: drop any boundary in the gap
-			// between the terminator and the token, and end the host
-			// sentence right after the token instead.
-			if commandFollowsSentenceEnd(runes, i) {
+		if kw := commandKeywordAt(runes, i); commandAttaches(kw) {
+			// RULE 12 (v2.8.0 footnotes; v2.9.0 &marker/&mark too): an
+			// annotation belongs to the sentence it follows. Right after a
+			// sentence's terminator ON ITS LINE — with or without a
+			// whitespace gap — it must neither stand alone (RULE 11) nor
+			// open the next sentence: drop any boundary in the gap between
+			// the terminator and the token, and end the host sentence right
+			// after the token instead. Across a line break it does NOT
+			// attach (a paragraph-leading annotation would swallow the
+			// paragraph break — v2.8.0's blind spot): the general rules
+			// take over, a footnote staying inline, a marker sole-line
+			// block or RULE 11 standalone. Mid-sentence every annotation is
+			// inline like any command (atomic by RULE 10).
+			if commandFollowsSentenceEndOnLine(runes, i) {
 				ws := i
-				for ws > 0 && (runes[ws-1] == ' ' || runes[ws-1] == '\t' || runes[ws-1] == '\r' || runes[ws-1] == '\n') {
+				for ws > 0 && (runes[ws-1] == ' ' || runes[ws-1] == '\t' || runes[ws-1] == '\r') {
 					ws--
 				}
 				kept := boundaries[:0]
@@ -609,10 +614,10 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 				}
 				boundaries = kept
 				if end := commandTokenEnd(runes, i); end > 0 && end < len(runes) {
-					boundaries = append(boundaries, boundaryMark{pos: end, reason: "after &footnote"})
+					boundaries = append(boundaries, boundaryMark{pos: end, reason: "after &" + kw})
 				}
+				continue
 			}
-			continue
 		}
 		if !isBlockCommandAt(runes, i) {
 			continue
@@ -708,6 +713,28 @@ func isBlockCommandAt(runes []rune, i int) bool {
 	}
 }
 
+// commandAttaches (RULE 12): the annotation commands that belong to the
+// sentence they follow — a footnote, and a marker in either spelling.
+func commandAttaches(kw string) bool {
+	return kw == "footnote" || kw == "marker" || kw == "mark"
+}
+
+// commandFollowsSentenceEndOnLine is commandFollowsSentenceEnd confined to
+// the token's own line: only spaces/tabs may sit between the closing
+// punctuation and the '&'. A line break in the gap means the annotation
+// leads a new line — it must not pull that line's break into the sentence
+// before it.
+func commandFollowsSentenceEndOnLine(runes []rune, i int) bool {
+	k := i - 1
+	for k >= 0 && (runes[k] == ' ' || runes[k] == '\t' || runes[k] == '\r') {
+		k--
+	}
+	if k < 0 || runes[k] == '\n' {
+		return false
+	}
+	return commandFollowsSentenceEnd(runes, k+1)
+}
+
 // commandFollowsSentenceEnd (RULE 11, v2.7.0): an anchor-family command whose
 // nearest preceding non-whitespace character closes a sentence (.!?… —
 // looking through closing quotes/brackets/italic stars) is its own segment
@@ -785,31 +812,27 @@ func commandTokenEnd(runes []rune, i int) int {
 	for k < len(runes) && runes[k] != '#' && runes[k] != '{' {
 		k++
 	}
-	kw := string(runes[i+1 : k])
-	// 'end' is the one keyword whose token is complete with a bare #slug and
-	// no {...} groups (&end#slug). Its slug self-terminates on the slug
-	// charset [a-z0-9-] since no brace delimiter need follow.
-	bareSlugToken := false
-	// optional #slug
-	if k < len(runes) && runes[k] == '#' {
+	// #slugs (v2.9.0: one or more, each self-terminating on the slug
+	// charset [a-z0-9-]): a token is complete with a bare slug and no {...}
+	// groups, for EVERY keyword. Before, only &end#slug was — any other
+	// slug ran on until a '{' anywhere on its line, so a bare &marker#hard
+	// followed later on the line by &marker#beacon{weak} became one
+	// thousand-character "token" whose atomicity (RULE 10) erased every
+	// sentence boundary between them.
+	sawSlug := false
+	for k < len(runes) && runes[k] == '#' {
 		k++
-		if kw == "end" {
-			start := k
-			for k < len(runes) && isSlugChar(runes[k]) {
-				k++
-			}
-			if k == start {
-				return -1 // '&end#' with no slug is not a token
-			}
-			bareSlugToken = true
-		} else {
-			for k < len(runes) && runes[k] != '{' && runes[k] != '\n' {
-				k++
-			}
+		start := k
+		for k < len(runes) && isSlugChar(runes[k]) {
+			k++
 		}
+		if k == start {
+			return -1 // '&x#' with no slug is not a token
+		}
+		sawSlug = true
 	}
-	// one or more {...} groups, back to back
-	sawGroup := bareSlugToken
+	// zero or more {...} groups, back to back
+	sawGroup := sawSlug
 	for k < len(runes) && runes[k] == '{' {
 		depth := 0
 		for k < len(runes) {
