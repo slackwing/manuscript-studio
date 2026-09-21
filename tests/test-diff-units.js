@@ -144,10 +144,11 @@ console.log('=== S8 structural-markers-4-rules ===');
 
   // Rule 3: mid-content marker → glyph + <br> + indent.
   const mid = renderStructuralMarkers('Hello\n\nworld');
-  check('mid-content § → glyph + blank line (double spacing), flush start',
-    mid === 'Hello<span class="suggested-marker">§</span><br><br>world', mid);
+  check('mid-content § → blank line (double spacing), then § opens the flush line',
+    mid === 'Hello<br><br><span class="suggested-marker">§</span>world', mid);
   const midP = renderStructuralMarkers('Hello\n\tworld');
-  check('mid-content ¶ same shape', midP.includes('suggested-marker">¶</span><br>'), midP);
+  check('mid-content ¶ → break, 2em indent, then ¶ opens the line (never ends the old one)',
+    midP === 'Hello<br><span class="suggested-pindent">\u00a0</span><span class="suggested-marker">¶</span>world', midP);
 
   // Rule 4: inside <del>, mid-content marker → struck glyph only, no <br>.
   const inDel = renderStructuralMarkers('<del>Hello\n\nworld</del>');
@@ -156,8 +157,8 @@ console.log('=== S8 structural-markers-4-rules ===');
 
   // Tag-state tracking survives adjacent tags; EQ text after content is mid.
   const mixed = renderStructuralMarkers('<del>gone</del> kept\n\ttail');
-  check('marker after closing tag treated as EQ mid-content (has <br>)',
-    mixed.includes('suggested-marker">¶</span><br>'), mixed);
+  check('marker after closing tag treated as EQ mid-content (has <br>, glyph leads)',
+    mixed.includes('<br><span class="suggested-pindent">') && mixed.includes('</span><span class="suggested-marker">¶</span>tail'), mixed);
   check('lone \\n untouched', renderStructuralMarkers('a\nb') === 'a\nb');
 }
 

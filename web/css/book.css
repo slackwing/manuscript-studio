@@ -2275,6 +2275,13 @@ p.section-break {
 /* Indent for a paragraph-break preview. Uses nbsps as content (not
    width:) so text-align: justify on the parent <p> can't collapse it. */
 .sentence .suggested-pindent {
+  /* The book's own paragraph indent (p.indented text-indent: 2em) as an
+     atomic inline box: text-align: justify on the parent <p> can neither
+     stretch nor collapse it. Its inherited text-indent is zeroed — an
+     inline-block applies it to its first line (the .cmd-diamond trap). */
+  display: inline-block;
+  width: 2em;
+  text-indent: 0;
   white-space: pre;
 }
 

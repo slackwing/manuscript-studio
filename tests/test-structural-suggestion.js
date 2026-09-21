@@ -6,7 +6,7 @@
 // Also checks &title / &part get a page break before them.
 const { chromium } = require('playwright');
 const {
-  TEST_URL, TEST_MANUSCRIPT_ID, SYSTEM_TOKEN,
+  TEST_URL, TEST_MANUSCRIPT_ID, TEST_USERNAME, SYSTEM_TOKEN,
   cleanupTestAnnotations, loginAsTestUser,
   waitForPagination,
 } = require('./test-utils');
@@ -112,6 +112,54 @@ async function syncManuscript() {
       return s.breakBefore !== 'auto' ? s.breakBefore : s.pageBreakBefore;
     });
     check('cmd-part breaks before (own page)', brk === 'page', `got ${brk}`);
+
+    // ---- paragraph-break preview (2026-09-21) --------------------------
+    // A ¶ INSIDE a suggestion opens its own line at the book's paragraph
+    // indent — level with a real p.indented first line — and never dangles
+    // at the end of the line before it (it used to be glyph, THEN <br>).
+    // Synthetic sentences through the real renderer (the footnotes idiom).
+    await page.evaluate(async ({ viewer }) => {
+      const R = window.WriteSysRenderer;
+      const S = window.WriteSysSuggestions;
+      const before = document.body.dataset.paginated;
+      const committed = '\n\tThis morning, I should say; soon, dawn should break. It has felt to me the last few days that it is always really night, only sometimes lighter.';
+      const sentences = [
+        { id: 'pb-0', sentence_id: 'pb-0', text: '\n\tThe evening settled over the valley like a long held breath.' },
+        { id: 'pb-1', sentence_id: 'pb-1', text: committed },
+      ];
+      R.currentSentences = sentences;
+      R.sentenceMap = Object.fromEntries(sentences.map((x) => [x.id, x.text]));
+      S.rows = [{ sentence_id: 'pb-1', user_id: viewer, text: '\n\tTonight.' + committed,
+        review_status: null, stale: false, updated_at: new Date().toISOString(), base_text: committed }];
+      S.rebuildMaps();
+      await R.renderManuscript();
+      await new Promise((res) => {
+        const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
+        tick();
+      });
+    }, { viewer: TEST_USERNAME });
+    const pb = await page.evaluate(() => {
+      const span = document.querySelector('.pagedjs_pages .sentence[data-sentence-id="pb-1"]');
+      const p = span && span.closest('p');
+      if (!p) return null;
+      const pr = p.getBoundingClientRect();
+      const g = span.querySelector('.suggested-marker');
+      if (!g) return { glyph: null };
+      const gr = g.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      const first = [...range.getClientRects()].find((r) => r.width > 1);
+      return {
+        glyph: g.textContent,
+        ownLine: gr.top - first.top > 5,
+        glyphLeft: +(gr.left - pr.left).toFixed(1),
+        firstLeft: +(first.left - pr.left).toFixed(1),
+        indent: parseFloat(getComputedStyle(p).textIndent),
+      };
+    });
+    check('a ¶ inside a suggestion opens its own line at the 2em paragraph indent, level with the real first line',
+      !!pb && pb.glyph === '¶' && pb.ownLine && Math.abs(pb.glyphLeft - pb.indent) < 1
+      && Math.abs(pb.glyphLeft - pb.firstLeft) < 1, JSON.stringify(pb));
 
     check('no page errors', errs.length === 0, errs.join('; '));
   } finally {

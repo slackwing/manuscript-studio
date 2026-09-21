@@ -1331,8 +1331,12 @@ function renderStructuralMarkers(html) {
   //     so an added break gets a real <p> and a removed one merges the
   //     sentence into the previous <p>, with the struck-through glyph
   //     (via parent <del>) marking the join.
-  //   * Mid-content marker: full preview — glyph + <br> + 2em indent —
-  //     except inside <del> where we skip the break (it's being removed).
+//   * Mid-content marker: full preview — <br> + 2em indent + glyph — the
+//     glyph LEADS the new line, exactly where a leading marker's glyph
+//     sits (before the paragraph's first word), so every ¶/§ reads as
+//     "this line opens a paragraph/section" and never dangles at the end
+//     of the line before it (2026-09-21). Except inside <del>, where we
+//     skip the break (it's being removed).
   let out = '';
   let inDel = false;
   let inStrong = false;
@@ -1368,8 +1372,11 @@ function renderStructuralMarkers(html) {
         // Only a ¶ (\n\t) indents — a section's first paragraph starts
         // flush BUT with the section's blank-line gap (double spacing),
         // matching the book's own convention.
-        const tail = isSection ? '<br>' : '<span class="suggested-pindent">\u00a0\u00a0\u00a0\u00a0</span>';
-        out += `<span class="suggested-marker">${glyph}</span><br>${tail}`;
+        // The indent is the book's paragraph indent (p.indented's 2em —
+        // suggested-pindent in book.css), so the previewed paragraph lines
+        // up with a real one.
+        const lead = isSection ? '<br>' : '<span class="suggested-pindent">\u00a0</span>';
+        out += `<br>${lead}<span class="suggested-marker">${glyph}</span>`;
       }
       i++;
       continue;
