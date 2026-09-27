@@ -239,7 +239,14 @@ const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1
   await page.fill('#msg-pass', 'test');
   await page.click('.msg-login');
   await page.waitForSelector('.msg-overlay', { state: 'detached', timeout: 8000 });
-  await page.waitForTimeout(4000);
+  // The refresh must have DEFERRED rather than run: wait on the flag the
+  // renderer sets for the close path, not on a clock.
+  await page.waitForFunction(
+    () => !!(window.WriteSysRenderer && window.WriteSysRenderer._refreshWhenEditorCloses),
+    null,
+    { timeout: 10000 },
+  );
+  check('post-relogin refresh deferred instead of re-rendering', true);
 
   check('editor survives the re-login', await page.locator('#suggestion-modal').count() === 1);
   const still = await page.locator('.suggestion-modal-textarea').inputValue().catch(() => '');
