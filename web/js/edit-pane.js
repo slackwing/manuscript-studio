@@ -141,7 +141,12 @@
       attempt = 0; // the failures were the expiry, not this text
       save();
     };
-    document.addEventListener('ms:session-restored', onRestored);
+    // Guarded: the unit tests exercise this module against a minimal
+    // document shim (no event target), and the flush is an enhancement —
+    // the retry ladder still recovers on its own without it.
+    const canListen = typeof document !== 'undefined'
+      && typeof document.addEventListener === 'function';
+    if (canListen) document.addEventListener('ms:session-restored', onRestored);
 
     return {
       poke,
@@ -150,7 +155,7 @@
       setSavedValue(v) { lastSaved = v; },
       destroy() {
         destroyed = true; clearTimeout(t); clearRetry();
-        document.removeEventListener('ms:session-restored', onRestored);
+        if (canListen) document.removeEventListener('ms:session-restored', onRestored);
       },
     };
   }

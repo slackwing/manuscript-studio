@@ -34,7 +34,17 @@ function makeEl(tag) {
   };
   return el;
 }
-global.document = { createElement: makeEl };
+// The document shim is also an event target: createAutosaver listens for
+// ms:session-restored (the re-login flush), and the tests fire it.
+const docListeners = {};
+global.document = {
+  createElement: makeEl,
+  addEventListener(t, fn) { (docListeners[t] = docListeners[t] || []).push(fn); },
+  removeEventListener(t, fn) {
+    docListeners[t] = (docListeners[t] || []).filter((f) => f !== fn);
+  },
+  dispatchEvent(ev) { (docListeners[ev.type] || []).slice().forEach((fn) => fn(ev)); return true; },
+};
 
 // ---- fake clock (setTimeout/setInterval overridden globally) ---------------
 const realSetImmediate = setImmediate;
@@ -172,6 +182,57 @@ const deferred = () => { let res, rej; const p = new Promise((a, b) => { res = a
     await clock.tick(600);
     check('ladder: success reset the backoff (next failure back to 2s)', secsShown() === 2, el.textContent);
     s.destroy();
+  }
+
+  // ---- autosaver-relogin-flush (2026-09-27) — a re-login is the one event
+  // that makes a FAILING save worth retrying at once: the 401 that broke it
+  // is gone. Without this the ladder sat out the rest of its backoff (up to
+  // 60s of "Failed to save" after the user had already fixed the problem).
+  {
+    const el = makeStatusEl();
+    let value = 'r1';
+    let failing = true;
+    let saves = 0;
+    const s = EP.createAutosaver({
+      getValue: () => value, initialValue: 'r0', statusEl: el,
+      save: async () => { saves++; if (failing) { const e = new Error('nope'); e.status = 401; throw e; } },
+    });
+    const secsShown = () => { const m = /in (\d+)s/.exec(el.textContent); return m ? parseInt(m[1], 10) : -1; };
+    s.poke();
+    await clock.tick(600);
+    check('relogin: the 401 put us on the ladder', saves === 1 && secsShown() === 2, el.textContent);
+    // Climb a couple of rungs so there's real backoff left to skip.
+    await clock.tick(secsShown() * 1000 + 1);
+    await clock.tick(secsShown() * 1000 + 1);
+    check('relogin: several rungs in, a long wait remains', saves === 3 && secsShown() === 8, el.textContent);
+    // The session comes back.
+    failing = false;
+    document.dispatchEvent({ type: 'ms:session-restored' });
+    await drain();
+    check('relogin: the restore retried IMMEDIATELY (no clock advance)', saves === 4, String(saves));
+    check('relogin: saved, status and error class cleared',
+      el.textContent === '' && el.errFlag === false && s.isDirty() === false, el.textContent);
+    // And the backoff was reset, not merely skipped.
+    failing = true; value = 'r2';
+    s.poke();
+    await clock.tick(600);
+    check('relogin: backoff reset (next failure starts at 2s)', secsShown() === 2, el.textContent);
+
+    // A clean saver ignores the event — no spurious PUT on every re-login.
+    failing = false;
+    await clock.tick(2000 + 1); // let it settle clean
+    const before = saves;
+    document.dispatchEvent({ type: 'ms:session-restored' });
+    await drain();
+    check('relogin: a clean saver does not save on restore', saves === before, `${before}→${saves}`);
+
+    // destroy() unsubscribes: a later restore must not resurrect it.
+    value = 'r3';
+    s.destroy();
+    const after = saves;
+    document.dispatchEvent({ type: 'ms:session-restored' });
+    await drain();
+    check('relogin: destroy() unsubscribes from the event', saves === after, `${after}→${saves}`);
   }
 
   // ---- autosaver-fatal (:102–103) — onFatal string pins the status and
