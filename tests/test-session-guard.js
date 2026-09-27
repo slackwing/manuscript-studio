@@ -7,8 +7,14 @@
 //   3. logging in through the modal restores the session (fresh CSRF), the
 //      pending save flushes immediately (ms:session-restored), and the pad
 //      then closes cleanly.
+// Then, because an in-place re-login means no reload, each VIEW has to
+// refresh its own 401'd data on ms:session-restored:
+//   4. the landing page re-renders its cards;
+//   5. the book page picks up work done elsewhere while it sat expired;
+//   6. except under an OPEN suggestion editor, where that refresh defers to
+//      the modal's close path rather than re-rendering out from under it.
 const { chromium } = require('playwright');
-const { TEST_URL, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, loginAsTestUser, waitForPagination, psql, suggestEditor } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 
 const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1'
@@ -127,6 +133,133 @@ const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1
     return t && !/Failed to load/.test(t);
   }, { timeout: 10000 });
   check('home re-renders after modal login (no manual refresh)', true, `was: ${brokeFirst.slice(0, 40)}`);
+
+  // 5. The BOOK PAGE recovers after an in-place re-login (owner's report,
+  //    2026-09-27): "I edited the manuscript on another device, came back to
+  //    this one, the session had expired, I re-logged in — and the manuscript
+  //    did not refresh to show the new suggestions until I manually
+  //    refreshed."
+  //
+  //    Note the shape that matters. A session already dead when the page is
+  //    OPENED just redirects to login.html and loads fresh — that path was
+  //    never broken. The bug is a tab that was already open when the session
+  //    died: the guard re-logs in place (by design, so unsaved work lives),
+  //    and without a listener the book keeps rendering its pre-expiry data.
+  await page.goto(TEST_URL);
+  await waitForPagination(page);
+  const sid = await page.evaluate(
+    () => (document.querySelector('.sentence[data-sentence-id]') || {}).dataset?.sentenceId || '');
+  check('book loaded a sentence to work with', !!sid, sid);
+
+  // "Another device" adds a suggestion while this tab sits there.
+  const other = await browser.newContext();
+  const otherPage = await other.newPage();
+  await loginAsTestUser(otherPage);
+  await otherPage.goto(TEST_URL);
+  await waitForPagination(otherPage);
+  const ELSEWHERE = 'FROMOTHERDEVICE' + Date.now();
+  const putStatus = await otherPage.evaluate(async ({ s, text }) => {
+    const res = await authenticatedFetch(`api/sentences/${s}/suggestion`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    return res.status;
+  }, { s: sid, text: ELSEWHERE + ' rest of the sentence.' });
+  check('other device wrote a suggestion', putStatus >= 200 && putStatus < 300, `HTTP ${putStatus}`);
+  await other.close();
+
+  // This tab's session expires; any api call trips the guard.
+  await context.clearCookies();
+  await page.evaluate(() => fetch('api/session', { credentials: 'include' }));
+  await page.waitForSelector('.msg-overlay', { timeout: 8000 });
+  check('book: expiry trips the re-login modal', true);
+
+  const staleBefore = await page.evaluate(() => document.body.textContent || '');
+  check('book does NOT yet show the other device\'s text', !staleBefore.includes(ELSEWHERE));
+
+  await page.fill('#msg-user', USERNAME);
+  await page.fill('#msg-pass', 'test');
+  await page.click('.msg-login');
+  await page.waitForSelector('.msg-overlay', { state: 'detached', timeout: 8000 });
+
+  // THE REGRESSION: without renderer.js's ms:session-restored listener this
+  // never becomes true, and the owner has to hit reload.
+  await page.waitForFunction(
+    (mark) => (document.body.textContent || '').includes(mark),
+    ELSEWHERE,
+    { timeout: 20000 },
+  ).catch(() => {});
+  const sawElsewhere = await page.evaluate(() => document.body.textContent || '');
+  check("book shows the other device's suggestion after re-login (no manual refresh)",
+    sawElsewhere.includes(ELSEWHERE));
+
+  psql(`DELETE FROM suggested_change WHERE user_id = '${USERNAME}'`);
+
+  // 6. ...but NOT while a suggestion editor is open. Re-rendering the book
+  //    would tear the modal's anchor out mid-edit, and a bare row refetch
+  //    would race the editor's own restore-flush and cache the pre-edit text
+  //    over the user's live words. So the refresh DEFERS to the close path.
+  //    The editor autosaves, so its text is never the thing at risk.
+  await page.goto(TEST_URL);
+  await waitForPagination(page);
+  const ids = await page.evaluate(
+    () => [...new Set([...document.querySelectorAll('.sentence[data-sentence-id]')]
+      .map(e => e.dataset.sentenceId))]);
+  const mineSid = ids[0];
+  const theirSid = ids[1];
+
+  const other2 = await browser.newContext();
+  const otherPage2 = await other2.newPage();
+  await loginAsTestUser(otherPage2);
+  await otherPage2.goto(TEST_URL);
+  await waitForPagination(otherPage2);
+  const ELSEWHERE2 = 'OTHERDEV' + Date.now();
+  await otherPage2.evaluate(async ({ s, text }) => {
+    await authenticatedFetch(`api/sentences/${s}/suggestion`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  }, { s: theirSid, text: ELSEWHERE2 + ' their sentence.' });
+  await other2.close();
+
+  // Open MY editor and type, then expire mid-edit.
+  await page.evaluate((s) => window.WriteSysSuggestions.openModal(s), mineSid);
+  await page.waitForSelector('#suggestion-modal', { timeout: 8000 });
+  const ta = await suggestEditor(page);
+  const MINE = 'MYEDIT' + Date.now();
+  await ta.fill(MINE + ' my edited sentence.');
+  await page.waitForTimeout(400);
+
+  await context.clearCookies();
+  await page.evaluate(() => fetch('api/session', { credentials: 'include' }));
+  await page.waitForSelector('.msg-overlay', { timeout: 10000 });
+  await page.fill('#msg-user', USERNAME);
+  await page.fill('#msg-pass', 'test');
+  await page.click('.msg-login');
+  await page.waitForSelector('.msg-overlay', { state: 'detached', timeout: 8000 });
+  await page.waitForTimeout(4000);
+
+  check('editor survives the re-login', await page.locator('#suggestion-modal').count() === 1);
+  const still = await page.locator('.suggestion-modal-textarea').inputValue().catch(() => '');
+  check('typed text intact through the re-login', still.includes(MINE));
+  const duringEdit = await page.evaluate(() => document.body.textContent || '');
+  check('book does NOT re-render under the open editor', !duringEdit.includes(ELSEWHERE2));
+
+  // Closing runs the deferred refresh: their work arrives, mine survives.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 15000 }).catch(() => {});
+  await page.waitForFunction(
+    (m) => (document.body.textContent || '').includes(m),
+    ELSEWHERE2,
+    { timeout: 25000 },
+  ).catch(() => {});
+  const afterClose = await page.evaluate(() => document.body.textContent || '');
+  check('closing the editor runs the deferred refresh', afterClose.includes(ELSEWHERE2));
+  check('the user\'s own edit survived that refresh', afterClose.includes(MINE));
+
+  psql(`DELETE FROM suggested_change WHERE user_id = '${USERNAME}'`);
 
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();

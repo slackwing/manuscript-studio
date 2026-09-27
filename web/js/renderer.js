@@ -80,7 +80,60 @@ const WriteSysRenderer = {
       return;
     }
 
+    // After an in-place re-login (session-guard), any fetch this page made
+    // while the session was dead came back 401 — the book would otherwise
+    // sit on whatever it had (often nothing) until a manual refresh.
+    document.addEventListener('ms:session-restored', () => this.refreshAfterRelogin());
+
     await this.loadLatestMigration();
+  },
+
+  // Re-fetch the book's data after the session comes back. Two cases:
+  //
+  //   * NOTHING LOADED — the expiry predated init, so every boot fetch
+  //     401'd and the page is empty. Run the normal load from the top;
+  //     there is no unsaved work to protect because nothing ever rendered.
+  //   * ALREADY LOADED — the session died mid-session (e.g. edited on
+  //     another device, came back here). Re-fetch suggestions and re-render
+  //     in place, the same idiom every mutation uses (push.js et al), so
+  //     another device's new suggestions appear without a reload.
+  //
+  // Never a window.location.reload(): an open suggestion editor would lose
+  // its unsaved text, which is the whole reason the guard re-logs in place.
+  // With an editor open this defers entirely to the modal's close path (see
+  // below). A newer MIGRATION is left to the poll's Reload banner — swapping
+  // the migration under an open book is exactly what that banner exists to
+  // ask about.
+  async refreshAfterRelogin() {
+    if (!this.manuscriptId) return;
+    if (this._reloginRefresh) return; // coalesce: one refresh per restore
+    this._reloginRefresh = true;
+    try {
+      if (!this.currentMigrationID) {
+        await this.loadLatestMigration();
+        return;
+      }
+      // Editor open → leave the book alone and DEFER. A re-render tears down
+      // the modal's anchor mid-edit, and even a bare row refetch races the
+      // editor's own restore-flush (edit-pane's autosaver listens for this
+      // same event and fires AFTER us, being registered at open time) — we'd
+      // cache the pre-edit text over the user's live words. The editor
+      // autosaves, so its own text is safe. The modal's close path re-renders
+      // from LOCAL rows only (and short-circuits when your text is
+      // unchanged), so it would never pull the other device's work in on its
+      // own — hence the flag, which close() honours.
+      if (document.getElementById('suggestion-modal-overlay')) {
+        this._refreshWhenEditorCloses = true;
+        return;
+      }
+      // The full payload, not just suggestions: notes written on the other
+      // device live in the same response and are otherwise stale too.
+      await this.loadManuscriptByMigration(this.currentMigrationID);
+    } catch (e) {
+      console.warn('post-relogin refresh failed:', e.message || e);
+    } finally {
+      this._reloginRefresh = false;
+    }
   },
 
   async loadLatestMigration() {

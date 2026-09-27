@@ -2265,7 +2265,14 @@ p.section-break {
 /* Pending structural markers in a suggested edit. The visible glyph is
    muted; the visual line break + indent mimic what a real paragraph
    break would look like after commit + resegmentation. Inside <del>
-   the glyph picks up the strikethrough — no <br> is emitted there. */
+   the glyph picks up the strikethrough — no <br> is emitted there.
+
+   These rules cover the PAGE. The suggest-edit modal's formatted panes
+   mount the same markers inside scratch-render's shadow tree, which has no
+   .sentence ancestor — that copy is restated in scratch-render.js's own
+   shadow <style> (the linked stylesheet did not carry these rules into the
+   shadow tree reliably; owner's report, 2026-09-27). Change one, check the
+   other. */
 .sentence .suggested-marker {
   color: #888;
   opacity: 0.7;

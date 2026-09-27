@@ -131,12 +131,27 @@
       t = setTimeout(save, debounceMs);
     };
 
+    // A re-login (session-guard) is the one event that makes a FAILING save
+    // worth retrying instantly: the 401 that broke it is gone. Without this
+    // the ladder sits out the rest of its backoff — up to 60s of the user
+    // staring at "Failed to save" after they just fixed the problem.
+    const onRestored = () => {
+      if (destroyed || !dirty()) return;
+      clearTimeout(t); clearRetry();
+      attempt = 0; // the failures were the expiry, not this text
+      save();
+    };
+    document.addEventListener('ms:session-restored', onRestored);
+
     return {
       poke,
       flush: save,          // returns true when everything is saved
       isDirty: dirty,
       setSavedValue(v) { lastSaved = v; },
-      destroy() { destroyed = true; clearTimeout(t); clearRetry(); },
+      destroy() {
+        destroyed = true; clearTimeout(t); clearRetry();
+        document.removeEventListener('ms:session-restored', onRestored);
+      },
     };
   }
 

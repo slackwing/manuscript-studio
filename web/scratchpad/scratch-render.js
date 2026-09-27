@@ -13,7 +13,7 @@ const WriteSysScratchRender = {
     const root = host.attachShadow({ mode: 'open' });
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'css/book.css?v=215';
+    link.href = 'css/book.css?v=216';
     root.appendChild(link);
     const style = document.createElement('style');
     style.textContent = `
@@ -50,6 +50,23 @@ const WriteSysScratchRender = {
       }
       .scratch-diff del { color: #b03030; text-decoration: line-through; text-decoration-thickness: 1px; }
       .scratch-diff strong { color: #2e7d32; font-weight: 600; }
+      /* Structural markers in a diff (renderStructuralMarkers' ¶/§ and the
+         paragraph-indent box). book.css styles these for the PAGE under
+         .sentence; a diff mounted here has no .sentence ancestor, so the
+         indent box collapsed to the width of its single nbsp and a
+         previewed paragraph break sat flush with the prose (owner's
+         report, 2026-09-27). Restated here, next to the del/strong colors
+         the same pipeline relies on, so the modal's preview indents like
+         the book does. 2em of the shadow tree's own font size. */
+      .scratch-diff .suggested-pindent {
+        display: inline-block;
+        width: 2em;
+        text-indent: 0;
+        white-space: pre;
+      }
+      /* The glyph inherits the diff color (green in an insert, struck red in
+         a deletion) — only the un-diffed case needs the muted grey. */
+      .scratch-diff .suggested-marker { font-weight: normal; }
       /* Footnotes (FOOTNOTES_PLAN.md): nothing paginates in here, so a
          note body shows inline, bracketed; a note ADDED or REMOVED whole by
          a suggestion shows as the diff-colored command icon instead

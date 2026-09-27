@@ -766,9 +766,20 @@ const WriteSysSuggestions = {
       }
       overlay.remove();
       modal.remove();
+
+      // A re-login happened while this editor was open: the renderer deferred
+      // its post-restore refresh to avoid racing our autosave (see
+      // refreshAfterRelogin). Our own text is flushed now, so pull the
+      // authoritative state — including anything written on another device —
+      // before the local-rows re-render below, which would otherwise never
+      // see it.
+      const r0 = window.WriteSysRenderer;
+      const deferredRefresh = !!(r0 && r0._refreshWhenEditorCloses);
+      if (deferredRefresh) r0._refreshWhenEditorCloses = false;
+
       const finalText = (this.bySentenceId[sentenceId] !== undefined)
         ? this.bySentenceId[sentenceId] : original;
-      if (finalText === openCurrent) return true; // no net change → no re-render
+      if (finalText === openCurrent && !deferredRefresh) return true; // no net change → no re-render
 
       // Stamp the URL so a manual hard-reload comes back to this sentence
       // instead of the top of the manuscript. replaceState — don't pollute
@@ -789,7 +800,11 @@ const WriteSysSuggestions = {
         }
       }
 
-      if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
+      if (deferredRefresh) {
+        // Refetch, then render: the local rows are missing whatever landed
+        // while we sat expired.
+        await r0.refreshAfterRelogin();
+      } else if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
         await window.WriteSysRenderer.renderManuscript({
           anchorSentenceId: sentenceId,
           selectSentenceId: sentenceId,

@@ -161,6 +161,52 @@ async function syncManuscript() {
       !!pb && pb.glyph === '¶' && pb.ownLine && Math.abs(pb.glyphLeft - pb.indent) < 1
       && Math.abs(pb.glyphLeft - pb.firstLeft) < 1, JSON.stringify(pb));
 
+    // ---- the same markers in the MODAL's formatted pane (2026-09-27) -----
+    // The pane mounts the diff in scratch-render's shadow tree, which has
+    // no .sentence ancestor — so book.css's .sentence-scoped marker rules
+    // missed it and the indent box collapsed to its single nbsp. A ¶ then
+    // sat flush with the prose, level with a § (which SHOULD be flush), and
+    // the preview read nothing like the book. The rules are restated in the
+    // shadow <style>; this pins that they take effect.
+    const paneMarkers = await page.evaluate(async () => {
+      const host = document.querySelector('#suggestion-modal .sgm-fmt-left')
+        || document.createElement('div');
+      // Render a known diff straight through the real pipeline into a
+      // shadow host, so the check doesn't depend on driving the modal.
+      const probe = document.createElement('div');
+      document.body.appendChild(probe);
+      const dmp = window.WriteSysRenderer && window.WriteSysRenderer._dmp
+        ? window.WriteSysRenderer._dmp() : null;
+      const html = renderDiffHTML('Committed line.',
+        'Committed line.\n\nSection line.\n\tParagraph line that runs on a while.', dmp);
+      window.WriteSysScratchRender.renderHTML(probe, html);
+      const root = probe.shadowRoot;
+      // The linked stylesheet loads async; wait for the shadow style to win.
+      for (let i = 0; i < 60; i++) {
+        const p = root.querySelector('.suggested-pindent');
+        if (p && getComputedStyle(p).display === 'inline-block') break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const pin = root.querySelector('.suggested-pindent');
+      const marks = [...root.querySelectorAll('.suggested-marker')];
+      const out = {
+        display: pin ? getComputedStyle(pin).display : null,
+        width: pin ? +pin.getBoundingClientRect().width.toFixed(1) : null,
+        glyphs: marks.map((m) => m.textContent),
+        xs: marks.map((m) => Math.round(m.getBoundingClientRect().left)),
+      };
+      probe.remove();
+      return out;
+    });
+    // 2em of the shadow tree's 10.5pt ≈ 28px; assert the BOX, not the px.
+    check('modal pane: the paragraph-indent box is a real 2em inline-block',
+      paneMarkers.display === 'inline-block' && paneMarkers.width > 20,
+      JSON.stringify(paneMarkers));
+    check('modal pane: § stays flush and ¶ sits one indent in',
+      paneMarkers.glyphs.join('') === '§¶'
+      && paneMarkers.xs[1] - paneMarkers.xs[0] > 20,
+      JSON.stringify(paneMarkers));
+
     check('no page errors', errs.length === 0, errs.join('; '));
   } finally {
     // Remove the suggestion so the next test starts clean.
