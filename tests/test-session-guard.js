@@ -13,6 +13,10 @@
 //   5. the book page picks up work done elsewhere while it sat expired;
 //   6. except under an OPEN suggestion editor, where that refresh defers to
 //      the modal's close path rather than re-rendering out from under it.
+// And in the tabbed shell, where every tab is an iframe:
+//   7. an expiry seen inside a tab opens ONE modal over the WHOLE window
+//      (tab bar included), not one inside the tab, and the login it takes
+//      fires ms:session-restored inside the tab too.
 const { chromium } = require('playwright');
 const { TEST_URL, loginAsTestUser, waitForPagination, psql, suggestEditor } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
@@ -267,6 +271,49 @@ const USERNAME = process.env.MS_TEST_WORKER && process.env.MS_TEST_WORKER !== '1
   check('the user\'s own edit survived that refresh', afterClose.includes(MINE));
 
   psql(`DELETE FROM suggested_change WHERE user_id = '${USERNAME}'`);
+
+  // 7. The modal belongs to the WINDOW, not the tab (owner's report,
+  //    2026-10-01: "the session expired modal appears only over my
+  //    manuscript tab"). Tabs are iframes, each with its own guard copy.
+  await page.goto(HOME_URL);
+  await page.evaluate(() => localStorage.removeItem('ms_pinned_tabs'));
+  await page.reload();
+  await page.click('a.card-manuscript');
+  await page.waitForSelector('#ms-tab-panels .ms-panel.active', { timeout: 15000 });
+  const tabFrame = page.frames().find((f) => f.url().includes('manuscript_id'));
+  await tabFrame.waitForSelector('.pagedjs_page', { timeout: 60000 });
+  await tabFrame.evaluate(() => {
+    window.__restored = 0;
+    document.addEventListener('ms:session-restored', () => { window.__restored++; });
+  });
+
+  await context.clearCookies();
+  await tabFrame.evaluate(() => fetch('api/session', { credentials: 'include' }));
+  await page.waitForSelector('.msg-overlay', { timeout: 8000 }).catch(() => {});
+  check('tab expiry opens the modal in the TOP window',
+    await page.locator('.msg-overlay').count() === 1);
+  check('...and not inside the tab', await tabFrame.locator('.msg-overlay').count() === 0);
+  check('the modal covers the tab bar', await page.evaluate(() => {
+    const r = document.getElementById('ms-tabs').getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!(hit && hit.closest('.msg-overlay'));
+  }));
+
+  // A second 401, from the shell itself, joins the same modal.
+  await page.evaluate(() => fetch('api/session', { credentials: 'include' }));
+  await tabFrame.evaluate(() => fetch('api/session', { credentials: 'include' }));
+  check('one modal no matter how many frames 401',
+    await page.locator('.msg-overlay').count() === 1
+    && await tabFrame.locator('.msg-overlay').count() === 0);
+
+  await page.fill('#msg-user', USERNAME);
+  await page.fill('#msg-pass', 'test');
+  await page.click('.msg-login');
+  await page.waitForSelector('.msg-overlay', { state: 'detached', timeout: 8000 }).catch(() => {});
+  await tabFrame.waitForFunction(() => window.__restored > 0, null, { timeout: 8000 }).catch(() => {});
+  check('login in the top modal fires ms:session-restored inside the tab',
+    await tabFrame.evaluate(() => window.__restored) === 1);
+  await page.evaluate(() => localStorage.removeItem('ms_pinned_tabs'));
 
   console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: PASS');
   await browser.close();

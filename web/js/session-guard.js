@@ -14,6 +14,13 @@
 //   window.WriteSysSessionGuard.isAuthError(e)  → true for a 401-shaped error.
 //   document 'ms:session-restored' event        → fired after a successful
 //                                                 re-login (retry saves now).
+//
+// ONE MODAL PER WINDOW: tab panels are iframes, each running its own copy of
+// this script. A framed copy hands requireLogin() to the TOP window's guard,
+// so the modal dims the whole window (tab bar, other panes) — the session is
+// window-wide, not per-tab — and one expiry seen by three panels still shows
+// one modal. On login the top guard fires ms:session-restored in EVERY
+// same-origin frame, since every panel's 401'd data needs its refresh.
 (function () {
   'use strict';
 
@@ -21,6 +28,7 @@
 
   let overlay = null;
   let resolvers = [];
+  let returnFocus = null; // where the user was (often a panel iframe's editor)
 
   function injectStyles() {
     if (document.getElementById('msg-style')) return;
@@ -55,6 +63,8 @@
     if (!overlay) return;
     overlay.remove();
     overlay = null;
+    if (returnFocus && returnFocus.isConnected) { try { returnFocus.focus(); } catch (_) {} }
+    returnFocus = null;
     const rs = resolvers;
     resolvers = [];
     rs.forEach((r) => r(loggedIn));
@@ -62,6 +72,7 @@
 
   function build() {
     injectStyles();
+    returnFocus = document.activeElement;
     overlay = document.createElement('div');
     overlay.className = 'msg-overlay';
     overlay.innerHTML = `
@@ -110,7 +121,7 @@
         if (data.csrf_token) localStorage.setItem('csrf_token', data.csrf_token); // localStorage: SHARED across tabs (sessionStorage skew caused save-403 data loss)
         localStorage.setItem('ms_last_username', user.value);
         close(true);
-        document.dispatchEvent(new CustomEvent('ms:session-restored'));
+        broadcastRestored(window);
       } catch (err) {
         errEl.textContent = String(err.message || err).slice(0, 120);
         btn.disabled = false;
@@ -122,8 +133,27 @@
     (user.value ? pass : user).focus();
   }
 
+  // Fire ms:session-restored in this window and every same-origin frame
+  // below it, each with its own realm's CustomEvent.
+  function broadcastRestored(win) {
+    try { win.document.dispatchEvent(new win.CustomEvent('ms:session-restored')); } catch (_) {}
+    for (let i = 0; i < win.frames.length; i++) {
+      try { broadcastRestored(win.frames[i]); } catch (_) { /* cross-origin frame */ }
+    }
+  }
+
+  // The top window's guard, when we're framed inside the shell; else null.
+  function topGuard() {
+    try {
+      if (window.top === window) return null;
+      return window.top.WriteSysSessionGuard || null;
+    } catch (_) { return null; } // cross-origin top: keep the modal local
+  }
+
   window.WriteSysSessionGuard = {
     requireLogin() {
+      const top = topGuard();
+      if (top) return top.requireLogin();
       return new Promise((resolve) => {
         resolvers.push(resolve);
         if (!overlay) build();
