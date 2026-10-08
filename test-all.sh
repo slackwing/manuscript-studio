@@ -78,6 +78,7 @@ FAST_TESTS=(
   test-render-units
   test-attention
   test-footnotes
+  test-view-toggles
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

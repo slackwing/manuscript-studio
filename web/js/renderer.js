@@ -854,6 +854,18 @@ const WriteSysRenderer = {
 
   // layoutMarginGlyphs stacks same-line margin anchors leftward so several on
   // one line never overlap (they may overlap the outline column — fine, rare).
+  // A CSS-only change on the settled pages (the stats-pane markers /
+  // footnotes toggles) reflows lines in place without re-pagination — re-run
+  // every pass that measured positions off the old lines.
+  relayoutInPlace() {
+    if (!document.querySelector('.pagedjs_pages')) return;
+    this.addRainbowBars();
+    this.layoutMarginGlyphs();
+    if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
+    if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
+    if (window.WriteSysAttention) window.WriteSysAttention.rebuild();
+  },
+
   layoutMarginGlyphs() {
     // MEASURED, not computed: the CSS calc() is only a pre-layout initial —
     // it guesses the page margin and depends on font metrics, which put the

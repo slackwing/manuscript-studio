@@ -190,11 +190,20 @@ const WriteSysStats = {
     const attnReady = !!(window.WriteSysAttention && window.WriteSysAttention._pages.length);
     const attnOn = !!(window.WriteSysAttention && window.WriteSysAttention.pinned);
     const attnBtn = attnDenied ? ''
-      : `<button type="button" id="stats-attention" class="stats-attention" aria-pressed="${attnOn}"${attnReady ? '' : ' disabled'}>attention</button>`;
+      : `<button type="button" id="stats-attention" class="stats-toggle" aria-pressed="${attnOn}"${attnReady ? '' : ' disabled'}>attention</button>`;
+    // Markers / footnotes view toggles flank it (2026-10-08). Markers only
+    // for eyes that can see a marker glyph at all — committed (see-markers
+    // + the settings display) or in a diff (manage-suggestions).
+    const R = window.WriteSysRenderer;
+    const mkDenied = window.currentSession && !(R && (R.canSeeMarkers() || R.canSeeCommandGlyphs()));
+    const layerBtn = (kind) =>
+      `<button type="button" id="stats-${kind}" class="stats-toggle" data-layer="${kind}" aria-pressed="${!this.hidden[kind]}">${kind}</button>`;
+    const toggles = (mkDenied ? '' : layerBtn('markers')) + attnBtn + layerBtn('footnotes');
 
-    this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}${attnBtn}</div>`;
+    this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}<div class="stats-toggles">${toggles}</div></div>`;
     this.wireHover();
     this.wireAttentionToggle();
+    this.wireLayerToggles();
   },
 
   // Click toggles the pin; aria-pressed mirrors it (CSS paints the on-state).
@@ -204,6 +213,28 @@ const WriteSysStats = {
     btn.addEventListener('click', () => {
       const on = window.WriteSysAttention.togglePinned();
       btn.setAttribute('aria-pressed', String(on));
+    });
+  },
+
+  // ---- markers / footnotes toggles ------------------------------------
+  // On at every page load (not persisted). Off = html.<kind>-hidden, which
+  // book.css applies to SETTLED pages only; the lines reflow in place
+  // without re-pagination, so the position-measured layers re-run after.
+  hidden: { markers: false, footnotes: false },
+
+  setLayerHidden(kind, hide) {
+    this.hidden[kind] = !!hide;
+    document.documentElement.classList.toggle(`${kind}-hidden`, this.hidden[kind]);
+    if (window.WriteSysRenderer) window.WriteSysRenderer.relayoutInPlace();
+  },
+
+  wireLayerToggles() {
+    this.el.querySelectorAll('.stats-toggle[data-layer]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const kind = btn.dataset.layer;
+        this.setLayerHidden(kind, !this.hidden[kind]);
+        btn.setAttribute('aria-pressed', String(!this.hidden[kind]));
+      });
     });
   },
 
