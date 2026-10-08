@@ -418,6 +418,7 @@ const WriteSysRenderer = {
     // so straight apostrophes in suggestions don't diff against curly ones.
     const tempContainer = document.createElement('div');
     tempContainer.innerHTML = this.renderSentencesToHTML(this.currentSentences);
+    this.stripHiddenLayers(tempContainer);
 
     // Sentence backgrounds are now driven by note focus (not note
     // presence): a sentence stays unfilled by default, picks up its
@@ -854,16 +855,43 @@ const WriteSysRenderer = {
 
   // layoutMarginGlyphs stacks same-line margin anchors leftward so several on
   // one line never overlap (they may overlap the outline column — fine, rare).
-  // A CSS-only change on the settled pages (the stats-pane markers /
-  // footnotes toggles) reflows lines in place without re-pagination — re-run
-  // every pass that measured positions off the old lines.
-  relayoutInPlace() {
-    if (!document.querySelector('.pagedjs_pages')) return;
-    this.addRainbowBars();
-    this.layoutMarginGlyphs();
-    if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
-    if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
-    if (window.WriteSysAttention) window.WriteSysAttention.rebuild();
+  // Stats-pane markers / footnotes toggles (2026-10-08): on at every load.
+  // A hidden layer is stripped from the page HTML BEFORE Paged.js runs, so
+  // the book re-paginates without it — notes hand their space back to the
+  // body, lines close up where the glyphs stood. The edit modal's panes
+  // render on their own path and keep both.
+  hiddenLayers: { markers: false, footnotes: false },
+
+  setLayerHidden(kind, hide) {
+    this.hiddenLayers[kind] = !!hide;
+    return this.renderManuscript({ anchorSentenceId: this.topVisibleSentenceId() });
+  },
+
+  // The first sentence still on screen — the re-render's scroll anchor.
+  topVisibleSentenceId() {
+    for (const el of document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]')) {
+      if (el.getBoundingClientRect().bottom > 0) return el.dataset.sentenceId;
+    }
+    return null;
+  },
+
+  // A hidden marker becomes the invisible data span a display-off marker
+  // renders as, so the attention envelope still feels it. Footnotes go
+  // whole — bodies and the diff icons of suggested ones; Paged then makes
+  // no calls.
+  stripHiddenLayers(root) {
+    if (this.hiddenLayers.footnotes) {
+      root.querySelectorAll('.fn-body, .fn-diamond').forEach((el) => el.remove());
+    }
+    if (this.hiddenLayers.markers) {
+      root.querySelectorAll('.cmd-diamond[data-kind="marker"], .cmd-diamond[data-kind="mark"]').forEach((el) => {
+        const span = document.createElement('span');
+        span.className = 'inline-cmd';
+        for (const a of el.attributes) if (a.name.startsWith('data-')) span.setAttribute(a.name, a.value);
+        span.setAttribute('aria-hidden', 'true');
+        el.replaceWith(span);
+      });
+    }
   },
 
   layoutMarginGlyphs() {

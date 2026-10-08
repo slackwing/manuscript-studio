@@ -24,13 +24,6 @@
         document.body.dataset.paginated =
           String((parseInt(document.body.dataset.paginated || '0', 10) || 0) + 1);
 
-        // Settled: the stats-pane markers/footnotes toggles hide only on
-        // settled pages (book.css), so Paged.js always lays lines out WITH
-        // glyphs and calls — hiding can then only shorten a line, never
-        // push text past a page's bottom. Stamped before the passes below
-        // measure, so they see the page as the reader will.
-        document.querySelectorAll('.pagedjs_pages').forEach((p) => { p.dataset.settled = ''; });
-
         if (window.WriteSysTextMarkers && window.WriteSysTextMarkers.curlQuotes) {
           window.WriteSysTextMarkers.curlQuotes(document.body);
         }

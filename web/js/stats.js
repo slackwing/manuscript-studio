@@ -196,8 +196,9 @@ const WriteSysStats = {
     // + the settings display) or in a diff (manage-suggestions).
     const R = window.WriteSysRenderer;
     const mkDenied = window.currentSession && !(R && (R.canSeeMarkers() || R.canSeeCommandGlyphs()));
+    const hidden = (R && R.hiddenLayers) || {};
     const layerBtn = (kind) =>
-      `<button type="button" id="stats-${kind}" class="stats-toggle" data-layer="${kind}" aria-pressed="${!this.hidden[kind]}">${kind}</button>`;
+      `<button type="button" id="stats-${kind}" class="stats-toggle" data-layer="${kind}" aria-pressed="${!hidden[kind]}">${kind}</button>`;
     const toggles = (mkDenied ? '' : layerBtn('markers')) + attnBtn + layerBtn('footnotes');
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}<div class="stats-toggles">${toggles}</div></div>`;
@@ -216,24 +217,17 @@ const WriteSysStats = {
     });
   },
 
-  // ---- markers / footnotes toggles ------------------------------------
-  // On at every page load (not persisted). Off = html.<kind>-hidden, which
-  // book.css applies to SETTLED pages only; the lines reflow in place
-  // without re-pagination, so the position-measured layers re-run after.
-  hidden: { markers: false, footnotes: false },
-
-  setLayerHidden(kind, hide) {
-    this.hidden[kind] = !!hide;
-    document.documentElement.classList.toggle(`${kind}-hidden`, this.hidden[kind]);
-    if (window.WriteSysRenderer) window.WriteSysRenderer.relayoutInPlace();
-  },
-
+  // Markers / footnotes: the renderer owns the state and re-paginates
+  // without the hidden layer (renderer.setLayerHidden).
   wireLayerToggles() {
+    const R = window.WriteSysRenderer;
+    if (!R) return;
     this.el.querySelectorAll('.stats-toggle[data-layer]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kind = btn.dataset.layer;
-        this.setLayerHidden(kind, !this.hidden[kind]);
-        btn.setAttribute('aria-pressed', String(!this.hidden[kind]));
+        const hide = !R.hiddenLayers[kind];
+        btn.setAttribute('aria-pressed', String(!hide));
+        R.setLayerHidden(kind, hide);
       });
     });
   },

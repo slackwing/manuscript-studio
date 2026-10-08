@@ -1,9 +1,10 @@
 // Stats-pane view toggles e2e: markers · attention · footnotes in one
-// wrapping row. Markers and footnotes start ON; released, they hide their
-// layer on the SETTLED pages without re-pagination (book.css
-// html.<kind>-hidden + .pagedjs_pages[data-settled]). A hidden marker
-// still feeds the attention harvest, and a re-render while hidden paginates
-// exactly as if shown (Paged.js lays out before the pages settle).
+// wrapping row. Markers and footnotes start ON; released, the renderer
+// strips that layer from the page HTML and Paged.js re-paginates without
+// it (renderer.setLayerHidden) — notes give their space back to the body,
+// lines close up where the glyphs were. A hidden marker still feeds the
+// attention harvest; pressing a toggle again restores the layout exactly;
+// the re-render holds the reader's place.
 const { chromium } = require('playwright');
 const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils');
 
@@ -21,16 +22,8 @@ const check = (name, ok, detail = '') => {
   await page.goto(TEST_URL);
   await waitForPagination(page);
 
-  // Inject a manuscript with valued markers and footnotes, markers on.
-  const render = () => page.evaluate(async () => {
-    const before = document.body.dataset.paginated;
-    await window.WriteSysRenderer.renderManuscript();
-    await new Promise((res) => {
-      const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
-      tick();
-    });
-  });
-  await page.evaluate(() => {
+  // Inject a manuscript with dense valued markers and a few footnotes.
+  await page.evaluate(async () => {
     window.WriteSysMarkerSymbols.display = true;
     window.WriteSysMarkerSymbols.map = {
       vivid: { symbol: 'diamond', attention: 10 },
@@ -39,10 +32,8 @@ const check = (name, ok, detail = '') => {
     const prose = 'The evening settled over the valley like a long held breath. ';
     const sentences = [];
     for (let i = 0; i < 40; i++) {
-      let text = prose + `Sentence number ${i} carries the paragraph onward.`;
-      // Dense markers: hidden glyphs during pagination would shorten
-      // enough lines to move a page break (the re-render check below).
-      text = `It was &marker#vivid tonight, said &marker#vivid number ${i}. ` + text;
+      let text = `It was &marker#vivid tonight, said &marker#vivid number ${i}. `
+        + prose + `Sentence number ${i} carries the paragraph onward.`;
       if (i % 3 === 0) text += ' Then &marker#digression it &marker#vivid wandered.';
       if (i % 9 === 2) text += `&footnote{Note on sentence ${i}.}`;
       sentences.push({ id: `vt-${i}`, sentence_id: `vt-${i}`, text: text + ' ' });
@@ -50,18 +41,25 @@ const check = (name, ok, detail = '') => {
     const R = window.WriteSysRenderer;
     R.currentSentences = sentences;
     R.sentenceMap = Object.fromEntries(sentences.map((s) => [s.id, s.text]));
+    const before = document.body.dataset.paginated;
+    await R.renderManuscript();
+    await new Promise((res) => {
+      const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
+      tick();
+    });
+    window.WriteSysStats.setPane('stats');
   });
-  await render();
-  await page.evaluate(() => window.WriteSysStats.setPane('stats'));
   await page.waitForSelector('#stats-footnotes', { timeout: 8000 });
 
+  // Click a toggle and wait for the re-pagination it triggers.
+  const toggle = async (id) => {
+    const before = await page.evaluate(() => document.body.dataset.paginated);
+    await page.click(id);
+    await page.waitForFunction((b) => document.body.dataset.paginated !== b
+      && !window.WriteSysRenderer._renderInFlight, before, { timeout: 30000 });
+  };
+
   const state = () => page.evaluate(() => {
-    const glyph = document.querySelector('.pagedjs_pages .cmd-diamond-marker');
-    const svg = glyph && glyph.querySelector('svg');
-    const gr = glyph ? glyph.getBoundingClientRect() : null;
-    const call = document.querySelector('.pagedjs_pages [data-footnote-call]');
-    const area = document.querySelector('.pagedjs_pages .pagedjs_footnote_area .fn-body')
-      .closest('.pagedjs_footnote_area');
     const pages = [...document.querySelectorAll('.pagedjs_pages .pagedjs_page')];
     const pressed = (id) => { const b = document.getElementById(id); return b && b.getAttribute('aria-pressed'); };
     return {
@@ -69,18 +67,16 @@ const check = (name, ok, detail = '') => {
       wrap: getComputedStyle(document.querySelector('.stats-toggles')).flexWrap,
       markersPressed: pressed('stats-markers'),
       footnotesPressed: pressed('stats-footnotes'),
-      svgShown: !!svg && getComputedStyle(svg).display !== 'none',
-      glyphW: gr ? gr.width : -1,
-      glyphH: gr ? gr.height : -1,
-      callShown: getComputedStyle(call).display !== 'none',
-      areaShown: getComputedStyle(area).visibility === 'visible',
-      paginated: document.body.dataset.paginated,
-      // Where each page breaks, to the character: a break that moves by a
-      // word changes the page's text length.
+      glyphs: document.querySelectorAll('.pagedjs_pages .cmd-diamond[data-kind="marker"]').length,
+      dataSpans: document.querySelectorAll('.pagedjs_pages .inline-cmd[data-kind="marker"]').length,
+      calls: document.querySelectorAll('.pagedjs_pages [data-footnote-call]').length,
+      bodies: document.querySelectorAll('.pagedjs_pages .fn-body').length,
+      // Where each page breaks, to the character.
       layout: pages.map((p) => {
         const c = p.querySelector('.pagedjs_page_content');
         return c ? c.textContent.length : 0;
-      }).join(' | '),
+      }),
+      contentH: Math.round(pages[0].querySelector('.pagedjs_page_content').getBoundingClientRect().height),
       harvested: window.WriteSysAttention._harvest().markers.length,
       overlays: document.querySelectorAll('.attention-overlay').length,
     };
@@ -92,46 +88,69 @@ const check = (name, ok, detail = '') => {
     JSON.stringify(on.order));
   check('the toggle row wraps', on.wrap === 'wrap', on.wrap);
   check('markers and footnotes start pressed', on.markersPressed === 'true' && on.footnotesPressed === 'true');
-  check('on: marker glyphs, footnote calls and the note area show',
-    on.svgShown && on.glyphW > 0 && on.callShown && on.areaShown, JSON.stringify(on));
+  check('on: marker glyphs and footnotes render', on.glyphs > 0 && on.calls > 0 && on.bodies > 0,
+    `glyphs=${on.glyphs} calls=${on.calls} bodies=${on.bodies}`);
   check('markers feed the attention harvest', on.harvested > 0, String(on.harvested));
 
-  // Release markers.
-  await page.click('#stats-markers');
+  // Release markers → re-paginated without glyphs.
+  await toggle('#stats-markers');
   const mk = await state();
-  check('markers released: button unpressed, glyphs hidden',
-    mk.markersPressed === 'false' && !mk.svgShown, JSON.stringify(mk));
-  check('a hidden marker collapses to zero width but keeps a positioned rect',
-    mk.glyphW === 0 && mk.glyphH > 0, `w=${mk.glyphW} h=${mk.glyphH}`);
-  check('no re-pagination on toggle', mk.paginated === on.paginated);
-  check('hidden markers still shape the envelope (same harvest, overlays rebuilt)',
+  check('markers released: button unpressed, no glyphs on the page',
+    mk.markersPressed === 'false' && mk.glyphs === 0, `glyphs=${mk.glyphs}`);
+  check('every hidden marker keeps its invisible data span',
+    mk.dataSpans === on.glyphs + on.dataSpans, `${mk.dataSpans} vs ${on.glyphs + on.dataSpans}`);
+  check('hidden markers still shape the envelope',
     mk.harvested === on.harvested && mk.overlays > 0, `${mk.harvested} vs ${on.harvested}`);
-  check('footnotes untouched by the markers toggle', mk.callShown && mk.areaShown);
+  check('the text reflows: closed-up lines pull more onto page 1',
+    mk.layout[0] > on.layout[0], `${on.layout[0]} → ${mk.layout[0]}`);
+  check('footnotes untouched by the markers toggle', mk.calls === on.calls && mk.bodies === on.bodies);
 
-  // Release footnotes.
-  await page.click('#stats-footnotes');
+  // Release footnotes → notes gone, the body takes the whole page.
+  await toggle('#stats-footnotes');
   const fn = await state();
-  check('footnotes released: calls and note area hidden',
-    fn.footnotesPressed === 'false' && !fn.callShown && !fn.areaShown, JSON.stringify(fn));
-  check('no re-pagination on footnote toggle', fn.paginated === on.paginated);
+  check('footnotes released: no calls, no note bodies',
+    fn.footnotesPressed === 'false' && fn.calls === 0 && fn.bodies === 0, `calls=${fn.calls} bodies=${fn.bodies}`);
+  check('the note area is given back: page 1 content is full height and holds more text',
+    fn.contentH > on.contentH && fn.layout[0] > mk.layout[0],
+    `h ${on.contentH} → ${fn.contentH}, chars ${mk.layout[0]} → ${fn.layout[0]}`);
 
-  // Re-render while both are hidden: pagination matches the shown state,
-  // and the fresh pages come out hidden.
-  await render();
+  // An ordinary re-render keeps the hidden layers out.
+  await page.evaluate(async () => {
+    const before = document.body.dataset.paginated;
+    await window.WriteSysRenderer.renderManuscript();
+    await new Promise((res) => {
+      const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
+      tick();
+    });
+  });
   const re = await state();
-  check('re-render while hidden paginates exactly as when shown',
-    re.layout === on.layout, re.layout === on.layout ? '' : `\n  shown:  ${on.layout}\n  hidden: ${re.layout}`);
-  check('fresh pages stay hidden; buttons stay released',
-    !re.svgShown && !re.callShown && !re.areaShown
-    && re.markersPressed === 'false' && re.footnotesPressed === 'false', JSON.stringify(re));
+  check('a later re-render stays hidden; buttons stay released',
+    re.glyphs === 0 && re.calls === 0 && re.bodies === 0
+    && re.markersPressed === 'false' && re.footnotesPressed === 'false'
+    && JSON.stringify(re.layout) === JSON.stringify(fn.layout));
 
-  // Press both back on.
-  await page.click('#stats-markers');
-  await page.click('#stats-footnotes');
+  // The re-render holds the reader's place: the top sentence on screen
+  // keeps its viewport offset.
+  const anchor = await page.evaluate(() => {
+    window.scrollTo(0, 1400);
+    const id = window.WriteSysRenderer.topVisibleSentenceId();
+    const el = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`);
+    return { id, top: el.getBoundingClientRect().top };
+  });
+  await toggle('#stats-footnotes');
+  const after = await page.evaluate((id) =>
+    document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`).getBoundingClientRect().top, anchor.id);
+  check('toggling keeps the top sentence where it was on screen',
+    Math.abs(after - anchor.top) < 2, `${anchor.id}: ${anchor.top.toFixed(1)} → ${after.toFixed(1)}`);
+
+  // Press markers back on → the original layout, exactly.
+  await toggle('#stats-markers');
   const back = await state();
-  check('pressed again: everything shows',
-    back.svgShown && back.glyphW > 0 && back.callShown && back.areaShown
-    && back.markersPressed === 'true' && back.footnotesPressed === 'true', JSON.stringify(back));
+  check('both pressed again: glyphs and notes back, layout identical to the start',
+    back.glyphs === on.glyphs && back.calls === on.calls && back.bodies === on.bodies
+    && JSON.stringify(back.layout) === JSON.stringify(on.layout)
+    && back.markersPressed === 'true' && back.footnotesPressed === 'true',
+    JSON.stringify(back.layout) === JSON.stringify(on.layout) ? '' : `${on.layout} vs ${back.layout}`);
 
   // Gate: no marker eyes → no markers toggle; footnotes stay for everyone.
   const gated = await page.evaluate(() => {

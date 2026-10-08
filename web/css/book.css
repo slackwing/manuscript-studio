@@ -3683,8 +3683,8 @@ body.range-delete-mode .pagedjs_pages {
 html.attention-held .attention-overlay { display: block; }
 /* Stats-pane toggles, one wrapping row: markers · attention · footnotes.
    aria-pressed paints the on-state. Attention (the touch counterpart of
-   Tab) pins the envelope on; markers and footnotes start on and hide their
-   layer when released. */
+   Tab) pins the envelope on; markers and footnotes start on, and released
+   re-paginate the book without their layer (renderer.setLayerHidden). */
 .stats-toggles {
   display: flex;
   flex-wrap: wrap;
@@ -3727,19 +3727,6 @@ html.attention-held .attention-overlay { display: block; }
 }
 @keyframes stats-toggle-spin { to { transform: rotate(360deg); } }
 
-/* Released markers / footnotes (html.<kind>-hidden, stats.js). Only SETTLED
-   pages hide (data-settled, stamped in afterRendered): Paged.js always
-   paginates with glyphs and calls in place, so hiding can only shorten a
-   line — never push text past a page's bottom — and re-showing restores
-   the paginated layout exactly. A hidden marker collapses to an EMPTY
-   INLINE, not display:none: its spaces still collapse to one, and it keeps
-   a positioned rect for the attention harvest (attention.js). The footnote
-   area keeps its box (visibility) — the page's content height already
-   reserved it. */
-html.markers-hidden .pagedjs_pages[data-settled] .cmd-diamond:is([data-kind="marker"], [data-kind="mark"]) { display: inline; }
-html.markers-hidden .pagedjs_pages[data-settled] .cmd-diamond:is([data-kind="marker"], [data-kind="mark"]) svg { display: none; }
-html.footnotes-hidden .pagedjs_pages[data-settled] [data-footnote-call] { display: none; }
-html.footnotes-hidden .pagedjs_pages[data-settled] .pagedjs_footnote_area { visibility: hidden; }
 
 
 /* ---- Footnotes (FOOTNOTES_PLAN.md) ------------------------------------
