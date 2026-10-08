@@ -53,6 +53,7 @@ const WriteSysStats = {
     document.addEventListener('ms:attention-rebuilt', () => {
       if (this.pane === 'stats') this.render();
     });
+    document.addEventListener('ms:layers-reflowed', () => this.syncLayerButtons());
 
     const saved = localStorage.getItem('ms_pane');
     this.setPane(saved === 'stats' || saved === 'people' ? saved : 'outline');
@@ -197,8 +198,9 @@ const WriteSysStats = {
     const R = window.WriteSysRenderer;
     const mkDenied = window.currentSession && !(R && (R.canSeeMarkers() || R.canSeeCommandGlyphs()));
     const hidden = (R && R.hiddenLayers) || {};
+    const reflowing = (R && R.reflowingLayers) || {};
     const layerBtn = (kind) =>
-      `<button type="button" id="stats-${kind}" class="stats-toggle" data-layer="${kind}" aria-pressed="${!hidden[kind]}">${kind}</button>`;
+      `<button type="button" id="stats-${kind}" class="stats-toggle" data-layer="${kind}" aria-pressed="${!hidden[kind]}"${reflowing[kind] ? ' disabled' : ''}>${kind}</button>`;
     const toggles = (mkDenied ? '' : layerBtn('markers')) + attnBtn + layerBtn('footnotes');
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}<div class="stats-toggles">${toggles}</div></div>`;
@@ -228,7 +230,18 @@ const WriteSysStats = {
         const hide = !R.hiddenLayers[kind];
         btn.setAttribute('aria-pressed', String(!hide));
         R.setLayerHidden(kind, hide);
+        this.syncLayerButtons();
       });
+    });
+  },
+
+  // Disabled + spinner (the attention button's pending look) while the
+  // layer's re-pagination runs.
+  syncLayerButtons() {
+    const R = window.WriteSysRenderer;
+    if (!this.el || !R) return;
+    this.el.querySelectorAll('.stats-toggle[data-layer]').forEach((btn) => {
+      btn.disabled = !!R.reflowingLayers[btn.dataset.layer];
     });
   },
 

@@ -3692,6 +3692,7 @@ html.attention-held .attention-overlay { display: block; }
   margin-top: 8px;
 }
 .stats-toggle {
+  position: relative;
   padding: 4px 12px;
   border: 1px solid #d9d4c7;
   border-radius: 4px;
@@ -3710,20 +3711,32 @@ html.attention-held .attention-overlay { display: block; }
   color: #faf8f2;
 }
 .stats-toggle[aria-pressed="true"]:active { background: #6a624f; }
-/* Session bootstrap / overlay build still pending: disabled + spinner. */
-.stats-toggle:disabled { color: #a8a08c; cursor: default; }
+/* Pending (attention's overlay build, a markers/footnotes reflow):
+   disabled + spinner. The spinner lives in the right padding and the label
+   shifts left by what that padding grew — same width, so the row never
+   re-wraps mid-reflow (in Firefox one inline spinner wrapped it). */
+.stats-toggle:disabled { color: #a8a08c; cursor: default; padding-left: 6px; padding-right: 18px; }
 .stats-toggle:disabled:active { background: #faf8f2; }
 .stats-toggle:disabled::after {
   content: '';
-  display: inline-block;
+  position: absolute;
+  right: 4px;
+  top: 50%;
   width: 9px;
   height: 9px;
-  margin-left: 7px;
-  vertical-align: -1px;
+  margin-top: -6px;
   border: 1.5px solid #d9d4c7;
   border-top-color: #8a8270;
   border-radius: 50%;
   animation: stats-toggle-spin 0.8s linear infinite;
+}
+/* A pressed toggle can be pending too (markers / footnotes turning back
+   on): light ring on the dark face. */
+.stats-toggle[aria-pressed="true"]:disabled { color: #c9c1ad; }
+.stats-toggle[aria-pressed="true"]:disabled:active { background: #57503f; }
+.stats-toggle[aria-pressed="true"]:disabled::after {
+  border-color: rgba(250, 248, 242, 0.3);
+  border-top-color: #faf8f2;
 }
 @keyframes stats-toggle-spin { to { transform: rotate(360deg); } }
 

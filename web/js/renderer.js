@@ -861,10 +861,20 @@ const WriteSysRenderer = {
   // body, lines close up where the glyphs stood. The edit modal's panes
   // render on their own path and keep both.
   hiddenLayers: { markers: false, footnotes: false },
+  // Layers whose re-pagination is still running — their stats-pane button
+  // waits disabled with the spinner; ms:layers-reflowed releases it.
+  reflowingLayers: { markers: false, footnotes: false },
 
   setLayerHidden(kind, hide) {
     this.hiddenLayers[kind] = !!hide;
-    return this.renderManuscript({ anchorSentenceId: this.topVisibleSentenceId() });
+    this.reflowingLayers[kind] = true;
+    const done = this.renderManuscript({ anchorSentenceId: this.topVisibleSentenceId() });
+    const release = () => {
+      this.reflowingLayers[kind] = false;
+      document.dispatchEvent(new CustomEvent('ms:layers-reflowed'));
+    };
+    done.then(release, release);
+    return done;
   },
 
   // The first sentence still on screen — the re-render's scroll anchor.

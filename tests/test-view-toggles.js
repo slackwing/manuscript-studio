@@ -51,12 +51,26 @@ const check = (name, ok, detail = '') => {
   });
   await page.waitForSelector('#stats-footnotes', { timeout: 8000 });
 
-  // Click a toggle and wait for the re-pagination it triggers.
+  // Click a toggle and wait for the re-pagination it triggers. The click
+  // runs in-page so the pending look is read in the same tick: disabled
+  // with the spinner until the reflow lands, then live again.
+  const pend = [];
   const toggle = async (id) => {
     const before = await page.evaluate(() => document.body.dataset.paginated);
-    await page.click(id);
+    const pending = await page.evaluate((sel) => {
+      const b = document.querySelector(sel);
+      const w0 = b.getBoundingClientRect().width;
+      const h0 = document.querySelector('.stats-toggles').getBoundingClientRect().height;
+      b.click();
+      const fresh = document.querySelector(sel);
+      return { disabled: fresh.disabled, spinner: getComputedStyle(fresh, '::after').animationName,
+        sameWidth: Math.abs(fresh.getBoundingClientRect().width - w0) < 0.5,
+        sameRow: Math.abs(document.querySelector('.stats-toggles').getBoundingClientRect().height - h0) < 0.5 };
+    }, id);
     await page.waitForFunction((b) => document.body.dataset.paginated !== b
       && !window.WriteSysRenderer._renderInFlight, before, { timeout: 30000 });
+    await page.waitForFunction((sel) => !document.querySelector(sel).disabled, id, { timeout: 5000 });
+    pend.push({ id, ...pending });
   };
 
   const state = () => page.evaluate(() => {
@@ -151,6 +165,13 @@ const check = (name, ok, detail = '') => {
     && JSON.stringify(back.layout) === JSON.stringify(on.layout)
     && back.markersPressed === 'true' && back.footnotesPressed === 'true',
     JSON.stringify(back.layout) === JSON.stringify(on.layout) ? '' : `${on.layout} vs ${back.layout}`);
+
+  check('every toggle waited disabled with the spinner while reflowing, then came back',
+    pend.length === 4 && pend.every((p) => p.disabled && p.spinner === 'stats-toggle-spin'),
+    JSON.stringify(pend.filter((p) => !(p.disabled && p.spinner === 'stats-toggle-spin'))));
+  check('the spinner never changes the button width or re-wraps the row',
+    pend.every((p) => p.sameWidth && p.sameRow),
+    JSON.stringify(pend.filter((p) => !(p.sameWidth && p.sameRow))));
 
   // Gate: no marker eyes → no markers toggle; footnotes stay for everyone.
   const gated = await page.evaluate(() => {
