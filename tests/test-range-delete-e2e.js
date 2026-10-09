@@ -163,9 +163,25 @@ const psql = (sql) => execSync(
     await clickSentence(picks.a);
     await clickSentence(picks.b, ['Shift']);
     const trash = page.locator('.range-trash:not(.range-sketch):not(.range-copy)');
+    // The range highlight is the usual selection gray until the trash arms;
+    // armed, it turns red; the disarm puts the gray back with the trash.
+    const rangeBg = () => page.evaluate(() => {
+      const el = document.querySelector('.sentence.range-selected');
+      el.getAnimations().forEach((a) => a.finish()); // settle the color fade
+      const probe = document.createElement('span');
+      probe.className = 'sentence selected';
+      document.body.appendChild(probe);
+      const gray = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return { bg: getComputedStyle(el).backgroundColor, gray };
+    });
+    const idle4 = await rangeBg();
+    check('D4: a fresh range wears the usual selection gray', idle4.bg === idle4.gray, JSON.stringify(idle4));
     await trash.click();
     check('D4: first click arms (confirming)',
       await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)').classList.contains('confirming')));
+    const armed4 = await rangeBg();
+    check('D4: armed, the range turns red', armed4.bg === 'rgba(217, 83, 79, 0.16)', JSON.stringify(armed4));
     // The arm auto-disarms after 2s.
     await page.waitForFunction(() => {
       const t = document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)');
@@ -173,6 +189,8 @@ const psql = (sql) => execSync(
     }, null, { timeout: 5000 });
     check('D4: arm auto-disarms after the 2s window (mode + range survive)',
       (await modeState()).modeOn);
+    const disarmed4 = await rangeBg();
+    check('D4: the disarm puts the gray back with the trash', disarmed4.bg === disarmed4.gray, JSON.stringify(disarmed4));
     const before4 = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
     check('D4: disarmed click applied nothing', before4 === '0', before4);
     // Re-arm and apply.

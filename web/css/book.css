@@ -3214,13 +3214,19 @@ p.section-break {
 }
 
 /* ---- Range delete (shift-click) ---- */
+/* A range is a selection first (copy / sketch / delete): the usual
+   selection gray. Only an ARMED trash (first click) turns it red — the
+   disarm puts the gray back with the trash. */
 .sentence.range-selected {
+  background: #d0d0d0 !important; /* = .sentence.selected */
+}
+body.range-delete-armed .sentence.range-selected {
   background: rgba(217, 83, 79, 0.16) !important;
 }
 /* While a range is live, the canonize + affordances get out of the way. */
 body.range-delete-mode .import-zone { display: none !important; }
 /* While a range is active, native text selection stays off in the book —
-   our red range highlight is the only selection visual. */
+   our range highlight is the only selection visual. */
 body.range-delete-mode .pagedjs_pages {
   -webkit-user-select: none;
   user-select: none;

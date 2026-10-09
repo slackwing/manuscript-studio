@@ -4,8 +4,9 @@
  * While the range is active:
  *   - the canonize + affordances hide (no gap-hover noise);
  *   - a persistent RED trash circle shows in the left gutter at the range's
- *     first line. House trash mechanics: first click arms it ("click again"),
- *     second click applies.
+ *     first line. House trash mechanics: first click arms it ("click again")
+ *     and turns the range red, second click applies; no second click within
+ *     2s disarms both back (the range is the usual selection gray).
  * Applying PUTs an EMPTY suggestion on every sentence in the range — the
  * standard "clear this sentence" proposal (same as emptying it in
  * suggest-edit), one suggested delete per sentence, reviewable and revertible
@@ -100,8 +101,15 @@ const WriteSysRangeDelete = {
       if (!armed) {
         armed = true;
         btn.classList.add('confirming');
+        document.body.classList.add('range-delete-armed'); // the range turns red
+        const idleTitle = btn.title;
         btn.title = 'Click again to suggest deleting the selection';
-        resetTimer = setTimeout(() => { armed = false; btn.classList.remove('confirming'); }, 2000);
+        resetTimer = setTimeout(() => {
+          armed = false;
+          btn.classList.remove('confirming');
+          btn.title = idleTitle;
+          document.body.classList.remove('range-delete-armed');
+        }, 2000);
         return;
       }
       clearTimeout(resetTimer);
@@ -208,7 +216,7 @@ const WriteSysRangeDelete = {
     this.clearHighlights();
     this.removeTrash();
     this.range = [];
-    document.body.classList.remove('range-delete-mode');
+    document.body.classList.remove('range-delete-mode', 'range-delete-armed');
   },
 };
 
