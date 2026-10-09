@@ -2,6 +2,8 @@
  * Two-click "complete" flow on an annotation:
  *   first click → green confirming state, annotation still present
  *   second click → annotation disappears from the DOM and rainbow bars update
+ *   — and the reader STAYS PUT: no jump to another annotated sentence, even
+ *   when one exists (owner's call, 2026-10-09; it used to scroll there).
  */
 
 const { chromium } = require('playwright');
@@ -31,8 +33,28 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     await page.waitForSelector('.sentence', { timeout: 10000 });
     await waitForPagination(page);
 
+    // Another annotated sentence further on — completing the last note here
+    // used to jump to it.
+    const farId = await page.evaluate(async () => {
+      const ids = [...new Set([...document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]')]
+        .map((el) => el.dataset.sentenceId))];
+      const sid = ids[Math.min(ids.length - 1, 40)];
+      const r = await fetch('api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+          'X-CSRF-Token': sessionStorage.getItem('csrf_token') || localStorage.getItem('csrf_token') || '' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ sentence_id: sid, color: 'blue', body: 'far note', priority: 'none', flagged: false }),
+      });
+      return r.ok ? sid : null;
+    });
+    assert(!!farId, `A second annotated sentence exists further on (${farId})`);
+    await page.reload();
+    await waitForPagination(page);
+
     await page.locator('.sentence').first().click();
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated', { timeout: 5000 });
+    const firstId = await page.locator('.sentence').first().evaluate((el) => el.dataset.sentenceId);
 
     const colorCircle = page.locator('.sticky-note.uncreated-note.first-uncreated .sticky-note-color-circle');
     await colorCircle.hover();
@@ -127,10 +149,18 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
     const confirming = await check.evaluate(el => el.classList.contains('confirming'));
     assert(confirming, 'First click puts complete button into confirming state');
     await page.waitForTimeout(150);
+    const scrollBefore = await page.evaluate(() => window.scrollY);
     await check.click();
 
     await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated', { timeout: 5000 });
     await page.waitForTimeout(500);
+
+    const stay = await page.evaluate(() => ({
+      scrollY: window.scrollY,
+      current: window.WriteSysNotes && window.WriteSysNotes.currentSentenceId,
+    }));
+    assert(stay.current === firstId && Math.abs(stay.scrollY - scrollBefore) < 2,
+      `Completing stays put — same sentence, no scroll (sentence ${stay.current} vs ${firstId}, scrollY ${scrollBefore} → ${stay.scrollY})`);
 
     const realNotesAfter = await page.locator('.sticky-note:not(.uncreated-note)').count();
     assert(realNotesAfter === 0, `Annotation disappeared after completion (got ${realNotesAfter})`);

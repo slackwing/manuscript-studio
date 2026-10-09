@@ -106,15 +106,6 @@ const WriteSysNotes = {
     fragments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
 
-  // Kept for existing callers: step forward through annotated sentences
-  // (wrapping), the old down-arrow behavior.
-  jumpToNextAnnotatedSentence() {
-    const list = this.annotatedOrdered();
-    if (!list.length) return;
-    const i = this.currentSentenceId ? list.indexOf(this.currentSentenceId) : -1;
-    this.gotoAnnotated(list[i + 1] || list[0]);
-  },
-
   // The container with NO sentence selected (first load): just the nav in
   // its GO TO FIRST NOTE form, so the tour has an entry point.
   showIdleNoteNav() {
@@ -884,15 +875,11 @@ const WriteSysNotes = {
       this.notes = this.notes.filter(a => a.note_id !== noteId);
       this._cacheRemove(noteId);
 
-      // Jump first; refresh runs unawaited so the network roundtrip doesn't block UI.
-      const shouldJump = this.notes.length === 0;
-
+      // The note just goes away and the reader stays where they were — no
+      // jump to another annotated sentence, even after the last note here
+      // (owner's call, 2026-10-09).
       this.renderStickyNotes();
       this.updateSentenceHighlights();
-
-      if (shouldJump) {
-        this.jumpToNextAnnotatedSentence();
-      }
 
       if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
         window.WriteSysRenderer.refreshRainbowBars();
