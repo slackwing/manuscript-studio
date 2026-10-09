@@ -855,12 +855,13 @@ const WriteSysRenderer = {
 
   // layoutMarginGlyphs stacks same-line margin anchors leftward so several on
   // one line never overlap (they may overlap the outline column — fine, rare).
-  // Stats-pane markers / footnotes toggles (2026-10-08): on at every load.
+  // Stats-pane markers / footnotes toggles (2026-10-08). Every load starts
+  // with markers OFF and footnotes on (owner's call, 2026-10-09).
   // A hidden layer is stripped from the page HTML BEFORE Paged.js runs, so
   // the book re-paginates without it — notes hand their space back to the
   // body, lines close up where the glyphs stood. The edit modal's panes
   // render on their own path and keep both.
-  hiddenLayers: { markers: false, footnotes: false },
+  hiddenLayers: { markers: true, footnotes: false },
   // Layers whose re-pagination is still running — their stats-pane button
   // waits disabled with the spinner; ms:layers-reflowed releases it.
   reflowingLayers: { markers: false, footnotes: false },

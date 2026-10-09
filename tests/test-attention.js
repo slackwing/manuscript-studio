@@ -35,6 +35,7 @@ const check = (name, ok, detail = '') => {
       if (i === 18) text += '&marker#digression ';
       sentences.push({ id: `att-${i}`, sentence_id: `att-${i}`, text });
     }
+    R.hiddenLayers.markers = false; // these checks read the page glyphs
     R.currentSentences = sentences;
     R.sentenceMap = Object.fromEntries(sentences.map((s) => [s.id, s.text]));
     await R.renderManuscript();

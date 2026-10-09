@@ -1,10 +1,10 @@
 // Stats-pane view toggles e2e: markers · attention · footnotes in one
-// wrapping row. Markers and footnotes start ON; released, the renderer
-// strips that layer from the page HTML and Paged.js re-paginates without
-// it (renderer.setLayerHidden) — notes give their space back to the body,
-// lines close up where the glyphs were. A hidden marker still feeds the
-// attention harvest; pressing a toggle again restores the layout exactly;
-// the re-render holds the reader's place.
+// wrapping row. Every load starts with markers OFF and footnotes on; a
+// released layer is stripped from the page HTML and Paged.js re-paginates
+// without it (renderer.setLayerHidden) — notes give their space back to
+// the body, lines close up where the glyphs were. A hidden marker still
+// feeds the attention harvest; pressing a toggle again restores the layout
+// exactly; the re-render holds the reader's place.
 const { chromium } = require('playwright');
 const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils');
 
@@ -96,28 +96,38 @@ const check = (name, ok, detail = '') => {
     };
   });
 
-  const on = await state();
+  // Every load starts with markers OFF and footnotes on.
+  const start = await state();
   check('three toggles in order: markers · attention · footnotes',
-    JSON.stringify(on.order) === JSON.stringify(['stats-markers', 'stats-attention', 'stats-footnotes']),
-    JSON.stringify(on.order));
-  check('the toggle row wraps', on.wrap === 'wrap', on.wrap);
-  check('markers and footnotes start pressed', on.markersPressed === 'true' && on.footnotesPressed === 'true');
-  check('on: marker glyphs and footnotes render', on.glyphs > 0 && on.calls > 0 && on.bodies > 0,
-    `glyphs=${on.glyphs} calls=${on.calls} bodies=${on.bodies}`);
-  check('markers feed the attention harvest', on.harvested > 0, String(on.harvested));
+    JSON.stringify(start.order) === JSON.stringify(['stats-markers', 'stats-attention', 'stats-footnotes']),
+    JSON.stringify(start.order));
+  check('the toggle row wraps', start.wrap === 'wrap', start.wrap);
+  check('defaults: markers released, footnotes pressed',
+    start.markersPressed === 'false' && start.footnotesPressed === 'true',
+    `markers=${start.markersPressed} footnotes=${start.footnotesPressed}`);
+  check('default page: no marker glyphs (invisible data spans only), footnotes render',
+    start.glyphs === 0 && start.dataSpans > 0 && start.calls > 0 && start.bodies > 0,
+    `glyphs=${start.glyphs} spans=${start.dataSpans} calls=${start.calls} bodies=${start.bodies}`);
+  check('hidden markers still shape the envelope', start.harvested > 0 && start.overlays > 0,
+    `${start.harvested} markers, ${start.overlays} overlays`);
 
-  // Release markers → re-paginated without glyphs.
+  // Press markers → re-paginated with every glyph.
   await toggle('#stats-markers');
   const mk = await state();
-  check('markers released: button unpressed, no glyphs on the page',
-    mk.markersPressed === 'false' && mk.glyphs === 0, `glyphs=${mk.glyphs}`);
-  check('every hidden marker keeps its invisible data span',
-    mk.dataSpans === on.glyphs + on.dataSpans, `${mk.dataSpans} vs ${on.glyphs + on.dataSpans}`);
-  check('hidden markers still shape the envelope',
-    mk.harvested === on.harvested && mk.overlays > 0, `${mk.harvested} vs ${on.harvested}`);
-  check('the text reflows: closed-up lines pull more onto page 1',
-    mk.layout[0] > on.layout[0], `${on.layout[0]} → ${mk.layout[0]}`);
-  check('footnotes untouched by the markers toggle', mk.calls === on.calls && mk.bodies === on.bodies);
+  check('markers pressed: every marker wears its glyph',
+    mk.markersPressed === 'true' && mk.glyphs === start.dataSpans && mk.dataSpans === 0,
+    `glyphs=${mk.glyphs} of ${start.dataSpans}`);
+  check('same envelope either way', mk.harvested === start.harvested, `${mk.harvested} vs ${start.harvested}`);
+  check('the text reflows: glyphs take room, page 1 holds less',
+    mk.layout[0] < start.layout[0], `${start.layout[0]} → ${mk.layout[0]}`);
+  check('footnotes untouched by the markers toggle', mk.calls === start.calls && mk.bodies === start.bodies);
+
+  // Release markers again → back to the default layout, exactly.
+  await toggle('#stats-markers');
+  const mkOff = await state();
+  check('markers released again: no glyphs, default layout restored exactly',
+    mkOff.glyphs === 0 && JSON.stringify(mkOff.layout) === JSON.stringify(start.layout),
+    `${start.layout} vs ${mkOff.layout}`);
 
   // Release footnotes → notes gone, the body takes the whole page.
   await toggle('#stats-footnotes');
@@ -125,8 +135,8 @@ const check = (name, ok, detail = '') => {
   check('footnotes released: no calls, no note bodies',
     fn.footnotesPressed === 'false' && fn.calls === 0 && fn.bodies === 0, `calls=${fn.calls} bodies=${fn.bodies}`);
   check('the note area is given back: page 1 content is full height and holds more text',
-    fn.contentH > on.contentH && fn.layout[0] > mk.layout[0],
-    `h ${on.contentH} → ${fn.contentH}, chars ${mk.layout[0]} → ${fn.layout[0]}`);
+    fn.contentH > start.contentH && fn.layout[0] > start.layout[0],
+    `h ${start.contentH} → ${fn.contentH}, chars ${start.layout[0]} → ${fn.layout[0]}`);
 
   // An ordinary re-render keeps the hidden layers out.
   await page.evaluate(async () => {
@@ -156,15 +166,12 @@ const check = (name, ok, detail = '') => {
     document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`).getBoundingClientRect().top, anchor.id);
   check('toggling keeps the top sentence where it was on screen',
     Math.abs(after - anchor.top) < 2, `${anchor.id}: ${anchor.top.toFixed(1)} → ${after.toFixed(1)}`);
-
-  // Press markers back on → the original layout, exactly.
-  await toggle('#stats-markers');
   const back = await state();
-  check('both pressed again: glyphs and notes back, layout identical to the start',
-    back.glyphs === on.glyphs && back.calls === on.calls && back.bodies === on.bodies
-    && JSON.stringify(back.layout) === JSON.stringify(on.layout)
-    && back.markersPressed === 'true' && back.footnotesPressed === 'true',
-    JSON.stringify(back.layout) === JSON.stringify(on.layout) ? '' : `${on.layout} vs ${back.layout}`);
+  check('footnotes pressed again: notes back, default layout identical to the start',
+    back.calls === start.calls && back.bodies === start.bodies
+    && JSON.stringify(back.layout) === JSON.stringify(start.layout)
+    && back.markersPressed === 'false' && back.footnotesPressed === 'true',
+    JSON.stringify(back.layout) === JSON.stringify(start.layout) ? '' : `${start.layout} vs ${back.layout}`);
 
   check('every toggle waited disabled with the spinner while reflowing, then came back',
     pend.length === 4 && pend.every((p) => p.disabled && p.spinner === 'stats-toggle-spin'),

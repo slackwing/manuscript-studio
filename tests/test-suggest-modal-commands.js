@@ -39,6 +39,7 @@ const check = (name, ok, detail = '') => {
     const push = (id, text) => sentences.push({ id, sentence_id: id, text });
     push('mkf-ch', '&chapter#one{One}');
     for (let i = 0; i < 6; i++) push(`mkf-${i}`, i === 2 ? TEXT : `Sentence number ${i} carries the paragraph onward. `);
+    R.hiddenLayers.markers = false; // the page precondition reads the glyph
     R.currentSentences = sentences;
     R.sentenceMap = Object.fromEntries(sentences.map((s) => [s.id, s.text]));
     if (S) { S.rows = []; S.rebuildMaps(); }

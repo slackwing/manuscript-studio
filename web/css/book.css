@@ -3683,8 +3683,8 @@ body.range-delete-mode .pagedjs_pages {
 html.attention-held .attention-overlay { display: block; }
 /* Stats-pane toggles, one wrapping row: markers · attention · footnotes.
    aria-pressed paints the on-state. Attention (the touch counterpart of
-   Tab) pins the envelope on; markers and footnotes start on, and released
-   re-paginate the book without their layer (renderer.setLayerHidden). */
+   Tab) pins the envelope on; markers start off and footnotes on, and each
+   re-paginates the book with or without its layer (renderer.setLayerHidden). */
 .stats-toggles {
   display: flex;
   flex-wrap: wrap;
