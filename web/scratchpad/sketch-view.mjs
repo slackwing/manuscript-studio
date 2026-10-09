@@ -362,7 +362,11 @@ export class SketchView {
       return [
         { icon: GOTO_SVG, className: 'sn-goto-ext', title: 'Open in book',
           onClick: () => {
-            if (sn.linked_manuscript_id) window.location.href = `index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.sketch_id)}`;
+            if (!sn.linked_manuscript_id) return;
+            // Through the link router: the book's tab (wherever it is —
+            // the other pane included), never this frame navigating away.
+            const href = `index.html?manuscript_id=${sn.linked_manuscript_id}#${encodeURIComponent(sn.sketch_id)}`;
+            if (!(window.WriteSysTabs && window.WriteSysTabs.route(href))) window.location.href = href;
           } },
         { icon: SPARK_SVG, className: 'sn-branch sn-from-placed', title: "New variation from the placed text — start editing what's in the book", onClick: () => this.newFromPlaced() },
       ];

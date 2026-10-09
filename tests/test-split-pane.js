@@ -115,6 +115,49 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     && await page.evaluate(() => document.querySelectorAll('#ms-tab-panels .ms-panel.active').length === 2));
   check('divider present after reload', await page.locator('#ms-split-divider').count() === 1);
 
+  // ---- a link INSIDE the right pad to the manuscript open on the LEFT ----
+  // (the sketch widget's "Open in book", 2026-10-09 report): a tab move to
+  // the existing left tab — never a navigation of the pad's own frame, never
+  // a second manuscript panel.
+  await page.evaluate((k) => document.querySelector(`.ms-tab[data-key="${k}"]`).click(), mKey);
+  await page.evaluate((k) => document.querySelector(`.ms-tab[data-key="${k}"]`).click(), keyB);
+  const padB = page.frames().find((f) => f.url().includes('scratchpad_id=' + pads.b));
+  await padB.waitForSelector('.spm-editor .ProseMirror', { timeout: 20000 });
+  await padB.evaluate(() => { window.__sentinelLink = 'alive'; });
+  const mId = +mKey.slice(1);
+  const afterLink = async () => {
+    await page.waitForFunction((k) => document.querySelector('.ms-tabbar-left').classList.contains('focused')
+      && document.querySelector(`.ms-tabbar-left .ms-tab[data-key="${k}"]`).classList.contains('active'), mKey,
+    { timeout: 8000 }).catch(() => {});
+    return page.evaluate(({ k, kb }) => ({
+      leftActive: document.querySelector(`.ms-tabbar-left .ms-tab[data-key="${k}"]`).classList.contains('active'),
+      leftFocused: document.querySelector('.ms-tabbar-left').classList.contains('focused'),
+      rightStill: [...document.querySelectorAll('.ms-tabbar-right .ms-tab[data-key]')].map((t) => t.dataset.key).join() === kb,
+      bookPanels: document.querySelectorAll('#ms-tab-panels iframe[src*="manuscript_id"]').length,
+    }), { k: mKey, kb: keyB });
+  };
+  await padB.evaluate((id) => {
+    const a = document.createElement('a');
+    a.id = 'open-in-book-probe';
+    a.href = `index.html?manuscript_id=${id}#probe-sketch`;
+    a.textContent = 'open in book';
+    document.body.appendChild(a);
+    a.click();
+  }, mId);
+  const viaLink = await afterLink();
+  check('a pad link to the open manuscript activates the LEFT tab (no second book panel)',
+    viaLink.leftActive && viaLink.leftFocused && viaLink.rightStill && viaLink.bookPanels === 1, JSON.stringify(viaLink));
+  check('…and the pad frame was NOT navigated (sentinel alive, still the pad)',
+    (await padB.evaluate(() => window.__sentinelLink + '|' + location.pathname).catch(() => 'GONE')) === 'alive|' + new URL('pad.html', TEST_URL).pathname);
+  // The widget's button path: a programmatic route() from inside the pad.
+  await page.evaluate((k) => document.querySelector(`.ms-tab[data-key="${k}"]`).click(), keyB);
+  const routed = await padB.evaluate((id) => !!(window.WriteSysTabs
+    && window.WriteSysTabs.route(`index.html?manuscript_id=${id}#probe-sketch`)), mId);
+  const viaRoute = await afterLink();
+  check('route() from inside the pad moves to the left tab too',
+    routed && viaRoute.leftActive && viaRoute.leftFocused && viaRoute.bookPanels === 1, JSON.stringify({ routed, ...viaRoute }));
+  check('pad still alive after both', (await padB.evaluate(() => window.__sentinelLink).catch(() => 'GONE')) === 'alive');
+
   // ---- divider drag persists; dblclick resets ----
   await page.dispatchEvent('#ms-split-divider', 'pointerdown', { pointerId: 7, clientX: 800, clientY: 500 });
   await page.dispatchEvent('#ms-split-divider', 'pointermove', { pointerId: 7, clientX: 1100, clientY: 500 });

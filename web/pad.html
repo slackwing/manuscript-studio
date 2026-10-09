@@ -24,6 +24,10 @@
   <script src="js/session-guard.js?v=4"></script>
   <script src="js/edit-pane.js?v=10"></script>
   <script src="js/icons.js?v=7"></script>
+  <!-- The link router: inside a shell panel every manuscript / pad link is a
+       TAB MOVE (an open tab is activated in whichever pane holds it), never
+       a navigation of this frame. -->
+  <script src="js/tabs.js?v=15"></script>
   <script src="js/manuscript-chip.js?v=8"></script>
   <script src="js/pane-widget.js?v=11"></script>
   <script src="js/text-markers.js?v=4"></script>
@@ -35,7 +39,7 @@
   <script src="scratchpad/scratch-render.js?v=20"></script>
   <script src="notes/note-api.js?v=5"></script>
   <script src="notes/note-widget.js?v=25"></script>
-  <script src="js/scratchpad-modal.js?v=79"></script>
+  <script src="js/scratchpad-modal.js?v=80"></script>
   <script>
     (async function () {
       const session = await checkAuth();
