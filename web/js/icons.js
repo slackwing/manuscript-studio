@@ -38,6 +38,16 @@
       return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"',
         '<path d="M6 14L14 6M8.5 5.5H14.5V11.5"/>');
     },
+    // Copy — two stacked sheets (range-select copy).
+    copy(size) {
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"',
+        '<rect x="5.2" y="5.2" width="8.6" height="8.6" rx="1.4"/><path d="M10.8 5.2V3.6c0-.77-.63-1.4-1.4-1.4H3.6c-.77 0-1.4.63-1.4 1.4v5.8c0 .77.63 1.4 1.4 1.4h1.6"/>');
+    },
+    // Check — a done/copied acknowledgement.
+    check(size) {
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"',
+        '<path d="M3.2 8.4l3.1 3.1 6.5-6.7"/>');
+    },
     // Split pane — a frame with a center seam (the tab strip's split button).
     splitPane(size) {
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"',

@@ -1721,6 +1721,12 @@ p.section-break {
 .range-trash.range-sketch { color: #8a8378; border-color: #ccc; background: #fff; }
 .range-trash.range-sketch:hover { color: #a87e00; border-color: #c9a227; background: #fff8e1; }
 .range-trash.range-sketch svg { display: block; margin: 0 auto; }
+/* Copy-from-selection, on top of the stack (copy-selection.js); a check
+   flashes in after a copy. */
+.range-trash.range-copy { color: #8a8378; border-color: #ccc; background: #fff; }
+.range-trash.range-copy:hover { color: #2a6fb0; border-color: #2a6fb0; background: #eef5fb; }
+.range-trash.range-copy.copied { color: #2e7d32; border-color: #2e7d32; background: #eef7ee; }
+.range-trash.range-copy svg { display: block; margin: 0 auto; }
 .cmd-sketch-glyph { cursor: pointer; }
 .cmd-sketch-glyph svg { display: inline-block; vertical-align: -1px; }
 .cmd-sketch-glyph:hover { color: #66492b; }

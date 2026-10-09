@@ -43,7 +43,7 @@ const psql = (sql) => execSync(
     selected: [...new Set([...document.querySelectorAll('.sentence.range-selected')]
       .map((e) => e.dataset.sentenceId))],
     modeOn: document.body.classList.contains('range-delete-mode'),
-    trash: document.querySelectorAll('.range-trash:not(.range-sketch)').length,
+    trash: document.querySelectorAll('.range-trash:not(.range-sketch):not(.range-copy)').length,
   }));
   const clickSentence = async (id, modifiers) => {
     // A PLAIN click on the currently-selected sentence would open the
@@ -153,7 +153,7 @@ const psql = (sql) => execSync(
       st.modeOn && JSON.stringify([...st.selected].sort()) === JSON.stringify([...picks.cd].sort()),
       `${st.selected.length}/${picks.cd.length}`);
     // (d) trash click keeps the mode.
-    await page.locator('.range-trash:not(.range-sketch)').click();
+    await page.locator('.range-trash:not(.range-sketch):not(.range-copy)').click();
     st = await modeState();
     check('D3: trash click stays in the mode (arming, not exiting)',
       st.modeOn && st.selected.length === picks.cd.length && st.trash === 1);
@@ -162,13 +162,13 @@ const psql = (sql) => execSync(
     // ---- D4: arm → 2s auto-disarm → re-arm → apply -------------------------
     await clickSentence(picks.a);
     await clickSentence(picks.b, ['Shift']);
-    const trash = page.locator('.range-trash:not(.range-sketch)');
+    const trash = page.locator('.range-trash:not(.range-sketch):not(.range-copy)');
     await trash.click();
     check('D4: first click arms (confirming)',
-      await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch)').classList.contains('confirming')));
+      await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)').classList.contains('confirming')));
     // The arm auto-disarms after 2s.
     await page.waitForFunction(() => {
-      const t = document.querySelector('.range-trash:not(.range-sketch)');
+      const t = document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)');
       return t && !t.classList.contains('confirming');
     }, null, { timeout: 5000 });
     check('D4: arm auto-disarms after the 2s window (mode + range survive)',
@@ -179,7 +179,7 @@ const psql = (sql) => execSync(
     const stamp4 = await paginationStamp(page);
     await trash.click();
     check('D4: re-arm works after a disarm',
-      await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch)').classList.contains('confirming')));
+      await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)').classList.contains('confirming')));
     await trash.click();
     await waitForRepagination(page, stamp4);
     const rows4 = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}' AND text=''`);
@@ -200,7 +200,7 @@ const psql = (sql) => execSync(
     });
     dialogs.length = 0;
     const stamp5 = await paginationStamp(page);
-    const trash5 = page.locator('.range-trash:not(.range-sketch)');
+    const trash5 = page.locator('.range-trash:not(.range-sketch):not(.range-copy)');
     await trash5.click();
     await trash5.click();
     // apply(): alert → exit → refetch → re-render.
@@ -237,7 +237,7 @@ const psql = (sql) => execSync(
     await clickSentence(picks.a);
     await clickSentence(picks.b, ['Shift']);
     const d6 = await page.evaluate(() => {
-      const trashEl = document.querySelector('.range-trash:not(.range-sketch)');
+      const trashEl = document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)');
       if (!trashEl) return null;
       const tr = trashEl.getBoundingClientRect();
       const sheet = trashEl.closest('.pagedjs_sheet') || trashEl.closest('.pagedjs_page');
@@ -261,9 +261,9 @@ const psql = (sql) => execSync(
         d6.rightVsSheet < 0, `right-vs-sheet=${d6.rightVsSheet.toFixed(1)}px`);
       check('D6: trash vertically centered on the range under scale (±8px)',
         d6.centerOffset <= 8, `offset=${d6.centerOffset.toFixed(1)}px`);
-      await page.locator('.range-trash:not(.range-sketch)').click();
+      await page.locator('.range-trash:not(.range-sketch):not(.range-copy)').click();
       check('D6: trash is clickable under scale (arms)',
-        await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch)').classList.contains('confirming')));
+        await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)').classList.contains('confirming')));
     }
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 1400, height: 900 });

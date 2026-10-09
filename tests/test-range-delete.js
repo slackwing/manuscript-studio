@@ -51,7 +51,7 @@ const psql = (sql) => execSync(
   // select() highlights + appends both gutter buttons synchronously
   await page.waitForFunction(() =>
     document.body.classList.contains('range-delete-mode') &&
-    document.querySelector('.range-trash:not(.range-sketch)') &&
+    document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)') &&
     document.querySelector('.range-trash.range-sketch'));
 
   const mode = await page.evaluate(() => {
@@ -74,7 +74,7 @@ const psql = (sql) => execSync(
     return {
       selected: new Set([...document.querySelectorAll('.sentence.range-selected')].map(e => e.dataset.sentenceId)).size,
       modeOn: document.body.classList.contains('range-delete-mode'),
-      trash: document.querySelectorAll('.range-trash:not(.range-sketch)').length,
+      trash: document.querySelectorAll('.range-trash:not(.range-sketch):not(.range-copy)').length,
       sketchBtn: document.querySelectorAll('.range-trash.range-sketch').length,
       plusHidden: [...document.querySelectorAll('.import-zone')].every(z => getComputedStyle(z).display === 'none'),
       nativeSelection: String(window.getSelection() || ''),
@@ -89,13 +89,13 @@ const psql = (sql) => execSync(
   check('trash vertically centered on the range (±8px)', mode.trashGeom && Math.abs(mode.trashGeom.centerOffset) <= 8, mode.trashGeom);
 
   // first click arms, second applies
-  await page.locator('.range-trash:not(.range-sketch)').click();
-  const arming = await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch)').classList.contains('confirming'));
+  await page.locator('.range-trash:not(.range-sketch):not(.range-copy)').click();
+  const arming = await page.evaluate(() => document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)').classList.contains('confirming'));
   check('first click arms (confirming)', arming);
   const before = psql(`SELECT COUNT(*) FROM suggested_change WHERE user_id='${TEST_USERNAME}'`);
   check('no suggestions before confirm', before === '0', before);
   const stamp = await paginationStamp(page);
-  await page.locator('.range-trash:not(.range-sketch)').click();
+  await page.locator('.range-trash:not(.range-sketch):not(.range-copy)').click();
   // apply() PUTs the suggestions then re-renders: wait for the NEW pagination
   // pass AND the old pages to be swapped out (suggested-delete marks live in
   // the fresh DOM). Timeout falls through so the checks below report the

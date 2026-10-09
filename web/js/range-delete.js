@@ -148,6 +148,26 @@ const WriteSysRangeDelete = {
       sk.style.top = `${parseFloat(btn.style.top || '0') - br2.height - 6}px`;
       this.sketchBtn = sk;
     }
+    // COPY rides on top: the selection's text with every suggestion applied
+    // (copy-selection.js). Appended last so `.range-trash` still finds the
+    // trash first.
+    if (window.WriteSysCopySelection) {
+      const C = window.WriteSysCopySelection;
+      const cp = document.createElement('button');
+      cp.type = 'button';
+      cp.className = 'range-trash range-copy';
+      cp.title = C.titleFor(this.range);
+      cp.innerHTML = C.buttonHTML();
+      cp.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        C.copy(this.range.slice(), cp);
+      });
+      host.appendChild(cp);
+      const below = this.sketchBtn || btn;
+      const h = btn.getBoundingClientRect().height;
+      cp.style.left = btn.style.left;
+      cp.style.top = `${parseFloat(below.style.top || '0') - h - 6}px`;
+    }
   },
 
   async apply() {
