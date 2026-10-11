@@ -4,8 +4,8 @@
 // winner per sentence (accepted, else People order), canonicalized like the
 // push; a delete proposal drops the sentence, its paragraph break with it.
 // Marker syntax rides along only while the stats-pane markers toggle is on.
-// Sentences join with exactly one space; paragraph / section breaks keep the
-// manuscript's own \n\t / \n\n.
+// Sentences join with exactly one space (none at an em-dash glue); paragraph
+// / section breaks keep the manuscript's own \n\t / \n\n.
 window.WriteSysCopySelection = {
   buttonHTML() {
     return window.WriteSysIcons && window.WriteSysIcons.copy ? window.WriteSysIcons.copy(12) : '⧉';
@@ -28,7 +28,10 @@ window.WriteSysCopySelection = {
       const lead = text.startsWith('\n\n') ? '\n\n' : (text.startsWith('\n\t') ? '\n\t' : '');
       const body = this.tidy(text.slice(lead.length));
       if (!body) continue;
-      out += out === '' ? body : (lead || ' ') + body;
+      // One space between sentences — none at an em-dash glue (the book's
+      // and the push's rule: "said" + "—he…—" + "Then" → "said—he…—Then").
+      const glued = out.endsWith('—') || body.startsWith('—');
+      out += out === '' ? body : (lead || (glued ? '' : ' ')) + body;
     }
     return out;
   },

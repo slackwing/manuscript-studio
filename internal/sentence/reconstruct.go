@@ -25,12 +25,17 @@ func IsStructuralText(text string) bool {
 //         emitted verbatim (provides the paragraph/section break).
 //       * Otherwise it's appended directly. If the previous output ended
 //         with a content character (not whitespace), a single space goes
-//         between (continuation within a paragraph).
+//         between (continuation within a paragraph) — except at an EM-DASH
+//         GLUE: the previous sentence ends on "—" or this one opens on "—"
+//         ("said" + "—he sounded…—" + "Then" → "said—he sounded…—Then").
+//         segman never cuts a boundary beside a dash mid-paragraph, so this
+//         only ever joins suggested sentences; round trips are unchanged.
 //   - The output ends with a trailing newline (matches typical source files).
 func Reconstruct(sentences []string) string {
 	var b strings.Builder
 	prevWasStructural := false // last emit was a block &-command
 	prevWasContent := false    // last emit was a content sentence (vs. structural or nothing)
+	prevText := ""             // the last content sentence emitted (em-dash glue)
 
 	for _, s := range sentences {
 		// A block &-command stands on its own line with a blank-line gap
@@ -63,8 +68,11 @@ func Reconstruct(sentences []string) string {
 				b.WriteByte('\n')
 				b.WriteString(s)
 			} else if prevWasContent && !strings.HasPrefix(s, "\n") {
-				// Continuation within a paragraph.
-				b.WriteByte(' ')
+				// Continuation within a paragraph: one space, none at an
+				// em-dash glue.
+				if !EmDashGlue(prevText, s) {
+					b.WriteByte(' ')
+				}
 				b.WriteString(s)
 			} else {
 				// Starts with its own separator (e.g. "\n&sketch#…{}" — the
@@ -75,6 +83,7 @@ func Reconstruct(sentences []string) string {
 		}
 		prevWasStructural = false
 		prevWasContent = true
+		prevText = s
 	}
 
 	if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
@@ -97,4 +106,11 @@ func ensureTrailingBlankLine(b *strings.Builder) {
 	default:
 		b.WriteString("\n\n")
 	}
+}
+
+// EmDashGlue reports whether two consecutive sentences in one paragraph meet
+// with NO space: the first ends on an em dash or the second opens on one.
+func EmDashGlue(prev, next string) bool {
+	return strings.HasSuffix(strings.TrimRight(prev, " \t"), "—") ||
+		strings.HasPrefix(strings.TrimLeft(next, " \t"), "—")
 }

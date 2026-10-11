@@ -80,6 +80,7 @@ FAST_TESTS=(
   test-footnotes
   test-view-toggles
   test-copy-selection
+  test-emdash-glue
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

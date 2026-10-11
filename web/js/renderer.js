@@ -603,7 +603,10 @@ const WriteSysRenderer = {
     if (!sentences || sentences.length === 0) return '';
 
     const out = [];
-    let openP = null; // { cls, spans } — current open paragraph
+    // { cls, spans, glue } — current open paragraph. glue[i] says whether
+    // spans[i]'s effective text opens / closes on an em dash ({lead, trail};
+    // null = no text of its own, e.g. a margin glyph — transparent).
+    let openP = null;
     // Anchor-family glyphs (⚓ for &anchor/&sketch) NEVER interrupt prose
     // flow: they defer to the NEXT paragraph's LEFT MARGIN (across sentence
     // boundaries — post-push an anchor is its own sentence row). The anchor's
@@ -617,18 +620,37 @@ const WriteSysRenderer = {
       return a || b || '';
     };
 
+    // Sentences join with SENT_SEP — except at an EM-DASH GLUE: a sentence
+    // that ends on "—", or the next one opening on "—", meets its neighbor
+    // with no space ("said" + "—he sounded…—" + "Then" reads
+    // "said—he sounded…—Then"). Same rule as Reconstruct (push) and copy.
+    const joinSpans = (p) => {
+      let html = '';
+      let trail = false;
+      p.spans.forEach((s, i) => {
+        const g = p.glue[i];
+        if (i > 0) html += (trail || (g && g.lead)) ? '' : SENT_SEP;
+        html += s;
+        if (g) trail = g.trail;
+      });
+      return html;
+    };
     const flush = () => {
       if (openP !== null) {
         out.push(openP.cls
-          ? `<p class="${openP.cls}">${openP.spans.join(SENT_SEP)}</p>`
-          : `<p>${openP.spans.join(SENT_SEP)}</p>`);
+          ? `<p class="${openP.cls}">${joinSpans(openP)}</p>`
+          : `<p>${joinSpans(openP)}</p>`);
         openP = null;
       }
     };
-    const pushProse = (cls, span) => {
+    const pushProse = (cls, span, glue) => {
       if (cls) flush();
-      if (openP === null) openP = { cls: cls || '', spans: [span] };
-      else openP.spans.push(span);
+      if (openP === null) openP = { cls: cls || '', spans: [span], glue: [glue || null] };
+      else { openP.spans.push(span); openP.glue.push(glue || null); }
+    };
+    const dashGlue = (text) => {
+      const t = String(text || '').trim();
+      return { lead: t.startsWith('—'), trail: t.endsWith('—') };
     };
 
     const cmdLib = window.WriteSysCommand;
@@ -807,6 +829,9 @@ const WriteSysRenderer = {
           + (suggestion !== undefined && sugRow && sugRow.user_id !== viewer ? ' suggestion-others' : '')
           + (staleMap[id] && staleMap[id].length ? ' has-stale-sugg' : '');
         let span = `<span class="sentence${sugClass}" data-sentence-id="${escapeHTML(id)}">${inner}</span>`;
+        // Em-dash glue reads the EFFECTIVE text (what the push will write);
+        // a pending deletion has none of its own — transparent.
+        const glue = isDeleteProposal ? null : dashGlue(body);
         // Pending margin glyphs attach to THIS paragraph, absolutely placed
         // in the left margin aligned to its top; the carried break class wins
         // over the prose's own weaker one.
@@ -822,18 +847,19 @@ const WriteSysRenderer = {
             // Mid-paragraph: the glyphs join the OPEN paragraph — never force
             // a paragraph break just to host a marker.
             openP.spans.push(glyphs);
+            openP.glue.push(null);
             if (openP.cls.indexOf('has-anchor-margin') === -1) {
               openP.cls = (openP.cls ? openP.cls + ' ' : '') + 'has-anchor-margin';
             }
             if (promotedGlyphs.length) pendingMarginGlyphs.push(...promotedGlyphs);
-            pushProse(cls, span);
+            pushProse(cls, span, glue);
             continue;
           }
           span = glyphs + span;
           cls = (cls ? cls + ' ' : '') + 'has-anchor-margin';
         }
         if (promotedGlyphs.length) pendingMarginGlyphs.push(...promotedGlyphs);
-        pushProse(cls, span);
+        pushProse(cls, span, glue);
       }
     }
     // Anchors with no following prose anywhere: attach to the last open
@@ -841,6 +867,7 @@ const WriteSysRenderer = {
     if (pendingMarginGlyphs.length) {
       if (openP) {
         openP.spans.unshift(pendingMarginGlyphs.map((g) => this.anchorGlyphHTML(g.cmd, g.id, g.changed, true)).join(''));
+        openP.glue.unshift(null);
         openP.cls = (openP.cls ? openP.cls + ' ' : '') + 'has-anchor-margin';
       } else {
         // No prose anywhere to host them: quiet standalone line, NON-margin.

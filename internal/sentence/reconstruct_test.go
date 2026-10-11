@@ -123,3 +123,39 @@ func TestTokenizeReconstructRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+// Em-dash glue (2026-10-11): sentences glued at an em dash — the first
+// ending on "—" or the next opening on "—" — join with NO space when the
+// push rebuilds the file, and migration reads the result back as one
+// sentence (segman never cuts beside a mid-paragraph dash).
+func TestReconstructEmDashGlue(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want string
+	}{
+		{[]string{"He said", "—he sounded composed all of a sudden—", "Then he left."},
+			"He said—he sounded composed all of a sudden—Then he left.\n"},
+		{[]string{"A.", "B."}, "A. B.\n"},                                  // ordinary continuation keeps its space
+		{[]string{"Before.", "\n\t—A paragraph opens on a dash."}, "Before.\n\t—A paragraph opens on a dash.\n"}, // breaks untouched
+		{[]string{"It ended—", "And yet."}, "It ended—And yet.\n"},         // trailing dash glues forward
+	}
+	for _, c := range cases {
+		if got := Reconstruct(c.in); got != c.want {
+			t.Errorf("Reconstruct(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+
+	// The owner's flow: the period dropped from the sentence before, the
+	// next suggested as "—…—" → push → migration.
+	ids := []string{"a", "b", "c"}
+	committed := map[string]string{"a": "He said.", "b": "He sounded composed all of a sudden.", "c": "Then he left."}
+	sugs := map[string]string{"a": "He said", "b": "—he sounded composed all of a sudden—"}
+	file := RebuildManuscript(ids, committed, sugs)
+	if file != "He said—he sounded composed all of a sudden—Then he left.\n" {
+		t.Errorf("push file = %q", file)
+	}
+	rows := NewTokenizer().TokenizeWithMarkers(file)
+	if len(rows) != 1 || rows[0] != "He said—he sounded composed all of a sudden—Then he left." {
+		t.Errorf("after migration = %q", rows)
+	}
+}
