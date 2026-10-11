@@ -220,13 +220,15 @@ func TestLocateSegmentNegativeCursorDoesNotPanic(t *testing.T) {
 	}
 }
 
-// Regression: rune(trimmed[0]) decoded only the first byte, so a leading
-// em-dash (multibyte) was never stripped and the curly-quote guards never
-// fired on their own comparisons.
+// Regression: rune(trimmed[0]) decoded only the first byte, so the
+// curly-quote guards never fired on their own comparisons. A leading em
+// dash is PROSE, not a joining artifact — it stays (owner's report,
+// 2026-10-11: suggested sentences opening with "—" lost the dash; the
+// 2026-07-24 rune fix had turned on a strip that was dead code before).
 func TestCleanSentenceBoundariesMultibyte(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"—He paused.", "He paused."},                      // em-dash now stripped
-		{"— He paused.", "He paused."},                     // em-dash + space
+		{"—He paused.", "—He paused."},                     // em-dash kept
+		{"— He paused.", "— He paused."},                   // em-dash + space kept
 		{"“Hello,” she said.", "“Hello,” she said."},       // opening curly quote preserved
 		{"„Guten Tag.“", "„Guten Tag.“"},                   // low-9 quote preserved
 		{". Stray period lead-in", "Stray period lead-in"}, // ASCII path unchanged
@@ -236,5 +238,40 @@ func TestCleanSentenceBoundariesMultibyte(t *testing.T) {
 		if got := cleanSentenceBoundaries(c.in); got != c.want {
 			t.Errorf("cleanSentenceBoundaries(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// A sentence that opens with an em dash survives the whole loop: segman
+// keeps the dash on its segment (paragraph, section, file start — mid-
+// paragraph ". —" is one sentence to segman, dash intact), the migration's
+// tokenizer must too, the rows reconstruct byte-equal, and a SUGGESTED
+// dash-led sentence comes back from push (RebuildManuscript) + re-migration
+// with its dash. Before the fix the rows lost it, and the next push rebuilt
+// the file from those rows — the dash left git too.
+func TestEmDashLeadSurvivesTokenizeRebuild(t *testing.T) {
+	tk := NewTokenizer()
+	src := "—The file opens on a dash. Before it.\n\t—He paused, then went on.\n\n—A section opens on a dash.\n"
+	got := tk.TokenizeWithMarkers(src)
+	want := []string{"—The file opens on a dash.", "Before it.", "\n\t—He paused, then went on.", "\n\n—A section opens on a dash."}
+	if len(got) != len(want) {
+		t.Fatalf("TokenizeWithMarkers = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("sentence %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if back := Reconstruct(got); back != src {
+		t.Errorf("round trip lost bytes:\n  src:  %q\n  back: %q", src, back)
+	}
+
+	// Push → PR file → re-migration.
+	ids := []string{"a", "b"}
+	committed := map[string]string{"a": "Before it.", "b": "\n\tHe paused."}
+	sugs := map[string]string{"b": "\n\t—He paused, the dash his own."}
+	file := RebuildManuscript(ids, committed, sugs)
+	rows := tk.TokenizeWithMarkers(file)
+	if len(rows) != 2 || rows[1] != "\n\t—He paused, the dash his own." {
+		t.Errorf("suggested dash lead after push + migration = %q (file %q)", rows, file)
 	}
 }

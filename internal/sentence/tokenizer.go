@@ -204,14 +204,18 @@ func skipSegmentInSource(source string, cursor int, seg string) int {
 }
 
 // cleanSentenceBoundaries strips leading sentence-joining punctuation but
-// preserves opening quotes so quoted sentences ("", ”, „) keep their opener.
+// preserves opening quotes so quoted sentences ("", ”, „) keep their opener
+// — and a leading EM DASH, which is prose (a paragraph or line opening on
+// "—"), not a joining artifact: segman keeps it on the segment, and a row
+// that dropped it would drop it from the file on the next push
+// (RebuildManuscript rebuilds from rows). 2026-10-11.
 func cleanSentenceBoundaries(text string) string {
 	trimmed := strings.TrimSpace(text)
 
 	for len(trimmed) > 0 {
-		// Decode a full rune \u2014 taking trimmed[0] as a byte made every
-		// multibyte comparison below dead (an em-dash's first byte is 0xE2,
-		// never '\u2014') and would slice mid-rune when stripping.
+		// Decode a full rune — taking trimmed[0] as a byte made every
+		// multibyte comparison below dead (a curly quote's first byte is
+		// 0xE2, never '\u201c') and would slice mid-rune when stripping.
 		firstRune, size := utf8.DecodeRuneInString(trimmed)
 		if firstRune == '"' || firstRune == '\'' || firstRune == '\u201c' ||
 			firstRune == '\u201d' || firstRune == '\u2018' || firstRune == '\u2019' ||
@@ -220,7 +224,7 @@ func cleanSentenceBoundaries(text string) string {
 		}
 		if firstRune == '.' || firstRune == ',' || firstRune == ';' ||
 			firstRune == ':' || firstRune == '!' || firstRune == '?' ||
-			firstRune == '—' || firstRune == '-' {
+			firstRune == '-' {
 			trimmed = trimmed[size:]
 			trimmed = strings.TrimLeftFunc(trimmed, unicode.IsSpace)
 		} else {

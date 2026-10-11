@@ -16,8 +16,18 @@ import (
 // Stamped onto every migration row. Sourced from the vendored segman
 // library's exported Version constant — re-vendoring against a new
 // segman tag automatically updates this string. Format mirrors the
-// historical "segman-X.Y.Z" stamp.
-var SegmenterVersion = "segman-" + segman.Version
+// historical "segman-X.Y.Z" stamp, plus TokenizerRevision: OUR pass over
+// segman's output (sentence.TokenizeWithMarkers) shapes the rows too, so a
+// change there bumps the revision and the startup re-segmentation
+// (ResegmentOnSegmenterChange) rebuilds every manuscript's rows from git.
+var SegmenterVersion = "segman-" + segman.Version + "+tok" + TokenizerRevision
+
+// TokenizerRevision — bump on any change to how sentence rows are cut or
+// cleaned from segman's segments.
+//
+//	2: a leading em dash stays on its sentence (2026-10-11); before, rows
+//	   lost it and the next push rebuilt the file without it.
+const TokenizerRevision = "2"
 
 // Lifecycle: caller reserves a row with CreatePendingMigration, then calls
 // Run, which transitions running → done/error before returning.
