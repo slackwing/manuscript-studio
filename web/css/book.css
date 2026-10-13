@@ -1403,9 +1403,12 @@ p.section-break {
      pitch (8 × 26px circles spread edge to edge). The link circle holds
      slot 1 (.note-ms-slot stays open even when empty), ⊘blocked(2)
      pin(3) ★(4) ✓(5) — tasks only — and the trash ALWAYS holds slot 8
-     (right-pinned). flex:none stops silent flex-shrink. */
+     (right-pinned by its margin-left: auto). flex:none stops silent
+     flex-shrink. The pitch never drops below a 6px gap: the margin's
+     notes are EXACTLY 208px wide (8 × 26), where the bare 8-slot formula
+     gave 0 and the circles touched (owner's report, 2026-10-13). */
   justify-content: flex-start;
-  column-gap: calc((100% - 208px) / 7);
+  column-gap: max(6px, calc((100% - 208px) / 7));
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;

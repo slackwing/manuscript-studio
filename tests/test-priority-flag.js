@@ -72,18 +72,22 @@ const psql = (sql) => execSync(
 
   // 3. Bottom-row slots IN THE MANUSCRIPT MARGIN: a sentence note is
   //    trivially in its manuscript, so the link slot is REMOVED (not left
-  //    empty) — blocked(1) star(2) check(3) … trash(8).
+  //    empty) — blocked(1) [pin(2)] star check … trash(8).
   const slots = await page.evaluate((sel) => {
     const row = document.querySelector(`${sel} .priority-flag-chips`).getBoundingClientRect();
     const bl = document.querySelector(`${sel} .blocked-chip`).getBoundingClientRect();
     const st = document.querySelector(`${sel} .points-star`).getBoundingClientRect();
     const ck = document.querySelector(`${sel} .complete-check`).getBoundingClientRect();
     const tr = document.querySelector(`${sel} .note-trash`).getBoundingClientRect();
-    const pitch = 26 + (row.width - 208) / 7;
+    // 26px circles, never closer than a 6px gap (book.css column-gap); a
+    // shown pin (daily-tasks, 048) takes the slot between blocked and star.
+    const pitch = 26 + Math.max(6, (row.width - 208) / 7);
+    const pin = document.querySelector(`${sel} .pin-chip`);
+    const pinShown = !!pin && getComputedStyle(pin).display !== 'none';
     return {
       msSlotGone: !document.querySelector(`${sel} .note-ms-slot`),
       blockedAtLeft: bl.left - row.left,
-      starStep: st.left - bl.left, checkStep: ck.left - st.left, pitch,
+      starStep: (st.left - bl.left) / (pinShown ? 2 : 1), checkStep: ck.left - st.left, pitch,
       trashRight: Math.round(row.right - tr.right),
     };
   }, NOTE);

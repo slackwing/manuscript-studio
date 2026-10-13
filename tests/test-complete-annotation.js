@@ -94,12 +94,17 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
       const st = document.querySelector('.sticky-note:not(.uncreated-note) .points-star').getBoundingClientRect();
       const ck = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
       const tr = document.querySelector('.sticky-note:not(.uncreated-note) .note-trash').getBoundingClientRect();
-      const pitch = 26 + (row.width - 208) / 7;
-      return { checkAfterStar: ck.left - st.left, pitch, trashRightGap: Math.round(row.right - tr.right) };
+      // 26px circles, never closer than a 6px gap (book.css column-gap).
+      const pitch = 26 + Math.max(6, (row.width - 208) / 7);
+      const kids = [...document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips').children]
+        .filter((c) => getComputedStyle(c).display !== 'none' && c.getBoundingClientRect().width > 0);
+      const gaps = kids.slice(1).map((k, i) => k.getBoundingClientRect().left - kids[i].getBoundingClientRect().right);
+      return { checkAfterStar: ck.left - st.left, pitch, trashRightGap: Math.round(row.right - tr.right), minGap: Math.min(...gaps) };
     });
     assert(Math.abs(layout.checkAfterStar - layout.pitch) <= 1,
       `Check sits one 8-grid slot after the star (${layout.checkAfterStar.toFixed(1)} vs pitch ${layout.pitch.toFixed(1)})`);
     assert(Math.abs(layout.trashRightGap) <= 1, `Trash pinned to the far right (gap ${layout.trashRightGap})`);
+    assert(layout.minGap >= 5.5, `The bottom-row circles never touch (min gap ${layout.minGap.toFixed(1)}px)`);
 
     await star.click();
     const scoring = await star.evaluate(el => el.classList.contains('scoring'));
