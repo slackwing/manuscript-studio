@@ -149,23 +149,26 @@ func (db *DB) GetHomeNoteByID(ctx context.Context, username string, noteID int) 
 // points awarded since dayStart (already worked today).
 // Returns ALL eligible candidates in the deterministic order — the caller
 // applies the daily rules (ApplyDailyRules) and cuts to the page size.
-func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscriptID int, seed string, dayStart time.Time) ([]HomeNote, error) {
+// asOf (049): the board AS OF an instant — notes deleted or pinned after it
+// still count (the live page passes now; the points backfill passes each
+// event's scored_at).
+func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscriptID int, seed string, dayStart, asOf time.Time) ([]HomeNote, error) {
 	rows, err := db.Pool.Query(ctx, homeNoteSelect+`,
 		       (EXISTS(
 		           SELECT 1 FROM point_event pe
 		           WHERE pe.note_id = n.note_id AND pe.deleted_at IS NULL AND pe.scored_at >= $4
 		       ) OR (n.completed_at IS NOT NULL AND n.completed_at >= $4)) AS done_today`+homeNoteFrom+`
 		WHERE n.user_id = $1
-		  AND n.deleted_at IS NULL
+		  AND (n.deleted_at IS NULL OR n.deleted_at > $5)
 		  -- Completed tasks stay on TODAY'S page (the satisfaction of the
 		  -- checkmark); they leave tomorrow.
 		  AND (n.completed_at IS NULL OR n.completed_at >= $4)
 		  AND n.manuscript_id = $2
 		  AND n.created_at < $4
-		  AND n.pinned_at IS NULL
+		  AND (n.pinned_at IS NULL OR n.pinned_at > $5)
 		  AND EXISTS (SELECT 1 FROM task_type tt WHERE tt.name = n.task_type AND tt.is_task)
 		ORDER BY md5(n.note_id::text || $3)
-	`, username, manuscriptID, seed, dayStart)
+	`, username, manuscriptID, seed, dayStart, asOf)
 	if err != nil {
 		return nil, fmt.Errorf("list daily task notes: %w", err)
 	}
@@ -191,19 +194,19 @@ func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscrip
 // task-type, created-before-today or rule filter (the caller counts them
 // against the rules' quotas). Like the day's pick, a pin completed today
 // stays for the checkmark and leaves tomorrow; deleted notes never show.
-func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscriptID int, dayStart time.Time) ([]HomeNote, error) {
+func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscriptID int, dayStart, asOf time.Time) ([]HomeNote, error) {
 	rows, err := db.Pool.Query(ctx, homeNoteSelect+`,
 		       (EXISTS(
 		           SELECT 1 FROM point_event pe
 		           WHERE pe.note_id = n.note_id AND pe.deleted_at IS NULL AND pe.scored_at >= $3
 		       ) OR (n.completed_at IS NOT NULL AND n.completed_at >= $3)) AS done_today`+homeNoteFrom+`
 		WHERE n.user_id = $1
-		  AND n.deleted_at IS NULL
+		  AND (n.deleted_at IS NULL OR n.deleted_at > $4)
 		  AND (n.completed_at IS NULL OR n.completed_at >= $3)
 		  AND n.manuscript_id = $2
-		  AND n.pinned_at IS NOT NULL
+		  AND n.pinned_at IS NOT NULL AND n.pinned_at <= $4
 		ORDER BY n.pinned_at DESC, n.note_id DESC
-	`, username, manuscriptID, dayStart)
+	`, username, manuscriptID, dayStart, asOf)
 	if err != nil {
 		return nil, fmt.Errorf("list pinned daily notes: %w", err)
 	}

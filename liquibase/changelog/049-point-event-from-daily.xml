@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 049 (2026-10-13): was the scored task on its manuscript's daily-
+         tasks board when the points were scored? Stamped at scoring time;
+         NULL = not yet classified (history before this changeset), filled
+         by the backfill (database.BackfillPointDailyFlags), which rebuilds
+         each past board as of the event. The landing's points grid paints
+         daily points green, the rest gold. -->
+    <changeSet id="049-point-event-from-daily" author="claude">
+        <addColumn tableName="point_event">
+            <column name="from_daily" type="BOOLEAN"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

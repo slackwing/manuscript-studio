@@ -62,6 +62,9 @@ func main() {
 	// migration itself runs in its own goroutine and must not block startup.
 	go server.ResegmentOnSegmenterChange(context.Background())
 
+	// 049: classify points scored before the daily/other flag existed.
+	go server.BackfillPointDailyFlags(context.Background())
+
 	// Optional wordcount-history cron (no-op unless enabled in config).
 	go server.RunWordcountCron(context.Background())
 

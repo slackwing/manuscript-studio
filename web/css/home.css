@@ -381,8 +381,9 @@ body.home-page {
   z-index: 2;
 }
 .daily-check svg { filter: drop-shadow(0 3px 10px rgba(170, 125, 0, 0.55)); }
-/* Points grid: columns = days (bottom-up stacks), same gold as the daily
-   check; darker gold = bulldozed-in overflow; green = future spill. */
+/* Points grid: columns = days (bottom-up stacks). GREEN = points scored on
+   a daily-tasks-board task, GOLD (the daily check's gold) = every other
+   point (049); a bulldozed block keeps its color. */
 .points-grid { display: flex; gap: 2px; overflow: hidden; }
 .points-col { display: flex; flex-direction: column-reverse; gap: 2px; flex: 0 0 auto; }
 .points-cell {
@@ -395,7 +396,7 @@ body.home-page {
 /* Bulldozed overflow keeps the same gold — the darker shade read as a
    "today" highlight, which today's TRIANGLE marker now handles instead. */
 .points-cell.lit.bulldozed { background: #f0c419; }
-.points-cell.lit.future { background: #74b355; }
+.points-cell.lit.daily { background: #74b355; }
 /* TODAY marker: a small black triangle under today's column + caption. */
 .points-today-row { position: relative; height: 22px; margin-top: 3px; }
 .pt-mark {

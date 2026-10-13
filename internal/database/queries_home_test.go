@@ -183,15 +183,15 @@ func TestListDailyTaskNotes_Determinism(t *testing.T) {
 		completedYesterday, dayStart.Add(-12*time.Hour)); err != nil {
 		t.Fatalf("complete yesterday: %v", err)
 	}
-	if err := f.db.ScorePoints(f.ctx, pointsToday, 3); err != nil {
+	if err := f.db.ScorePoints(f.ctx, pointsToday, 3, false); err != nil {
 		t.Fatalf("points: %v", err)
 	}
 
-	first, err := f.db.ListDailyTaskNotes(f.ctx, f.username, f.manuscriptID, "seed-2026-08-17", dayStart)
+	first, err := f.db.ListDailyTaskNotes(f.ctx, f.username, f.manuscriptID, "seed-2026-08-17", dayStart, time.Now())
 	if err != nil {
 		t.Fatalf("list 1: %v", err)
 	}
-	second, err := f.db.ListDailyTaskNotes(f.ctx, f.username, f.manuscriptID, "seed-2026-08-17", dayStart)
+	second, err := f.db.ListDailyTaskNotes(f.ctx, f.username, f.manuscriptID, "seed-2026-08-17", dayStart, time.Now())
 	if err != nil {
 		t.Fatalf("list 2: %v", err)
 	}
@@ -551,11 +551,11 @@ func TestListNoteActions_UnionOrderingAndClamp(t *testing.T) {
 		longBody[i] = 'x'
 	}
 	pointsNote := f.createNote(t, sids[0], string(longBody))
-	if err := f.db.ScorePoints(f.ctx, pointsNote.NoteID, 5); err != nil {
+	if err := f.db.ScorePoints(f.ctx, pointsNote.NoteID, 5, false); err != nil {
 		t.Fatalf("points: %v", err)
 	}
 	// A deleted point event: invisible.
-	if err := f.db.ScorePoints(f.ctx, pointsNote.NoteID, 9); err != nil {
+	if err := f.db.ScorePoints(f.ctx, pointsNote.NoteID, 9, false); err != nil {
 		t.Fatalf("points 2: %v", err)
 	}
 	if _, err := f.pool.Exec(f.ctx, `
@@ -621,7 +621,7 @@ func TestDeleteUpdatePointEvent_OwnershipViaNote(t *testing.T) {
 	other := f.newUser(t)
 	_, sids := f.makeDoneMigration(t, "c68", "A sentence.")
 	note := f.createNote(t, sids[0], "task")
-	if err := f.db.ScorePoints(f.ctx, note.NoteID, 5); err != nil {
+	if err := f.db.ScorePoints(f.ctx, note.NoteID, 5, false); err != nil {
 		t.Fatalf("points: %v", err)
 	}
 	var eventID int

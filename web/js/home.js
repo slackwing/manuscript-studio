@@ -80,9 +80,11 @@ const WriteSysHome = {
   //      'bulldozed'. Carried-in blocks therefore sit ABOVE the day's own
   //      points, and an overfull day sheds those carried blocks first —
   //      they keep rolling rightward.
-  // Colors: natural = gold; bulldozed = darker gold; anything in a FUTURE
-  // column = green ("for being so ahead") — future-ness outranks the
-  // bulldozed shade, since every future block is bulldozed by definition.
+  // Colors (2026-10-13): a block's color says where its point came from —
+  // GREEN = scored on a task on that day's daily-tasks board, GOLD = any
+  // other task (point_event.from_daily, 049). A day stacks its daily
+  // points first (bottom), the rest above; a bulldozed block keeps its
+  // color wherever it lands (the old "future = green" rule is gone).
   // The cascade runs over the FULL history (the API returns every day
   // since the first point), so a monster day left of the visible window
   // still spills into view correctly.
@@ -99,7 +101,7 @@ const WriteSysHome = {
     const fmt = (d) => d.toISOString().slice(0, 10);
     const today = parse(this.points.today);
     const byDate = {};
-    (this.points.days || []).forEach(d => { byDate[d.date] = d.points; });
+    (this.points.days || []).forEach(d => { byDate[d.date] = d; });
     // The matrix starts at the EARLIER of (first data day, window start):
     // history left of the window still bulldozes into view.
     const windowStart = new Date(today.getTime() - (cols - future - 1) * DAY);
@@ -108,17 +110,23 @@ const WriteSysHome = {
     const end = new Date(today.getTime() + future * DAY);
     const days = [];
     for (let t = start.getTime(); t <= end.getTime(); t += DAY) days.push(fmt(new Date(t)));
-    // 1. Stack natural blocks.
-    const matrix = days.map(d => Array(byDate[d] || 0).fill('natural'));
-    // 2. Bulldoze.
+    // 1. Stack natural blocks: the day's daily points first, then the rest.
+    const matrix = days.map((d) => {
+      const day = byDate[d];
+      if (!day) return [];
+      const daily = Math.min(day.daily || 0, day.points);
+      return [...Array(daily).fill(null).map(() => ({ k: 'daily' })),
+        ...Array(day.points - daily).fill(null).map(() => ({ k: 'other' }))];
+    });
+    // 2. Bulldoze — a block keeps its kind as it rolls right.
     for (let i = 0; i < matrix.length; i++) {
       while (matrix[i].length > ROWS) {
-        matrix[i].pop();
+        const top = matrix[i].pop();
         if (!matrix[i + 1]) {
           matrix.push([]);
           days.push(fmt(new Date(parse(days[days.length - 1]).getTime() + DAY)));
         }
-        matrix[i + 1].push('bulldozed');
+        matrix[i + 1].push({ k: top.k, moved: true });
       }
     }
     // Render only the visible window (the cascade may extend past it).
@@ -131,14 +139,12 @@ const WriteSysHome = {
       const col = document.createElement('div');
       col.className = 'points-col' + (date === this.points.today ? ' today' : '');
       col.dataset.date = date;
-      const isFuture = date > this.points.today; // ISO strings compare lexically
       for (let row = 0; row < ROWS; row++) {
         const cell = document.createElement('div');
         cell.className = 'points-cell';
         if (row < stack.length) {
-          cell.classList.add('lit');
-          if (isFuture) cell.classList.add('future');
-          else if (stack[row] === 'bulldozed') cell.classList.add('bulldozed');
+          cell.classList.add('lit', stack[row].k);
+          if (stack[row].moved) cell.classList.add('bulldozed');
         }
         col.appendChild(cell);
       }

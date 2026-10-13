@@ -118,6 +118,8 @@ func (db *DB) UncompleteNote(ctx context.Context, noteID int, username string) (
 type DailyPoints struct {
 	Date   string `json:"date"` // YYYY-MM-DD in the configured timezone
 	Points int    `json:"points"`
+	// Daily (049): the part of Points scored on daily-board tasks.
+	Daily int `json:"daily"`
 }
 
 // ListDailyPoints returns the user's ENTIRE per-day points history, oldest
@@ -126,7 +128,8 @@ type DailyPoints struct {
 // huge day far in the past can still spill into the visible window.
 func (db *DB) ListDailyPoints(ctx context.Context, username string, tz string) ([]DailyPoints, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT to_char(pe.scored_at AT TIME ZONE $2, 'YYYY-MM-DD') AS day, SUM(pe.points)::int
+		SELECT to_char(pe.scored_at AT TIME ZONE $2, 'YYYY-MM-DD') AS day, SUM(pe.points)::int,
+		       COALESCE(SUM(pe.points) FILTER (WHERE pe.from_daily), 0)::int
 		FROM point_event pe
 		JOIN note n ON n.note_id = pe.note_id
 		WHERE n.user_id = $1 AND pe.deleted_at IS NULL
@@ -139,7 +142,7 @@ func (db *DB) ListDailyPoints(ctx context.Context, username string, tz string) (
 	out := []DailyPoints{}
 	for rows.Next() {
 		var d DailyPoints
-		if err := rows.Scan(&d.Date, &d.Points); err != nil {
+		if err := rows.Scan(&d.Date, &d.Points, &d.Daily); err != nil {
 			return nil, fmt.Errorf("scan daily points: %w", err)
 		}
 		out = append(out, d)

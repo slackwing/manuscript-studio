@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
@@ -772,7 +773,18 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "points must be 1-99", http.StatusBadRequest)
 		return
 	}
-	if err := h.DB.ScorePoints(ctx, noteID, body.Points); err != nil {
+	// 049: stamp whether the task is on its OWNER's daily board right now
+	// (the landing grid paints daily points green). A lookup failure only
+	// loses the color — never the points.
+	fromDaily := false
+	if note.ManuscriptID != nil {
+		on, berr := h.DB.OnDailyBoard(ctx, note.UserID, *note.ManuscriptID, noteID, time.Now(), h.Config.WordcountHistory.Location())
+		if berr != nil {
+			log.Printf("notes: score %d: daily-board lookup: %v", noteID, berr)
+		}
+		fromDaily = on
+	}
+	if err := h.DB.ScorePoints(ctx, noteID, body.Points, fromDaily); err != nil {
 		log.Printf("notes: score %d on %d: %v", body.Points, noteID, err)
 		http.Error(w, "Failed to score points", http.StatusInternalServerError)
 		return

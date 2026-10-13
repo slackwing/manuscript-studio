@@ -2,8 +2,12 @@
 // columns = days, 14 rows = 14 points, gold bottom-up stacks, today ~80%
 // across with future columns to its right. THE QUIRK: a day shows at most
 // 14 points; the excess is "bulldozed" rightward into following days
-// (17,6,13 → 14,9,13), cascading even into the future (green squares).
-// Bulldozed-in blocks ride on TOP of a day's own points in darker gold.
+// (17,6,13 → 14,9,13), cascading even into the future. Bulldozed-in blocks
+// ride on TOP of a day's own points. Colors say where a point came from
+// (049): GREEN = scored on a daily-tasks-board task, GOLD = any other; a
+// bulldozed block keeps its color (no more "future = green"). The host
+// note here has no manuscript → its points classify gold (the points API's
+// lazy backfill of pre-049 rows).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
 const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
@@ -67,8 +71,8 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   // Bulldozed cells keep the SAME gold — the dark shade read as a today
   // highlight and is gone.
   const shades = await page.evaluate(() => {
-    const lit = document.querySelector('.points-cell.lit:not(.bulldozed):not(.future)');
-    const doze = document.querySelector('.points-cell.lit.bulldozed');
+    const lit = document.querySelector('.points-cell.lit.other:not(.bulldozed)');
+    const doze = document.querySelector('.points-cell.lit.other.bulldozed');
     return { lit: lit && getComputedStyle(lit).backgroundColor, doze: doze && getComputedStyle(doze).backgroundColor };
   });
   check('bulldozed cells same gold as natural', !shades.doze || shades.doze === shades.lit, JSON.stringify(shades));
@@ -89,7 +93,8 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
     return {
       lit: cells.filter(c => c.classList.contains('lit')).length,
       bulldozed: cells.filter(c => c.classList.contains('bulldozed')).length,
-      future: cells.filter(c => c.classList.contains('future')).length,
+      daily: cells.filter(c => c.classList.contains('daily')).length,
+      other: cells.filter(c => c.classList.contains('other')).length,
       litRows: cells.map((c, i) => c.classList.contains('lit') ? i : -1).filter(i => i >= 0),
       dozedRows: cells.map((c, i) => c.classList.contains('bulldozed') ? i : -1).filter(i => i >= 0),
     };
@@ -106,8 +111,8 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
     [...document.querySelectorAll('.points-col')].filter(c => c.dataset.date > t)
       .every(c => ![...c.children].some(x => x.classList.contains('lit'))), today));
 
-  // --- Overflow into the FUTURE: +20 today (33 total) → 14 | 14 | 5,
-  //     with everything past today green ---
+  // --- Overflow into the FUTURE: +20 today (33 total) → 14 | 14 | 5;
+  //     the spilled blocks keep their gold ---
   psql(`INSERT INTO point_event (note_id, points, scored_at) VALUES (${noteId}, 20, now())`);
   await page.reload();
   await page.waitForSelector('#points-grid .points-col', { timeout: 8000 });
@@ -115,8 +120,27 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   const f1 = await colStats(shift(today, 1));
   const f2 = await colStats(shift(today, 2));
   check('today caps at 14', n0 && n0.lit === 14, JSON.stringify(n0));
-  check('tomorrow catches 14 — all green', f1 && f1.lit === 14 && f1.future === 14, JSON.stringify(f1));
-  check('day after catches the last 5 — green', f2 && f2.lit === 5 && f2.future === 5, JSON.stringify(f2));
+  check('tomorrow catches 14 — still gold', f1 && f1.lit === 14 && f1.other === 14 && f1.daily === 0, JSON.stringify(f1));
+  check('day after catches the last 5 — still gold', f2 && f2.lit === 5 && f2.other === 5, JSON.stringify(f2));
+
+  // --- GREEN = daily-board points: today 3 daily + 2 other → the daily
+  //     three stack first (rows 0-2, green), the other two above (gold) ---
+  psql(`DELETE FROM point_event WHERE note_id = ${noteId}`);
+  psql(`INSERT INTO point_event (note_id, points, scored_at, from_daily) VALUES
+    (${noteId}, 3, now(), true), (${noteId}, 2, now(), false)`);
+  await page.reload();
+  await page.waitForSelector('#points-grid .points-col', { timeout: 8000 });
+  const mix = await page.evaluate((d) => {
+    const cells = [...document.querySelector(`.points-col[data-date="${d}"]`).children];
+    return {
+      dailyRows: cells.map((c, i) => c.classList.contains('daily') ? i : -1).filter(i => i >= 0).join(','),
+      otherRows: cells.map((c, i) => c.classList.contains('other') ? i : -1).filter(i => i >= 0).join(','),
+      green: getComputedStyle(cells[0]).backgroundColor,
+      gold: getComputedStyle(cells[3]).backgroundColor,
+    };
+  }, today);
+  check('daily points stack first, in green', mix.dailyRows === '0,1,2' && mix.green === 'rgb(116, 179, 85)', JSON.stringify(mix));
+  check('other points above them, in gold', mix.otherRows === '3,4' && mix.gold === 'rgb(240, 196, 25)', JSON.stringify(mix));
 
   psql(`DELETE FROM point_event WHERE note_id = ${noteId}`);
   await cleanupTestNotes();

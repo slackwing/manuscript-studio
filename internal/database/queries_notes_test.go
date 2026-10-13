@@ -611,7 +611,7 @@ func TestScorePoints_WritesEvent(t *testing.T) {
 	_, sids := f.makeDoneMigration(t, "c44", "A sentence.")
 	note := f.createNote(t, sids[0], "task")
 
-	if err := f.db.ScorePoints(f.ctx, note.NoteID, 7); err != nil {
+	if err := f.db.ScorePoints(f.ctx, note.NoteID, 7, false); err != nil {
 		t.Fatalf("ScorePoints: %v", err)
 	}
 	var points int

@@ -154,6 +154,19 @@ func (s *Server) ResegmentOnSegmenterChange(ctx context.Context) {
 	s.adminHandlers.ResegmentOnSegmenterChange(ctx)
 }
 
+// BackfillPointDailyFlags (049) classifies every point event scored before
+// the daily/other flag existed — once, in the background, at startup.
+func (s *Server) BackfillPointDailyFlags(ctx context.Context) {
+	d, o, err := s.dbWrapper.BackfillPointDailyFlags(ctx, "", s.config.WordcountHistory.Location())
+	if err != nil {
+		log.Printf("points backfill: %v", err)
+		return
+	}
+	if d+o > 0 {
+		log.Printf("points backfill: %d daily, %d other", d, o)
+	}
+}
+
 // RunWordcountCron drives the optional wordcount-history feature: one run
 // at startup (covers downtime — the day's row appears as soon as the server
 // is back), then every configured interval. Rows are keyed by day in the

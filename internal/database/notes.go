@@ -700,10 +700,10 @@ func (db *DB) SoftDeleteNote(ctx context.Context, noteID int) error {
 
 // ScorePoints records one point_event on a note (027). The handler gates
 // on task-ness (priority) and 1–99; this just writes the event.
-func (db *DB) ScorePoints(ctx context.Context, noteID, points int) error {
+func (db *DB) ScorePoints(ctx context.Context, noteID, points int, fromDaily bool) error {
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO point_event (note_id, points) VALUES ($1, $2)
-	`, noteID, points)
+		INSERT INTO point_event (note_id, points, from_daily) VALUES ($1, $2, $3)
+	`, noteID, points, fromDaily)
 	if err != nil {
 		return fmt.Errorf("score points on note %d: %w", noteID, err)
 	}

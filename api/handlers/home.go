@@ -258,30 +258,16 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "manuscript_id required", http.StatusBadRequest)
 		return
 	}
+	// The board (049: one function shared with the points stamp and
+	// backfill): pins first (048), then the day's date-seeded pick under
+	// the rules — pins overrule them but count against them.
 	loc := h.Config.WordcountHistory.Location()
-	now := time.Now().In(loc)
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	seed := dayStart.Format("2006-01-02")
-	rows, err := h.DB.ListDailyTaskNotes(ctx, session.Username, manuscriptID, seed, dayStart)
+	rows, seed, err := h.DB.DailyBoard(ctx, session.Username, manuscriptID, time.Now(), loc)
 	if err != nil {
-		log.Printf("daily-tasks: list (manuscript %d): %v", manuscriptID, err)
+		log.Printf("daily-tasks: board (manuscript %d): %v", manuscriptID, err)
 		http.Error(w, "Failed to list daily tasks", http.StatusInternalServerError)
 		return
 	}
-	// Pins (048) come first, no matter what — most recently pinned first.
-	pinned, err := h.DB.ListPinnedDailyNotes(ctx, session.Username, manuscriptID, dayStart)
-	if err != nil {
-		log.Printf("daily-tasks: pins (manuscript %d): %v", manuscriptID, err)
-		pinned = nil // pins are an enhancement — never break the page
-	}
-	// Daily rules: per-category caps with deterministic BACKFILL to 16;
-	// pins overrule them but count against them.
-	rules, err := h.DB.ListDailyRules(ctx, session.Username)
-	if err != nil {
-		log.Printf("daily-tasks: rules: %v", err)
-		rules = nil // rules are an enhancement — never break the page
-	}
-	rows = database.ApplyDailyRules(rules, pinned, rows, 16)
 	name := manuscriptDisplayName(ctx, h.DB, h.Config, manuscriptID)
 	notes := make([]homeNote, 0, len(rows))
 	for _, n := range rows {
@@ -326,6 +312,15 @@ func (h *HomeHandlers) HandleDailyPoints(w http.ResponseWriter, r *http.Request)
 	}
 	loc := h.Config.WordcountHistory.Location()
 	tz := loc.String()
+	// Points scored before 049 carry no daily/other flag yet: classify this
+	// user's once, here (the startup pass usually got there first).
+	if pending, err := h.DB.HasUnclassifiedPoints(r.Context(), session.Username); err == nil && pending {
+		if d, o, err := h.DB.BackfillPointDailyFlags(r.Context(), session.Username, loc); err != nil {
+			log.Printf("points-daily: backfill %s: %v", session.Username, err)
+		} else {
+			log.Printf("points-daily: backfilled %s — %d daily, %d other", session.Username, d, o)
+		}
+	}
 	days, err := h.DB.ListDailyPoints(r.Context(), session.Username, tz)
 	if err != nil {
 		log.Printf("points-daily: list: %v", err)

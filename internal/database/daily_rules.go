@@ -9,6 +9,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // DailyRule (035): one settings-page rule capping how many matching tasks
@@ -25,7 +26,19 @@ type DailyRule struct {
 	Tags      []string `json:"tags"`
 }
 
+// ListDailyRules: the user's rules (settings page, the live board).
 func (db *DB) ListDailyRules(ctx context.Context, username string) ([]DailyRule, error) {
+	return db.listDailyRules(ctx, username, nil)
+}
+
+// ListDailyRulesAsOf (049): the rules that existed at asOf (created_at) —
+// the points backfill's view of a past board. Edits and deleted rules have
+// no history, so a past board sees today's version of each surviving rule.
+func (db *DB) ListDailyRulesAsOf(ctx context.Context, username string, asOf time.Time) ([]DailyRule, error) {
+	return db.listDailyRules(ctx, username, &asOf)
+}
+
+func (db *DB) listDailyRules(ctx context.Context, username string, asOf *time.Time) ([]DailyRule, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT r.rule_id, r.task_type, r.priority, r.impact, r.color, r.blocked, r.max_per_day,
 		       COALESCE((SELECT array_agg(t.tag_name ORDER BY t.tag_name)
@@ -33,8 +46,9 @@ func (db *DB) ListDailyRules(ctx context.Context, username string) ([]DailyRule,
 		                 WHERE rt.rule_id = r.rule_id), '{}')
 		FROM daily_rule r
 		WHERE r.user_id = $1
+		  AND ($2::timestamptz IS NULL OR r.created_at <= $2)
 		ORDER BY r.position, r.rule_id
-	`, username)
+	`, username, asOf)
 	if err != nil {
 		return nil, fmt.Errorf("list daily rules: %w", err)
 	}
