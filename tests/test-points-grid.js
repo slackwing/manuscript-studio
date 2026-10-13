@@ -142,6 +142,35 @@ const shift = (iso, days) => new Date(new Date(iso + 'T00:00:00Z').getTime() + d
   check('daily points stack first, in green', mix.dailyRows === '0,1,2' && mix.green === 'rgb(116, 179, 85)', JSON.stringify(mix));
   check('other points above them, in gold', mix.otherRows === '3,4' && mix.gold === 'rgb(240, 196, 25)', JSON.stringify(mix));
 
+  // --- Split mode, Home in a WIDE left pane: chrome.css drops .home-main's
+  //     1060px cap there, so the landing's own cap must hold — at most 4
+  //     cards across, the points grid on the cards' edges ---
+  await page.setViewportSize({ width: 2560, height: 900 });
+  await page.evaluate(() => {
+    document.documentElement.classList.add('ms-split');
+    document.documentElement.style.setProperty('--split-x', '90vw');
+    window.WriteSysHome.render();
+  });
+  await page.waitForSelector('#points-grid .points-col');
+  const wide = await page.evaluate(() => {
+    const main = document.querySelector('.home-main').getBoundingClientRect();
+    const grids = [...document.querySelectorAll('#home-root .card-grid')];
+    const g = document.getElementById('points-grid').getBoundingClientRect();
+    const c = grids[0].getBoundingClientRect();
+    return {
+      mainW: Math.round(main.width),
+      tracks: grids.map((x) => getComputedStyle(x).gridTemplateColumns.split(' ').length),
+      dl: Math.round(Math.abs(g.left - c.left)), dr: Math.round(Math.abs(g.right - c.right)),
+    };
+  });
+  check('wide split pane: the landing column really is wide', wide.mainW > 1500, String(wide.mainW));
+  check('…yet every landing grid stays 4 across', wide.tracks.length > 0 && wide.tracks.every((t) => t === 4), JSON.stringify(wide.tracks));
+  check('…and the points grid keeps the cards’ edges', wide.dl <= 1 && wide.dr <= 12, JSON.stringify(wide));
+  await page.evaluate(() => {
+    document.documentElement.classList.remove('ms-split');
+    document.documentElement.style.removeProperty('--split-x');
+  });
+
   psql(`DELETE FROM point_event WHERE note_id = ${noteId}`);
   await cleanupTestNotes();
   await browser.close();

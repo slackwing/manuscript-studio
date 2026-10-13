@@ -357,6 +357,8 @@ const WriteSysHome = {
   render() {
     const root = document.getElementById('home-root');
     const view = this.view();
+    // CSS caps the landing's grids at 4 across off this (home.css).
+    root.dataset.view = view;
     const ms = this.data.manuscripts || [];
     const sp = this.data.scratchpads || [];
     const nt = this.data.notes || [];

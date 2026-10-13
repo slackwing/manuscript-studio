@@ -181,8 +181,13 @@ body.home-page {
 .card-pin.pinned:hover { background: rgba(255, 255, 255, 0.55); }
 /* The context line stays clear of the pin. */
 .card-note .card-meta { padding-right: 22px; }
-/* The daily board: at most 4 across (4 × 4 = 16), narrower when the
-   window is. */
+/* At most 4 cards across (4 × 210 + 3 × 14) on the landing and the daily
+   board (4 × 4 = 16) — narrower only when the window is. Needed because the
+   split pane's left pane can be far wider than .home-main's 1060px
+   (chrome.css drops that cap in split mode). The points grid keeps the
+   cards' left AND right edges, so its section caps the same. */
+#home-root[data-view="home"] .card-grid,
+#home-root[data-view="home"] #points-section,
 .card-grid.daily-grid { max-width: calc(4 * 210px + 3 * 14px); }
 .card-note.color-yellow { background: var(--sticky-yellow); }
 .card-note.color-green  { background: var(--sticky-green); }
