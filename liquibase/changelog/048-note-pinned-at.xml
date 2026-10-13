@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 048 (2026-10-13): a note PINNED to its manuscript's daily-tasks
+         board. NULL = not pinned; the timestamp orders pins (most recently
+         pinned first) when more than a board's worth are pinned. -->
+    <changeSet id="048-note-pinned-at" author="claude">
+        <addColumn tableName="note">
+            <column name="pinned_at" type="TIMESTAMPTZ"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

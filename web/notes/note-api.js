@@ -56,6 +56,15 @@
       return jsonOrThrow(resp);
     },
 
+    // Pin to / unpin from the manuscript's daily-tasks board (048).
+    async setPinned(noteId, pinned) {
+      const resp = await authFetch(`${BASE}/${noteId}/${pinned ? 'pin' : 'unpin'}`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf() },
+      });
+      return jsonOrThrow(resp);
+    },
+
     async complete(noteId) {
       const resp = await authFetch(`${BASE}/${noteId}/complete`, {
         method: 'POST',

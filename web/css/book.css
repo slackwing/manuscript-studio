@@ -1401,9 +1401,9 @@ p.section-break {
   display: flex;
   /* EIGHT fixed, equidistant slots: the percentage gap IS the 8-across
      pitch (8 × 26px circles spread edge to edge). The link circle holds
-     slot 1 (.note-ms-slot stays open even when empty), ⊘blocked(2) ★(3)
-     ✓(4) — tasks only — and the trash ALWAYS holds slot 8 (right-
-     pinned). flex:none stops silent flex-shrink. */
+     slot 1 (.note-ms-slot stays open even when empty), ⊘blocked(2)
+     pin(3) ★(4) ✓(5) — tasks only — and the trash ALWAYS holds slot 8
+     (right-pinned). flex:none stops silent flex-shrink. */
   justify-content: flex-start;
   column-gap: calc((100% - 208px) / 7);
   align-items: center;
@@ -1431,6 +1431,29 @@ p.section-break {
 .blocked-chip.active {
   background: #b04038;
   border-color: #b04038;
+  color: #fff;
+}
+
+/* Pin to the daily-tasks board (048) — slot 3, between blocked and the
+   star; tasks with a manuscript only (or already pinned). Lit = pinned. */
+.pin-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px dashed #ccc;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.pin-chip:hover { background: #e9f1fa; border-color: #2a6fb0; color: #2a6fb0; }
+.pin-chip.active {
+  background: #2a6fb0;
+  border-color: #2a6fb0;
   color: #fff;
 }
 

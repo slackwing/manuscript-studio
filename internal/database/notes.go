@@ -21,7 +21,7 @@ import (
 // drift apart again (two of the five hand-copied lists had lost
 // manuscript_id/scratchpad_id). Pairs with scanNote.
 const noteColumns = `a.note_id, COALESCE(a.sentence_id, '') AS sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
-	       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id`
+	       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id, a.pinned_at`
 
 // scanNote scans one noteColumns row (works for both QueryRow and Rows).
 func scanNote(row pgx.Row) (models.Note, error) {
@@ -44,6 +44,7 @@ func scanNote(row pgx.Row) (models.Note, error) {
 		&a.DeletedAt,
 		&a.CompletedAt,
 		&a.SketchID,
+		&a.PinnedAt,
 	)
 	return a, err
 }
@@ -69,6 +70,7 @@ func scanNoteHidden(row pgx.Row) (models.Note, error) {
 		&a.DeletedAt,
 		&a.CompletedAt,
 		&a.SketchID,
+		&a.PinnedAt,
 		&a.Hidden,
 	)
 	return a, err
@@ -704,6 +706,21 @@ func (db *DB) ScorePoints(ctx context.Context, noteID, points int) error {
 	`, noteID, points)
 	if err != nil {
 		return fmt.Errorf("score points on note %d: %w", noteID, err)
+	}
+	return nil
+}
+
+// SetNotePinned pins (pinned_at = now) or unpins (NULL) a note on its
+// manuscript's daily-tasks board. Not a content edit — no note_version row,
+// updated_at untouched (the landing's "recent" order is about writing).
+func (db *DB) SetNotePinned(ctx context.Context, noteID int, pinned bool) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE note
+		SET pinned_at = CASE WHEN $2 THEN NOW() ELSE NULL END
+		WHERE note_id = $1 AND deleted_at IS NULL
+	`, noteID, pinned)
+	if err != nil {
+		return fmt.Errorf("set note %d pinned=%v: %w", noteID, pinned, err)
 	}
 	return nil
 }

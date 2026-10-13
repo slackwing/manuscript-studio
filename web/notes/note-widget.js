@@ -335,10 +335,20 @@
   // flag, points, and completion. Soft-deleted types keep their category —
   // a note holding one is unchanged. Before the type list arrives, a typed
   // note renders as a task (the common case; corrected on the next render).
+  // The pushpin: a flat head, a tapered body, the needle.
+  const PIN_SVG = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M7 2.5h6M8.2 2.5l-.6 5.2-2.6 2.6v1.4h10v-1.4l-2.6-2.6-.6-5.2"/><path d="M10 11.7v5.8"/></svg>`;
+
   function isTask(note) {
     if (!note.task_type) return false;
     const t = taskTypesByName && taskTypesByName[note.task_type];
     return t ? !!t.is_task : true;
+  }
+
+  // A pin (048) puts the note on its manuscript's daily-tasks board — so it
+  // is offered to a TASK with a manuscript; an already-pinned note always
+  // shows it lit (so it can be unpinned whatever its type now is).
+  function pinnable(note) {
+    return !!note.pinned_at || (isTask(note) && !!note.manuscript_id);
   }
 
   function updateDims(noteEl, note) {
@@ -347,6 +357,12 @@
     if (blocked) {
       blocked.style.display = task ? '' : 'none';
       blocked.classList.toggle('active', !!note.blocked);
+    }
+    const pin = noteEl.querySelector('.pin-chip');
+    if (pin) {
+      pin.style.display = pinnable(note) ? '' : 'none';
+      pin.classList.toggle('active', !!note.pinned_at);
+      pin.title = note.pinned_at ? 'Pinned to daily tasks' : 'Pin to daily tasks';
     }
     const check = noteEl.querySelector('.complete-check');
     if (check) check.style.display = task ? '' : 'none';
@@ -508,7 +524,8 @@
           <span class="note-ms-slot"></span>
           <div class="blocked-chip" title="Blocked — no further action possible right now (independent of priority/impact)">
             <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M5.5 5.5l9 9"/></svg>
-          </div>${actionsHtml}
+          </div>
+          <div class="pin-chip" title="Pin to daily tasks">${PIN_SVG(13)}</div>${actionsHtml}
         </div>
       </div>`;
 
@@ -564,6 +581,23 @@
       });
     }
 
+    // Pin (048): its own endpoint (not a note edit) — optimistic, reverted
+    // if the server says no.
+    const pinChip = noteEl.querySelector('.pin-chip');
+    if (pinChip) pinChip.addEventListener('click', async () => {
+      commit();
+      const was = note.pinned_at || null;
+      note.pinned_at = was ? null : new Date().toISOString();
+      updateDims(noteEl, note);
+      try {
+        await window.WriteSysNoteAPI.setPinned(note.note_id || note.noteId, !was);
+        if (handlers.onPinned) handlers.onPinned(note.pinned_at);
+      } catch (e) {
+        note.pinned_at = was;
+        updateDims(noteEl, note);
+      }
+    });
+
     const blockedChip = noteEl.querySelector('.blocked-chip');
     if (blockedChip) blockedChip.addEventListener('click', async () => {
       commit();
@@ -600,7 +634,7 @@
     // Collapsed cards expand on click (anywhere not on an interactive control).
     if (opts.collapsed && opts.expandable !== false) {
       noteEl.addEventListener('click', (e) => {
-        if (e.target.closest('.note-trash, .complete-check, .points-star, .blocked-chip, .dim-chip, .color-circle, .tag-chip, .note-input')) return;
+        if (e.target.closest('.note-trash, .complete-check, .points-star, .blocked-chip, .pin-chip, .dim-chip, .color-circle, .tag-chip, .note-input')) return;
         noteEl.classList.remove('sticky-note-collapsed');
         if (handlers.onExpand) handlers.onExpand();
       });
@@ -909,6 +943,6 @@
     return true;
   }
 
-  const WriteSysNoteWidget = { buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  const WriteSysNoteWidget = { PIN_SVG, pinnable, buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

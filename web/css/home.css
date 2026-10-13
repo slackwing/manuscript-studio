@@ -158,6 +158,32 @@ body.home-page {
 /* A note card wears its color as its background (reusing the sticky tints) and
    shows a clipped body + a context line. Clicking opens it in context. */
 .card-note { cursor: pointer; }
+/* Pin to the daily-tasks board (048): faint in the bottom-right corner,
+   darker under the pointer, lit (house blue) once pinned. */
+.card-pin {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #57503f;
+  opacity: 0.18;
+  cursor: pointer;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  z-index: 2;
+}
+.card-pin:hover { opacity: 0.75; background: rgba(255, 255, 255, 0.55); }
+.card-pin.pinned { opacity: 1; color: #2a6fb0; }
+.card-pin.pinned:hover { background: rgba(255, 255, 255, 0.55); }
+/* The context line stays clear of the pin. */
+.card-note .card-meta { padding-right: 22px; }
+/* The daily board: at most 4 across (4 × 4 = 16), narrower when the
+   window is. */
+.card-grid.daily-grid { max-width: calc(4 * 210px + 3 * 14px); }
 .card-note.color-yellow { background: var(--sticky-yellow); }
 .card-note.color-green  { background: var(--sticky-green); }
 .card-note.color-blue   { background: var(--sticky-blue); }

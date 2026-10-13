@@ -66,6 +66,8 @@ type homeNote struct {
 	// Set for completed notes — shown in All notes, filtered from the
 	// landing grid client-side.
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// PinnedAt (048): the card's pin shows lit; the daily board shows it first.
+	PinnedAt *time.Time `json:"pinned_at,omitempty"`
 }
 
 // joinContext renders a note's context label from its manuscript and scratchpad,
@@ -177,6 +179,7 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 				TaskType: n.TaskType, Impact: n.Impact, Blocked: n.Blocked,
 				UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
 				SentenceID: n.SentenceID, Tags: n.Tags, CompletedAt: n.CompletedAt,
+				PinnedAt: n.PinnedAt,
 			}
 			if n.Body != nil {
 				hn.Body = *n.Body
@@ -265,13 +268,20 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Failed to list daily tasks", http.StatusInternalServerError)
 		return
 	}
-	// Daily rules: per-category caps with deterministic BACKFILL to 16.
+	// Pins (048) come first, no matter what — most recently pinned first.
+	pinned, err := h.DB.ListPinnedDailyNotes(ctx, session.Username, manuscriptID, dayStart)
+	if err != nil {
+		log.Printf("daily-tasks: pins (manuscript %d): %v", manuscriptID, err)
+		pinned = nil // pins are an enhancement — never break the page
+	}
+	// Daily rules: per-category caps with deterministic BACKFILL to 16;
+	// pins overrule them but count against them.
 	rules, err := h.DB.ListDailyRules(ctx, session.Username)
 	if err != nil {
 		log.Printf("daily-tasks: rules: %v", err)
 		rules = nil // rules are an enhancement — never break the page
 	}
-	rows = database.ApplyDailyRules(rules, rows, 16)
+	rows = database.ApplyDailyRules(rules, pinned, rows, 16)
 	name := manuscriptDisplayName(ctx, h.DB, h.Config, manuscriptID)
 	notes := make([]homeNote, 0, len(rows))
 	for _, n := range rows {
@@ -280,6 +290,7 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 			TaskType: n.TaskType, Impact: n.Impact, Blocked: n.Blocked,
 			UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
 			SentenceID: n.SentenceID, Tags: n.Tags, DoneToday: n.DoneToday,
+			PinnedAt: n.PinnedAt,
 		}
 		if n.Body != nil {
 			hn.Body = *n.Body

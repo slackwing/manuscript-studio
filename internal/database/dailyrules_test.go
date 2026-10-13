@@ -102,7 +102,7 @@ func TestApplyDailyRules_QuotaBackfill(t *testing.T) {
 	t.Run("capped skip with backfill", func(t *testing.T) {
 		rules := []DailyRule{{TaskType: strPtr("revise"), MaxPerDay: 1}}
 		candidates := []HomeNote{revise(1), revise(2), research(3), revise(4), research(5)}
-		got := ApplyDailyRules(rules, candidates, 3)
+		got := ApplyDailyRules(rules, nil, candidates, 3)
 		// revise capped at 1: note 2 and 4 skipped, their slots backfilled.
 		eq(t, ids(got), []int{1, 3, 5})
 	})
@@ -110,24 +110,24 @@ func TestApplyDailyRules_QuotaBackfill(t *testing.T) {
 	t.Run("minus one is unlimited", func(t *testing.T) {
 		rules := []DailyRule{{TaskType: strPtr("revise"), MaxPerDay: -1}}
 		candidates := []HomeNote{revise(1), revise(2), revise(3)}
-		got := ApplyDailyRules(rules, candidates, 10)
+		got := ApplyDailyRules(rules, nil, candidates, 10)
 		eq(t, ids(got), []int{1, 2, 3})
 	})
 
 	t.Run("zero quota blocks entirely", func(t *testing.T) {
 		rules := []DailyRule{{TaskType: strPtr("revise"), MaxPerDay: 0}}
 		candidates := []HomeNote{revise(1), research(2), revise(3)}
-		got := ApplyDailyRules(rules, candidates, 10)
+		got := ApplyDailyRules(rules, nil, candidates, 10)
 		eq(t, ids(got), []int{2})
 	})
 
 	t.Run("limit cuts in order", func(t *testing.T) {
-		got := ApplyDailyRules(nil, []HomeNote{revise(1), revise(2), revise(3)}, 2)
+		got := ApplyDailyRules(nil, nil, []HomeNote{revise(1), revise(2), revise(3)}, 2)
 		eq(t, ids(got), []int{1, 2})
 	})
 
 	t.Run("no rules passes everything up to limit", func(t *testing.T) {
-		got := ApplyDailyRules(nil, []HomeNote{revise(9), research(8)}, 10)
+		got := ApplyDailyRules(nil, nil, []HomeNote{revise(9), research(8)}, 10)
 		eq(t, ids(got), []int{9, 8})
 	})
 
@@ -137,7 +137,7 @@ func TestApplyDailyRules_QuotaBackfill(t *testing.T) {
 			{MaxPerDay: 2},                             // wildcard: matches everything
 		}
 		candidates := []HomeNote{revise(1), revise(2), research(3), research(4)}
-		got := ApplyDailyRules(rules, candidates, 10)
+		got := ApplyDailyRules(rules, nil, candidates, 10)
 		// The wildcard's quota of 2 is spent on notes 1 and 2; 3 and 4 blocked.
 		eq(t, ids(got), []int{1, 2})
 	})
@@ -148,17 +148,74 @@ func TestApplyDailyRules_QuotaBackfill(t *testing.T) {
 			{TaskType: strPtr("revise"), MaxPerDay: 1}, // caps revise
 		}
 		candidates := []HomeNote{revise(1), revise(2), research(3)}
-		got := ApplyDailyRules(rules, candidates, 10)
+		got := ApplyDailyRules(rules, nil, candidates, 10)
 		eq(t, ids(got), []int{1, 3})
 	})
 
 	t.Run("empty candidates", func(t *testing.T) {
-		got := ApplyDailyRules([]DailyRule{{MaxPerDay: 1}}, nil, 5)
+		got := ApplyDailyRules([]DailyRule{{MaxPerDay: 1}}, nil, nil, 5)
 		if len(got) != 0 {
 			t.Fatalf("got %v, want empty", got)
 		}
 		if got == nil {
 			t.Fatal("result must be a non-nil slice (JSON [] not null)")
 		}
+	})
+}
+
+// 048: PINS — placed first in the given (most-recently-pinned) order; the
+// rules never skip a pin, but a pin spends its categories' quota, so a
+// 1-hone rule with a pinned hone admits no random hone; a pinned note in
+// the candidate list is not placed twice; more pins than the limit → the
+// limit's worth of the most recent.
+func TestApplyDailyRules_Pins(t *testing.T) {
+	ids := func(notes []HomeNote) []int {
+		out := []int{}
+		for _, n := range notes {
+			out = append(out, n.NoteID)
+		}
+		return out
+	}
+	eq := func(t *testing.T, got, want []int) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("got %v, want %v", got, want)
+			}
+		}
+	}
+	hone := func(id int) HomeNote { return taskNote(id, "hone", "none", "n/a", "yellow", false) }
+	revise := func(id int) HomeNote { return taskNote(id, "revise", "none", "n/a", "yellow", false) }
+	oneHone := []DailyRule{{TaskType: strPtr("hone"), MaxPerDay: 1}}
+
+	t.Run("pins first, then the day's pick", func(t *testing.T) {
+		eq(t, ids(ApplyDailyRules(nil, []HomeNote{revise(9), revise(8)}, []HomeNote{revise(1), revise(2)}, 16)), []int{9, 8, 1, 2})
+	})
+	t.Run("a pinned hone spends the 1-hone quota: no random hone", func(t *testing.T) {
+		got := ApplyDailyRules(oneHone, []HomeNote{hone(9)}, []HomeNote{hone(1), revise(2), hone(3), revise(4)}, 16)
+		eq(t, ids(got), []int{9, 2, 4})
+	})
+	t.Run("pins overrule the rules: two pinned hones both show", func(t *testing.T) {
+		got := ApplyDailyRules(oneHone, []HomeNote{hone(9), hone(8)}, []HomeNote{hone(1), revise(2)}, 16)
+		eq(t, ids(got), []int{9, 8, 2})
+	})
+	t.Run("a capped rule of 0 still shows a pinned match", func(t *testing.T) {
+		got := ApplyDailyRules([]DailyRule{{TaskType: strPtr("hone"), MaxPerDay: 0}}, []HomeNote{hone(9)}, []HomeNote{hone(1)}, 16)
+		eq(t, ids(got), []int{9})
+	})
+	t.Run("unlimited (-1) stays unlimited after a pin", func(t *testing.T) {
+		got := ApplyDailyRules([]DailyRule{{TaskType: strPtr("hone"), MaxPerDay: -1}}, []HomeNote{hone(9)}, []HomeNote{hone(1), hone(2)}, 16)
+		eq(t, ids(got), []int{9, 1, 2})
+	})
+	t.Run("a pinned candidate is not placed twice", func(t *testing.T) {
+		got := ApplyDailyRules(nil, []HomeNote{revise(2)}, []HomeNote{revise(1), revise(2), revise(3)}, 16)
+		eq(t, ids(got), []int{2, 1, 3})
+	})
+	t.Run("more pins than the board: the most recent limit's worth", func(t *testing.T) {
+		got := ApplyDailyRules(nil, []HomeNote{revise(5), revise(4), revise(3)}, []HomeNote{revise(1)}, 2)
+		eq(t, ids(got), []int{5, 4})
 	})
 }

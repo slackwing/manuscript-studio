@@ -290,6 +290,37 @@ const WriteSysHome = {
       card.appendChild(body);
     }
 
+    // Pin to the daily-tasks board (048): a faint pushpin in the card's
+    // bottom-right corner, darker under the pointer, lit once pinned. Its
+    // own button — the card's click (open in context) must not fire.
+    const W = window.WriteSysNoteWidget;
+    if (W && W.pinnable && W.pinnable(n)) {
+      const pin = document.createElement('span');
+      pin.className = 'card-pin' + (n.pinned_at ? ' pinned' : '');
+      pin.setAttribute('role', 'button');
+      pin.tabIndex = 0;
+      pin.title = n.pinned_at ? 'Pinned to daily tasks' : 'Pin to daily tasks';
+      pin.innerHTML = W.PIN_SVG(15);
+      const toggle = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const was = n.pinned_at || null;
+        n.pinned_at = was ? null : new Date().toISOString();
+        pin.classList.toggle('pinned', !!n.pinned_at);
+        pin.title = n.pinned_at ? 'Pinned to daily tasks' : 'Pin to daily tasks';
+        try {
+          await window.WriteSysNoteAPI.setPinned(n.note_id, !was);
+        } catch (err) {
+          n.pinned_at = was;
+          pin.classList.toggle('pinned', !!was);
+          pin.title = was ? 'Pinned to daily tasks' : 'Pin to daily tasks';
+        }
+      };
+      pin.addEventListener('click', toggle);
+      pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') toggle(e); });
+      card.appendChild(pin);
+    }
+
     // Context line under the note content (manuscript · scratchpad).
     const meta = document.createElement('p');
     meta.className = 'card-meta';
@@ -373,6 +404,9 @@ const WriteSysHome = {
     // Populate the note grid with shared-component cards.
     if (noteList) {
       const grid = root.querySelector('[data-note-grid]');
+      // The daily board is at most 4 across (4 × 4 = its 16), narrower
+      // only when the window is.
+      if (grid && view === 'daily') grid.classList.add('daily-grid');
       if (grid) {
         if (noteList.length) noteList.forEach(n => {
           const card = this.noteCardEl(n);

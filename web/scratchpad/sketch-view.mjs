@@ -8,12 +8,12 @@
  */
 import { TextSelection } from './vendor/prosemirror.mjs';
 import { csrf, variationApi, bookData } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=2';
+import { holdScroll } from './scroll.mjs?v=3';
 import {
   lockScratchpadScroll, openNoteFloatFor,
   registerNoteRefView, unregisterNoteRefView,
   findNormalized, overlayYAtOffset,
-} from './pad-notes.mjs?v=2';
+} from './pad-notes.mjs?v=3';
 
 // letterOf(1) = 'A' — the SHARED formatter (edit-pane.js), re-exported for
 // this module's importers. import-scratchpad.js (classic script) uses the

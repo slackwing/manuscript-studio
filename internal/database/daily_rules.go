@@ -120,19 +120,39 @@ func ruleMatches(r DailyRule, n HomeNote) bool {
 	return true
 }
 
-// ApplyDailyRules walks candidates IN ORDER (the date-seeded hash order),
-// skipping any task whose matching rules are out of quota, and collects up
-// to limit — the BACKFILL semantics: capped categories give their slots to
-// whatever eligible tasks come next, deterministically.
-func ApplyDailyRules(rules []DailyRule, candidates []HomeNote, limit int) []HomeNote {
+// ApplyDailyRules builds the board: PINNED notes first (in the given order —
+// most recently pinned first — up to limit), then candidates IN ORDER (the
+// date-seeded hash order), skipping any task whose matching rules are out of
+// quota, up to limit — the BACKFILL semantics: capped categories give their
+// slots to whatever eligible tasks come next, deterministically.
+// Pins OVERRULE the rules (never skipped) but still COUNT against them: a
+// pinned "hone" spends the hone quota, so a 1-hone rule admits no random
+// hone that day. A candidate that is also pinned is not placed twice.
+func ApplyDailyRules(rules []DailyRule, pinned, candidates []HomeNote, limit int) []HomeNote {
 	quota := make([]int, len(rules))
 	for i, r := range rules {
 		quota[i] = r.MaxPerDay
 	}
 	out := []HomeNote{}
+	placed := map[int]bool{}
+	for _, n := range pinned {
+		if len(out) >= limit {
+			break
+		}
+		for i, r := range rules {
+			if quota[i] > 0 && ruleMatches(r, n) {
+				quota[i]--
+			}
+		}
+		out = append(out, n)
+		placed[n.NoteID] = true
+	}
 	for _, n := range candidates {
 		if len(out) >= limit {
 			break
+		}
+		if placed[n.NoteID] {
+			continue
 		}
 		blocked := false
 		matched := []int{}

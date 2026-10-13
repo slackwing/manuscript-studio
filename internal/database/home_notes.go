@@ -40,6 +40,8 @@ type HomeNote struct {
 	// CompletedAt: set when the note is completed. The All-notes view shows
 	// completed notes (2026-09-09); the landing grid filters them client-side.
 	CompletedAt *time.Time
+	// PinnedAt (048): pinned to the manuscript's daily-tasks board.
+	PinnedAt *time.Time
 	// DeletedAt: only GetHomeNoteByID sets it (the settings note modal can
 	// show a soft-deleted note from the actions audit table).
 	DeletedAt *time.Time
@@ -78,7 +80,7 @@ const homeNoteSelect = `
 		            WHERE nt.note_id = n.note_id),
 		           '[]'::json
 		       ) AS tags,
-		       n.completed_at`
+		       n.completed_at, n.pinned_at`
 
 const homeNoteFrom = `
 		FROM note n
@@ -106,7 +108,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
 		if len(tagsJSON) > 0 {
@@ -128,7 +130,7 @@ func (db *DB) GetHomeNoteByID(ctx context.Context, username string, noteID int) 
 	var tagsJSON []byte
 	if err := row.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 		&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON,
-		&h.CompletedAt, &h.DeletedAt); err != nil {
+		&h.CompletedAt, &h.PinnedAt, &h.DeletedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
@@ -160,6 +162,7 @@ func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscrip
 		  AND (n.completed_at IS NULL OR n.completed_at >= $4)
 		  AND n.manuscript_id = $2
 		  AND n.created_at < $4
+		  AND n.pinned_at IS NULL
 		  AND EXISTS (SELECT 1 FROM task_type tt WHERE tt.name = n.task_type AND tt.is_task)
 		ORDER BY md5(n.note_id::text || $3)
 	`, username, manuscriptID, seed, dayStart)
@@ -172,8 +175,46 @@ func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscrip
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.DoneToday); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.DoneToday); err != nil {
 			return nil, fmt.Errorf("scan daily task note: %w", err)
+		}
+		if len(tagsJSON) > 0 {
+			_ = json.Unmarshal(tagsJSON, &h.Tags)
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ListPinnedDailyNotes (048): the notes PINNED to a manuscript's daily-tasks
+// board, most recently pinned first. Pins appear no matter what — no
+// task-type, created-before-today or rule filter (the caller counts them
+// against the rules' quotas). Like the day's pick, a pin completed today
+// stays for the checkmark and leaves tomorrow; deleted notes never show.
+func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscriptID int, dayStart time.Time) ([]HomeNote, error) {
+	rows, err := db.Pool.Query(ctx, homeNoteSelect+`,
+		       (EXISTS(
+		           SELECT 1 FROM point_event pe
+		           WHERE pe.note_id = n.note_id AND pe.deleted_at IS NULL AND pe.scored_at >= $3
+		       ) OR (n.completed_at IS NOT NULL AND n.completed_at >= $3)) AS done_today`+homeNoteFrom+`
+		WHERE n.user_id = $1
+		  AND n.deleted_at IS NULL
+		  AND (n.completed_at IS NULL OR n.completed_at >= $3)
+		  AND n.manuscript_id = $2
+		  AND n.pinned_at IS NOT NULL
+		ORDER BY n.pinned_at DESC, n.note_id DESC
+	`, username, manuscriptID, dayStart)
+	if err != nil {
+		return nil, fmt.Errorf("list pinned daily notes: %w", err)
+	}
+	defer rows.Close()
+	var out []HomeNote
+	for rows.Next() {
+		var h HomeNote
+		var tagsJSON []byte
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.DoneToday); err != nil {
+			return nil, fmt.Errorf("scan pinned daily note: %w", err)
 		}
 		if len(tagsJSON) > 0 {
 			_ = json.Unmarshal(tagsJSON, &h.Tags)

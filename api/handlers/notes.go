@@ -670,6 +670,48 @@ func (h *NoteHandlers) HandleCompleteNote(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandlePinNote / HandleUnpinNote: POST /api/notes/{note_id}/pin|unpin
+// (048) — pin a note to (or take it off) its manuscript's daily-tasks
+// board. The board is the OWNER's, so only the owner pins.
+func (h *NoteHandlers) HandlePinNote(w http.ResponseWriter, r *http.Request) {
+	h.setPinned(w, r, true)
+}
+
+func (h *NoteHandlers) HandleUnpinNote(w http.ResponseWriter, r *http.Request) {
+	h.setPinned(w, r, false)
+}
+
+func (h *NoteHandlers) setPinned(w http.ResponseWriter, r *http.Request, pinned bool) {
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	note := h.requireNoteWithAction(w, r, noteID, session.Username, "manage-others-notes")
+	if note == nil {
+		return
+	}
+	if note.UserID != session.Username {
+		http.Error(w, "Only the note's owner can pin it", http.StatusForbidden)
+		return
+	}
+	if err := h.DB.SetNotePinned(r.Context(), noteID, pinned); err != nil {
+		log.Printf("notes: pin %d (%v): %v", noteID, pinned, err)
+		http.Error(w, "Failed to pin", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // HandleScoreNotePoints: POST /api/notes/{note_id}/points {"points": N}.
 // Records a point_event on a TASK (priority'd note) — repeatable while the
 // task stays open; completion is entirely independent (027).

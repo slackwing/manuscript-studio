@@ -25,7 +25,7 @@ const { chromium } = require('playwright');
 const { BASE_URL, loginAsTestUser } = require('./test-utils');
 
 // Keep in lockstep with web/scratchpad/modal.mjs's `./editor-core.mjs?v=N`.
-const EDITOR_CORE_V = 80;
+const EDITOR_CORE_V = 81;
 
 (async () => {
   const browser = await chromium.launch({ headless: true });

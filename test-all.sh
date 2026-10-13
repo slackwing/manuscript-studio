@@ -81,6 +81,7 @@ FAST_TESTS=(
   test-view-toggles
   test-copy-selection
   test-emdash-glue
+  test-daily-pins
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

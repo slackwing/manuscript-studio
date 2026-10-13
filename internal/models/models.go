@@ -124,6 +124,9 @@ type Note struct {
 	// Blocked is an independent flag (NOT a priority): any priority/impact
 	// can also be blocked on something else.
 	Blocked bool `json:"blocked"`
+	// PinnedAt (048): pinned to its manuscript's daily-tasks board — always
+	// shown there, ahead of the day's random pick. NULL = not pinned.
+	PinnedAt *time.Time `json:"pinned_at"`
 	Position     string     `json:"position"` // fractional index
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`

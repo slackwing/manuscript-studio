@@ -342,6 +342,8 @@ func (s *Server) setupRouter() {
 			r.Post("/notes/{note_id}/complete", s.noteHandlers.HandleCompleteNote)
 			r.Post("/notes/{note_id}/hide", s.noteHandlers.HandleHideNote)
 			r.Post("/notes/{note_id}/unhide", s.noteHandlers.HandleUnhideNote)
+			r.Post("/notes/{note_id}/pin", s.noteHandlers.HandlePinNote)
+			r.Post("/notes/{note_id}/unpin", s.noteHandlers.HandleUnpinNote)
 			r.Post("/notes/{note_id}/points", s.noteHandlers.HandleScoreNotePoints)
 
 			// Task types (031/032): the settings page's dimension list.

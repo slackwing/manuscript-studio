@@ -12,7 +12,7 @@
  * old semantics.
  */
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=2';
+import { holdScroll } from './scroll.mjs?v=3';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -138,7 +138,7 @@ async function ensureNoteCached(noteId) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null };
+      const cached = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null, pinned_at: n.pinned_at || null };
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -389,6 +389,7 @@ export async function openNoteFloatFor(noteId, anchorEl) {
     tags: cached.tags || [],
     manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
     sketch_id: cached.sketch_id || null,
+    pinned_at: cached.pinned_at || null,
   };
   const isSketchNote = !!note.sketch_id;
   if (openNoteFloat) return; // a newer open superseded us while fetching
