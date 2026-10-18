@@ -3,7 +3,6 @@ package sentence
 import (
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/slackwing/manuscript-studio/internal/segman"
 )
@@ -15,21 +14,17 @@ func NewTokenizer() *Tokenizer {
 }
 
 func (t *Tokenizer) SplitIntoSentences(text string) []string {
-	if strings.TrimSpace(text) == "" {
-		return []string{}
-	}
-
-	sentences := segman.Segment(text)
-
-	var result []string
-	for _, sent := range sentences {
-		cleaned := cleanSentenceBoundaries(sent)
-		if cleaned != "" {
-			result = append(result, cleaned)
+	// The marker-free form of TokenizeWithMarkers — ONE cutting rule, so
+	// the two can never disagree about where sentences are.
+	rows := t.TokenizeWithMarkers(text)
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if strings.HasPrefix(r, MarkerParagraph) || strings.HasPrefix(r, MarkerSection) {
+			r = r[2:]
 		}
+		out = append(out, r)
 	}
-
-	return result
+	return out
 }
 
 // TokenizeWithMarkers runs segman over the source and then makes a second
@@ -64,6 +59,17 @@ func (t *Tokenizer) TokenizeWithMarkers(source string) []string {
 		}
 
 		segStart, segEnd := locateSegment(source, cursor, cleaned)
+		// GLUED: no whitespace at all between the previous segment and this
+		// one — segman cut mid-word-run (`[something]` | `.`, `'Sup'—"` |
+		// `, Jaime said…`). It's the same sentence: append it verbatim, so no
+		// character is lost and the push's rebuild (one space between rows)
+		// can't insert one where the source had none. (2026-10-18: this used
+		// to STRIP the leading punctuation instead — data loss on push.)
+		if segStart >= 0 && segStart == cursor && cursor > 0 && len(out) > 0 && !prevStructural {
+			out[len(out)-1] += cleaned
+			cursor = segEnd
+			continue
+		}
 		if segStart < 0 {
 			// Couldn't locate the segment — emit it with no marker and leave
 			// cursor where it is so the next segment still searches from a
@@ -203,36 +209,16 @@ func skipSegmentInSource(source string, cursor int, seg string) int {
 	return end
 }
 
-// cleanSentenceBoundaries strips leading sentence-joining punctuation but
-// preserves opening quotes so quoted sentences ("", ”, „) keep their opener
-// — and a leading EM DASH, which is prose (a paragraph or line opening on
-// "—"), not a joining artifact: segman keeps it on the segment, and a row
-// that dropped it would drop it from the file on the next push
-// (RebuildManuscript rebuilds from rows). 2026-10-11.
+// cleanSentenceBoundaries trims the whitespace around a segment — and
+// NOTHING else. Punctuation a sentence opens with is the author's ("...And
+// then", "—he said"); it used to be stripped here (leading . , ; : ! ? - —),
+// which also dropped it from the file on the next push, since the push
+// rebuilds the file from these rows (owner's reports: em dash 2026-10-11,
+// ellipsis 2026-10-18). A segment glued to the previous one with no
+// whitespace is a segman cut mid-run — TokenizeWithMarkers appends it to
+// the previous sentence verbatim instead.
 func cleanSentenceBoundaries(text string) string {
-	trimmed := strings.TrimSpace(text)
-
-	for len(trimmed) > 0 {
-		// Decode a full rune — taking trimmed[0] as a byte made every
-		// multibyte comparison below dead (a curly quote's first byte is
-		// 0xE2, never '\u201c') and would slice mid-rune when stripping.
-		firstRune, size := utf8.DecodeRuneInString(trimmed)
-		if firstRune == '"' || firstRune == '\'' || firstRune == '\u201c' ||
-			firstRune == '\u201d' || firstRune == '\u2018' || firstRune == '\u2019' ||
-			firstRune == '\u201e' {
-			break
-		}
-		if firstRune == '.' || firstRune == ',' || firstRune == ';' ||
-			firstRune == ':' || firstRune == '!' || firstRune == '?' ||
-			firstRune == '-' {
-			trimmed = trimmed[size:]
-			trimmed = strings.TrimLeftFunc(trimmed, unicode.IsSpace)
-		} else {
-			break
-		}
-	}
-
-	return trimmed
+	return strings.TrimSpace(text)
 }
 
 // NormalizeText lowercases, strips non-letter/digit/space, and collapses

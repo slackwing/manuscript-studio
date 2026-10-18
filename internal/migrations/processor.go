@@ -27,7 +27,10 @@ var SegmenterVersion = "segman-" + segman.Version + "+tok" + TokenizerRevision
 //
 //	2: a leading em dash stays on its sentence (2026-10-11); before, rows
 //	   lost it and the next push rebuilt the file without it.
-const TokenizerRevision = "2"
+//	3: NO leading punctuation is stripped any more ("...", ". , ; : ! ? -"
+//	   — 2026-10-18); a segment glued to the previous one (no whitespace)
+//	   joins it verbatim. Rows now round-trip the source byte-for-byte.
+const TokenizerRevision = "3"
 
 // Lifecycle: caller reserves a row with CreatePendingMigration, then calls
 // Run, which transitions running → done/error before returning.

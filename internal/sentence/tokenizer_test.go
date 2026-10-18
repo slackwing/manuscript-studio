@@ -1,6 +1,7 @@
 package sentence
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -220,19 +221,21 @@ func TestLocateSegmentNegativeCursorDoesNotPanic(t *testing.T) {
 	}
 }
 
-// Regression: rune(trimmed[0]) decoded only the first byte, so the
-// curly-quote guards never fired on their own comparisons. A leading em
-// dash is PROSE, not a joining artifact — it stays (owner's report,
-// 2026-10-11: suggested sentences opening with "—" lost the dash; the
-// 2026-07-24 rune fix had turned on a strip that was dead code before).
+// cleanSentenceBoundaries trims whitespace and NOTHING else: punctuation a
+// sentence opens with is the author's (owner's reports — em dash
+// 2026-10-11, ellipsis 2026-10-18; the strip also dropped it from the file
+// on the next push).
 func TestCleanSentenceBoundariesMultibyte(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"—He paused.", "—He paused."},                     // em-dash kept
-		{"— He paused.", "— He paused."},                   // em-dash + space kept
-		{"“Hello,” she said.", "“Hello,” she said."},       // opening curly quote preserved
-		{"„Guten Tag.“", "„Guten Tag.“"},                   // low-9 quote preserved
-		{". Stray period lead-in", "Stray period lead-in"}, // ASCII path unchanged
-		{"-dash lead", "dash lead"},                        // ASCII dash unchanged
+		{"—He paused.", "—He paused."},                       // em-dash kept
+		{"— He paused.", "— He paused."},                     // em-dash + space kept
+		{"“Hello,” she said.", "“Hello,” she said."},         // opening curly quote preserved
+		{"„Guten Tag.“", "„Guten Tag.“"},                     // low-9 quote preserved
+		{"...And then it went.", "...And then it went."},     // ellipsis kept
+		{"…And then.", "…And then."},                         // the ellipsis character kept
+		{". Stray period lead-in", ". Stray period lead-in"}, // nothing is stripped any more
+		{"-dash lead", "-dash lead"},
+		{"  padded  ", "padded"}, // whitespace only
 	}
 	for _, c := range cases {
 		if got := cleanSentenceBoundaries(c.in); got != c.want {
@@ -273,5 +276,49 @@ func TestEmDashLeadSurvivesTokenizeRebuild(t *testing.T) {
 	rows := tk.TokenizeWithMarkers(file)
 	if len(rows) != 2 || rows[1] != "\n\t—He paused, the dash his own." {
 		t.Errorf("suggested dash lead after push + migration = %q (file %q)", rows, file)
+	}
+}
+
+// Leading punctuation survives the whole loop (2026-10-18): no character
+// of the source is ever lost — every row round-trips byte-equal — and a
+// segment segman opens on punctuation keeps it ("\n\t...And then"). A
+// segment GLUED to the previous one (no whitespace: segman cut mid-run, as
+// in the fixture's "[something]." and "'Sup'—\", Jaime said") joins that
+// sentence verbatim instead of losing its punctuation. A suggestion that
+// opens on "..." keeps it through push (RebuildManuscript) + re-migration.
+func TestLeadingPunctuationKept(t *testing.T) {
+	tk := NewTokenizer()
+	cases := []struct {
+		src  string
+		rows []string // nil = only the byte-exact round trip is asserted
+	}{
+		{"Then.\n\t...And then it went.\n", []string{"Then.", "\n\t...And then it went."}},
+		{"Then.\n\n...A section opens on an ellipsis.\n", []string{"Then.", "\n\n...A section opens on an ellipsis."}},
+		{"...Opening on an ellipsis. Next.\n", []string{"...Opening on an ellipsis.", "Next."}},
+		{"Then. ...And then it went.\n", nil}, // mid-paragraph: segman's call — nothing lost
+		// The fixture's glued artifacts (test.manuscript).
+		{"through a tangle of indirection, as if to [something]. Now that it invites us though, let me fill in the beginning.\n", nil},
+		{"\"He'd say, 'Sup'—\", Jaime said, imitating Kostya's deeper voice and accent, \"—'Beer? Johnny Walker?'\"\n", nil},
+	}
+	for _, c := range cases {
+		got := tk.TokenizeWithMarkers(c.src)
+		if c.rows != nil && strings.Join(got, "|") != strings.Join(c.rows, "|") {
+			t.Errorf("TokenizeWithMarkers(%q) = %q, want %q", c.src, got, c.rows)
+		}
+		if back := Reconstruct(got); back != c.src {
+			t.Errorf("round trip lost bytes:\n  src:  %q\n  rows: %q\n  back: %q", c.src, got, back)
+		}
+		if plain := tk.SplitIntoSentences(c.src); len(plain) != len(got) {
+			t.Errorf("SplitIntoSentences(%q) = %q — out of lockstep with %q", c.src, plain, got)
+		}
+	}
+
+	// A suggestion opening a paragraph on "..." → push → migration keeps it.
+	file := RebuildManuscript([]string{"a", "b"},
+		map[string]string{"a": "Then.", "b": "\n\tAnd then it went."},
+		map[string]string{"b": "\n\t...And then it went."})
+	rows := tk.TokenizeWithMarkers(file)
+	if len(rows) != 2 || rows[1] != "\n\t...And then it went." {
+		t.Errorf("suggested ellipsis after push + migration = %q (file %q)", rows, file)
 	}
 }
