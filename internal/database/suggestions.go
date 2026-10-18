@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/slackwing/manuscript-studio/internal/models"
-	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 // suggestionCols is the canonical SELECT list for suggested_change (v3);
@@ -239,7 +238,7 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 // SettleSuggestionsForMigration applies the post-carry GROUP rules to the
 // migration's suggestion groups (SUGGESTION_REVIEW_RULES.md). "Applied"
 // below means the suggestion's text is already present in the committed
-// document, compared under NormalizeText — either matching its own
+// document, compared under settleKey — either matching its own
 // sentence, or matching its sentence JOINED WITH adjacent committed
 // sentences (a multi-sentence suggestion re-segments on apply; the window
 // is capped at 3 neighbors each side).
@@ -274,6 +273,19 @@ func (db *DB) GetSuggestionsForMigration(ctx context.Context, migrationID int, u
 // only path that can recognize an applied DELETION (empty text) or a
 // rewrite that resegmented past the join window. Pass nil when no
 // provenance is available (external commits, squash merges).
+// settleKey is what "already applied" compares: the author's characters
+// EXACTLY — punctuation, case, *emphasis* — with only whitespace (and so
+// the \n\t / \n\n structural markers) normalized. It used to be
+// NormalizeText, which drops punctuation and case: an accepted edit that
+// only added a comma, an ellipsis or italics then looked identical to the
+// unchanged sentence, and its group was retired (deleted) at the next
+// migration (owner's report, 2026-10-18 — three edits lost at one
+// re-segmentation). Missing an applied edit is harmless (a diff-less row
+// until reviewed); deleting an unapplied one loses the author's work.
+func settleKey(text string) string {
+	return strings.Join(strings.Fields(text), " ")
+}
+
 func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int, orderedIDs []string, appliedCommits map[string]bool) (int, int, error) {
 	// Document order + texts, for the neighbor-window rule.
 	if len(orderedIDs) == 0 {
@@ -329,7 +341,7 @@ func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int
 					continue // own-sentence match is checked separately
 				}
 				joined := strings.Join(orderedTexts[start:end+1], "\n")
-				if sentence.NormalizeText(joined) == normSugg {
+				if settleKey(joined) == normSugg {
 					return true
 				}
 			}
@@ -371,9 +383,9 @@ func (db *DB) SettleSuggestionsForMigration(ctx context.Context, migrationID int
 		if pushedIn != nil && appliedCommits[*pushedIn] {
 			r.applied = true
 		}
-		normSugg := sentence.NormalizeText(r.text)
+		normSugg := settleKey(r.text)
 		if !r.applied {
-			if normSugg == sentence.NormalizeText(sentText) {
+			if normSugg == settleKey(sentText) {
 				r.applied = true
 			} else if normSugg != "" { // empty carries no comparable content
 				if j, ok := orderByID[sentenceID]; ok && windowApplied(normSugg, j) {

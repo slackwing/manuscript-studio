@@ -689,7 +689,10 @@ func TestMigration_SettleRetiresAcceptedNoOpKeepsPendingOne(t *testing.T) {
 	twoID1 := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Stable sentence two")
 
 	// ACCEPTED no-op (matches under normalization) → consummation retires it.
-	if _, err := f.db.UpsertSuggestion(f.ctx, oneID1, f.username, "  Stable   sentence   one  "); err != nil {
+	// Whitespace-only = a true no-op. (It once dropped the period too —
+	// a real edit, which the old punctuation-blind settle wrongly treated
+	// as applied; 2026-10-18.)
+	if _, err := f.db.UpsertSuggestion(f.ctx, oneID1, f.username, "  Stable   sentence   one.  "); err != nil {
 		t.Fatalf("upsert accepted no-op suggestion: %v", err)
 	}
 	acc := "accepted"

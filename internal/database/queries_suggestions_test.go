@@ -766,3 +766,56 @@ func TestUpsert_ClearsPushProvenance(t *testing.T) {
 		t.Errorf("pushed_in_commit = %q after edit, want cleared", *edited.PushedInCommit)
 	}
 }
+
+// 2026-10-18 (owner's report — three accepted edits vanished at a
+// re-segmentation): "applied" compared texts under NormalizeText, which
+// drops punctuation and case, so an accepted edit that ONLY changes
+// punctuation, case or *emphasis* looked identical to the unchanged
+// committed sentence and its group was retired (deleted) at the next
+// migration. Applied now means the author's characters are all there —
+// only whitespace (and the structural marker) is normalized.
+func TestSettle_PunctuationOnlyEditIsNotApplied(t *testing.T) {
+	f := newITFixture(t)
+	migID, sids := f.makeDoneMigration(t, "c1",
+		"I'd park a house or two away from mine earlier in the day.",
+		"\n\tat Kostya's, those nights in his basement.",
+		"*So it was*—the epidemic of being in our 20s.",
+		"He said it quietly.",
+		"Applied already.")
+	acc := models.ReviewAccepted
+	accept := func(i int, text string) {
+		t.Helper()
+		if _, err := f.db.UpsertSuggestion(f.ctx, sids[i], f.username, text); err != nil {
+			t.Fatalf("upsert %d: %v", i, err)
+		}
+		if _, err := f.db.SetSuggestionReview(f.ctx, sids[i], f.username, &acc, f.username); err != nil {
+			t.Fatalf("accept %d: %v", i, err)
+		}
+	}
+	accept(0, "I'd park a house or two away from mine, earlier in the day.") // a comma
+	accept(1, "\n\t...at Kostya's, those nights in his basement.")          // a leading ellipsis
+	accept(2, "*So it was—the epidemic of being in our 20s.*")              // the italics moved
+	accept(3, "He said it Quietly.")                                         // case only
+	accept(4, "Applied   already.")                                          // whitespace only → applied
+
+	retired, _, err := f.db.SettleSuggestionsForMigration(f.ctx, migID, sids, nil)
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	rows, err := f.db.GetSuggestionsForMigration(f.ctx, migID, f.username)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	left := map[string]bool{}
+	for _, r := range rows {
+		left[r.SentenceID] = true
+	}
+	for i, what := range []string{"comma", "leading ellipsis", "italics", "case"} {
+		if !left[sids[i]] {
+			t.Errorf("accepted %s-only edit was retired as if applied", what)
+		}
+	}
+	if left[sids[4]] || retired != 1 {
+		t.Errorf("the whitespace-only (really applied) edit should retire alone: retired=%d, still there=%v", retired, left[sids[4]])
+	}
+}
