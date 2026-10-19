@@ -721,8 +721,9 @@ func (h *NoteHandlers) setPinned(w http.ResponseWriter, r *http.Request, pinned 
 }
 
 // HandleScoreNotePoints: POST /api/notes/{note_id}/points {"points": N}.
-// Records a point_event on a TASK (priority'd note) — repeatable while the
-// task stays open; completion is entirely independent (027).
+// Records a point_event on a TASK, or on a note whose non-task type earns
+// points (051, e.g. material) — repeatable; completion is entirely
+// independent (027).
 func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
@@ -763,14 +764,14 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	isTask, err := h.DB.TaskTypeIsTask(ctx, note.TaskType)
+	scores, err := h.DB.TaskTypeScores(ctx, note.TaskType)
 	if err != nil {
-		log.Printf("notes: score %d: is_task lookup %q: %v", noteID, note.TaskType, err)
+		log.Printf("notes: score %d: type lookup %q: %v", noteID, note.TaskType, err)
 		http.Error(w, "Failed to check task type", http.StatusInternalServerError)
 		return
 	}
-	if !isTask {
-		http.Error(w, "only tasks (task-category type) can score points", http.StatusBadRequest)
+	if !scores {
+		http.Error(w, "this note's type doesn't earn points", http.StatusBadRequest)
 		return
 	}
 	var body struct {

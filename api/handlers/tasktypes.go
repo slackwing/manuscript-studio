@@ -126,6 +126,34 @@ func (h *TaskTypeHandlers) HandleReorder(w http.ResponseWriter, r *http.Request)
 }
 
 // HandleSetColor: PUT /api/task-types/{name}/color {"color": "green"}.
+// HandleSetScoresPoints: PUT /api/task-types/{name}/points
+// {"scores_points": bool} — whether a non-task type's notes earn points (051).
+func (h *TaskTypeHandlers) HandleSetScoresPoints(w http.ResponseWriter, r *http.Request) {
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	name := chi.URLParam(r, "name")
+	var body struct {
+		ScoresPoints *bool `json:"scores_points"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ScoresPoints == nil {
+		http.Error(w, "scores_points (bool) required", http.StatusBadRequest)
+		return
+	}
+	ok, err := h.DB.SetTaskTypeScoresPoints(r.Context(), name, *body.ScoresPoints)
+	if err != nil {
+		log.Printf("task-types: points %s=%v: %v", name, *body.ScoresPoints, err)
+		http.Error(w, "Failed to set points", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *TaskTypeHandlers) HandleSetColor(w http.ResponseWriter, r *http.Request) {
 	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)

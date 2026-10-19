@@ -15,12 +15,14 @@ import (
 // TaskType is one first-dimension option. 'gray' color = no behavior; a
 // real note color means "picking this type recolors the note".
 type TaskType struct {
-	Name     string `json:"name"`
-	BuiltIn  bool   `json:"built_in"`
-	Color    string `json:"color"`
-	IsTask   bool   `json:"is_task"`
-	Deleted  bool   `json:"deleted"`
-	Position int    `json:"position"`
+	Name    string `json:"name"`
+	BuiltIn bool   `json:"built_in"`
+	Color   string `json:"color"`
+	IsTask  bool   `json:"is_task"`
+	// ScoresPoints (051): a non-task type whose notes still earn points.
+	ScoresPoints bool `json:"scores_points"`
+	Deleted      bool `json:"deleted"`
+	Position     int  `json:"position"`
 }
 
 // ListTaskTypes in the user's manual order (settings-page drag; also the
@@ -29,7 +31,7 @@ type TaskType struct {
 // is_task/color; every dropdown and the settings page filter them out.
 func (db *DB) ListTaskTypes(ctx context.Context) ([]TaskType, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT name, built_in, color, is_task, deleted, position FROM task_type
+		SELECT name, built_in, color, is_task, scores_points, deleted, position FROM task_type
 		ORDER BY position, name
 	`)
 	if err != nil {
@@ -39,7 +41,7 @@ func (db *DB) ListTaskTypes(ctx context.Context) ([]TaskType, error) {
 	out := []TaskType{}
 	for rows.Next() {
 		var t TaskType
-		if err := rows.Scan(&t.Name, &t.BuiltIn, &t.Color, &t.IsTask, &t.Deleted, &t.Position); err != nil {
+		if err := rows.Scan(&t.Name, &t.BuiltIn, &t.Color, &t.IsTask, &t.ScoresPoints, &t.Deleted, &t.Position); err != nil {
 			return nil, fmt.Errorf("scan task type: %w", err)
 		}
 		out = append(out, t)
@@ -120,6 +122,33 @@ func (db *DB) TaskTypeIsTask(ctx context.Context, name string) (bool, error) {
 		return false, fmt.Errorf("task type is_task for %q: %w", name, err)
 	}
 	return isTask, nil
+}
+
+// TaskTypeScores: whether a note of this type can earn points — every
+// task, plus non-task types flagged scores_points (051). Same lookup rules
+// as TaskTypeIsTask (deleted types count; ” and unknown never score).
+func (db *DB) TaskTypeScores(ctx context.Context, name string) (bool, error) {
+	if name == "" {
+		return false, nil
+	}
+	var scores bool
+	err := db.Pool.QueryRow(ctx, `SELECT is_task OR scores_points FROM task_type WHERE name = $1`, name).Scan(&scores)
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("task type scores for %q: %w", name, err)
+	}
+	return scores, nil
+}
+
+// SetTaskTypeScoresPoints flips one type's scores_points; false = no such type.
+func (db *DB) SetTaskTypeScoresPoints(ctx context.Context, name string, on bool) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `UPDATE task_type SET scores_points = $2 WHERE name = $1`, name, on)
+	if err != nil {
+		return false, fmt.Errorf("set task type %q scores_points: %w", name, err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // SetTaskTypeColor updates one type's color; false = no such type.

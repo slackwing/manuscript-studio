@@ -79,6 +79,38 @@ const WriteSysSettings = {
         },
       });
       chip.appendChild(dot);
+      // Non-task types: ★ = its notes earn points anyway (051). Tasks
+      // always do, so their chips don't carry it.
+      if (!t.is_task) {
+        const pts = document.createElement('button');
+        pts.type = 'button';
+        pts.className = 'tt-points';
+        pts.innerHTML = window.WriteSysIcons.star(12);
+        const sync = () => {
+          pts.classList.toggle('active', !!t.scores_points);
+          pts.title = t.scores_points ? 'Earns points' : 'No points';
+        };
+        sync();
+        pts.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const was = !!t.scores_points;
+          t.scores_points = !was;
+          sync();
+          try {
+            const r = await fetch(`api/task-types/${encodeURIComponent(t.name)}/points`, {
+              method: 'PUT',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf() },
+              body: JSON.stringify({ scores_points: !was }),
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          } catch (err) {
+            t.scores_points = was; // the star never shows a state the server refused
+            sync();
+          }
+        });
+        chip.appendChild(pts);
+      }
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'tt-del';
@@ -97,7 +129,7 @@ const WriteSysSettings = {
       });
       chip.appendChild(del);
       chip.addEventListener('click', (e) => {
-        if (e.target.closest('.color-dot-solo, .tt-del')) return;
+        if (e.target.closest('.color-dot-solo, .tt-del, .tt-points')) return;
         const arming = !chip.classList.contains('tt-armed');
         this.disarmAll();
         chip.classList.toggle('tt-armed', arming);

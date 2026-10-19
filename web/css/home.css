@@ -301,6 +301,18 @@ body.home-page {
   cursor: pointer;
 }
 .tt-chip.tt-armed .tt-del:hover { background: #c0392b; color: #fff; }
+/* Non-task chip ★: lit = the type's notes earn points (051). Hidden while
+   the chip is armed for delete, like the color dot. */
+.tt-points {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0;
+  border: none; background: none; cursor: pointer;
+  color: #c9c3b6;
+}
+.tt-points:hover { color: #a87e00; }
+.tt-points.active { color: #e0af00; }
+.tt-points.active svg path { fill: #ffe9a8; }
+.tt-chip.tt-armed .tt-points { display: none; }
 /* Note actions audit table: when · preview · icon · undo. */
 .na-section { max-width: 720px; }
 .na-table { width: 100%; border-collapse: collapse; font-family: "Helvetica", sans-serif; }

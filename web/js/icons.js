@@ -60,6 +60,11 @@
       return svg(size, '0 0 16 16', '',
         '<path fill="currentColor" d="M5.2 3.2 3.4 5 2.3 3.9l.8-.8.3.3 1-1zM7 3.5h7v1.2H7zM5.2 8 3.4 9.8 2.3 8.7l.8-.8.3.3 1-1zM7 8.3h7v1.2H7zM5.2 12.8l-1.8 1.8-1.1-1.1.8-.8.3.3 1-1zM7 13.1h7v1.2H7z"/>');
     },
+    // Star — points (the note's ★ score button, settings' "earns points").
+    star(size) {
+      return svg(size, '0 0 20 20', '',
+        '<path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>');
+    },
     // Check — a done/copied acknowledgement.
     check(size) {
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"',

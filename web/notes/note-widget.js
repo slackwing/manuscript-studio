@@ -394,6 +394,15 @@
     return t ? !!t.is_task : true;
   }
 
+  // Points (★) go to every task, and to notes whose NON-task type is
+  // flagged scores_points (051 — e.g. material: no priority, completion or
+  // blocked, but it earns points). The server gates the same way.
+  function canScore(note) {
+    if (isTask(note)) return true;
+    const t = note.task_type && taskTypesByName && taskTypesByName[note.task_type];
+    return !!(t && t.scores_points);
+  }
+
   // A pin (048) puts the note on its manuscript's daily-tasks board — so it
   // is offered to a TASK with a manuscript; an already-pinned note always
   // shows it lit (so it can be unpinned whatever its type now is).
@@ -417,7 +426,7 @@
     const check = noteEl.querySelector('.complete-check');
     if (check) check.style.display = task ? '' : 'none';
     const star = noteEl.querySelector('.points-star');
-    if (star) star.style.display = task ? '' : 'none';
+    if (star) star.style.display = canScore(note) ? '' : 'none';
   }
   // Back-compat alias (older call sites).
   const updatePriorityFlagUI = updateDims;
@@ -540,8 +549,9 @@
     const showDelete = opts.showDelete !== false;
     // Bottom row = EIGHT fixed slots: the linked-manuscript chip spans
     // slots 1-4 (or empty space), then ⊘blocked(5) ★(6) ✓(7), and the
-    // trash ALWAYS holds slot 8 (right-pinned). Blocked/star/check only
-    // exist for TASKS (task_type ≠ reminder) — updateDims toggles them.
+    // trash ALWAYS holds slot 8 (right-pinned). Blocked/check only exist
+    // for TASKS, the star for anything that scores (canScore) — updateDims
+    // toggles them.
     // The points star is the POINTER surface (award-points) — callers gate
     // it via opts.showPoints; complete/trash have their own switches.
     const showPoints = opts.showPoints !== false;
@@ -551,11 +561,7 @@
     // included (someone else's note you can't edit can still be hidden).
     const hideHtml = opts.allowHide ? '<div class="hide-chip"></div>' : '';
     const actionsHtml = readOnly ? hideHtml : `
-          ${showComplete && showPoints ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
-            <svg width="14" height="14" viewBox="0 0 20 20">
-              <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
-            </svg>
-          </div>` : ''}
+          ${showComplete && showPoints ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">${window.WriteSysIcons.star(14)}</div>` : ''}
           ${showComplete ? `<div class="complete-check" title="Mark complete">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1006,6 +1012,6 @@
     return true;
   }
 
-  const WriteSysNoteWidget = { PIN_SVG, pinnable, buildTypeChip, typeColor, typeIsTask, buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  const WriteSysNoteWidget = { PIN_SVG, pinnable, buildTypeChip, typeColor, typeIsTask, buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, canScore, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();

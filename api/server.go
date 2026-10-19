@@ -377,6 +377,7 @@ func (s *Server) setupRouter() {
 			r.Post("/task-types", s.taskTypeHandlers.HandleCreate)
 			r.Put("/task-types/order", s.taskTypeHandlers.HandleReorder)
 			r.Put("/task-types/{name}/color", s.taskTypeHandlers.HandleSetColor)
+			r.Put("/task-types/{name}/points", s.taskTypeHandlers.HandleSetScoresPoints)
 			r.Delete("/task-types/{name}", s.taskTypeHandlers.HandleDelete)
 			// Marker symbols (settings "Markers" section).
 			r.Get("/marker-symbols", s.markerHandlers.HandleList)

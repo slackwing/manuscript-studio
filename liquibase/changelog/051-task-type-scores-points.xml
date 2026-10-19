@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 051 (2026-10-18): a NON-task type whose notes still earn points (the
+         ★) — no priority/impact/blocked/completion, just scoring. Tasks
+         always score; this flag only matters when is_task is false. Toggled
+         on the settings page; no type name is special in code (033), so
+         'material' gets it as one-time data seeding of this instance. -->
+    <changeSet id="051-task-type-scores-points" author="claude">
+        <addColumn tableName="task_type">
+            <column name="scores_points" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <sql>
+            UPDATE task_type SET scores_points = true WHERE name = 'material';
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

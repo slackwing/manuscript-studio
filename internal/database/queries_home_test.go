@@ -517,6 +517,34 @@ func TestTaskTypeIsTask_EmptyAndDeleted(t *testing.T) {
 	}
 }
 
+// 051: tasks always score; a non-task scores only when flagged
+// scores_points; "" / unknown never; the flag reports missing types.
+func TestTaskTypeScores_TasksAndFlaggedNonTasks(t *testing.T) {
+	f := newITFixture(t)
+	task := f.newTaskType(t, true)
+	nonTask := f.newTaskType(t, false)
+	for _, c := range []struct {
+		name string
+		want bool
+	}{{"", false}, {"tt-never-existed", false}, {task, true}, {nonTask, false}} {
+		if got, err := f.db.TaskTypeScores(f.ctx, c.name); err != nil || got != c.want {
+			t.Errorf("TaskTypeScores(%q) = (%v, %v), want %v", c.name, got, err, c.want)
+		}
+	}
+	if ok, err := f.db.SetTaskTypeScoresPoints(f.ctx, nonTask, true); err != nil || !ok {
+		t.Fatalf("flag on: (%v, %v)", ok, err)
+	}
+	if got, _ := f.db.TaskTypeScores(f.ctx, nonTask); !got {
+		t.Error("flagged non-task type should score")
+	}
+	if got, _ := f.db.TaskTypeIsTask(f.ctx, nonTask); got {
+		t.Error("the flag must not make it a task")
+	}
+	if ok, err := f.db.SetTaskTypeScoresPoints(f.ctx, "tt-never-existed", true); err != nil || ok {
+		t.Errorf("missing type: (%v, %v), want (false, nil)", ok, err)
+	}
+}
+
 // #66: reports false on a missing type, true + write on a real one.
 func TestSetTaskTypeColor_Reports(t *testing.T) {
 	f := newITFixture(t)
