@@ -20,7 +20,12 @@ Then loop:
    `MANUSCRIPT_STUDIO_CONFIG_FILE` pointing at a copy of the dev config with
    `port: 5002`, then run tests with `MS_TEST_PORT=5002`.
 3. **Commit and push.** Bump the `?v=` cache-buster in `web/index.html`
-   for every JS/CSS file you changed (prod browsers cache aggressively).
+   for every JS/CSS file you changed (prod browsers cache aggressively) —
+   in EVERY html page that loads it. The scratchpad ES modules version
+   their imports too: bumping one (e.g. `pad-notes.mjs?v=`) changes each
+   importer's text, so bump those, up the chain to `scratchpad-modal.js`
+   in the html pages; one module, one `?v=` everywhere it's imported.
+   `tests/test-editor-core-units.js` pins `EDITOR_CORE_V` to match.
 4. **Deploy** — `./remote-deploy.sh`, always (owner's standing rule,
    2026-09-10). Then confirm `/manuscripts/readyz` is 200 and the served
    `?v=` matches what you bumped.
