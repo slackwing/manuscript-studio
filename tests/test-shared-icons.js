@@ -1,7 +1,7 @@
 /**
  * The landing card's ⚙ / daily-tasks buttons are the book chrome's: same
  * icons (WriteSysIcons — one definition), same .mc-btn look, daily blue in
- * both places.
+ * both places. Plus the section head: "See all →" follows the count.
  */
 const { chromium } = require('playwright');
 const { TEST_URL, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination } = require('./test-utils');
@@ -33,6 +33,16 @@ const HOME = new URL('home.html', TEST_URL).href;
     check('card daily draws WriteSysIcons.dailyTasks', cardDaily && cardDaily.svg === expect.daily);
     check('card buttons are .mc-btn', /mc-btn/.test(cardGear.cls) && /mc-btn/.test(cardDaily.cls));
     check('card daily is blue', cardDaily.color === 'rgb(42, 111, 176)', cardDaily.color);
+    // "Scratchpads  16  See all →": the link follows the count, not the
+    // far right edge.
+    const heads = await page.evaluate(() => [...document.querySelectorAll('.home-section-head')]
+      .filter(h => h.querySelector('.home-seeall'))
+      .map(h => {
+        const c = h.querySelector('.home-count').getBoundingClientRect();
+        const a = h.querySelector('.home-seeall').getBoundingClientRect();
+        return { gap: Math.round(a.left - c.right), sameLine: Math.abs(a.bottom - c.bottom) < 4 };
+      }));
+    check('"See all →" sits right after the count', heads.length > 0 && heads.every(h => h.gap >= 8 && h.gap <= 20 && h.sameLine), JSON.stringify(heads));
     check('no "daily tasks" text left on the card', !(await page.locator('.card-manuscript', { hasText: 'daily tasks' }).count()));
 
     await page.goto(TEST_URL);

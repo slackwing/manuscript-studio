@@ -345,7 +345,6 @@ const WriteSysHome = {
     return `<section class="home-section">
       <div class="home-section-head">
         <h2>${title}</h2><span class="home-count">${count}</span>
-        <span class="home-spacer"></span>
         ${opts.seeAll ? `<a class="home-seeall" href="home.html?view=${opts.seeAll}" data-view="${opts.seeAll}">See all →</a>` : ''}
       </div>
       ${opts.notes
