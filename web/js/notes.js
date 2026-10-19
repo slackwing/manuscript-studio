@@ -572,6 +572,7 @@ const WriteSysNotes = {
 
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, false);
+    this.addUncreatedTypeChip(note, textarea);
 
     return note;
   },
@@ -599,6 +600,7 @@ const WriteSysNotes = {
 
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, true);
+    this.addUncreatedTypeChip(note, textarea);
 
     note.addEventListener('mouseenter', () => {
       note.classList.add('hovered');
@@ -615,6 +617,31 @@ const WriteSysNotes = {
     });
 
     return note;
+  },
+
+  // The grey create card carries the SAME type chip as a real note (the
+  // widget's buildTypeChip), "n/a" until picked. Picking a type CREATES the
+  // note — in the type's color (the default for gray types), like typing
+  // does — with the type set. No never-mind: switching back to n/a later
+  // keeps the note (owner's spec, 2026-10-18).
+  addUncreatedTypeChip(noteEl, textarea) {
+    const W = window.WriteSysNoteWidget;
+    const list = noteEl.querySelector('.tags-list');
+    if (!W || !W.buildTypeChip || !list) return;
+    let creating = false;
+    const chip = W.buildTypeChip({
+      value: '',
+      onPick: async (v) => {
+        if (!v || creating) return; // n/a on a card that isn't a note yet: nothing
+        creating = true;
+        const color = W.typeColor(v) || this.DEFAULT_COLOR;
+        const typed = textarea && textarea.value ? textarea.value : null;
+        await this.handleAddNewNote(color, typed, textarea, {
+          task_type: v, priority: W.typeIsTask(v) ? 'can' : 'none', impact: 'n/a',
+        });
+      },
+    });
+    list.insertBefore(chip, list.firstChild);
   },
 
   createColorCircleForUncreated() {
@@ -712,7 +739,7 @@ const WriteSysNotes = {
     }
   },
 
-  async handleAddNewNote(color, initialNote = null, sourceTextarea = null) {
+  async handleAddNewNote(color, initialNote = null, sourceTextarea = null, dims = null) {
     // Capture NOW: the user can click another sentence during the POST
     // round-trip below, repointing this.currentSentenceId — which used to
     // attach the local note object to the wrong sentence.
@@ -727,7 +754,9 @@ const WriteSysNotes = {
           sentence_id: sentenceId,
           color: color,
           body: initialNote,
-          priority: 'none',
+          priority: (dims && dims.priority) || 'none',
+          task_type: (dims && dims.task_type) || '',
+          impact: (dims && dims.impact) || 'n/a',
           flagged: false
         })
       });
@@ -750,7 +779,10 @@ const WriteSysNotes = {
         sentence_id: sentenceId,
         color: color,
         body: liveText,
-        priority: 'none',
+        priority: (dims && dims.priority) || 'none',
+        task_type: (dims && dims.task_type) || '',
+        impact: (dims && dims.impact) || 'n/a',
+        manuscript_id: apiResponse.manuscript_id || (window.WriteSysRenderer && window.WriteSysRenderer.manuscriptId) || null,
         flagged: false,
         tags: []
       };

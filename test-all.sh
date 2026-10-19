@@ -84,6 +84,7 @@ FAST_TESTS=(
   test-daily-pins
   test-daily-points
   test-note-layout
+  test-uncreated-type
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

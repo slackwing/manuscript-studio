@@ -66,6 +66,36 @@
   // Prefetch so the sync mirror is warm before the first note renders.
   if (typeof window !== 'undefined') setTimeout(() => { listTaskTypes().catch(() => {}); }, 0);
 
+  // THE type chip — one builder for a real note's dims row and the grey
+  // create card (2026-10-18). '' = untyped, shown as 'n/a'. Deleted types
+  // are never offered (a note KEEPING one still shows it on the chip, but
+  // once changed there's no way back). Order: n/a first, then NON-task
+  // types, then task types — each band in the user's settings order.
+  function buildTypeChip({ value, onPick }) {
+    return buildDimChip({
+      cls: 'dim-type',
+      value: value || '',
+      loadOptions: async () => {
+        const live = (await listTaskTypes()).filter((t) => !t.deleted);
+        const opt = (t) => ({ value: t.name, label: t.name });
+        return [{ value: '', label: 'n/a' }]
+          .concat(live.filter((t) => !t.is_task).map(opt))
+          .concat(live.filter((t) => t.is_task).map(opt));
+      },
+      onPick,
+    });
+  }
+  // A type's own color, or null when it is 'gray' (= inert: leave the
+  // note's color alone) or unknown.
+  function typeColor(name) {
+    const t = name && taskTypesByName && taskTypesByName[name];
+    return t && t.color && t.color !== 'gray' ? t.color : null;
+  }
+  function typeIsTask(name) {
+    const t = name && taskTypesByName && taskTypesByName[name];
+    return !!(t && t.is_task);
+  }
+
   const PRIORITIES = ['can', 'would', 'should', 'must'];
   const IMPACTS = ['n/a', 'sentence', 'chapter', 'novel', 'recurring'];
 
@@ -197,21 +227,8 @@
         }
       }
     } else if (handlers.onDims) {
-      list.appendChild(buildDimChip({
-        cls: 'dim-type',
-        // '' = untyped, shown as 'n/a'. Deleted types never offered — a
-        // note KEEPING one still shows it on the chip, but once changed
-        // there's no way back.
+      list.appendChild(buildTypeChip({
         value: note.task_type || '',
-        // n/a first, then NON-task types, then task types — each band in
-        // the user's manual (settings) order.
-        loadOptions: async () => {
-          const live = (await listTaskTypes()).filter((t) => !t.deleted);
-          const opt = (t) => ({ value: t.name, label: t.name });
-          return [{ value: '', label: 'n/a' }]
-            .concat(live.filter((t) => !t.is_task).map(opt))
-            .concat(live.filter((t) => t.is_task).map(opt));
-        },
         onPick: async (v) => {
           note.task_type = v;
           const picked = v ? (taskTypesByName && taskTypesByName[v]) : null;
@@ -943,6 +960,6 @@
     return true;
   }
 
-  const WriteSysNoteWidget = { PIN_SVG, pinnable, buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
+  const WriteSysNoteWidget = { PIN_SVG, pinnable, buildTypeChip, typeColor, typeIsTask, buildNoteElement, buildNoteSquare, buildColorDot, buildDimChip, buildCriteriaRow, criteriaMatches, attachTagAutocomplete, tagCounts, renderTags, updatePriorityFlagUI, updateDims, isTask, listTaskTypes, COLORS, LINK_SVG, openManuscriptPicker, listManuscripts };
   if (typeof window !== 'undefined') window.WriteSysNoteWidget = WriteSysNoteWidget;
 })();
