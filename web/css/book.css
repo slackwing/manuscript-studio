@@ -1755,6 +1755,11 @@ p.section-break {
 .range-trash.range-copy:hover { color: #2a6fb0; border-color: #2a6fb0; background: #eef5fb; }
 .range-trash.range-copy.copied { color: #2e7d32; border-color: #2e7d32; background: #eef7ee; }
 .range-trash.range-copy svg { display: block; margin: 0 auto; }
+/* Batch accept (✓), on top of the stack: green family; armed = filled. */
+.range-trash.range-accept { color: #2e7d32; border-color: #2e7d32; background: #fff; }
+.range-trash.range-accept:hover { background: #eef7ee; }
+.range-trash.range-accept.confirming { background: #2e7d32; color: #fff; box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.3); }
+.range-trash.range-accept svg { display: block; margin: 0 auto; }
 .cmd-sketch-glyph { cursor: pointer; }
 .cmd-sketch-glyph svg { display: inline-block; vertical-align: -1px; }
 .cmd-sketch-glyph:hover { color: #66492b; }
@@ -3257,6 +3262,10 @@ p.section-break {
 }
 body.range-delete-armed .sentence.range-selected {
   background: rgba(217, 83, 79, 0.16) !important;
+}
+/* An ARMED ✓ (batch accept) greens the range the same way. */
+body.range-accept-armed .sentence.range-selected {
+  background: rgba(46, 125, 50, 0.16) !important;
 }
 /* While a range is live, the canonize + affordances get out of the way. */
 body.range-delete-mode .import-zone { display: none !important; }

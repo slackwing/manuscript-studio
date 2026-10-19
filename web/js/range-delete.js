@@ -92,7 +92,7 @@ const WriteSysRangeDelete = {
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'range-trash';
+    btn.className = 'range-trash range-del'; // range-del = THE trash (the stack shares range-trash)
     btn.title = `Suggest deleting ${this.range.length} sentence${this.range.length > 1 ? 's' : ''}`;
     btn.innerHTML = window.WriteSysIcons.trash(12); // the house trash, never a new copy
     let armed = false, resetTimer = null;
@@ -175,6 +175,64 @@ const WriteSysRangeDelete = {
       const h = btn.getBoundingClientRect().height;
       cp.style.left = btn.style.left;
       cp.style.top = `${parseFloat(below.style.top || '0') - h - 6}px`;
+      this.copyBtn = cp;
+    }
+    // ACCEPT (✓) tops the stack (2026-10-18): accept the suggestion every
+    // selected sentence shows — deletion proposals included — for "I
+    // deleted a run of sentences and want to accept them too". Reviewers
+    // only (manage-suggestions). House two-click, like the trash: the first
+    // click arms it and greens the range; no second click within 2s
+    // disarms both.
+    const S = window.WriteSysSuggestions;
+    if (S && S.canReview && S.acceptMany) {
+      const ac = document.createElement('button');
+      ac.type = 'button';
+      ac.className = 'range-trash range-accept';
+      const idleTitle = `Accept the suggested edits in ${this.range.length} sentence${this.range.length > 1 ? 's' : ''}`;
+      ac.title = idleTitle;
+      ac.innerHTML = window.WriteSysIcons && window.WriteSysIcons.check ? window.WriteSysIcons.check(12) : '✓';
+      let acArmed = false, acTimer = null;
+      ac.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!acArmed) {
+          acArmed = true;
+          ac.classList.add('confirming');
+          document.body.classList.add('range-accept-armed');
+          ac.title = 'Click again to accept them';
+          acTimer = setTimeout(() => {
+            acArmed = false;
+            ac.classList.remove('confirming');
+            ac.title = idleTitle;
+            document.body.classList.remove('range-accept-armed');
+          }, 2000);
+          return;
+        }
+        clearTimeout(acTimer);
+        await this.acceptRange();
+      });
+      host.appendChild(ac);
+      const below = this.copyBtn || this.sketchBtn || btn;
+      const h = btn.getBoundingClientRect().height;
+      ac.style.left = btn.style.left;
+      ac.style.top = `${parseFloat(below.style.top || '0') - h - 6}px`;
+      this.acceptBtn = ac;
+    }
+  },
+
+  async acceptRange() {
+    const ids = this.range.slice();
+    const firstId = ids[0];
+    if (this.acceptBtn) { this.acceptBtn.disabled = true; }
+    const r = window.WriteSysRenderer;
+    const S = window.WriteSysSuggestions;
+    const res = await S.acceptMany(ids);
+    this.exit();
+    if (r && r.renderManuscript) await r.renderManuscript({ anchorSentenceId: firstId });
+    if (window.WriteSysPush) window.WriteSysPush.refresh();
+    if (res.conflicts || res.failed) {
+      alert(`Accepted ${res.accepted}.`
+        + (res.conflicts ? ` ${res.conflicts} sentence${res.conflicts > 1 ? 's have' : ' has'} another suggestion already accepted.` : '')
+        + (res.failed ? ` ${res.failed} failed — retry.` : ''));
     }
   },
 
@@ -211,12 +269,14 @@ const WriteSysRangeDelete = {
     if (this.btn) { this.btn.remove(); this.btn = null; }
     document.querySelectorAll('.range-trash').forEach((el) => el.remove());
     this.sketchBtn = null;
+    this.copyBtn = null;
+    this.acceptBtn = null;
   },
   exit() {
     this.clearHighlights();
     this.removeTrash();
     this.range = [];
-    document.body.classList.remove('range-delete-mode', 'range-delete-armed');
+    document.body.classList.remove('range-delete-mode', 'range-delete-armed', 'range-accept-armed');
   },
 };
 

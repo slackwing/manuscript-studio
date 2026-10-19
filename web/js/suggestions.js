@@ -171,6 +171,36 @@ const WriteSysSuggestions = {
     return this.rows.filter(s => !s.stale && s.user_id === this.viewer && !s.review_status).length;
   },
 
+  // acceptMany (2026-10-18, the range gutter's ✓): accept the suggestion
+  // each sentence SHOWS — the rendered winner, deletion proposals included —
+  // through the same review endpoint as the modal's ✓. Already-accepted
+  // rows are left alone; a sentence whose other suggestion is accepted
+  // (409) is counted, not forced. Returns { accepted, conflicts, failed }.
+  async acceptMany(sentenceIds) {
+    const out = { accepted: 0, conflicts: 0, failed: 0 };
+    for (const sid of sentenceIds) {
+      const row = this.renderRowBySentence[sid];
+      if (!row || row.review_status === 'accepted') continue;
+      try {
+        const resp = await authenticatedFetch(
+          `${this.apiBaseUrl}/sentences/${encodeURIComponent(sid)}/suggestion/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: row.user_id, status: 'accepted' }),
+          });
+        if (resp.status === 409) { out.conflicts++; continue; }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        row.review_status = 'accepted';
+        row.stale = false;
+        out.accepted++;
+      } catch (e) {
+        out.failed++;
+      }
+    }
+    this.rebuildMaps();
+    return out;
+  },
+
   // uncontestedPendingCount: unreviewed fresh suggestions that are the ONLY
   // live suggestion on their sentence — what a batch accept would take.
   // scope 'own' counts the viewer's; 'all' counts everyone's.

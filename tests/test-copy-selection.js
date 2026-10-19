@@ -80,7 +80,7 @@ const check = (name, ok, detail = '') => {
   await selectAll();
   const stack = await page.evaluate(() => {
     const top = (sel) => document.querySelector(sel).getBoundingClientRect().top;
-    const trash = document.querySelector('.range-trash:not(.range-sketch):not(.range-copy)');
+    const trash = document.querySelector('.range-trash.range-del');
     return {
       order: top('.range-copy') < top('.range-sketch') && top('.range-sketch') < trash.getBoundingClientRect().top,
       title: document.querySelector('.range-copy').title,
