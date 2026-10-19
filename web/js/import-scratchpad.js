@@ -59,7 +59,8 @@ const WriteSysImportScratchpad = {
         // -5px: vertically centred in the GAP — -9 hugged the descenders
         // (g/y) of the line above and floated far from the next line's caps.
         zone.style.top = '-5px';
-        zone.innerHTML = '<button type="button" class="import-tab" title="Insert here (sketch or .docx)">+</button><span class="import-rule"></span>';
+        const plus = window.WriteSysIcons && window.WriteSysIcons.plus ? window.WriteSysIcons.plus(10) : '+';
+        zone.innerHTML = `<button type="button" class="import-tab" title="Insert here (sketch or .docx)">${plus}</button><span class="import-rule"></span>`;
         zone.querySelector('.import-tab').addEventListener('click', (e) => {
           e.stopPropagation();
           this.openInsertMenu(e.currentTarget, boundaryId);
@@ -253,7 +254,8 @@ const WriteSysImportScratchpad = {
 
     const zone = document.createElement('div');
     zone.className = 'import-endzone';
-    zone.innerHTML = '<button type="button" class="import-end-tab" title="Insert at the end (sketch or .docx)">+</button>';
+    const plus = window.WriteSysIcons && window.WriteSysIcons.plus ? window.WriteSysIcons.plus(14) : '+';
+    zone.innerHTML = `<button type="button" class="import-end-tab" title="Insert at the end (sketch or .docx)">${plus}</button>`;
     zone.querySelector('.import-end-tab').addEventListener('click', (e) => {
       e.stopPropagation();
       this.openInsertMenu(e.currentTarget, anchorId);

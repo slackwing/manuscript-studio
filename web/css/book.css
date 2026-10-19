@@ -2766,13 +2766,18 @@ p.section-break {
   border: 1px solid #2a6fb0;
   background: #fff;
   color: #2a6fb0;
-  font: 600 13px/16px "Helvetica", sans-serif;
-  text-align: center;
+  /* The + is an SVG (WriteSysIcons.plus), centered by flex — never a font
+     glyph, whose position depends on the fallback font. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   padding: 0;
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.12s ease;
 }
+.import-tab svg, .import-end-tab svg { display: block; flex: none; }
 .import-tab:hover {
   opacity: 1;
   background: #2a6fb0;   /* fill in on hover — clearly clickable */
@@ -3478,8 +3483,10 @@ body.range-delete-mode .pagedjs_pages {
   border: 1px dashed #b3ac9c;
   background: #fff;
   color: #b3ac9c;
-  font: 300 19px/26px "Helvetica", sans-serif;
-  text-align: center;
+  display: inline-flex;   /* SVG +, flex-centered (see .import-tab) */
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   padding: 0;
   cursor: pointer;
   transition: color 0.12s ease, border-color 0.12s ease;

@@ -43,6 +43,13 @@
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"',
         '<rect x="5.2" y="5.2" width="8.6" height="8.6" rx="1.4"/><path d="M10.8 5.2V3.6c0-.77-.63-1.4-1.4-1.4H3.6c-.77 0-1.4.63-1.4 1.4v5.8c0 .77.63 1.4 1.4 1.4h1.6"/>');
     },
+    // Plus — the insert affordances. DRAWN, not a font glyph: a text "+"
+    // sits wherever the fallback font puts it (off-center in a circle on
+    // some machines, 2026-10-18); geometry centers exactly everywhere.
+    plus(size) {
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"',
+        '<path d="M8 3v10M3 8h10"/>');
+    },
     // Check — a done/copied acknowledgement.
     check(size) {
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"',
