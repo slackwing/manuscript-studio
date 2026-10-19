@@ -91,6 +91,7 @@ FAST_TESTS=(
   test-sketch-note-derive
   test-shared-icons
   test-material-points
+  test-note-nav
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

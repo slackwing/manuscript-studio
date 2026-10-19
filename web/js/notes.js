@@ -259,8 +259,7 @@ const WriteSysNotes = {
 
     container.innerHTML = '';
 
-    // Nav on TOP — the idle "– / n" and the counter occupy the same spot,
-    // so entering the tour reads as the dash becoming a number.
+    // The ‹ › flanking the preview: targets follow the selection.
     this.renderNoteNav();
 
     this.orderedNotes().forEach(note => {
@@ -327,40 +326,26 @@ const WriteSysNotes = {
     this.populateMobileNoteStack(stack);
   },
 
-  // ‹ i / n › across annotated sentences — same style as the pane-widget
-  // header nav. Nothing selected yet → "– / n" (the en-dash form
-  // transitions smoothly into the counter); next lands on the first note.
-  createNoteNav() {
+  // ‹ › across annotated sentences, flanking the sentence preview in its
+  // own quiet type (no counter). Nothing selected yet → the bare ‹ › pair
+  // is the tour's entry point; next lands on the first note.
+  // WRAPAROUND: prev from the first (or nothing selected) → the last; next
+  // from the last → back to the first. Never disabled.
+  renderNoteNav() {
+    const row = document.getElementById('note-nav-row');
+    if (!row) return;
+    const prev = row.querySelector('.note-nav-prev');
+    const next = row.querySelector('.note-nav-next');
     const list = this.annotatedOrdered();
+    prev.hidden = next.hidden = !list.length;
+    if (!list.length) return;
     const i = this.currentSentenceId ? list.indexOf(this.currentSentenceId) : -1;
-    const wrap = document.createElement('div');
-    wrap.className = 'pw-nav note-nav';
-    const count = i < 0 ? `– / ${list.length}` : `${i + 1} / ${list.length}`;
-    // WRAPAROUND: prev from the first (or nothing selected) → the last;
-    // next from the last → back to the first. Never disabled.
     const prevTarget = i > 0 ? list[i - 1] : list[list.length - 1];
     const nextTarget = i < 0 ? list[0] : (list[i + 1] || list[0]);
-    wrap.innerHTML = `<button type="button" class="pw-nav-prev" title="Previous note">&lsaquo;</button>
-      <span class="pw-nav-count">${count}</span>
-      <button type="button" class="pw-nav-next" title="${i < 0 ? 'First note' : 'Next note'}">&rsaquo;</button>`;
-    wrap.querySelector('.pw-nav-prev').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (prevTarget) this.gotoAnnotated(prevTarget);
-    });
-    wrap.querySelector('.pw-nav-next').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (nextTarget) this.gotoAnnotated(nextTarget);
-    });
-    return wrap;
-  },
-
-  // The nav lives in its own slot ABOVE the sentence preview (buttons at
-  // the top of the band, preview hugging the first note below it).
-  renderNoteNav() {
-    const slot = document.getElementById('note-nav-slot');
-    if (!slot) return;
-    if (!this.annotatedOrdered().length) { slot.replaceChildren(); return; }
-    slot.replaceChildren(this.createNoteNav());
+    prev.title = 'Previous note';
+    next.title = i < 0 ? 'First note' : 'Next note';
+    prev.onclick = (e) => { e.stopPropagation(); this.gotoAnnotated(prevTarget); };
+    next.onclick = (e) => { e.stopPropagation(); this.gotoAnnotated(nextTarget); };
   },
 
   // The manuscript margin now renders notes through the SHARED note-widget

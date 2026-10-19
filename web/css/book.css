@@ -964,10 +964,21 @@ p.section-break {
   pointer-events: auto; /* Re-enable clicks on actual content */
 }
 
-/* Note nav slot: the flipper buttons live at the TOP of the band, a
-   clear step above the preview + notes below. */
-.note-nav-slot { margin-bottom: 18px; display: flex; justify-content: center; }
-.note-nav-slot:empty { display: none; }
+/* ‹ preview › row above the notes: the tour's buttons wear the preview's
+   own quiet type (Georgia italic, gray) so the row reads as one line. */
+.note-nav-row {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+.note-nav-btn {
+  background: none; border: none; padding: 0 6px; cursor: pointer;
+  font: italic 16px/1.2 Georgia, serif;
+  color: #999;
+}
+.note-nav-btn:hover { color: #57503f; }
+.note-nav-btn[hidden] { display: none; }
 
 /* Sentence preview (first 3 words) */
 .sentence-preview {
@@ -975,9 +986,9 @@ p.section-break {
   text-align: center;
   font-family: Georgia, serif;
   font-size: 16px;
+  line-height: 1.2;
   color: #999;
-  margin-bottom: 12px;
-  padding: 0 8px;
+  padding: 0 4px;
   opacity: 0;
   transform: translateY(-8px);
   transition: all 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
@@ -2188,13 +2199,6 @@ p.section-break {
 #first-edit-btn, #first-split .mc-menu-item { font-size: 10px; font-weight: 600; }
 .mc-first-sub { font-size: 9px; margin-left: 2px; }
 .mc-count { font: 600 9px "Helvetica", sans-serif; color: #57503f; margin-left: 4px; }
-/* Note nav above the notes (and the idle – / n entry point):
-   the pane-widget ‹ i/n › flipper family, centered in the margin. */
-.note-nav { align-self: center; margin-bottom: 4px; }
-.note-nav .pw-nav-prev:disabled, .note-nav .pw-nav-next:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
 
 /* History bars on the LEFT margin: 3 lanes encoding "what changed across
    each commit boundary". Mirror of right-side rainbow bars in geometry. */
