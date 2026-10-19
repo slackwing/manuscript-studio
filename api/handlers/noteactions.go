@@ -60,7 +60,8 @@ func (h *NoteActionHandlers) HandleSetDate(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HandleList: GET /api/note-actions — the newest 20.
+// HandleList: GET /api/note-actions — the newest 20, plus every note the
+// viewer currently hides (its only way back).
 func (h *NoteActionHandlers) HandleList(w http.ResponseWriter, r *http.Request) {
 	session, err := auth.GetSession(r)
 	if err != nil {

@@ -55,6 +55,19 @@ function psql(sql) {
       return top('.range-accept') < top('.range-copy') && top('.range-copy') < top('.range-sketch') && top('.range-sketch') < top('.range-trash.range-del');
     });
     check('✓ tops the stack: accept, copy, sketch, trash', stack);
+    // Every stack button answers hover — and its icon stays visible on the
+    // hover fill (the ✓ once went white on pale green).
+    for (const cls of ['range-accept', 'range-copy', 'range-sketch', 'range-del']) {
+      const b = page.locator(`.range-trash.${cls}`);
+      const look = () => b.evaluate((e) => { const c = getComputedStyle(e); return { bg: c.backgroundColor, fg: c.color }; });
+      const rest = await look();
+      await b.hover();
+      await page.waitForTimeout(250);
+      const hov = await look();
+      check(`${cls}: hover changes it, icon still contrasts`, (hov.bg !== rest.bg || hov.fg !== rest.fg) && hov.fg !== hov.bg
+        && !(hov.fg === 'rgb(255, 255, 255)' && /^rgb\((2[2-5]\d), (2[2-5]\d), (2[2-5]\d)\)$/.test(hov.bg)), JSON.stringify({ rest, hov }));
+      await page.mouse.move(2, 2);
+    }
     const bg = () => page.evaluate(() => {
       const el = document.querySelector('.sentence.range-selected');
       el.getAnimations().forEach((a) => a.finish());

@@ -322,7 +322,10 @@ const WriteSysRenderer = {
         // renderManuscript (WriteSysOutline.refresh), so nothing to fetch here.
       ]);
       this.currentSentences = data.sentences;
-      this.currentNotes = data.notes;
+      // A note the viewer hid (note_hide) is gone from THEIR book — margin,
+      // phone stack, bars, tour all read this cache. Settings → Note
+      // actions unhides.
+      this.currentNotes = (data.notes || []).filter((n) => !n.hidden);
       // data.settings is the committed-only baseline; applyEffectiveSettings
       // overlays suggestions so a suggested &meta takes effect in preview.
       this.committedSettings = data.settings || {};

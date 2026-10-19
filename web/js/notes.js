@@ -303,11 +303,10 @@ const WriteSysNotes = {
     return stack;
   },
 
-  // The stack order, ONE rule for the margin and the mobile stack: hidden
-  // notes (per viewer) sink below the rest, position order kept within each
-  // group (a stable sort).
+  // The stack order, ONE rule for the margin and the mobile stack: position
+  // order. (Hidden notes never reach this.notes — see noteHidden.)
   orderedNotes() {
-    return [...this.notes].sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
+    return [...this.notes];
   },
 
   populateMobileNoteStack(stack) {
@@ -402,17 +401,26 @@ const WriteSysNotes = {
       // A sentence note is trivially in its manuscript — the chip would be
       // noise. Flag it off here (the scratchpad float leaves it on).
       showManuscriptChip: false,
-      onHidden: () => this.relayoutAfterHide(),
+      onHidden: (hidden) => this.relayoutAfterHide(hidden, note.note_id),
     }, { showPoints: canPoint, allowHide: true });
     noteEl.dataset.annotationId = note.note_id;
     return noteEl;
   },
 
-  // A hide/unhide changes the stack's order (hidden notes sink) — redraw
-  // the margin and, on the compact layout, the modal's note stack.
-  relayoutAfterHide() {
+  // The eye's second click hid the note: it leaves MY book like a delete
+  // does — the margin, the phone stack, the sentence's color bars and the
+  // ‹ › tour. (Unhiding happens in Settings → Note actions; a reload
+  // brings it back.)
+  relayoutAfterHide(hidden, noteId) {
+    if (hidden) {
+      this.notes = this.notes.filter((a) => a.note_id !== noteId);
+      this._cacheRemove(noteId);
+    }
     this.renderStickyNotes();
     this.refreshMobileNoteStack();
+    this.updateSentenceHighlights();
+    const r = window.WriteSysRenderer;
+    if (r && r.refreshRainbowBars) r.refreshRainbowBars();
   },
 
   // createForeignNoteElement renders SOMEONE ELSE's note: text locked, an
@@ -428,8 +436,8 @@ const WriteSysNotes = {
       onAddTag: (name) => this.addTagByName(note, noteEl, name),
       onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
       showManuscriptChip: false,
-      onHidden: () => this.relayoutAfterHide(),
-    } : { showManuscriptChip: false, onHidden: () => this.relayoutAfterHide() };
+      onHidden: (hidden) => this.relayoutAfterHide(hidden, note.note_id),
+    } : { showManuscriptChip: false, onHidden: (hidden) => this.relayoutAfterHide(hidden, note.note_id) };
     const noteEl = W.buildNoteElement(note, handlers, canManage
       ? { lockBody: true, showDelete: false, showPoints: canPoint, hideColorCircle: false, allowHide: true }
       : { readOnly: true, allowHide: true });

@@ -582,23 +582,39 @@ const WriteSysSuggestions = {
     // mobile block). No fixed-position math: real phones bring pinch zoom,
     // keyboards, and collapsing URL bars that make measured coordinates lie.
     // Desktop keeps the classic fixed-centered modal (modal stays a sibling).
-    const mobile = window.matchMedia(SUGGESTIONS_MOBILE_MEDIA).matches;
+    // The layout FOLLOWS the breakpoint while open: widening a phone-sized
+    // window past it moves the modal out and drops the stack (the margin
+    // shows the notes again); narrowing moves it back in (2026-10-18 — it
+    // used to keep the phone layout, stack stranded top-left).
+    const mobileMql = window.matchMedia(SUGGESTIONS_MOBILE_MEDIA);
     let notesStack = null;
-    if (mobile) {
-      overlay.appendChild(modal);
-      if (window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
-        notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
-        if (notesStack) {
-          overlay.appendChild(notesStack);
-          // scrollHeight is 0 on detached elements, so the build-time autosize
-          // left long notes floored at min-height — re-run now that the stack
-          // is in the DOM (same post-attach pass the desktop margin does).
-          window.WriteSysNotes.refreshMobileNoteStack();
+    const placeForLayout = (mobile) => {
+      if (mobile) {
+        overlay.appendChild(modal);
+        if (!notesStack && window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
+          notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
+          if (notesStack) {
+            overlay.appendChild(notesStack);
+            // scrollHeight is 0 on detached elements, so the build-time autosize
+            // left long notes floored at min-height — re-run now that the stack
+            // is in the DOM (same post-attach pass the desktop margin does).
+            window.WriteSysNotes.refreshMobileNoteStack();
+          }
         }
+      } else {
+        if (notesStack) { notesStack.remove(); notesStack = null; }
+        document.body.appendChild(modal);
       }
-    } else {
-      document.body.appendChild(modal);
-    }
+    };
+    placeForLayout(mobileMql.matches);
+    const onLayoutChange = (e) => {
+      placeForLayout(e.matches);
+      // Notes edited in the stack: the margin re-renders from the same data.
+      if (!e.matches && window.WriteSysNotes && window.WriteSysNotes.currentSentenceId === sentenceId) {
+        window.WriteSysNotes.renderStickyNotes();
+      }
+    };
+    mobileMql.addEventListener('change', onLayoutChange);
 
     // LEFT pane: the SHARED edit component (edit-pane.js) — the same
     // autosave-as-you-type, retry ladder, dirty tracking, tab overlay and
@@ -789,6 +805,7 @@ const WriteSysSuggestions = {
       if (!(await saver.flush())) return false;
       this._activeClose = null;
       document.removeEventListener('keydown', onDocKey);
+      mobileMql.removeEventListener('change', onLayoutChange);
       saver.destroy();
       if (notesStack) {
         notesStack.remove();

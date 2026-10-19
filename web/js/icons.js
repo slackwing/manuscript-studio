@@ -65,6 +65,16 @@
       return svg(size, '0 0 20 20', '',
         '<path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>');
     },
+    // Eye — hide a note from your view; slashed = hidden (note bottom row,
+    // settings' note actions).
+    eye(size) {
+      return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"',
+        '<path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.6"/>');
+    },
+    eyeOff(size) {
+      return svg(size, '0 0 20 20', 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"',
+        '<path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.6"/><path d="M3.5 3.5l13 13"/>');
+    },
     // Check — a done/copied acknowledgement.
     check(size) {
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"',

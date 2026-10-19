@@ -323,12 +323,14 @@ WriteSysSettings.renderRuleBuilder = async function () {
 };
 
 // ---- Note actions: the last 20 (points awarded / deleted / completed),
-// each with an undo. Icons are the EXACT svgs the note UI's bottom row
-// uses (star / trash / check).
+// plus every note you've hidden (the eye — this table is the only way to
+// unhide), each with an undo. Icons are the EXACT svgs the note UI's
+// bottom row uses (star / trash / check / slashed eye).
 WriteSysSettings.ACTION_ICONS = {
   points: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   deleted: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>',
   completed: '<svg width="14" height="14" viewBox="0 0 20 20"><path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  get hidden() { return window.WriteSysIcons.eyeOff(14); },
 };
 
 // ---- Markers: slug → symbol (settings "Markers") -------------------------
@@ -505,8 +507,9 @@ WriteSysSettings.reloadActions = async function () {
       + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     // The DATE is editable (click → native date input): move the action to
     // another day — e.g. assign points to yesterday. Time-of-day is kept.
-    when.classList.add('na-when-edit');
-    when.addEventListener('click', () => {
+    // (Not a hide: when you hid something isn't a record worth moving.)
+    if (a.kind !== 'hidden') when.classList.add('na-when-edit');
+    if (a.kind !== 'hidden') when.addEventListener('click', () => {
       if (when.querySelector('input')) return;
       const iso = d.toLocaleDateString('en-CA'); // YYYY-MM-DD, local tz
       when.textContent = '';
@@ -552,7 +555,7 @@ WriteSysSettings.reloadActions = async function () {
     gotoA.title = 'View note';
     gotoA.innerHTML = window.WriteSysIcons.goto(13);
     gotoA.addEventListener('click', (e) => { e.preventDefault(); this.openNoteModal(a.note_id); });
-    gotoTd.appendChild(gotoA);
+    if (a.own !== false) gotoTd.appendChild(gotoA); // someone else's (hidden) note: preview only
     tr.appendChild(gotoTd);
     const prev = document.createElement('td');
     prev.className = 'na-prev';
@@ -610,6 +613,9 @@ WriteSysSettings.reloadActions = async function () {
         });
         inp.addEventListener('blur', () => done(true));
       };
+    } else if (a.kind === 'hidden') {
+      btn.textContent = 'undo hide';
+      btn.onclick = () => fetch(`api/notes/${a.note_id}/unhide`, { ...req, method: 'POST' }).then(() => this.reloadActions());
     } else if (a.kind === 'deleted') {
       btn.textContent = 'undo delete';
       btn.onclick = () => fetch(`api/notes/${a.note_id}/restore`, { ...req, method: 'POST' }).then(() => this.reloadActions());

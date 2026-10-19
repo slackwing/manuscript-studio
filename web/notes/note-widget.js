@@ -352,34 +352,41 @@
   // flag, points, and completion. Soft-deleted types keep their category —
   // a note holding one is unchanged. Before the type list arrives, a typed
   // note renders as a task (the common case; corrected on the next render).
-  // The eye (hide from my view) and the slashed eye (hidden — click to show).
-  const EYE_SVG = '<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.6"/></svg>';
-  const EYE_OFF_SVG = '<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.6"/><path d="M3.5 3.5l13 13"/></svg>';
+  // The eye: hide this note from YOUR view. Two clicks, like the trash —
+  // the first arms it (purple), the second within 2s hides; the host then
+  // drops the note from view entirely (handlers.onHidden). Settings → Note
+  // actions is the way back. A note shown already hidden flips back with
+  // one click (the slashed eye).
   function syncHideChip(noteEl, note) {
     const chip = noteEl.querySelector('.hide-chip');
     if (!chip) return;
-    chip.innerHTML = note.hidden ? EYE_OFF_SVG : EYE_SVG;
+    chip.innerHTML = note.hidden ? window.WriteSysIcons.eyeOff(14) : window.WriteSysIcons.eye(14);
     chip.classList.toggle('active', !!note.hidden);
     chip.title = note.hidden ? 'Hidden from your view — show it' : 'Hide from your view';
-    noteEl.classList.toggle('note-hidden', !!note.hidden);
   }
 
-  // Optimistic toggle through the note API; the host re-lays-out (hidden
-  // notes sink) via handlers.onHidden.
   function wireHideChip(noteEl, note, handlers) {
     const chip = noteEl.querySelector('.hide-chip');
     if (!chip) return;
     syncHideChip(noteEl, note);
+    let timer = null;
     chip.addEventListener('click', async (e) => {
       e.stopPropagation();
       const was = !!note.hidden;
-      note.hidden = !was;
-      syncHideChip(noteEl, note);
+      if (!was && !chip.classList.contains('confirming')) {
+        chip.classList.add('confirming');
+        chip.title = 'Click again to hide';
+        timer = setTimeout(() => { chip.classList.remove('confirming'); syncHideChip(noteEl, note); }, 2000);
+        return;
+      }
+      clearTimeout(timer);
+      chip.classList.remove('confirming');
       try {
         await window.WriteSysNoteAPI.setHidden(note.note_id || note.noteId, !was);
+        note.hidden = !was;
+        syncHideChip(noteEl, note);
         if (handlers && handlers.onHidden) handlers.onHidden(note.hidden);
       } catch (err) {
-        note.hidden = was;
         syncHideChip(noteEl, note);
       }
     });

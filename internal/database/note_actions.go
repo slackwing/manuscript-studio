@@ -13,35 +13,47 @@ import (
 )
 
 // NoteAction: one row of the settings page's "Note actions" audit table —
-// points awarded, note (soft-)deleted, or note completed.
+// points awarded, note (soft-)deleted, note completed, or note hidden from
+// the viewer's book (note_hide — possibly someone else's note).
 type NoteAction struct {
-	Kind    string    `json:"kind"` // 'points' | 'deleted' | 'completed'
+	Kind    string    `json:"kind"` // 'points' | 'deleted' | 'completed' | 'hidden'
 	At      time.Time `json:"at"`
 	NoteID  int       `json:"note_id"`
 	EventID *int      `json:"event_id,omitempty"` // point_event_id, points rows only
 	Points  *int      `json:"points,omitempty"`
 	Color   string    `json:"color"`
 	Body    string    `json:"body"` // clamped server-side; preview only
+	Own     bool      `json:"own"`  // the viewer's own note (others' can only be hidden)
 }
 
-// ListNoteActions: the user's newest note actions across all three sources.
+// ListNoteActions: the user's newest note actions (points / deleted /
+// completed — the newest `limit`), plus EVERY note they currently hide: a
+// hidden note shows nowhere in the book, so this table is its only way
+// back — it must never age out of the list.
 func (db *DB) ListNoteActions(ctx context.Context, username string, limit int) ([]NoteAction, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT kind, at, note_id, event_id, points, color, body FROM (
-			SELECT 'points' AS kind, pe.scored_at AS at, n.note_id,
-			       pe.point_event_id AS event_id, pe.points, n.color,
-			       LEFT(COALESCE(n.body, ''), 300) AS body
-			  FROM point_event pe JOIN note n ON n.note_id = pe.note_id
-			 WHERE n.user_id = $1 AND pe.deleted_at IS NULL
+		SELECT kind, at, note_id, event_id, points, color, body, own FROM (
+			(SELECT kind, at, note_id, event_id, points, color, body, true AS own FROM (
+				SELECT 'points' AS kind, pe.scored_at AS at, n.note_id,
+				       pe.point_event_id AS event_id, pe.points, n.color,
+				       LEFT(COALESCE(n.body, ''), 300) AS body
+				  FROM point_event pe JOIN note n ON n.note_id = pe.note_id
+				 WHERE n.user_id = $1 AND pe.deleted_at IS NULL
+				UNION ALL
+				SELECT 'deleted', n.deleted_at, n.note_id, NULL, NULL, n.color,
+				       LEFT(COALESCE(n.body, ''), 300)
+				  FROM note n WHERE n.user_id = $1 AND n.deleted_at IS NOT NULL
+				UNION ALL
+				SELECT 'completed', n.completed_at, n.note_id, NULL, NULL, n.color,
+				       LEFT(COALESCE(n.body, ''), 300)
+				  FROM note n WHERE n.user_id = $1 AND n.completed_at IS NOT NULL
+			) recent ORDER BY at DESC LIMIT $2)
 			UNION ALL
-			SELECT 'deleted', n.deleted_at, n.note_id, NULL, NULL, n.color,
-			       LEFT(COALESCE(n.body, ''), 300)
-			  FROM note n WHERE n.user_id = $1 AND n.deleted_at IS NOT NULL
-			UNION ALL
-			SELECT 'completed', n.completed_at, n.note_id, NULL, NULL, n.color,
-			       LEFT(COALESCE(n.body, ''), 300)
-			  FROM note n WHERE n.user_id = $1 AND n.completed_at IS NOT NULL
-		) x ORDER BY at DESC LIMIT $2
+			SELECT 'hidden', h.created_at, n.note_id, NULL, NULL, n.color,
+			       LEFT(COALESCE(n.body, ''), 300), n.user_id = $1
+			  FROM note_hide h JOIN note n ON n.note_id = h.note_id
+			 WHERE h.username = $1 AND n.deleted_at IS NULL
+		) x ORDER BY at DESC
 	`, username, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list note actions: %w", err)
@@ -50,7 +62,7 @@ func (db *DB) ListNoteActions(ctx context.Context, username string, limit int) (
 	out := []NoteAction{}
 	for rows.Next() {
 		var a NoteAction
-		if err := rows.Scan(&a.Kind, &a.At, &a.NoteID, &a.EventID, &a.Points, &a.Color, &a.Body); err != nil {
+		if err := rows.Scan(&a.Kind, &a.At, &a.NoteID, &a.EventID, &a.Points, &a.Color, &a.Body, &a.Own); err != nil {
 			return nil, fmt.Errorf("scan note action: %w", err)
 		}
 		out = append(out, a)

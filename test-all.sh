@@ -92,6 +92,7 @@ FAST_TESTS=(
   test-shared-icons
   test-material-points
   test-note-nav
+  test-modal-layout-flip
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units
