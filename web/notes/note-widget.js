@@ -352,6 +352,39 @@
   // flag, points, and completion. Soft-deleted types keep their category —
   // a note holding one is unchanged. Before the type list arrives, a typed
   // note renders as a task (the common case; corrected on the next render).
+  // The eye (hide from my view) and the slashed eye (hidden — click to show).
+  const EYE_SVG = '<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.6"/></svg>';
+  const EYE_OFF_SVG = '<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10Z"/><circle cx="10" cy="10" r="2.6"/><path d="M3.5 3.5l13 13"/></svg>';
+  function syncHideChip(noteEl, note) {
+    const chip = noteEl.querySelector('.hide-chip');
+    if (!chip) return;
+    chip.innerHTML = note.hidden ? EYE_OFF_SVG : EYE_SVG;
+    chip.classList.toggle('active', !!note.hidden);
+    chip.title = note.hidden ? 'Hidden from your view — show it' : 'Hide from your view';
+    noteEl.classList.toggle('note-hidden', !!note.hidden);
+  }
+
+  // Optimistic toggle through the note API; the host re-lays-out (hidden
+  // notes sink) via handlers.onHidden.
+  function wireHideChip(noteEl, note, handlers) {
+    const chip = noteEl.querySelector('.hide-chip');
+    if (!chip) return;
+    syncHideChip(noteEl, note);
+    chip.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const was = !!note.hidden;
+      note.hidden = !was;
+      syncHideChip(noteEl, note);
+      try {
+        await window.WriteSysNoteAPI.setHidden(note.note_id || note.noteId, !was);
+        if (handlers && handlers.onHidden) handlers.onHidden(note.hidden);
+      } catch (err) {
+        note.hidden = was;
+        syncHideChip(noteEl, note);
+      }
+    });
+  }
+
   // The pushpin: a flat head, a tapered body, the needle.
   const PIN_SVG = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M7 2.5h6M8.2 2.5l-.6 5.2-2.6 2.6v1.4h10v-1.4l-2.6-2.6-.6-5.2"/><path d="M10 11.7v5.8"/></svg>`;
 
@@ -512,7 +545,12 @@
     // The points star is the POINTER surface (award-points) — callers gate
     // it via opts.showPoints; complete/trash have their own switches.
     const showPoints = opts.showPoints !== false;
-    const actionsHtml = readOnly ? '' : `
+    // The eye (2026-10-18): hide this note from YOUR view (note_hide — per
+    // viewer). Right of the check, before the trash; offered where a host
+    // supports hiding (opts.allowHide — the book's notes), read-only notes
+    // included (someone else's note you can't edit can still be hidden).
+    const hideHtml = opts.allowHide ? '<div class="hide-chip"></div>' : '';
+    const actionsHtml = readOnly ? hideHtml : `
           ${showComplete && showPoints ? `<div class="points-star" title="Score points — click, type 1-2 digits, Enter or click again">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M10 2.5l2.3 4.7 5.2.75-3.75 3.65.9 5.15L10 14.3l-4.65 2.45.9-5.15L2.5 7.95l5.2-.75z" stroke="currentColor" fill="none" stroke-width="1.4" stroke-linejoin="round"/>
@@ -523,6 +561,7 @@
               <path d="M4 10l4 4 8-8" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>` : ''}
+          ${hideHtml}
           ${showDelete ? `<div class="note-trash" title="Delete note">
             <svg width="14" height="14" viewBox="0 0 20 20">
               <path d="M6 2h8M3 5h14M5 5l1 12h8l1-12M8 8v6M12 8v6" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round"/>
@@ -556,9 +595,14 @@
       // interactive — so we return right after populating the preview.
       noteEl.querySelector('.note-readonly-body').textContent = note.body || '(empty note)';
       // Cards carry the dimensions as static chips in the tag row (rendered
-      // above); the interactive bottom row is edit-only.
+      // above); the interactive bottom row is edit-only — except the eye,
+      // when the host offers hiding (the row then holds the eye alone).
       const cont = noteEl.querySelector('.priority-flag-container');
-      if (cont) cont.style.display = 'none';
+      if (cont) {
+        if (opts.allowHide) cont.classList.add('row-hide-only');
+        else cont.style.display = 'none';
+      }
+      wireHideChip(noteEl, note, handlers);
       return noteEl;
     }
 
@@ -615,6 +659,8 @@
       }
     });
 
+    wireHideChip(noteEl, note, handlers);
+
     const blockedChip = noteEl.querySelector('.blocked-chip');
     if (blockedChip) blockedChip.addEventListener('click', async () => {
       commit();
@@ -651,7 +697,7 @@
     // Collapsed cards expand on click (anywhere not on an interactive control).
     if (opts.collapsed && opts.expandable !== false) {
       noteEl.addEventListener('click', (e) => {
-        if (e.target.closest('.note-trash, .complete-check, .points-star, .blocked-chip, .pin-chip, .dim-chip, .color-circle, .tag-chip, .note-input')) return;
+        if (e.target.closest('.note-trash, .complete-check, .points-star, .blocked-chip, .pin-chip, .hide-chip, .dim-chip, .color-circle, .tag-chip, .note-input')) return;
         noteEl.classList.remove('sticky-note-collapsed');
         if (handlers.onExpand) handlers.onExpand();
       });

@@ -87,6 +87,7 @@ FAST_TESTS=(
   test-uncreated-type
   test-insert-plus
   test-range-accept
+  test-note-hide
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

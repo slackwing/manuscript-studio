@@ -1462,6 +1462,36 @@ p.section-break {
   color: #fff;
 }
 
+/* Hide from MY view (the eye, 2026-10-18) — right of the check. Lit
+   (slashed eye, filled) = hidden. */
+.hide-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px dashed #ccc;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.hide-chip:hover { background: #ececec; border-color: #666; color: #444; }
+.hide-chip.active { background: #6b6b6b; border-color: #6b6b6b; color: #fff; }
+/* A read-only note's row holds the eye alone. */
+.priority-flag-container.row-hide-only .priority-flag-chips > :not(.hide-chip) { display: none !important; }
+/* A HIDDEN note collapses in place to a faded strip — its color, (someone
+   else's: the owner line) and the lit eye to bring it back; nothing else.
+   The host sinks hidden notes below the rest. */
+.sticky-note.note-hidden { opacity: 0.55; }
+.sticky-note.note-hidden .note-container,
+.sticky-note.note-hidden .sticky-bottom-controls,
+.sticky-note.note-hidden .sticky-note-color-circle { display: none !important; }
+.sticky-note.note-hidden .priority-flag-container { display: flex !important; margin-top: 0; }
+.sticky-note.note-hidden .priority-flag-chips > :not(.hide-chip) { display: none !important; }
+
 /* The bottom row's manuscript slot: ONE circle slot (the link chip is a
    26px circle like its neighbors), held open even when empty so blocked/
    star/check always sit at slots 2/3/4. */
@@ -3649,16 +3679,6 @@ body.range-delete-mode .pagedjs_pages {
   white-space: nowrap;
 }
 .note-owner-chip { font: inherit; color: inherit; }
-.note-hide-btn {
-  border: none;
-  background: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-}
-.note-hide-btn:hover { color: #2a6fb0; }
 .sticky-note.note-foreign {
   background-image: repeating-linear-gradient(-45deg,
     rgba(60, 45, 10, 0.035) 0 2px, transparent 2px 15px);

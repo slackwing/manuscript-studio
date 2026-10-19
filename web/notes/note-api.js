@@ -56,6 +56,16 @@
       return jsonOrThrow(resp);
     },
 
+    // Hide from / show in MY view (note_hide — per viewer; the owner of
+    // someone else's note never knows).
+    async setHidden(noteId, hidden) {
+      const resp = await authFetch(`${BASE}/${noteId}/${hidden ? 'hide' : 'unhide'}`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf() },
+      });
+      return jsonOrThrow(resp);
+    },
+
     // Pin to / unpin from the manuscript's daily-tasks board (048).
     async setPinned(noteId, pinned) {
       const resp = await authFetch(`${BASE}/${noteId}/${pinned ? 'pin' : 'unpin'}`, {

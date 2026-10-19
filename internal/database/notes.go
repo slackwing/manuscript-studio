@@ -77,8 +77,11 @@ func scanNoteHidden(row pgx.Row) (models.Note, error) {
 }
 
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
+	// hidden (note_hide) is viewer-relative and applies to your OWN notes
+	// too — the eye hides any note from your view (2026-10-18).
 	query := `
-		SELECT ` + noteColumns + `
+		SELECT ` + noteColumns + `,
+		       EXISTS(SELECT 1 FROM note_hide h WHERE h.note_id = a.note_id AND h.username = $2) AS hidden
 		FROM note a
 		JOIN sentence s ON a.sentence_id = s.sentence_id
 		WHERE s.commit_hash = $1
@@ -96,7 +99,7 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 
 	var notes []models.Note
 	for rows.Next() {
-		a, err := scanNote(rows)
+		a, err := scanNoteHidden(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan note: %w", err)
 		}

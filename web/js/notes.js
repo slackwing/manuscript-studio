@@ -263,10 +263,7 @@ const WriteSysNotes = {
     // so entering the tour reads as the dash becoming a number.
     this.renderNoteNav();
 
-    // v3 multi-user: hidden notes (per-viewer) sink below unhidden ones,
-    // preserving position order within each group.
-    const ordered = [...this.notes].sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
-    ordered.forEach(note => {
+    this.orderedNotes().forEach(note => {
       const noteElement = this.createStickyNoteElement(note);
       container.appendChild(noteElement);
     });
@@ -307,9 +304,16 @@ const WriteSysNotes = {
     return stack;
   },
 
+  // The stack order, ONE rule for the margin and the mobile stack: hidden
+  // notes (per viewer) sink below the rest, position order kept within each
+  // group (a stable sort).
+  orderedNotes() {
+    return [...this.notes].sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
+  },
+
   populateMobileNoteStack(stack) {
     stack.innerHTML = '';
-    this.notes.forEach(note => stack.appendChild(this.createStickyNoteElement(note)));
+    this.orderedNotes().forEach(note => stack.appendChild(this.createStickyNoteElement(note)));
     // Same create affordance as the desktop margin: full grey UI when the
     // sentence has no notes yet, the gradient-fading + card otherwise —
     // mobile had no way to CREATE a note at all.
@@ -413,14 +417,22 @@ const WriteSysNotes = {
       // A sentence note is trivially in its manuscript — the chip would be
       // noise. Flag it off here (the scratchpad float leaves it on).
       showManuscriptChip: false,
-    }, { showPoints: canPoint });
+      onHidden: () => this.relayoutAfterHide(),
+    }, { showPoints: canPoint, allowHide: true });
     noteEl.dataset.annotationId = note.note_id;
     return noteEl;
   },
 
+  // A hide/unhide changes the stack's order (hidden notes sink) — redraw
+  // the margin and, on the compact layout, the modal's note stack.
+  relayoutAfterHide() {
+    this.renderStickyNotes();
+    this.refreshMobileNoteStack();
+  },
+
   // createForeignNoteElement renders SOMEONE ELSE's note: text locked, an
-  // owner chip, a per-viewer hide/unhide control; chips/complete stay live
-  // only for manage-others-notes holders.
+  // owner chip, the widget's eye (hide from MY view); chips/complete stay
+  // live only for manage-others-notes holders.
   createForeignNoteElement(note, canManage, canPoint) {
     const W = window.WriteSysNoteWidget;
     const handlers = canManage ? {
@@ -431,12 +443,12 @@ const WriteSysNotes = {
       onAddTag: (name) => this.addTagByName(note, noteEl, name),
       onRemoveTag: (tagId, tagName) => this.removeTag(note, tagId, tagName, noteEl),
       showManuscriptChip: false,
-    } : { showManuscriptChip: false };
+      onHidden: () => this.relayoutAfterHide(),
+    } : { showManuscriptChip: false, onHidden: () => this.relayoutAfterHide() };
     const noteEl = W.buildNoteElement(note, handlers, canManage
-      ? { lockBody: true, showDelete: false, showPoints: canPoint, hideColorCircle: false }
-      : { readOnly: true });
+      ? { lockBody: true, showDelete: false, showPoints: canPoint, hideColorCircle: false, allowHide: true }
+      : { readOnly: true, allowHide: true });
     noteEl.dataset.annotationId = note.note_id;
-    if (note.hidden) noteEl.classList.add('note-hidden');
     noteEl.classList.add('note-foreign'); // diagonal-stripe "not yours" wash
 
     // Owner line — "admin hide" — margin-specific chrome.
@@ -445,25 +457,7 @@ const WriteSysNotes = {
     const chip = document.createElement('span');
     chip.className = 'note-owner-chip';
     chip.textContent = note.user_id;
-    const hideBtn = document.createElement('button');
-    hideBtn.type = 'button';
-    hideBtn.className = 'note-hide-btn';
-    hideBtn.title = note.hidden ? 'Unhide (shown dimmed, for you only)' : 'Hide from my view (the owner never knows)';
-    hideBtn.textContent = note.hidden ? 'unhide' : 'hide';
-    hideBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      try {
-        const resp = await authenticatedFetch(`api/notes/${note.note_id}/${note.hidden ? 'unhide' : 'hide'}`, { method: 'POST' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        note.hidden = !note.hidden;
-        this.renderStickyNotes();
-      } catch (err) {
-        alert('Failed: ' + (err.message || err));
-      }
-    });
     ownerLine.appendChild(chip);
-    ownerLine.appendChild(document.createTextNode(' '));
-    ownerLine.appendChild(hideBtn);
     noteEl.appendChild(ownerLine);
     return noteEl;
   },
