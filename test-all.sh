@@ -93,7 +93,6 @@ FAST_TESTS=(
   test-material-points
   test-note-nav
   test-modal-layout-flip
-  test-write-forwarding
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units
@@ -122,6 +121,7 @@ SLOW_TESTS=(
   test-trailing-sketch-caret
   test-scratchpad-canonize
   test-history-bars
+  test-write-forwarding
   test-suggested-edits
   test-suggestion-scroll
   test-push-suggestions
