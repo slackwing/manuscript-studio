@@ -79,9 +79,9 @@ const psql = (sql) => execSync(
     const st = document.querySelector(`${sel} .points-star`).getBoundingClientRect();
     const ck = document.querySelector(`${sel} .complete-check`).getBoundingClientRect();
     const tr = document.querySelector(`${sel} .note-trash`).getBoundingClientRect();
-    // 26px circles, never closer than a 6px gap (book.css column-gap); a
-    // shown pin (daily-tasks, 048) takes the slot between blocked and star.
-    const pitch = 26 + Math.max(6, (row.width - 208) / 7);
+    // 26px circles at a FIXED 6px gap (book.css column-gap); a shown pin
+    // (daily-tasks, 048) takes the slot between blocked and star.
+    const pitch = 26 + 6;
     const pin = document.querySelector(`${sel} .pin-chip`);
     const pinShown = !!pin && getComputedStyle(pin).display !== 'none';
     return {

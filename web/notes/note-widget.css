@@ -15,6 +15,25 @@
 /* The handwriting face rides WITH the component — no per-page <link>. */
 @import url("https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap");
 
+/* THE sticky note size (2026-10-18): every host that shows notes as
+   notes — the book's desktop margin, its mobile note stack, a pad's
+   floating note — lays them out at this width. A note never stretches to
+   its host (phones made them full-width). Hosts that SHRINK a note on
+   purpose (landing cards, a dialog) override per host. */
+:root { --sticky-note-width: 232px; }
+
+/* The shared multi-note layout: fixed-size notes, as many per row as fit,
+   then the next row — left-aligned (the leftover lane stays clickable). */
+.sticky-note-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.sticky-note-grid > .sticky-note { width: var(--sticky-note-width); }
+
 /* Component base: explicit typography — nothing inherited from the host. */
 .sticky-note {
   background: var(--sticky-default);

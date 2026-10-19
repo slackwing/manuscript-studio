@@ -94,8 +94,9 @@ const { TEST_URL, cleanupTestAnnotations, loginAsTestUser,
       const st = document.querySelector('.sticky-note:not(.uncreated-note) .points-star').getBoundingClientRect();
       const ck = document.querySelector('.sticky-note:not(.uncreated-note) .complete-check').getBoundingClientRect();
       const tr = document.querySelector('.sticky-note:not(.uncreated-note) .note-trash').getBoundingClientRect();
-      // 26px circles, never closer than a 6px gap (book.css column-gap).
-      const pitch = 26 + Math.max(6, (row.width - 208) / 7);
+      // 26px circles at a FIXED 6px gap (book.css column-gap) — the same
+      // pitch on any note width.
+      const pitch = 26 + 6;
       const kids = [...document.querySelector('.sticky-note:not(.uncreated-note) .priority-flag-chips').children]
         .filter((c) => getComputedStyle(c).display !== 'none' && c.getBoundingClientRect().width > 0);
       const gaps = kids.slice(1).map((k, i) => k.getBoundingClientRect().left - kids[i].getBoundingClientRect().right);

@@ -302,6 +302,7 @@ const WriteSysNotes = {
     this.notes = all.filter(a => a.sentence_id === sentenceId);
     const stack = document.createElement('div');
     stack.id = 'sgm-notes-stack';
+    stack.className = 'sticky-note-grid'; // the shared multi-note layout
     this.populateMobileNoteStack(stack);
     return stack;
   },

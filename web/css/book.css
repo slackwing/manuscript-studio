@@ -1404,11 +1404,13 @@ p.section-break {
      slot 1 (.note-ms-slot stays open even when empty), ⊘blocked(2)
      pin(3) ★(4) ✓(5) — tasks only — and the trash ALWAYS holds slot 8
      (right-pinned by its margin-left: auto). flex:none stops silent
-     flex-shrink. The pitch never drops below a 6px gap: the margin's
-     notes are EXACTLY 208px wide (8 × 26), where the bare 8-slot formula
-     gave 0 and the circles touched (owner's report, 2026-10-13). */
+     flex-shrink. The pitch is FIXED — a 6px gap, what the 8-slot spread
+     gives a standard note (its row is exactly 8 × 26 = 208px; the bare
+     formula gave 0 and the circles touched, 2026-10-13). A wider note
+     keeps the same pitch instead of spreading the circles out (they flew
+     apart on full-width phone notes, 2026-10-18); only the trash moves. */
   justify-content: flex-start;
-  column-gap: max(6px, calc((100% - 208px) / 7));
+  column-gap: 6px;
   align-items: center;
   flex-wrap: nowrap;
   width: 100%;
@@ -1813,6 +1815,9 @@ p.section-break {
   opacity: 1;
   transform: translateY(0);
 }
+/* The standard note size (note-widget.css) — explicit, not inherited from
+   the container's padding math. */
+#sticky-notes-container > .sticky-note { width: var(--sticky-note-width); }
 
 /* Individual Sticky Note */
 /* .sticky-note base moved to the component's notes/note-widget.css. */
@@ -3205,13 +3210,12 @@ p.section-break {
   /* The sentence's notes below the modal — each card its own island, the
      backdrop showing through the gaps. Never truly empty anymore: the
      create affordance (grey first-note UI / gradient + card) always rides
-     at the bottom, same as the desktop margin. */
+     at the bottom, same as the desktop margin. Laid out by the shared
+     .sticky-note-grid (note-widget.css): notes keep the standard size, as
+     many per row as fit, left-aligned — never full-width. */
   #sgm-notes-stack {
     flex: none;
     width: 94vw;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
   }
   #sgm-notes-stack:empty { display: none; }
   #sgm-notes-stack .sticky-note {

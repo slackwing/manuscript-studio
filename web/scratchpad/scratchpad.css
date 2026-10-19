@@ -859,7 +859,7 @@ textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
 /* The floating note (reuses the sticky-note widget). */
 .sn-note-float {
   z-index: 21000;
-  width: 260px;
+  width: var(--sticky-note-width, 232px); /* the standard note size */
   filter: drop-shadow(0 8px 22px rgba(20, 16, 8, 0.35));
 }
 

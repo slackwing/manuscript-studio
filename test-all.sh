@@ -83,6 +83,7 @@ FAST_TESTS=(
   test-emdash-glue
   test-daily-pins
   test-daily-points
+  test-note-layout
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units
