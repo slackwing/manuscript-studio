@@ -93,6 +93,7 @@ FAST_TESTS=(
   test-material-points
   test-note-nav
   test-modal-layout-flip
+  test-write-forwarding
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

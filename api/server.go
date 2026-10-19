@@ -313,6 +313,7 @@ func (s *Server) setupRouter() {
 			r.Put("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandlePutSuggestion)
 			r.Delete("/sentences/{sentence_id}/suggestion", s.suggestionHandlers.HandleDeleteSuggestion)
 			r.Post("/sentences/{sentence_id}/suggestion/review", s.suggestionHandlers.HandleReviewSuggestion)
+			r.Get("/sentences/{sentence_id}/current", s.suggestionHandlers.HandleCurrentSentence)
 			r.Post("/migrations/{migration_id}/accept-uncontested", s.suggestionHandlers.HandleAcceptUncontested)
 			r.Post("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-suggestions", s.suggestionHandlers.HandlePushSuggestions)
 			r.Get("/manuscripts/{manuscript_id}/migrations/{migration_id}/push-state", s.suggestionHandlers.HandleGetPushState)

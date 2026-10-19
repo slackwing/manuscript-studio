@@ -295,15 +295,43 @@ const WriteSysRenderer = {
     const short = (migration.commit_hash || '').substring(0, 7);
     const textSpan = document.createElement('span');
     textSpan.className = 'stale-migration-text';
-    textSpan.textContent = `Manuscript was updated (${when}, ${short}). New edits will be blocked until you reload.`;
+    // Edits made meanwhile aren't lost — the server forwards them to the
+    // new version (write-forwarding) — so this only offers the update.
+    textSpan.textContent = `Manuscript was updated (${when}, ${short}).`;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'stale-migration-reload';
     btn.textContent = 'Reload';
-    btn.addEventListener('click', () => window.location.reload());
+    btn.addEventListener('click', () => this.reloadInPlace());
     banner.appendChild(textSpan);
     banner.appendChild(btn);
     document.body.appendChild(banner);
+  },
+
+  // Reload onto the new version WHERE YOU ARE: ?scroll_to= names the
+  // selected sentence, else the one mid-screen. It's an id of the OLD
+  // version — restoreScrollFromURL (suggestions.js) forwards it to its
+  // counterpart in the new one. A plain reload kept whatever stale
+  // scroll_to the URL had (a sentence id the new version doesn't have),
+  // landing somewhere else entirely.
+  reloadInPlace() {
+    const url = new URL(window.location.href);
+    const id = this.currentSelectedSentenceId || this.sentenceAtViewportCenter();
+    if (id) url.searchParams.set('scroll_to', id);
+    else url.searchParams.delete('scroll_to');
+    window.location.replace(url.toString());
+  },
+
+  sentenceAtViewportCenter() {
+    const mid = window.innerHeight / 2;
+    let best = null, bestD = Infinity;
+    document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0 || r.bottom < 0 || r.top > window.innerHeight) return;
+      const d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bestD) { bestD = d; best = el.dataset.sentenceId; }
+    });
+    return best;
   },
 
   async loadManuscriptByMigration(migrationID) {

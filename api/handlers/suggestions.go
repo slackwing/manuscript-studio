@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/slackwing/manuscript-studio/internal/auth"
@@ -138,7 +139,11 @@ func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *ht
 		http.Error(w, "status must be accepted, rejected, or null", http.StatusBadRequest)
 		return
 	}
-	migrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
+	target, _, ok := h.writableSentence(ctx, w, sentenceID)
+	if !ok {
+		return
+	}
+	migrationID, err := h.DB.GetMigrationIDForSentence(ctx, target)
 	if err != nil || migrationID == 0 {
 		http.Error(w, "Sentence not found", http.StatusNotFound)
 		return
@@ -151,7 +156,7 @@ func (h *SuggestionHandlers) HandleReviewSuggestion(w http.ResponseWriter, r *ht
 	if !requireAction(w, r, h.DB, migration.ManuscriptID, "manage-suggestions") {
 		return
 	}
-	found, err := h.DB.SetSuggestionReview(ctx, sentenceID, req.Username, req.Status, session.Username)
+	found, err := h.DB.SetSuggestionReview(ctx, target, req.Username, req.Status, session.Username)
 	if errors.Is(err, database.ErrCompetingAccepted) {
 		http.Error(w, "Another suggestion on this sentence is already accepted — reject or clear it first.", http.StatusConflict)
 		return
@@ -221,11 +226,10 @@ func (h *SuggestionHandlers) HandleAcceptUncontested(w http.ResponseWriter, r *h
 // sentence is collapsed into a delete so "revert by re-saving the original"
 // works without client logic.
 //
-// Rejects writes against sentences on a non-latest migration with 409 stale.
-// Without this guard, a stale tab (loaded before a new migration arrived)
-// would silently accumulate suggestions on orphaned sentence_ids — they'd
-// still be per-user and access-checked, but they'd never surface for the
-// current view of the manuscript and never carry forward.
+// A write against a sentence of an OLDER migration (a tab loaded before a
+// commit) is forwarded to its counterpart in the newest one — see
+// writableSentence. Before forwarding (2026-10-19) such writes were refused
+// with 409 stale, and ones landing mid-migration were silently orphaned.
 func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -256,57 +260,24 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 		return
 	}
 
-	sentenceMigrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
-	if err != nil {
-		http.Error(w, "Failed to resolve sentence migration", http.StatusInternalServerError)
-		return
-	}
-	if sentenceMigrationID == 0 {
-		http.Error(w, "Sentence not found", http.StatusNotFound)
-		return
-	}
-	migration, err := h.DB.GetMigrationByID(ctx, sentenceMigrationID)
-	if err != nil {
-		http.Error(w, "Failed to load migration", http.StatusInternalServerError)
-		return
-	}
-	if migration == nil {
-		// Defensive: the access guard above already 404s sentences whose
-		// migration isn't 'done', and done rows never change status — but a
-		// missing migration is "not found", never a server error.
-		http.Error(w, "Migration not found", http.StatusNotFound)
-		return
-	}
-	latest, err := h.DB.GetLatestMigration(ctx, migration.ManuscriptID)
-	if err != nil {
-		http.Error(w, "Failed to load latest migration", http.StatusInternalServerError)
-		return
-	}
-	if latest != nil && latest.MigrationID != sentenceMigrationID {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":       "stale",
-			"latest_id":   latest.MigrationID,
-			"sentence_id": sentenceID,
-			"hint":        "manuscript has been updated — please refresh",
-		})
+	target, forwarded, ok := h.writableSentence(ctx, w, sentenceID)
+	if !ok {
 		return
 	}
 
-	orig, err := h.DB.GetSentenceTextsByIDs(ctx, []string{sentenceID})
+	orig, err := h.DB.GetSentenceTextsByIDs(ctx, []string{target, sentenceID})
 	if err != nil {
 		http.Error(w, "Failed to load sentence", http.StatusInternalServerError)
 		return
 	}
-	row, ok := orig[sentenceID]
+	row, ok := orig[target]
 	if !ok {
 		http.Error(w, "Sentence not found", http.StatusNotFound)
 		return
 	}
 
 	if req.Text == row.Text {
-		if _, err := h.DB.DeleteSuggestion(ctx, sentenceID, session.Username); err != nil {
+		if _, err := h.DB.DeleteSuggestion(ctx, target, session.Username); err != nil {
 			http.Error(w, "Failed to delete suggestion", http.StatusInternalServerError)
 			return
 		}
@@ -314,9 +285,17 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 		return
 	}
 
-	saved, err := h.DB.UpsertSuggestion(ctx, sentenceID, session.Username, req.Text)
+	var saved *models.SuggestedChange
+	if forwarded {
+		// Written against the OLD sentence: that's its base, and if the
+		// commit changed the sentence it waits for a look before a push.
+		base := orig[sentenceID].Text
+		saved, err = h.DB.UpsertForwardedSuggestion(ctx, target, session.Username, req.Text, base, base != row.Text)
+	} else {
+		saved, err = h.DB.UpsertSuggestion(ctx, target, session.Username, req.Text)
+	}
 	if err != nil {
-		log.Printf("suggestions: upsert for sentence %s: %v", sentenceID, err)
+		log.Printf("suggestions: upsert for sentence %s: %v", target, err)
 		http.Error(w, "Failed to save suggestion", http.StatusInternalServerError)
 		return
 	}
@@ -350,11 +329,128 @@ func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *ht
 		return
 	}
 
-	if _, err := h.DB.DeleteSuggestion(ctx, sentenceID, session.Username); err != nil {
+	target, _, ok := h.writableSentence(ctx, w, sentenceID)
+	if !ok {
+		return
+	}
+	if _, err := h.DB.DeleteSuggestion(ctx, target, session.Username); err != nil {
 		http.Error(w, "Failed to delete suggestion", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// forwardWait bounds how long a write waits out a running migration
+// (they take seconds; this is a safety valve, not a schedule).
+var forwardWait = 60 * time.Second
+
+// writableSentence resolves where a suggestion write aimed at sentenceID
+// lands — write-forwarding (2026-10-19):
+//   - while a migration of the manuscript is pending/running, the write
+//     WAITS for it: the migration copies suggestions forward mid-run, so a
+//     write landing on the old migration behind that copy was orphaned;
+//   - a sentence of the newest migration is itself;
+//   - an older one forwards along previous_sentence_id to its counterpart
+//     in the newest migration (forwarded=true).
+//
+// ok=false: the response is written — 409 stale when the sentence has no
+// counterpart (the commit deleted it); the client's banner asks for a reload.
+func (h *SuggestionHandlers) writableSentence(ctx context.Context, w http.ResponseWriter, sentenceID string) (target string, forwarded bool, ok bool) {
+	migrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
+	if err != nil {
+		http.Error(w, "Failed to resolve sentence migration", http.StatusInternalServerError)
+		return "", false, false
+	}
+	if migrationID == 0 {
+		http.Error(w, "Sentence not found", http.StatusNotFound)
+		return "", false, false
+	}
+	m, err := h.DB.GetMigrationByID(ctx, migrationID)
+	if err != nil || m == nil {
+		http.Error(w, "Migration not found", http.StatusNotFound)
+		return "", false, false
+	}
+	deadline := time.Now().Add(forwardWait)
+	for {
+		active, err := h.DB.HasActiveMigration(ctx, m.ManuscriptID)
+		if err != nil {
+			http.Error(w, "Failed to check migrations", http.StatusInternalServerError)
+			return "", false, false
+		}
+		if !active || time.Now().After(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return "", false, false
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	latest, err := h.DB.GetLatestMigration(ctx, m.ManuscriptID)
+	if err != nil {
+		http.Error(w, "Failed to load latest migration", http.StatusInternalServerError)
+		return "", false, false
+	}
+	if latest == nil || latest.MigrationID == migrationID {
+		return sentenceID, false, true
+	}
+	to, err := h.DB.ForwardSentenceID(ctx, sentenceID, latest.MigrationID)
+	if err != nil {
+		log.Printf("suggestions: forward %s → migration %d: %v", sentenceID, latest.MigrationID, err)
+		http.Error(w, "Failed to forward the write", http.StatusInternalServerError)
+		return "", false, false
+	}
+	if to == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":       "stale",
+			"latest_id":   latest.MigrationID,
+			"sentence_id": sentenceID,
+			"hint":        "this sentence is gone from the updated manuscript — please refresh",
+		})
+		return "", false, false
+	}
+	return to, true, true
+}
+
+// HandleCurrentSentence: GET /api/sentences/{sentence_id}/current — the
+// sentence's counterpart in the newest migration ({"sentence_id"}), for a
+// page reloaded with an old ?scroll_to=. 404 when it has none.
+func (h *SuggestionHandlers) HandleCurrentSentence(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sentenceID := chi.URLParam(r, "sentence_id")
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
+		return
+	}
+	migrationID, err := h.DB.GetMigrationIDForSentence(ctx, sentenceID)
+	if err != nil || migrationID == 0 {
+		http.Error(w, "Sentence not found", http.StatusNotFound)
+		return
+	}
+	m, err := h.DB.GetMigrationByID(ctx, migrationID)
+	if err != nil || m == nil {
+		http.Error(w, "Migration not found", http.StatusNotFound)
+		return
+	}
+	latest, err := h.DB.GetLatestMigration(ctx, m.ManuscriptID)
+	if err != nil || latest == nil {
+		http.Error(w, "Failed to load latest migration", http.StatusInternalServerError)
+		return
+	}
+	to := sentenceID
+	if latest.MigrationID != migrationID {
+		if to, err = h.DB.ForwardSentenceID(ctx, sentenceID, latest.MigrationID); err != nil {
+			http.Error(w, "Failed to forward", http.StatusInternalServerError)
+			return
+		}
+	}
+	if to == "" {
+		http.Error(w, "No current counterpart", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"sentence_id": to})
 }
 
 type pushSuggestionsResponse struct {

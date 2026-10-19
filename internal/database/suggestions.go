@@ -53,6 +53,29 @@ func (db *DB) UpsertSuggestion(ctx context.Context, sentenceID, userID, text str
 	return &s, nil
 }
 
+// UpsertForwardedSuggestion: UpsertSuggestion for a write FORWARDED from an
+// older migration's sentence (write-forwarding). base_text is the text the
+// author actually wrote against — the OLD sentence — so the NEW badge shows
+// when the commit changed it underneath; stale holds it back from a push
+// until they've looked (the carry-forward's rule for an inexact pairing).
+func (db *DB) UpsertForwardedSuggestion(ctx context.Context, sentenceID, userID, text, baseText string, stale bool) (*models.SuggestedChange, error) {
+	query := `
+		INSERT INTO suggested_change (sentence_id, user_id, text, created_at, updated_at, base_text, stale)
+		VALUES ($1, $2, $3, NOW(), NOW(), $4, $5)
+		ON CONFLICT (sentence_id, user_id) DO UPDATE
+			SET text = EXCLUDED.text, updated_at = NOW(),
+			    review_status = NULL, reviewed_by = NULL, reviewed_at = NULL,
+			    stale = EXCLUDED.stale,
+			    base_text = EXCLUDED.base_text,
+			    pushed_in_commit = NULL
+		RETURNING ` + suggestionCols
+	var s models.SuggestedChange
+	if err := scanSuggestion(db.Pool.QueryRow(ctx, query, sentenceID, userID, text, baseText, stale), &s); err != nil {
+		return nil, fmt.Errorf("upsert forwarded suggestion: %w", err)
+	}
+	return &s, nil
+}
+
 // ErrCompetingAccepted: only ONE suggestion per sentence may be accepted
 // (v3.2) — the reviewer must reject/clear the other first. Callers map to 409.
 var ErrCompetingAccepted = errors.New("another suggestion on this sentence is already accepted")

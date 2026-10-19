@@ -1602,12 +1602,33 @@ function formatFallbackHTML(text) {
 // renderer fires renderManuscript() during init; we need to wait until
 // .sentence elements exist before trying to scroll. Poll briefly because
 // Paged.js doesn't expose a "render done" event we can hook.
+//
+// After a migration the URL's id may belong to the OLD version (the Reload
+// banner stamps the sentence you were on): once the book has loaded and
+// the id isn't in it, ask the server for its counterpart in the current
+// version and scroll there instead.
 function restoreScrollFromURL() {
-  const target = new URLSearchParams(window.location.search).get('scroll_to');
+  let target = new URLSearchParams(window.location.search).get('scroll_to');
   if (!target) return;
-  const escaped = CSS.escape(target);
+  let escaped = CSS.escape(target);
+  let forwarding = false;
   const start = Date.now();
   const tick = () => {
+    const R = window.WriteSysRenderer;
+    if (!forwarding && R && R.sentenceMap && Object.keys(R.sentenceMap).length && !(target in R.sentenceMap)) {
+      forwarding = true;
+      fetch(`api/sentences/${encodeURIComponent(target)}/current`, { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d || !d.sentence_id) return;
+          target = d.sentence_id;
+          escaped = CSS.escape(target);
+          const url = new URL(window.location.href);
+          url.searchParams.set('scroll_to', target);
+          window.history.replaceState(null, '', url.toString());
+        })
+        .catch(() => {});
+    }
     const el = document.querySelector(`.sentence[data-sentence-id="${escaped}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'auto', block: 'center' });
