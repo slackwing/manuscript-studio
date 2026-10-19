@@ -50,6 +50,16 @@
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"',
         '<path d="M8 3v10M3 8h10"/>');
     },
+    // Gear — manuscript settings (book chrome + landing cards).
+    gear(size) {
+      return svg(size, '0 0 16 16', '',
+        '<path fill="currentColor" d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.5 8a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/><path fill="currentColor" d="M9.4 1l.35 1.8c.4.14.78.33 1.13.55l1.73-.63 1.4 2.42-1.38 1.17a5.6 5.6 0 010 1.38l1.38 1.17-1.4 2.42-1.73-.63c-.35.22-.73.41-1.13.55L9.4 13H6.6l-.35-1.8a5.6 5.6 0 01-1.13-.55l-1.73.63L2 8.86l1.38-1.17a5.6 5.6 0 010-1.38L2 5.14l1.4-2.42 1.73.63c.35-.22.73-.41 1.13-.55L6.6 1h2.8z" fill-rule="evenodd" opacity="0.85"/>');
+    },
+    // Checklist — daily tasks (book chrome + landing cards).
+    dailyTasks(size) {
+      return svg(size, '0 0 16 16', '',
+        '<path fill="currentColor" d="M5.2 3.2 3.4 5 2.3 3.9l.8-.8.3.3 1-1zM7 3.5h7v1.2H7zM5.2 8 3.4 9.8 2.3 8.7l.8-.8.3.3 1-1zM7 8.3h7v1.2H7zM5.2 12.8l-1.8 1.8-1.1-1.1.8-.8.3.3 1-1zM7 13.1h7v1.2H7z"/>');
+    },
     // Check — a done/copied acknowledgement.
     check(size) {
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"',
@@ -61,4 +71,15 @@
         '<rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.5"/><path d="M8 2.7v10.6"/>');
     },
   };
+
+  // Static markup names its icon (<button data-icon="gear">) instead of
+  // pasting the SVG — filled here, once, as this script loads (after the
+  // markup it serves) and again for anything parsed later.
+  const hydrate = (root) => (root || document).querySelectorAll('[data-icon]:empty').forEach((el) => {
+    const draw = window.WriteSysIcons[el.dataset.icon];
+    if (draw) el.innerHTML = draw(parseInt(el.dataset.iconSize, 10) || 13);
+  });
+  window.WriteSysIcons.hydrate = hydrate;
+  hydrate();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => hydrate());
 })();

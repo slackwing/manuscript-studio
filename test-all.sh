@@ -89,6 +89,7 @@ FAST_TESTS=(
   test-range-accept
   test-note-hide
   test-sketch-note-derive
+  test-shared-icons
   test-editor-core-units
   test-region-replaceplan-units
   test-edit-pane-units

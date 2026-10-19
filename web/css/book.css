@@ -3434,6 +3434,8 @@ body.range-delete-mode .pagedjs_pages {
   text-decoration: none;
 }
 .mc-btn:hover:not(:disabled) { border-color: #2a6fb0; color: #2a6fb0; }
+/* Daily tasks stands out — blue at rest, everywhere it appears. */
+.mc-btn.mc-daily { color: #2a6fb0; }
 .mc-btn:disabled { opacity: 0.4; cursor: default; }
 .push-button-container { display: inline-flex; gap: 6px; align-items: center; }
 .mc-split { position: relative; display: inline-flex; }

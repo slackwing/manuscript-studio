@@ -39,8 +39,9 @@ function psql(sql) {
 
   // --- The card link ---
   const link = page.locator(`.ms-daily-link[data-daily="${M}"]`);
-  check('manuscript card shows "daily tasks" link', await link.count() === 1);
-  check('link reads "daily tasks"', (await link.innerText()).trim() === 'daily tasks');
+  check('manuscript card shows the daily-tasks button', await link.count() === 1);
+  check('…the book chrome\'s checklist icon, titled "Daily tasks"',
+    (await link.getAttribute('title')) === 'Daily tasks' && (await link.locator('svg').count()) === 1);
   await link.click();
   // In the shell the link router swaps the view IN PLACE (history entry,
   // no load) — wait on the URL itself, not a navigation.

@@ -362,9 +362,8 @@ body.home-page {
 .se-icon-rejected { color: #b03030; }
 .se-icon-unaccepted { color: #c77d00; } /* acceptance undone by a migration */
 /* Manuscript card: "daily tasks" link — bottom right, above the meta row. */
-.ms-daily-row { display: flex; justify-content: flex-end; margin: 0 0 12px; }
-.ms-daily-link { font: 700 12px "Helvetica", sans-serif; color: #2a6fb0; cursor: pointer; }
-.ms-daily-link:hover { text-decoration: underline; }
+/* The book chrome's ⚙ / daily-tasks buttons (.mc-btn, book.css), right. */
+.ms-daily-row { display: flex; justify-content: flex-end; gap: 6px; margin: 0 0 12px; }
 /* Daily-tasks page: a note already awarded points today dims under a big
    shiny gold check. pointer-events: none keeps the card clickable. */
 .card-note.daily-done { position: relative; }
@@ -546,14 +545,6 @@ body.home-page {
   color: #2a6fb0;
 }
 
-/* Card gear (beside "daily tasks"): quiet until hovered. */
-.ms-gear {
-  display: inline-flex;
-  color: #b3ac9c;
-  vertical-align: -1px;
-  margin-left: 8px;
-}
-.ms-gear:hover { color: #2a6fb0; }
 
 /* Settings note modal: the DRY note component centered over a darkened
    backdrop — viewing a note (e.g. a recently completed one from the

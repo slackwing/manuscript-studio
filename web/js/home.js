@@ -175,9 +175,9 @@ const WriteSysHome = {
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   },
 
-  GEAR_SVG: `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.5 8a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/><path fill="currentColor" d="M9.4 1l.35 1.8c.4.14.78.33 1.13.55l1.73-.63 1.4 2.42-1.38 1.17a5.6 5.6 0 010 1.38l1.38 1.17-1.4 2.42-1.73-.63c-.35.22-.73.41-1.13.55L9.4 13H6.6l-.35-1.8a5.6 5.6 0 01-1.13-.55l-1.73.63L2 8.86l1.38-1.17a5.6 5.6 0 010-1.38L2 5.14l1.4-2.42 1.73.63c.35-.22.73-.41 1.13-.55L6.6 1h2.8z" fill-rule="evenodd" opacity="0.85"/></svg>`,
-
   manuscriptCard(m) {
+    // The same ⚙ / daily-tasks buttons as the book chrome (icons + .mc-btn).
+    const icons = window.WriteSysIcons;
     const updated = m.processed_at ? `updated ${this.when(m.processed_at)}` : 'not synced yet';
     const created = m.created_at ? `created ${this.when(m.created_at)}` : '';
     const words = m.word_count ? `${m.word_count.toLocaleString('en-US')} words` : '';
@@ -185,8 +185,8 @@ const WriteSysHome = {
       <span class="card-kindbar"></span>
       <p class="card-title">${this.esc(m.display_name || m.name)}</p>
       <p class="card-sketch">${words}</p>
-      <p class="ms-daily-row"><span class="ms-daily-link" data-daily="${m.manuscript_id}" role="button" tabindex="0">daily tasks</span>
-        <span class="ms-gear" data-settings="${m.manuscript_id}" title="Manuscript settings" role="button" tabindex="0">${this.GEAR_SVG}</span></p>
+      <p class="ms-daily-row"><span class="mc-btn mc-settings ms-gear" data-settings="${m.manuscript_id}" title="Manuscript settings" role="button" tabindex="0">${icons.gear(13)}</span>
+        <span class="mc-btn mc-daily ms-daily-link" data-daily="${m.manuscript_id}" title="Daily tasks" role="button" tabindex="0">${icons.dailyTasks(13)}</span></p>
       <p class="card-meta"><span>${this.esc(updated)}</span>${created ? `<span>${this.esc(created)}</span>` : ''}</p>
     </a>`;
   },
