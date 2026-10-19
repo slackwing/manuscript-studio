@@ -20,6 +20,7 @@ const {
   API_BASE_URL,
   SYSTEM_TOKEN,
   cleanupTestAnnotations,
+  resetTestManuscript,
   loginAsTestUser,
 } = require('./test-utils');
 
@@ -205,13 +206,17 @@ async function syncToHead() {
   } finally {
     if (browser) await browser.close();
 
-    // cleanupTestAnnotations will re-bootstrap the initial commit on next run.
+    // Leave the worker as the roster found it: the repo back at the
+    // initial commit AND the DB re-bootstrapped from it. Resetting git
+    // alone left the four tweaked versions as this sentence's history, so
+    // the next test on this worker inherited it (test-suggestion-modal-e2e
+    // S10 needs an unedited first sentence — 2026-10-18).
     try {
       git('reset', '--hard', initialCommit);
     } catch (e) {
       console.warn('restore failed (continuing):', e.message);
     }
-    await cleanupTestAnnotations();
+    await resetTestManuscript();
   }
 
   if (failed) {
