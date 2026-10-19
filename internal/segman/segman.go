@@ -10,7 +10,7 @@ import (
 // all four stay in lockstep. The same string is what consumers should
 // stamp onto their own data when they need to record "which segmenter
 // produced this".
-const Version = "2.9.0"
+const Version = "2.10.0"
 
 // nestedRegion represents a nested structure (quotes, parens, brackets, italics)
 type nestedRegion struct {
@@ -167,10 +167,16 @@ func findBrackets(runes []rune) []nestedRegion {
 	return regions
 }
 
-// findItalics finds all italicized text (marked with asterisks)
+// findItalics finds all italicized text — *asterisks* or _underscores_,
+// equal markup (v2.10.0). Asterisks pair anywhere; an underscore only at a
+// word boundary — it opens before a non-space and closes after one, never
+// inside a word (snake_case, URLs stay plain). Both kinds are typ '*' (an
+// italic region) and pair independently.
 func findItalics(runes []rune) []nestedRegion {
 	var regions []nestedRegion
 	var start int = -1
+	var uStart int = -1
+	isWord := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
 
 	for i, r := range runes {
 		if r == '*' {
@@ -179,6 +185,15 @@ func findItalics(runes []rune) []nestedRegion {
 			} else {
 				regions = append(regions, nestedRegion{start: start, end: i, typ: '*'})
 				start = -1
+			}
+		} else if r == '_' {
+			if uStart == -1 {
+				if (i == 0 || !isWord(runes[i-1])) && i+1 < len(runes) && !unicode.IsSpace(runes[i+1]) && runes[i+1] != '_' {
+					uStart = i
+				}
+			} else if !unicode.IsSpace(runes[i-1]) && (i+1 == len(runes) || !isWord(runes[i+1])) {
+				regions = append(regions, nestedRegion{start: uStart, end: i, typ: '*'})
+				uStart = -1
 			}
 		}
 	}
@@ -499,7 +514,7 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 						// Skip same special chars as capital letter check
 						j := i + 1
 						for j < len(runes) && (runes[j] == ' ' || runes[j] == '\t' || runes[j] == '\n' ||
-							runes[j] == '*' || runes[j] == '"' || runes[j] == '\u201C' || runes[j] == '[') {
+							runes[j] == '*' || runes[j] == '_' || runes[j] == '"' || runes[j] == '\u201C' || runes[j] == '[') {
 							j++
 						}
 						if j < len(runes) && unicode.IsLower(runes[j]) {
@@ -510,7 +525,7 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 					// Check if followed by capital letter (skip asterisks, quotes, brackets)
 					j := i + 1
 					for j < len(runes) && (runes[j] == ' ' || runes[j] == '\t' || runes[j] == '\n' ||
-						runes[j] == '*' || runes[j] == '"' || runes[j] == '\u201C' || runes[j] == '[') {
+						runes[j] == '*' || runes[j] == '_' || runes[j] == '"' || runes[j] == '\u201C' || runes[j] == '[') {
 						j++
 					}
 
@@ -545,7 +560,7 @@ func markBoundaries(runes []rune, regions []nestedRegion) []boundaryMark {
 			}
 
 			// Skip asterisks, quotes, brackets
-			for nextCharPos < len(runes) && (runes[nextCharPos] == ' ' || runes[nextCharPos] == '*' ||
+			for nextCharPos < len(runes) && (runes[nextCharPos] == ' ' || runes[nextCharPos] == '*' || runes[nextCharPos] == '_' ||
 				runes[nextCharPos] == '"' || runes[nextCharPos] == '\u201C') {
 				nextCharPos++
 			}
@@ -752,7 +767,7 @@ func commandFollowsSentenceEnd(runes []rune, i int) bool {
 		return false // start of text — the sole-line rule owns that case
 	}
 	for k >= 0 && (runes[k] == '"' || runes[k] == '\u201D' || runes[k] == '\'' ||
-		runes[k] == '\u2019' || runes[k] == '*' || runes[k] == ')' || runes[k] == ']') {
+		runes[k] == '\u2019' || runes[k] == '*' || runes[k] == '_' || runes[k] == ')' || runes[k] == ']') {
 		k--
 	}
 	if k < 0 {

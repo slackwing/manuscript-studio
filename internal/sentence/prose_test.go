@@ -21,3 +21,23 @@ func TestFirstProseSentence(t *testing.T) {
 		}
 	}
 }
+
+// segman v2.10.0: _underscore_ italics split exactly like *asterisk*
+// italics — a standalone italic sentence is its own sentence, an italic
+// span keeps its inner periods, and snake_case is no markup at all.
+func TestUnderscoreItalicsSegmentLikeAsterisks(t *testing.T) {
+	tk := NewTokenizer()
+	for _, pair := range [][2]string{
+		{"The door swung shut. *Thud.* Then silence.", "The door swung shut. _Thud._ Then silence."},
+		{"He said *stop. Now.* And left.", "He said _stop. Now._ And left."},
+		{"Nothing. *Thud!* Again.", "Nothing. _Thud!_ Again."},
+	} {
+		a, b := tk.TokenizeWithMarkers(pair[0]), tk.TokenizeWithMarkers(pair[1])
+		if len(a) != len(b) {
+			t.Errorf("%q → %q\n%q → %q", pair[0], a, pair[1], b)
+		}
+	}
+	if got := tk.TokenizeWithMarkers("Open my_notes. Then run read_me now. Done."); len(got) != 3 {
+		t.Errorf("snake_case should not change splitting: %q", got)
+	}
+}
