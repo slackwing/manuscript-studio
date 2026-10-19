@@ -89,7 +89,8 @@ const psql = (sql) => execSync(
       await editSketch();
       await page.keyboard.press('Control+Home');
       await page.keyboard.type('Very ');
-      await page.waitForTimeout(2500);
+      const saved = () => psql(`SELECT (text LIKE 'Very %')::text FROM variation WHERE variation_id=${vid}`);
+      check(`[${vp.name}] the sketch edit saved`, await until(saved, 'true') === 'true', saved());
       check(`[${vp.name}] later sketch saves leave the owner's note alone`, body() === 'Rewrite the gulls.|f', body());
       check(`[${vp.name}] no page errors`, errs.length === 0, errs.join(' | '));
     } catch (e) {

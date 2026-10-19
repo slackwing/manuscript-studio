@@ -31,7 +31,6 @@ function psql(sql) {
     check('a non-task chip carries the ★, unlit by default', (await chip.locator('.tt-points:not(.active)').count()) === 1);
     check('task chips carry no ★', (await page.locator('#tt-chips .tt-points').count()) === 0);
     await chip.locator('.tt-points').click();
-    await page.waitForFunction(() => true);
     for (let i = 0; i < 20 && flag() !== 't'; i++) await page.waitForTimeout(150);
     check('clicking it flags the type (scores_points)', flag() === 't');
     check('…and lights it', (await chip.locator('.tt-points.active').count()) === 1);
