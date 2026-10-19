@@ -118,8 +118,10 @@ const D_TEXT = 'So let me just start with the one that\'s knocking now.';
                     VALUES (${TEST_MANUSCRIPT_ID}, 'f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0', 'running', now(), now()) RETURNING migration_id`).split('\n')[0];
     const t0 = Date.now();
     const pending = put(S2, 'Held while migrating.');
-    await page.waitForTimeout(1200);
-    check('while a migration runs, the write waits', row(S2).startsWith(sEdit), row(S2));
+    // Still pending 1.2s later = held (a race, not a sleep: the assertion
+    // IS that nothing resolves in the window).
+    const raced = await Promise.race([pending.then(() => 'landed'), new Promise((res) => setTimeout(() => res('held'), 1200))]);
+    check('while a migration runs, the write waits', raced === 'held' && row(S2).startsWith(sEdit), `${raced} ${row(S2)}`);
     psql(`UPDATE migration SET status='error' WHERE migration_id=${fakeMig}`);
     r = await pending;
     check('…and lands once it ends', r.status === 200 && row(S2).startsWith('Held while migrating.|') && Date.now() - t0 >= 1200, `${r.status} ${row(S2)}`);
