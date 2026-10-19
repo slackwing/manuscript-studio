@@ -506,6 +506,10 @@ func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *strin
 		UPDATE note SET
 			color     = COALESCE($2, color),
 			body      = CASE WHEN $3::boolean THEN $4 ELSE body END,
+			-- A sketch note's body is the owner's once they write one, and
+			-- derived again if they empty it (050).
+			body_auto = CASE WHEN $3::boolean AND sketch_id IS NOT NULL
+			                 THEN coalesce(trim($4), '') = '' ELSE body_auto END,
 			priority  = COALESCE($5, priority),
 			task_type = CASE WHEN $6::text IS NULL THEN task_type ELSE NULLIF($6, '') END,
 			impact    = COALESCE($7, impact),

@@ -12,7 +12,7 @@
  * old semantics.
  */
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=3';
+import { holdScroll } from './scroll.mjs?v=4';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -132,13 +132,15 @@ function noteColorOf(noteId) {
   const n = noteCache.get(noteId);
   return (n && n.color) || 'yellow';
 }
-// Ensure the cache has this note; fetch it if missing. Returns the cached note.
-async function ensureNoteCached(noteId) {
-  if (noteCache.get(noteId)) return noteCache.get(noteId);
+// Ensure the cache has this note; fetch it if missing (or `fresh`). Returns
+// the cached note — the SAME object on a refresh, since closures hold it.
+async function ensureNoteCached(noteId, fresh = false) {
+  if (!fresh && noteCache.get(noteId)) return noteCache.get(noteId);
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const cached = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null, pinned_at: n.pinned_at || null };
+      const data = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null, pinned_at: n.pinned_at || null };
+      const cached = Object.assign(noteCache.get(noteId) || {}, data);
       noteCache.set(noteId, cached);
       return cached;
     }
@@ -379,7 +381,10 @@ export async function openNoteFloatFor(noteId, anchorEl) {
   closeNoteFloat();
   if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
   const api = window.WriteSysNoteAPI;
-  const fetched = await ensureNoteCached(noteId);
+  // A sketch note's body follows its sketch's text server-side (050) — read
+  // it fresh, not from a cache filled before the latest variation save.
+  const prior = noteCache.get(noteId);
+  const fetched = await ensureNoteCached(noteId, !!(prior && prior.sketch_id));
   const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [] };
   const note = {
     noteId, note_id: noteId,

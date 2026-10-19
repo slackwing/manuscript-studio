@@ -65,6 +65,9 @@ func main() {
 	// 049: classify points scored before the daily/other flag existed.
 	go server.BackfillPointDailyFlags(context.Background())
 
+	// 050: empty sketch notes take their sketch's first sentence.
+	go server.BackfillSketchNoteBodies(context.Background())
+
 	// Optional wordcount-history cron (no-op unless enabled in config).
 	go server.RunWordcountCron(context.Background())
 

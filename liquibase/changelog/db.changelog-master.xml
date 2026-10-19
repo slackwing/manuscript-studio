@@ -56,5 +56,6 @@
     <include file="changelog/047-marker-attention.xml"/>
     <include file="changelog/048-note-pinned-at.xml"/>
     <include file="changelog/049-point-event-from-daily.xml"/>
+    <include file="changelog/050-note-body-auto.xml"/>
 
 </databaseChangeLog>

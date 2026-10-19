@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 050 (2026-10-18): a sketch's note whose body is DERIVED — the first
+         prose sentence of the sketch (sentence.FirstProseSentence), kept in
+         step on every variation save until the owner writes their own text
+         (true again if they empty it). Today's empty sketch notes start
+         derived; the server's startup backfill fills their bodies (the
+         segmenter is Go, not SQL). -->
+    <changeSet id="050-note-body-auto" author="claude">
+        <addColumn tableName="note">
+            <column name="body_auto" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <sql>
+            UPDATE note SET body_auto = true
+            WHERE sketch_id IS NOT NULL AND coalesce(trim(body), '') = '';
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

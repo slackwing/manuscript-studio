@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/slackwing/manuscript-studio/internal/sentence"
 )
 
 // Variations (VARIATIONS_PLAN.md, as clarified): a sketch is an abstract GROUP —
@@ -210,10 +212,11 @@ func (db *DB) CreateSketch(ctx context.Context, userID string, scratchpadID *int
 		// manuscript inherited from the host pad's link (a copy, not synced).
 		// No task_type: notes start untyped ('n/a', NULL) until the user picks
 		// one (033).
+		// Its body is DERIVED until the owner writes one (050).
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
+			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id, body_auto)
 			SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
-			       $2, 'yellow', 'none', 'a0', $3
+			       $2, 'yellow', 'none', 'a0', $3, true
 		`, scratchpadID, userID, sketchID); err != nil {
 			return fmt.Errorf("create sketch note: %w", err)
 		}
@@ -270,6 +273,9 @@ func (db *DB) CreateVariationFrom(ctx context.Context, userID string, sourceID i
 		RETURNING `+variationCols, srcSketch, next, srcText, scratchpadID))
 	if err != nil {
 		return nil, fmt.Errorf("create variation: %w", err)
+	}
+	if err := deriveSketchNoteBody(ctx, tx, s.VariationID, srcText); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -388,6 +394,11 @@ func (db *DB) UpdateVariationText(ctx context.Context, userID string, id int, te
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO variation_revision (variation_id, text) VALUES ($1, $2)
 	`, id, text); err != nil {
+		return err
+	}
+	// The sketch's note follows its text while derived (050) — same tx, so
+	// the note can't drift from what was saved.
+	if err := deriveSketchNoteBody(ctx, tx, id, text); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -660,6 +671,9 @@ func (db *DB) CreateVariationFromText(ctx context.Context, userID, sketchID, tex
 	if err != nil {
 		return nil, fmt.Errorf("create variation from text: %w", err)
 	}
+	if err := deriveSketchNoteBody(ctx, tx, s.VariationID, text); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -754,11 +768,12 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 		`, sketchID, aID, manuscriptID, manuscriptName); err != nil {
 			return err
 		}
-		// The sketch's note (026) — every sketch carries one.
+		// The sketch's note (026) — every sketch carries one; its body is
+		// derived from the sketch's text until the owner writes one (050).
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
-			VALUES ($1, $2, 'yellow', 'none', 'a0', $3)
-		`, manuscriptID, userID, sketchID); err != nil {
+			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id, body_auto, body)
+			VALUES ($1, $2, 'yellow', 'none', 'a0', $3, true, NULLIF($4, ''))
+		`, manuscriptID, userID, sketchID, sentence.FirstProseSentence(text)); err != nil {
 			return fmt.Errorf("create sketch note: %w", err)
 		}
 		// Append the widget node to the pad doc (PM node type 'sketch' —
@@ -790,4 +805,86 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 		return nil, err
 	}
 	return db.GetVariationContext(ctx, userID, aID)
+}
+
+// deriveSketchNoteBody (050): a derived (body_auto) sketch note's body is
+// the first prose sentence of the variation just saved. Not a content edit
+// by the owner — no note_version row, updated_at untouched (an autosave
+// must not float the note to the top of "recent").
+func deriveSketchNoteBody(ctx context.Context, tx pgx.Tx, variationID int, text string) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE note n SET body = NULLIF($2, '')
+		FROM variation v
+		WHERE v.variation_id = $1 AND n.sketch_id = v.sketch_id
+		  AND n.body_auto AND n.deleted_at IS NULL
+		  AND n.body IS DISTINCT FROM NULLIF($2, '')
+	`, variationID, sentence.FirstProseSentence(text))
+	if err != nil {
+		return fmt.Errorf("derive sketch note body: %w", err)
+	}
+	return nil
+}
+
+// BackfillSketchNoteBodies (050) fills every derived sketch note that is
+// still empty from its sketch's most recently edited non-empty variation.
+// Idempotent; runs at startup.
+func (db *DB) BackfillSketchNoteBodies(ctx context.Context) (int, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT n.note_id,
+		       (SELECT v.text FROM variation v
+		        WHERE v.sketch_id = n.sketch_id AND coalesce(trim(v.text), '') <> ''
+		        ORDER BY v.updated_at DESC, v.variation_id DESC LIMIT 1)
+		FROM note n
+		WHERE n.sketch_id IS NOT NULL AND n.body_auto AND n.deleted_at IS NULL
+		  AND coalesce(trim(n.body), '') = ''
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("backfill sketch notes: list: %w", err)
+	}
+	type pending struct {
+		id   int
+		text *string
+	}
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.text); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("backfill sketch notes: scan: %w", err)
+		}
+		todo = append(todo, p)
+	}
+	rows.Close()
+	filled := 0
+	for _, p := range todo {
+		if p.text == nil {
+			continue
+		}
+		body := sentence.FirstProseSentence(*p.text)
+		if body == "" {
+			continue
+		}
+		if _, err := db.Pool.Exec(ctx, `UPDATE note SET body = $2 WHERE note_id = $1 AND body_auto`, p.id, body); err != nil {
+			return filled, fmt.Errorf("backfill sketch note %d: %w", p.id, err)
+		}
+		filled++
+	}
+	return filled, nil
+}
+
+// RederiveSketchNoteBody (050): the owner just EMPTIED a sketch note's
+// body — it is derived again, from the sketch's latest non-empty variation.
+func (db *DB) RederiveSketchNoteBody(ctx context.Context, noteID int) error {
+	var text *string
+	err := db.Pool.QueryRow(ctx, `
+		SELECT (SELECT v.text FROM variation v
+		        WHERE v.sketch_id = n.sketch_id AND coalesce(trim(v.text), '') <> ''
+		        ORDER BY v.updated_at DESC, v.variation_id DESC LIMIT 1)
+		FROM note n WHERE n.note_id = $1 AND n.sketch_id IS NOT NULL`, noteID).Scan(&text)
+	if err != nil || text == nil {
+		return nil // no sketch text yet — stays empty, still derived
+	}
+	_, err = db.Pool.Exec(ctx, `UPDATE note SET body = NULLIF($2, '') WHERE note_id = $1 AND body_auto`,
+		noteID, sentence.FirstProseSentence(*text))
+	return err
 }

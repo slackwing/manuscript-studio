@@ -167,6 +167,19 @@ func (s *Server) BackfillPointDailyFlags(ctx context.Context) {
 	}
 }
 
+// BackfillSketchNoteBodies (050) fills every empty sketch note from its
+// sketch's first sentence — once, in the background, at startup.
+func (s *Server) BackfillSketchNoteBodies(ctx context.Context) {
+	n, err := s.dbWrapper.BackfillSketchNoteBodies(ctx)
+	if err != nil {
+		log.Printf("sketch note backfill: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("sketch note backfill: %d filled", n)
+	}
+}
+
 // RunWordcountCron drives the optional wordcount-history feature: one run
 // at startup (covers downtime — the day's row appears as soon as the server
 // is back), then every configured interval. Rows are keyed by day in the
