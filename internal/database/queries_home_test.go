@@ -999,3 +999,39 @@ func TestHomeNotes_CompletedIncludedAndGetByID(t *testing.T) {
 		t.Errorf("cross-user read must return nil, got %+v (err=%v)", got, err)
 	}
 }
+
+// 2026-10-19: a note you hid with the eye leaves the landing grid (and the
+// All-notes view); unhiding brings it back.
+func TestListNotesForHome_SkipsHiddenNotes(t *testing.T) {
+	f := newITFixture(t)
+	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "Hide pad")
+	if err != nil {
+		t.Fatalf("pad: %v", err)
+	}
+	keep := f.createPadNote(t, pad.ScratchpadID, "visible note")
+	hide := f.createPadNote(t, pad.ScratchpadID, "hidden note")
+	if err := f.db.HideNote(f.ctx, f.username, hide.NoteID); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
+	ids := func() map[int]bool {
+		notes, err := f.db.ListNotesForHome(f.ctx, f.username, 50)
+		if err != nil {
+			t.Fatalf("ListNotesForHome: %v", err)
+		}
+		m := map[int]bool{}
+		for _, n := range notes {
+			m[n.NoteID] = true
+		}
+		return m
+	}
+	got := ids()
+	if !got[keep.NoteID] || got[hide.NoteID] {
+		t.Errorf("landing ids = %v, want %d shown and %d hidden", got, keep.NoteID, hide.NoteID)
+	}
+	if err := f.db.UnhideNote(f.ctx, f.username, hide.NoteID); err != nil {
+		t.Fatalf("unhide: %v", err)
+	}
+	if !ids()[hide.NoteID] {
+		t.Error("an unhidden note should be back on the landing grid")
+	}
+}

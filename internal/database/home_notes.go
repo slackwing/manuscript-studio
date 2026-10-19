@@ -92,10 +92,13 @@ const homeNoteFrom = `
 // sentence notes show the manuscript's display name (falls back to name).
 func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) ([]HomeNote, error) {
 	// Completed notes are INCLUDED (2026-09-09: All-notes shows them; the
-	// landing grid drops them client-side via completed_at).
+	// landing grid drops them client-side via completed_at). Notes you hid
+	// with the eye are NOT (2026-10-19) — they still count on your daily
+	// tasks board, which reads its own query.
 	rows, err := db.Pool.Query(ctx, homeNoteSelect+homeNoteFrom+`
 		WHERE n.user_id = $1
 		  AND n.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM note_hide h WHERE h.note_id = n.note_id AND h.username = $1)
 		ORDER BY n.updated_at DESC
 		LIMIT $2
 	`, username, limit)
