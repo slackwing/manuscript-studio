@@ -33,9 +33,11 @@ function psql(sql) {
   await page.keyboard.type('Tag me, I am a scratchpad note.');
   await page.keyboard.press('Home');
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  // Wait for the selection itself, not a fixed pause: under suite load the
+  // color click once landed before it registered, and no note was made.
+  await page.waitForFunction(() => String(window.getSelection()).includes('scratchpad note'));
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
-  await page.waitForTimeout(600);
+  await page.waitForSelector('.sn-note-ref', { timeout: 10000 });
 
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');
   check('scratchpad note created', !!noteId, `noteId=${noteId}`);
