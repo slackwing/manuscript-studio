@@ -255,30 +255,30 @@ const psql = (sql) => execSync(
     await clickSentence(picks.a);
     await clickSentence(picks.b, ['Shift']);
     const d6 = await page.evaluate(() => {
-      const trashEl = document.querySelector('.range-trash.range-del');
-      if (!trashEl) return null;
-      const tr = trashEl.getBoundingClientRect();
-      const sheet = trashEl.closest('.pagedjs_sheet') || trashEl.closest('.pagedjs_page');
+      if (!document.querySelector('.range-stack')) return null;
+      const stEl = document.querySelector('.range-stack');
+      const st = stEl.getBoundingClientRect();
+      const selR = [...document.querySelectorAll('.sentence.range-selected')]
+        .map((el) => ({ el, r: el.getBoundingClientRect() })).filter((x) => x.r.height > 0);
+      const top = Math.min(...selR.map((x) => x.r.top));
+      const bottom = Math.max(...selR.map((x) => x.r.bottom));
+      const first = selR.find((x) => x.r.top === top).el;
+      const sheet = first.closest('.pagedjs_sheet') || first.closest('.pagedjs_page');
       const sr = sheet.getBoundingClientRect();
-      const sel = [...document.querySelectorAll('.sentence.range-selected')]
-        .filter((el) => (el.closest('.pagedjs_sheet') || el.closest('.pagedjs_page')) === sheet)
-        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0);
-      const top = Math.min(...sel.map((r) => r.top));
-      const bottom = Math.max(...sel.map((r) => r.bottom));
+      // The floating stack (2026-10-23) stays WITHIN the selection's vertical
+      // extent (centered on it when the selection is shorter than the stack).
+      const shortSel = bottom - top <= st.height;
+      const placed = shortSel
+        ? Math.abs((st.top + st.bottom) / 2 - (top + bottom) / 2) <= 8
+        : st.top >= top - 1 && st.bottom <= bottom + 1;
       const m = document.querySelector('.pagedjs_pages').style.transform.match(/scale\(([\d.]+)\)/);
-      return {
-        scale: m ? parseFloat(m[1]) : 1,
-        rightVsSheet: tr.right - sr.left,
-        centerOffset: Math.abs((tr.top + tr.bottom) / 2 - (top + bottom) / 2),
-        visibleWidth: tr.width,
-      };
+      return { scale: m ? parseFloat(m[1]) : 1, rightVsSheet: st.right - sr.left, placed };
     });
     check('D6: trash rendered under scale', !!d6, d6 && `scale=${d6.scale}`);
     if (d6) {
-      check('D6: trash sits fully off the sheet in the gutter (scaled space)',
+      check('D6: button stack sits fully off the sheet in the gutter (scaled space)',
         d6.rightVsSheet < 0, `right-vs-sheet=${d6.rightVsSheet.toFixed(1)}px`);
-      check('D6: trash vertically centered on the range under scale (±8px)',
-        d6.centerOffset <= 8, `offset=${d6.centerOffset.toFixed(1)}px`);
+      check('D6: button stack sits within the selection under scale', d6.placed);
       await page.locator('.range-trash.range-del').click();
       check('D6: trash is clickable under scale (arms)',
         await page.evaluate(() => document.querySelector('.range-trash.range-del').classList.contains('confirming')));

@@ -87,6 +87,7 @@ FAST_TESTS=(
   test-uncreated-type
   test-insert-plus
   test-range-accept
+  test-range-float
   test-note-hide
   test-sketch-note-derive
   test-shared-icons

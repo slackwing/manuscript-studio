@@ -84,12 +84,12 @@ const check = (name, ok, detail = '') => {
     return {
       order: top('.range-copy') < top('.range-sketch') && top('.range-sketch') < trash.getBoundingClientRect().top,
       title: document.querySelector('.range-copy').title,
-      firstIsTrash: document.querySelector('.range-trash') === trash,
+      trashLast: document.querySelector('.range-stack').lastElementChild === trash,
     };
   });
   check('copy sits on top of sketch, sketch on top of trash', stack.order);
   check('copy tooltip counts the selection', stack.title === 'Copy 7 sentences', stack.title);
-  check('.range-trash still finds the trash first', stack.firstIsTrash);
+  check('the trash closes the floating stack (bottom)', stack.trashLast);
 
   // ---- markers OFF (the default): no marker syntax, tidy spacing --------
   const off = await copyNow();

@@ -3315,12 +3315,18 @@ body.range-delete-mode .pagedjs_pages {
 }
 /* The persistent red trash circle in the left gutter (import-tab geometry,
    red family; house two-click confirm). */
+/* The floating stack (range-delete.js showTrash/placeStack): a fixed
+   column in the page's left gutter that holds the screen's middle and
+   pegs to the selection's top/bottom edge once you scroll past it. */
+.range-stack {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 31;
+}
 .range-trash {
-  position: absolute;
-  /* left/top are pre-layout initials — showTrash() measures the sheet edge
-     and pins the button into the gutter, centered on the range. */
-  left: -30px;
-  top: 0;
+  position: relative;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -3332,7 +3338,6 @@ body.range-delete-mode .pagedjs_pages {
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  z-index: 31;
 }
 .range-trash:hover { background: #d9534f; color: #fff; }
 .range-trash.confirming {

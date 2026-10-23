@@ -55,21 +55,24 @@ const psql = (sql) => execSync(
     document.querySelector('.range-trash.range-sketch'));
 
   const mode = await page.evaluate(() => {
-    const trashEl = document.querySelector('.range-trash');
     let trashGeom = null;
-    if (trashEl) {
-      const tr = trashEl.getBoundingClientRect();
-      const sheet = trashEl.closest('.pagedjs_sheet') || trashEl.closest('.pagedjs_page');
+    if (document.querySelector('.range-stack')) {
+      const stEl = document.querySelector('.range-stack');
+      const st = stEl.getBoundingClientRect();
+      const selR = [...document.querySelectorAll('.sentence.range-selected')]
+        .map((el) => ({ el, r: el.getBoundingClientRect() })).filter((x) => x.r.height > 0);
+      const top = Math.min(...selR.map((x) => x.r.top));
+      const bottom = Math.max(...selR.map((x) => x.r.bottom));
+      const first = selR.find((x) => x.r.top === top).el;
+      const sheet = first.closest('.pagedjs_sheet') || first.closest('.pagedjs_page');
       const sr = sheet.getBoundingClientRect();
-      const sel = [...document.querySelectorAll('.sentence.range-selected')]
-        .filter((el) => (el.closest('.pagedjs_sheet') || el.closest('.pagedjs_page')) === sheet)
-        .map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0);
-      const top = Math.min(...sel.map((r) => r.top));
-      const bottom = Math.max(...sel.map((r) => r.bottom));
-      trashGeom = {
-        rightVsSheet: Math.round(tr.right - sr.left),          // < 0: fully in the gutter
-        centerOffset: Math.round((tr.top + tr.bottom) / 2 - (top + bottom) / 2), // ≈ 0: centered on range
-      };
+      // The floating stack (2026-10-23) stays WITHIN the selection's vertical
+      // extent (centered on it when the selection is shorter than the stack).
+      const shortSel = bottom - top <= st.height;
+      const placed = shortSel
+        ? Math.abs((st.top + st.bottom) / 2 - (top + bottom) / 2) <= 8
+        : st.top >= top - 1 && st.bottom <= bottom + 1;
+      trashGeom = { rightVsSheet: Math.round(st.right - sr.left), placed }; // right < 0: fully in the gutter
     }
     return {
       selected: new Set([...document.querySelectorAll('.sentence.range-selected')].map(e => e.dataset.sentenceId)).size,
@@ -85,8 +88,8 @@ const psql = (sql) => execSync(
   check('mode on + red trash shown (sketch button beside it)', mode.modeOn && mode.trash === 1 && mode.sketchBtn === 1);
   check('+ affordances hidden in mode', mode.plusHidden);
   check('NO native text selection after shift-click', mode.nativeSelection === '', mode.nativeSelection.slice(0, 40));
-  check('trash fully off the sheet, in the gutter', mode.trashGeom && mode.trashGeom.rightVsSheet < 0, mode.trashGeom);
-  check('trash vertically centered on the range (±8px)', mode.trashGeom && Math.abs(mode.trashGeom.centerOffset) <= 8, mode.trashGeom);
+  check('button stack fully off the sheet, in the gutter', mode.trashGeom && mode.trashGeom.rightVsSheet < 0, JSON.stringify(mode.trashGeom));
+  check('button stack sits within the selection (centered when it is short)', mode.trashGeom && mode.trashGeom.placed, JSON.stringify(mode.trashGeom));
 
   // first click arms, second applies
   await page.locator('.range-trash.range-del').click();

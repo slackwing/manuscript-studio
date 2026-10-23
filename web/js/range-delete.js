@@ -3,10 +3,10 @@
  * sentence between them (inclusive, manuscript order) highlights as a range.
  * While the range is active:
  *   - the canonize + affordances hide (no gap-hover noise);
- *   - a persistent RED trash circle shows in the left gutter at the range's
- *     first line. House trash mechanics: first click arms it ("click again")
- *     and turns the range red, second click applies; no second click within
- *     2s disarms both back (the range is the usual selection gray).
+ *   - a button stack floats in the left gutter (✓ / copy / sketch / trash;
+ *     see showTrash). The trash keeps the house mechanics: first click arms
+ *     it ("click again") and turns the range red, second click applies; no
+ *     second click within 2s disarms both back (the usual selection gray).
  * Applying PUTs an EMPTY suggestion on every sentence in the range — the
  * standard "clear this sentence" proposal (same as emptying it in
  * suggest-edit), one suggested delete per sentence, reviewable and revertible
@@ -82,19 +82,89 @@ const WriteSysRangeDelete = {
     this.showTrash();
   },
 
+  // The button stack (2026-10-23): ONE fixed column in the page's left
+  // gutter — ✓ / copy / sketch / trash, top to bottom — that FLOATS: it
+  // holds the middle of the screen while the selection spans it, and pegs
+  // to the selection's top or bottom edge once you scroll past either.
+  // (It used to be pinned beside the selection's first page — a long or
+  // low-starting range left most of the stack off screen: "only the ✓".)
   showTrash() {
     this.removeTrash();
-    const first = document.querySelector('.sentence.range-selected');
-    if (!first) return;
-    const pageArea = first.closest('.pagedjs_page_content');
-    const host = first.closest('p') || first.parentElement;
-    if (!host || !pageArea) return;
-    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'range-trash range-del'; // range-del = THE trash (the stack shares range-trash)
-    btn.title = `Suggest deleting ${this.range.length} sentence${this.range.length > 1 ? 's' : ''}`;
-    btn.innerHTML = window.WriteSysIcons.trash(12); // the house trash, never a new copy
+    if (!document.querySelector('.sentence.range-selected')) return;
+    const stack = document.createElement('div');
+    stack.className = 'range-stack';
+    const make = (cls, title, html) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `range-trash ${cls}`;
+      b.title = title;
+      b.innerHTML = html;
+      return b;
+    };
+    const n = this.range.length;
+    const s = n > 1 ? 's' : '';
+
+    // ACCEPT (✓) tops the stack (2026-10-18): accept the suggestion every
+    // selected sentence shows — deletion proposals included — for "I
+    // deleted a run of sentences and want to accept them too". Reviewers
+    // only (manage-suggestions). House two-click, like the trash: the first
+    // click arms it and greens the range; no second click within 2s
+    // disarms both.
+    const S = window.WriteSysSuggestions;
+    if (S && S.canReview && S.acceptMany) {
+      const idleTitle = `Accept the suggested edits in ${n} sentence${s}`;
+      const ac = make('range-accept', idleTitle,
+        window.WriteSysIcons && window.WriteSysIcons.check ? window.WriteSysIcons.check(12) : '✓');
+      let acArmed = false, acTimer = null;
+      ac.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!acArmed) {
+          acArmed = true;
+          ac.classList.add('confirming');
+          document.body.classList.add('range-accept-armed');
+          ac.title = 'Click again to accept them';
+          acTimer = setTimeout(() => {
+            acArmed = false;
+            ac.classList.remove('confirming');
+            ac.title = idleTitle;
+            document.body.classList.remove('range-accept-armed');
+          }, 2000);
+          return;
+        }
+        clearTimeout(acTimer);
+        await this.acceptRange();
+      });
+      stack.appendChild(ac);
+      this.acceptBtn = ac;
+    }
+    // COPY: the selection's text with every suggestion applied
+    // (copy-selection.js).
+    if (window.WriteSysCopySelection) {
+      const C = window.WriteSysCopySelection;
+      const cp = make('range-copy', C.titleFor(this.range), C.buttonHTML());
+      cp.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        C.copy(this.range.slice(), cp);
+      });
+      stack.appendChild(cp);
+      this.copyBtn = cp;
+    }
+    // SKETCH: rework this selection through sketches (A = frozen original,
+    // B = editable copy, placed).
+    if (window.WriteSysSketchFromSelection) {
+      const sk = make('range-sketch', `Sketch from ${n} selected sentence${s}`,
+        window.WriteSysSketchFromSelection.buttonHTML());
+      sk.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        window.WriteSysSketchFromSelection.open(this.range.slice());
+      });
+      stack.appendChild(sk);
+      this.sketchBtn = sk;
+    }
+    // TRASH (range-del) at the bottom: house two-click — the first click
+    // arms it and reds the range; no second click within 2s disarms both.
+    const btn = make('range-del', `Suggest deleting ${n} sentence${s}`,
+      window.WriteSysIcons.trash(12)); // the house trash, never a new copy
     let armed = false, resetTimer = null;
     btn.addEventListener('click', (e) => {
       e.preventDefault(); e.stopPropagation();
@@ -115,108 +185,41 @@ const WriteSysRangeDelete = {
       clearTimeout(resetTimer);
       this.apply();
     });
-    host.appendChild(btn);
-    // Like the gutter anchors: MEASURED off the sheet (never computed from
-    // margin guesses), vertically centered on the selection range — the
-    // portion of it on this page.
-    const sheet = first.closest('.pagedjs_sheet') || first.closest('.pagedjs_page');
-    const selected = [...document.querySelectorAll('.sentence.range-selected')]
-      .filter((el) => (el.closest('.pagedjs_sheet') || el.closest('.pagedjs_page')) === sheet);
-    if (sheet && selected.length) {
-      const sr = sheet.getBoundingClientRect();
-      let top = Infinity, bottom = -Infinity;
-      selected.forEach((el) => {
-        const r = el.getBoundingClientRect();
-        if (r.height === 0) return;
-        top = Math.min(top, r.top);
-        bottom = Math.max(bottom, r.bottom);
-      });
-      const hr = host.getBoundingClientRect();
-      const scale = host.offsetWidth ? hr.width / host.offsetWidth : 1;
-      const br = btn.getBoundingClientRect();
-      btn.style.left = `${(sr.left - 6 * scale - br.width - hr.left) / scale}px`;
-      btn.style.top = `${((top + bottom) / 2 - br.height / 2 - hr.top) / scale}px`;
-    }
+    stack.appendChild(btn);
     this.btn = btn;
-    // The SKETCH button rides just above the trash: rework this selection
-    // through sketches (A = frozen original, B = editable copy, placed).
-    if (window.WriteSysSketchFromSelection) {
-      const sk = document.createElement('button');
-      sk.type = 'button';
-      sk.className = 'range-trash range-sketch';
-      sk.title = `Sketch from ${this.range.length} selected sentence${this.range.length > 1 ? 's' : ''}`;
-      sk.innerHTML = window.WriteSysSketchFromSelection.buttonHTML();
-      sk.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        window.WriteSysSketchFromSelection.open(this.range.slice());
-      });
-      host.appendChild(sk);
-      const br2 = btn.getBoundingClientRect();
-      sk.style.left = btn.style.left;
-      sk.style.top = `${parseFloat(btn.style.top || '0') - br2.height - 6}px`;
-      this.sketchBtn = sk;
-    }
-    // COPY rides on top: the selection's text with every suggestion applied
-    // (copy-selection.js). Appended last so `.range-trash` still finds the
-    // trash first.
-    if (window.WriteSysCopySelection) {
-      const C = window.WriteSysCopySelection;
-      const cp = document.createElement('button');
-      cp.type = 'button';
-      cp.className = 'range-trash range-copy';
-      cp.title = C.titleFor(this.range);
-      cp.innerHTML = C.buttonHTML();
-      cp.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        C.copy(this.range.slice(), cp);
-      });
-      host.appendChild(cp);
-      const below = this.sketchBtn || btn;
-      const h = btn.getBoundingClientRect().height;
-      cp.style.left = btn.style.left;
-      cp.style.top = `${parseFloat(below.style.top || '0') - h - 6}px`;
-      this.copyBtn = cp;
-    }
-    // ACCEPT (✓) tops the stack (2026-10-18): accept the suggestion every
-    // selected sentence shows — deletion proposals included — for "I
-    // deleted a run of sentences and want to accept them too". Reviewers
-    // only (manage-suggestions). House two-click, like the trash: the first
-    // click arms it and greens the range; no second click within 2s
-    // disarms both.
-    const S = window.WriteSysSuggestions;
-    if (S && S.canReview && S.acceptMany) {
-      const ac = document.createElement('button');
-      ac.type = 'button';
-      ac.className = 'range-trash range-accept';
-      const idleTitle = `Accept the suggested edits in ${this.range.length} sentence${this.range.length > 1 ? 's' : ''}`;
-      ac.title = idleTitle;
-      ac.innerHTML = window.WriteSysIcons && window.WriteSysIcons.check ? window.WriteSysIcons.check(12) : '✓';
-      let acArmed = false, acTimer = null;
-      ac.addEventListener('click', async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (!acArmed) {
-          acArmed = true;
-          ac.classList.add('confirming');
-          document.body.classList.add('range-accept-armed');
-          ac.title = 'Click again to accept them';
-          acTimer = setTimeout(() => {
-            acArmed = false;
-            ac.classList.remove('confirming');
-            ac.title = idleTitle;
-            document.body.classList.remove('range-accept-armed');
-          }, 2000);
-          return;
-        }
-        clearTimeout(acTimer);
-        await this.acceptRange();
-      });
-      host.appendChild(ac);
-      const below = this.copyBtn || this.sketchBtn || btn;
-      const h = btn.getBoundingClientRect().height;
-      ac.style.left = btn.style.left;
-      ac.style.top = `${parseFloat(below.style.top || '0') - h - 6}px`;
-      this.acceptBtn = ac;
-    }
+
+    document.body.appendChild(stack);
+    this.stack = stack;
+    this._place = () => this.placeStack();
+    window.addEventListener('scroll', this._place, { capture: true, passive: true });
+    window.addEventListener('resize', this._place);
+    this.placeStack();
+  },
+
+  // Where the stack goes, measured live (viewport coordinates, so it works
+  // at any page scale and inside a split-pane frame): x = just off the
+  // sheet's left edge; y = the screen's middle, clamped so the stack never
+  // leaves the selection's vertical extent.
+  placeStack() {
+    const stack = this.stack;
+    if (!stack) return;
+    const sel = document.querySelectorAll('.sentence.range-selected');
+    let top = Infinity, bottom = -Infinity, sheet = null;
+    sel.forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0) return;
+      if (r.top < top) { top = r.top; sheet = el.closest('.pagedjs_sheet') || el.closest('.pagedjs_page'); }
+      bottom = Math.max(bottom, r.bottom);
+    });
+    if (!sheet || top === Infinity) return;
+    const h = stack.offsetHeight;
+    const mid = window.innerHeight / 2;
+    let center;
+    if (bottom - top <= h) center = (top + bottom) / 2;
+    else center = Math.min(Math.max(mid, top + h / 2), bottom - h / 2);
+    const sr = sheet.getBoundingClientRect();
+    stack.style.left = `${Math.round(sr.left - 6 - stack.offsetWidth)}px`;
+    stack.style.top = `${Math.round(center - h / 2)}px`;
   },
 
   async acceptRange() {
@@ -266,8 +269,14 @@ const WriteSysRangeDelete = {
     document.querySelectorAll('.sentence.range-selected').forEach((el) => el.classList.remove('range-selected'));
   },
   removeTrash() {
-    if (this.btn) { this.btn.remove(); this.btn = null; }
-    document.querySelectorAll('.range-trash').forEach((el) => el.remove());
+    if (this._place) {
+      window.removeEventListener('scroll', this._place, { capture: true });
+      window.removeEventListener('resize', this._place);
+      this._place = null;
+    }
+    if (this.stack) { this.stack.remove(); this.stack = null; }
+    document.querySelectorAll('.range-stack, .range-trash').forEach((el) => el.remove());
+    this.btn = null;
     this.sketchBtn = null;
     this.copyBtn = null;
     this.acceptBtn = null;
