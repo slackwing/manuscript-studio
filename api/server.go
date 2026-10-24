@@ -182,9 +182,10 @@ func (s *Server) BackfillNoteDefaults(ctx context.Context) {
 
 // RunWordcountCron drives the optional wordcount-history feature: one run
 // at startup (covers downtime — the day's row appears as soon as the server
-// is back), then every configured interval. Rows are keyed by day in the
-// configured timezone, so intra-day runs overwrite today's row in place.
-// No-op unless wordcount_history.enabled.
+// is back), then on the CLOCK every configured interval — 15 minutes runs
+// at :00/:15/:30/:45, not at restart-time offsets (2026-10-24). Rows are
+// keyed by day in the configured timezone, so intra-day runs overwrite
+// today's row in place. No-op unless wordcount_history.enabled.
 func (s *Server) RunWordcountCron(ctx context.Context) {
 	if !s.config.WordcountHistory.Enabled {
 		return
@@ -200,16 +201,24 @@ func (s *Server) RunWordcountCron(ctx context.Context) {
 		log.Printf("wordcount cron: computed %d manuscript(s)", len(rows))
 	}
 	run()
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 	for {
+		timer := time.NewTimer(time.Until(NextAlignedTick(time.Now(), interval)))
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			run()
 		}
 	}
+}
+
+// NextAlignedTick: the first clock boundary of `interval` strictly after
+// now — 10:07 → 10:15 for 15 minutes, 10:15 → 10:30. Boundaries are
+// counted from the Unix epoch, so any interval dividing an hour lands on
+// the same minutes in every whole-hour timezone (New York included).
+func NextAlignedTick(now time.Time, interval time.Duration) time.Time {
+	return now.Truncate(interval).Add(interval)
 }
 
 func (s *Server) setupRouter() {

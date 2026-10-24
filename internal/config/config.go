@@ -49,8 +49,8 @@ type Config struct {
 
 type WordcountHistoryConfig struct {
 	Enabled bool `yaml:"enabled"`
-	// Compute cadence in minutes; rows stay keyed by day regardless.
-	// Default 60.
+	// Compute cadence in minutes, run on the clock (15 → :00/:15/:30/:45);
+	// rows stay keyed by day regardless. Default 60.
 	IntervalMinutes int `yaml:"interval_minutes"`
 	// IANA timezone that defines the day cutoff for history rows
 	// (e.g. "America/New_York"). Default "UTC".
