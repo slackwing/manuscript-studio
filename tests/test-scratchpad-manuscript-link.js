@@ -4,7 +4,7 @@
 // future inheritance and leaves existing notes untouched.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestNotes, loginAsTestUser, waitForPadSelection } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -21,7 +21,7 @@ async function makeNote(page, text) {
   await page.keyboard.type(text);
   await page.keyboard.press('Home');
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  await waitForPadSelection(page);
   const before = await page.locator('.sn-note-ref').count();
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
   await page.waitForTimeout(600);
@@ -74,7 +74,7 @@ async function makeNote(page, text) {
   await page.keyboard.type('After the link.');
   await page.keyboard.press('Home');
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  await waitForPadSelection(page);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
   // The float opens as soon as the create POST resolves — wait for the chip,
   // don't count after a fixed beat.

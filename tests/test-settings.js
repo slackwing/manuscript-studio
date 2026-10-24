@@ -12,7 +12,7 @@
 // dropdown order). Dropdown labels are plain words (no ●).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser, waitForPadSelection } = require('./test-utils');
 const SETTINGS_URL = new URL('settings.html', TEST_URL).href;
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
@@ -201,7 +201,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.keyboard.type('Recolor me via task type.');
   await page.keyboard.press('Home');
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  await waitForPadSelection(page);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click(); // yellow
   await page.waitForTimeout(600);
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');

@@ -3,7 +3,7 @@
 // note on "two" in "one two three", when deleted, leaves the doc as
 // "one two three" again — the words come back as plain prose, no gap.
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestNotes, loginAsTestUser, waitForPadSelection } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
 
@@ -27,7 +27,7 @@ const docText = () => window.WriteSysScratchpad.view.state.doc.textContent;
   await page.keyboard.press('Home');
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.down('Shift'); for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight'); await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  await waitForPadSelection(page);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
   // Ref creation is async (note POST + doc transaction) — wait on the ref
   // atom, not a fixed sleep; the fixed 600ms lost races under suite load.

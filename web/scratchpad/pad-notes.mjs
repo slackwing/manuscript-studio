@@ -168,7 +168,7 @@ async function createNoteFromSelection(color) {
   const view = activeView;
   if (!view || !window.WriteSysNoteAPI) return;
   const { from, to, empty } = view.state.selection;
-  if (empty) return; // nothing selected → no-op (buttons are disabled anyway)
+  if (empty) return; // nothing selected → no-op (the color bar ignores it too)
   // Snapshot the highlighted text: it becomes BOTH the note body (so the note
   // shows what it's about, incl. on the landing page) AND the verbatim text the
   // atomic noteRef renders inline. The snapshot doesn't re-sync on doc edits.

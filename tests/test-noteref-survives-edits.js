@@ -4,7 +4,7 @@
 // paragraph as a ref. Pins: heavy same-paragraph editing + pad reopen never
 // deletes the note; deleting the ref via its trash still does.
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser, waitForPadSelection } = require('./test-utils');
 const { execSync } = require('child_process');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 const psql = (sql) => execSync(
@@ -31,7 +31,7 @@ const psql = (sql) => execSync(
   await page.keyboard.down('Shift');
   for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.up('Shift');
-  await page.waitForTimeout(150);
+  await waitForPadSelection(page);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
   await page.waitForTimeout(800);
   const box = await page.locator('.spm-editor').boundingBox();

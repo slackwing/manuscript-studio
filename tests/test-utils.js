@@ -310,7 +310,23 @@ function ensureWorkerUniquified(repoDir) {
   console.log(`[fixture] re-uniquified worker ${WORKER} repo (uniquify commit was lost)`);
 }
 
+
+/**
+ * Wait until the pad editor's OWN (ProseMirror) selection is non-empty.
+ * The note color buttons read view.state.selection on mousedown and no-op
+ * when it's empty; under suite load PM adopts a keyboard selection a beat
+ * after the DOM does, so a fixed pause before the click made flaky notes
+ * (2026-10-24).
+ */
+async function waitForPadSelection(page, timeout = 10000) {
+  await page.waitForFunction(() => {
+    const v = window.WriteSysScratchpad && window.WriteSysScratchpad.view;
+    return !!v && !v.state.selection.empty;
+  }, null, { timeout });
+}
+
 module.exports = {
+  waitForPadSelection,
   suggestEditor,
   ensureWorkerUniquified,
   get TEST_MANUSCRIPT_ID() { return TEST_MANUSCRIPT_ID; },

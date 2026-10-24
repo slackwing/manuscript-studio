@@ -4,7 +4,7 @@
 // that). Broke once when a shared scroll hold kept re-arming with a stale base
 // during widget builds, yanking the settle-scroll back to the top.
 const { chromium } = require('playwright');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestNotes, loginAsTestUser, waitForPadSelection } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 
 const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
@@ -62,7 +62,7 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
     view.focus();
     return null;
   }).then(async () => {
-    await page.waitForTimeout(250);
+    await waitForPadSelection(page);
     await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
     await page.waitForTimeout(900);
     return page.evaluate(() => {

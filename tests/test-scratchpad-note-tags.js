@@ -4,7 +4,7 @@
 // now user-wide, so a scratchpad note can be tagged and the tag round-trips.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser, waitForPadSelection } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -35,7 +35,7 @@ function psql(sql) {
   await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift');
   // Wait for the selection itself, not a fixed pause: under suite load the
   // color click once landed before it registered, and no note was made.
-  await page.waitForFunction(() => String(window.getSelection()).includes('scratchpad note'));
+  await waitForPadSelection(page);
   await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
   await page.waitForSelector('.sn-note-ref', { timeout: 10000 });
 
