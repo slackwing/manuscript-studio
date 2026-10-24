@@ -12,7 +12,7 @@
  * old semantics.
  */
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=4';
+import { holdScroll } from './scroll.mjs?v=5';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -132,10 +132,25 @@ function noteColorOf(noteId) {
   const n = noteCache.get(noteId);
   return (n && n.color) || 'yellow';
 }
-// Ensure the cache has this note; fetch it if missing (or `fresh`). Returns
-// the cached note — the SAME object on a refresh, since closures hold it.
+// Saves still in flight per note: while any is, the CACHE is newer than the
+// server, so a refresh must not overwrite it (a type pick recolors and
+// re-renders the float at once — its refetch raced the color save and
+// painted the old color back, 2026-10-24).
+const pendingWrites = new Map();
+function trackWrite(noteId, promise) {
+  pendingWrites.set(noteId, (pendingWrites.get(noteId) || 0) + 1);
+  const done = () => {
+    const n = (pendingWrites.get(noteId) || 1) - 1;
+    if (n > 0) pendingWrites.set(noteId, n); else pendingWrites.delete(noteId);
+  };
+  return Promise.resolve(promise).then((v) => { done(); return v; }, (e) => { done(); throw e; });
+}
+
+// Ensure the cache has this note; fetch it if missing (or `fresh` — skipped
+// while a save of it is in flight). Returns the cached note — the SAME
+// object on a refresh, since closures hold it.
 async function ensureNoteCached(noteId, fresh = false) {
-  if (!fresh && noteCache.get(noteId)) return noteCache.get(noteId);
+  if (noteCache.get(noteId) && (!fresh || pendingWrites.get(noteId))) return noteCache.get(noteId);
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
@@ -193,7 +208,7 @@ function recolorNote(noteId, color) {
   const cached = noteCache.get(noteId) || {};
   cached.color = color;
   noteCache.set(noteId, cached);
-  if (window.WriteSysNoteAPI) window.WriteSysNoteAPI.update(noteId, { color }).catch(() => {});
+  if (window.WriteSysNoteAPI) trackWrite(noteId, window.WriteSysNoteAPI.update(noteId, { color })).catch(() => {});
   const s = noteRefViews.get(noteId);
   if (s) s.forEach(v => v.applyColor(color));
 }
@@ -401,7 +416,7 @@ export async function openNoteFloatFor(noteId, anchorEl) {
   const float = document.createElement('div');
   float.className = 'sn-note-float';
   const widget = window.WriteSysNoteWidget.buildNoteElement(note, {
-    onSaveText: (text) => { note.body = text.trim() || null; cached.body = note.body; api.update(noteId, { body: note.body }); },
+    onSaveText: (text) => { note.body = text.trim() || null; cached.body = note.body; trackWrite(noteId, api.update(noteId, { body: note.body })).catch(() => {}); },
     onColor: (color) => {
       note.color = color;
       recolorNote(noteId, color); // updates row + cache + all ref views (no doc edit)
@@ -409,7 +424,7 @@ export async function openNoteFloatFor(noteId, anchorEl) {
     },
     onDims: (patch) => {
       Object.assign(note, patch); Object.assign(cached, patch);
-      api.update(noteId, patch).catch(() => {});
+      trackWrite(noteId, api.update(noteId, patch)).catch(() => {});
       window.WriteSysNoteWidget.updateDims(float.firstChild, note);
     },
     // A sketch's note can't be deleted (it lives with the sketch); its

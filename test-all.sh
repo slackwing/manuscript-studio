@@ -90,6 +90,7 @@ FAST_TESTS=(
   test-range-float
   test-note-hide
   test-sketch-note-derive
+  test-sketch-note-type-color
   test-shared-icons
   test-material-points
   test-note-nav
