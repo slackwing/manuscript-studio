@@ -2,7 +2,8 @@
 // gutter's top button copies the sentences with every suggestion APPLIED
 // (winner text in, delete proposals out), marker syntax only while the
 // stats-pane markers toggle is on, single-spaced between sentences, the
-// manuscript's own \n\t paragraph breaks kept. Reads the real clipboard.
+// manuscript's own \n\t paragraph breaks kept. Reads what the page wrote
+// to the clipboard (hooked in-page — the system clipboard is shared).
 const { chromium } = require('playwright');
 const { TEST_URL, loginAsTestUser, waitForPagination } = require('./test-utils');
 
@@ -18,6 +19,15 @@ const check = (name, ok, detail = '') => {
   const context = await browser.newContext({
     viewport: { width: 1400, height: 1000 },
     permissions: ['clipboard-read', 'clipboard-write'],
+  });
+  // Read what the page COPIED from the page itself: the system clipboard
+  // is shared by every browser the parallel suite runs — another test's
+  // copy once landed in between (2026-10-24).
+  await context.addInitScript(() => {
+    const cb = navigator.clipboard;
+    if (!cb || !cb.writeText) return;
+    const orig = cb.writeText.bind(cb);
+    cb.writeText = (t) => { window.__lastCopy = t; return orig(t); };
   });
   const page = await context.newPage();
   await loginAsTestUser(page);
@@ -73,7 +83,7 @@ const check = (name, ok, detail = '') => {
     await page.evaluate(() => navigator.clipboard.writeText('(stale)'));
     await page.click('.range-copy');
     await page.waitForFunction(() => document.querySelector('.range-copy.copied'));
-    return page.evaluate(() => navigator.clipboard.readText());
+    return page.evaluate(() => window.__lastCopy);
   };
 
   // ---- the gutter stack: copy on top of sketch on top of trash ----------

@@ -17,6 +17,15 @@ const check = (name, ok, detail = '') => {
   console.log('=== em-dash glue e2e ===\n');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1400, height: 1000 }, permissions: ['clipboard-read', 'clipboard-write'] });
+  // Read what the page COPIED from the page itself: the system clipboard
+  // is shared by every browser the parallel suite runs — another test's
+  // copy once landed in between (2026-10-24).
+  await context.addInitScript(() => {
+    const cb = navigator.clipboard;
+    if (!cb || !cb.writeText) return;
+    const orig = cb.writeText.bind(cb);
+    cb.writeText = (t) => { window.__lastCopy = t; return orig(t); };
+  });
   const page = await context.newPage();
   await loginAsTestUser(page);
   await page.goto(TEST_URL);
@@ -83,7 +92,7 @@ const check = (name, ok, detail = '') => {
   await page.waitForSelector('.range-copy');
   await page.click('.range-copy');
   await page.waitForFunction(() => document.querySelector('.range-copy.copied'));
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  const copied = await page.evaluate(() => window.__lastCopy);
   check('copy glues the same way', copied === 'He said—he sounded composed all of a sudden—Then he left. Nobody followed.',
     JSON.stringify(copied));
 
