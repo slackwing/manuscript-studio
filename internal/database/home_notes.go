@@ -20,6 +20,7 @@ type HomeNote struct {
 	NoteID          int
 	Color           string
 	Body            *string
+	DefaultBody     *string // 052: shown while Body is blank
 	Priority        string
 	TaskType        string
 	Impact          string
@@ -51,7 +52,7 @@ type HomeNote struct {
 // (ListNotesForHome, ListDailyTaskNotes) — one copy so they can't drift
 // (they had ~35 lines duplicated verbatim). Pairs with homeNoteFrom.
 const homeNoteSelect = `
-		SELECT n.note_id, n.color, n.body, n.priority, COALESCE(n.task_type, '') AS task_type, n.impact, n.blocked, n.updated_at,
+		SELECT n.note_id, n.color, n.body, n.default_body, n.priority, COALESCE(n.task_type, '') AS task_type, n.impact, n.blocked, n.updated_at,
 		       n.manuscript_id,
 		       -- A sketch note has no pad of its own — its card deep-links
 		       -- to the sketch's HOME pad (earliest variation's scratchpad).
@@ -110,7 +111,7 @@ func (db *DB) ListNotesForHome(ctx context.Context, username string, limit int) 
 	for rows.Next() {
 		var h HomeNote
 		var tagsJSON []byte
-		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt); err != nil {
 			return nil, fmt.Errorf("scan home note: %w", err)
 		}
@@ -131,7 +132,7 @@ func (db *DB) GetHomeNoteByID(ctx context.Context, username string, noteID int) 
 	`, username, noteID)
 	var h HomeNote
 	var tagsJSON []byte
-	if err := row.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+	if err := row.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 		&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON,
 		&h.CompletedAt, &h.PinnedAt, &h.DeletedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -180,7 +181,7 @@ func (db *DB) ListDailyTaskNotes(ctx context.Context, username string, manuscrip
 	for rows.Next() {
 		var h HomeNote
 		var tagsJSON []byte
-		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.DoneToday); err != nil {
 			return nil, fmt.Errorf("scan daily task note: %w", err)
 		}
@@ -218,7 +219,7 @@ func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscr
 	for rows.Next() {
 		var h HomeNote
 		var tagsJSON []byte
-		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.DoneToday); err != nil {
 			return nil, fmt.Errorf("scan pinned daily note: %w", err)
 		}

@@ -58,5 +58,6 @@
     <include file="changelog/049-point-event-from-daily.xml"/>
     <include file="changelog/050-note-body-auto.xml"/>
     <include file="changelog/051-task-type-scores-points.xml"/>
+    <include file="changelog/052-note-default-body.xml"/>
 
 </databaseChangeLog>

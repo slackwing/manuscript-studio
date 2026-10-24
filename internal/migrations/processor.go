@@ -251,6 +251,12 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 		return nil, fmt.Errorf("settle suggestion groups: %w", err)
 	}
 
+	// Notes now on the new sentences show defaults from the new text (052)
+	// — cosmetic, so a failure is logged, never fatal to the migration.
+	if _, err := db.RefreshNoteDefaultsForMigration(ctx, migrationID); err != nil {
+		log.Warn("note defaults refresh failed", slog.String("error", err.Error()))
+	}
+
 	// "Changes" = sentences that were tracked to a successor but whose text
 	// changed (fuzzy/fallback pairings). Exact matches aren't changes, and
 	// deletions are already counted separately.

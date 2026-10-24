@@ -465,7 +465,7 @@ WriteSysSettings.openNoteModal = async function (noteId) {
       note, {}, { readOnly: true, card: true, showComplete: false }));
   } else {
     const p = document.createElement('p');
-    p.textContent = note.body || '(empty note)';
+    p.textContent = note.body || note.default_body || '(empty note)';
     dialog.appendChild(p);
   }
   const state = document.createElement('p');

@@ -397,14 +397,15 @@ func TestUpdateScratchpadNote_GuardExcludesSentenceNotes(t *testing.T) {
 		t.Errorf("update 1: got (%s, %v, %v, %s, %v)", color2, body2, tt2, prio2, blocked2)
 	}
 
-	// Provided body pointer wins (even to set empty); task type set by name.
+	// Provided body pointer wins (even to clear it — blank is stored NULL,
+	// so the note shows its default, 052); task type set by name.
 	if err := f.db.UpdateScratchpadNote(f.ctx, padNote.NoteID,
-		nil, strPtr(""), nil, &tt, nil, nil); err != nil {
+		nil, strPtr("  "), nil, &tt, nil, nil); err != nil {
 		t.Fatalf("update 2: %v", err)
 	}
 	_, body3, tt3, _, _ := readNote()
-	if body3 == nil || *body3 != "" {
-		t.Errorf("provided empty body should be written, got %v", body3)
+	if body3 != nil {
+		t.Errorf("a provided blank body should clear the text (NULL), got %q", *body3)
 	}
 	if tt3 == nil || *tt3 != tt {
 		t.Errorf("task_type = %v, want %s", tt3, tt)

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 052 (2026-10-24): note.default_body — what a note SHOWS while its
+         owner's text (body) is blank, derived and kept current by the
+         server (sentence.NoteDefault): every {fill-in} of its text, else the
+         first three words + "..." (sentence notes) or the sketch's first
+         sentence (sketch notes). Never written into body.
+         050's body_auto kept a sketch note's derived text IN body behind a
+         flag; that text moves here and the flag goes. -->
+    <changeSet id="052-note-default-body" author="claude">
+        <addColumn tableName="note">
+            <column name="default_body" type="TEXT"/>
+        </addColumn>
+        <sql>
+            UPDATE note SET default_body = body, body = NULL
+            WHERE sketch_id IS NOT NULL AND body_auto;
+        </sql>
+        <dropColumn tableName="note" columnName="body_auto"/>
+    </changeSet>
+
+</databaseChangeLog>

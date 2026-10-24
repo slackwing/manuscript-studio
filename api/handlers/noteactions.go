@@ -114,7 +114,7 @@ func (h *NoteActionHandlers) HandleGetNote(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"note_id": n.NoteID, "color": n.Color, "body": body,
+		"note_id": n.NoteID, "color": n.Color, "body": body, "default_body": n.DefaultBody,
 		"priority": n.Priority, "task_type": n.TaskType, "impact": n.Impact,
 		"blocked": n.Blocked, "updated_at": n.UpdatedAt, "tags": n.Tags,
 		"context": context, "completed_at": n.CompletedAt,

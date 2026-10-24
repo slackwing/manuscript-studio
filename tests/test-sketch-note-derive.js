@@ -1,7 +1,8 @@
 /**
- * 050: a sketch's note body is DERIVED from the sketch — its first prose
- * sentence, same segmenter as the manuscript — refreshed on every save of
- * the sketch until the owner types their own note. Drives the real pad
+ * A sketch's note shows a DEFAULT derived from the sketch (052; 050 kept
+ * it in the body) — its first prose sentence, same segmenter as the
+ * manuscript — refreshed on every save of the sketch, shown while the
+ * owner's own text is blank, never written into it. Drives the real pad
  * modal: type in the sketch, open the note square's float, read the body.
  * SHOT_DIR=<dir> also saves screenshots of the float (desktop + phone).
  */
@@ -41,8 +42,9 @@ const psql = (sql) => execSync(
       const ctx = await page.evaluate(() => window.WriteSysScratchpad.insertSketch());
       const vid = ctx.variation.variation_id;
       const noteId = psql(`SELECT note_id FROM note WHERE sketch_id='${ctx.sketch.sketch_id}' AND deleted_at IS NULL`);
-      const body = () => psql(`SELECT coalesce(body,'(null)') || '|' || CASE WHEN body_auto THEN 't' ELSE 'f' END FROM note WHERE note_id=${noteId}`);
-      check(`[${vp.name}] fresh sketch note is empty + derived`, body() === '(null)|t', body());
+      // "<default>|<own text>" — the default (052) never touches the owner's text.
+      const body = () => psql(`SELECT coalesce(default_body,'(null)') || '|' || coalesce(body,'(null)') FROM note WHERE note_id=${noteId}`);
+      check(`[${vp.name}] fresh sketch note: no default yet, no text`, body() === '(null)|(null)', body());
 
       // Type into the sketch the way the author does. A click into the
       // sketch also closes any open note float (outside mousedown).
@@ -57,14 +59,14 @@ const psql = (sql) => execSync(
       };
       await editSketch();
       await page.keyboard.type('The tide was *out*. Gulls everywhere.');
-      check(`[${vp.name}] saving the sketch derives the note body`,
-        await until(body, 'The tide was out.|t') === 'The tide was out.|t', body());
+      check(`[${vp.name}] saving the sketch derives the note's default`,
+        await until(body, 'The tide was out.|(null)') === 'The tide was out.|(null)', body());
 
       const sq = page.locator(`.sn-widget[data-variation-id="${vid}"] .sn-note-solo`);
       await sq.dispatchEvent('mousedown');
       await page.waitForSelector('.sn-note-float .sticky-note');
-      check(`[${vp.name}] the float shows the derived body`,
-        (await page.inputValue('.sn-note-float .note-input')) === 'The tide was out.');
+      const shown = () => page.evaluate(() => { const t = document.querySelector('.sn-note-float .note-input'); return `${t.value}|${t.placeholder}`; });
+      check(`[${vp.name}] the float shows the default as its placeholder (text stays empty)`, (await shown()) === '|The tide was out.', await shown());
       const w = await page.locator('.sn-note-float').evaluate(el => Math.round(el.getBoundingClientRect().width));
       check(`[${vp.name}] the float is the standard note width (232px)`, w === 232, `w=${w}`);
       await shot(page, `sketch-note-derived-${vp.name}`);
@@ -74,24 +76,24 @@ const psql = (sql) => execSync(
       check(`[${vp.name}] a tap outside closes the float`, (await page.locator('.sn-note-float').count()) === 0);
       await page.keyboard.press('Control+Home');
       await page.keyboard.type('Low ');
-      check(`[${vp.name}] editing the first sentence re-derives`,
-        await until(body, 'Low The tide was out.|t') === 'Low The tide was out.|t', body());
+      check(`[${vp.name}] editing the first sentence re-derives the default`,
+        await until(body, 'Low The tide was out.|(null)') === 'Low The tide was out.|(null)', body());
       await sq.dispatchEvent('mousedown');
       await page.waitForSelector('.sn-note-float .sticky-note');
-      check(`[${vp.name}] reopened float reads the new body (not a stale cache)`,
-        (await page.inputValue('.sn-note-float .note-input')) === 'Low The tide was out.');
+      check(`[${vp.name}] reopened float reads the new default (not a stale cache)`, (await shown()) === '|Low The tide was out.', await shown());
 
       // The owner writes their own → it sticks.
       await page.fill('.sn-note-float .note-input', 'Rewrite the gulls.');
       await page.locator('.sn-note-float .note-input').dispatchEvent('blur');
-      check(`[${vp.name}] a typed note is the owner's (body_auto off)`,
-        await until(body, 'Rewrite the gulls.|f') === 'Rewrite the gulls.|f', body());
+      check(`[${vp.name}] typed text is the owner's own (the default stays separate)`,
+        await until(body, 'Low The tide was out.|Rewrite the gulls.') === 'Low The tide was out.|Rewrite the gulls.', body());
       await editSketch();
       await page.keyboard.press('Control+Home');
       await page.keyboard.type('Very ');
       const saved = () => psql(`SELECT (text LIKE 'Very %')::text FROM variation WHERE variation_id=${vid}`);
       check(`[${vp.name}] the sketch edit saved`, await until(saved, 'true') === 'true', saved());
-      check(`[${vp.name}] later sketch saves leave the owner's note alone`, body() === 'Rewrite the gulls.|f', body());
+      check(`[${vp.name}] later saves keep following in the default, never touching the owner's text`,
+        await until(body, 'Very Low The tide was out.|Rewrite the gulls.') === 'Very Low The tide was out.|Rewrite the gulls.', body());
       check(`[${vp.name}] no page errors`, errs.length === 0, errs.join(' | '));
     } catch (e) {
       check(`[${vp.name}] run`, false, e.message);

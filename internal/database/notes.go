@@ -20,7 +20,7 @@ import (
 // single copy shared by every note reader so the shapes can't silently
 // drift apart again (two of the five hand-copied lists had lost
 // manuscript_id/scratchpad_id). Pairs with scanNote.
-const noteColumns = `a.note_id, COALESCE(a.sentence_id, '') AS sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body,
+const noteColumns = `a.note_id, COALESCE(a.sentence_id, '') AS sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body, a.default_body,
 	       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id, a.pinned_at`
 
 // scanNote scans one noteColumns row (works for both QueryRow and Rows).
@@ -34,6 +34,7 @@ func scanNote(row pgx.Row) (models.Note, error) {
 		&a.UserID,
 		&a.Color,
 		&a.Body,
+		&a.DefaultBody,
 		&a.Priority,
 		&a.TaskType,
 		&a.Impact,
@@ -60,6 +61,7 @@ func scanNoteHidden(row pgx.Row) (models.Note, error) {
 		&a.UserID,
 		&a.Color,
 		&a.Body,
+		&a.DefaultBody,
 		&a.Priority,
 		&a.TaskType,
 		&a.Impact,
@@ -505,11 +507,8 @@ func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *strin
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE note SET
 			color     = COALESCE($2, color),
-			body      = CASE WHEN $3::boolean THEN $4 ELSE body END,
-			-- A sketch note's body is the owner's once they write one, and
-			-- derived again if they empty it (050).
-			body_auto = CASE WHEN $3::boolean AND sketch_id IS NOT NULL
-			                 THEN coalesce(trim($4), '') = '' ELSE body_auto END,
+			-- Blank text is NULL: the note shows its default (052).
+			body      = CASE WHEN NOT $3::boolean THEN body WHEN btrim($4) = '' THEN NULL ELSE $4 END,
 			priority  = COALESCE($5, priority),
 			task_type = CASE WHEN $6::text IS NULL THEN task_type ELSE NULLIF($6, '') END,
 			impact    = COALESCE($7, impact),

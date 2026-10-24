@@ -12,7 +12,7 @@
  * old semantics.
  */
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=5';
+import { holdScroll } from './scroll.mjs?v=6';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -154,7 +154,7 @@ async function ensureNoteCached(noteId, fresh = false) {
   try {
     const n = await window.WriteSysNoteAPI.get(noteId);
     if (n) {
-      const data = { color: n.color, body: n.body, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null, pinned_at: n.pinned_at || null };
+      const data = { color: n.color, body: n.body, default_body: n.default_body || null, priority: n.priority, task_type: n.task_type || '', impact: n.impact || 'n/a', blocked: !!n.blocked, tags: n.tags || [], manuscript_id: n.manuscript_id || null, manuscript_name: n.manuscript_name || '', sketch_id: n.sketch_id || null, pinned_at: n.pinned_at || null };
       const cached = Object.assign(noteCache.get(noteId) || {}, data);
       noteCache.set(noteId, cached);
       return cached;
@@ -403,7 +403,7 @@ export async function openNoteFloatFor(noteId, anchorEl) {
   const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [] };
   const note = {
     noteId, note_id: noteId,
-    color: cached.color, body: cached.body,
+    color: cached.color, body: cached.body, default_body: cached.default_body || null,
     priority: cached.priority || 'none',
     task_type: cached.task_type || '', impact: cached.impact || 'n/a', blocked: !!cached.blocked,
     tags: cached.tags || [],
@@ -416,7 +416,9 @@ export async function openNoteFloatFor(noteId, anchorEl) {
   const float = document.createElement('div');
   float.className = 'sn-note-float';
   const widget = window.WriteSysNoteWidget.buildNoteElement(note, {
-    onSaveText: (text) => { note.body = text.trim() || null; cached.body = note.body; trackWrite(noteId, api.update(noteId, { body: note.body })).catch(() => {}); },
+    // '' — not null: the server reads a null body as "unchanged" (clearing
+    // the text never saved).
+    onSaveText: (text) => { note.body = text.trim() || null; cached.body = note.body; trackWrite(noteId, api.update(noteId, { body: text.trim() })).catch(() => {}); },
     onColor: (color) => {
       note.color = color;
       recolorNote(noteId, color); // updates row + cache + all ref views (no doc edit)

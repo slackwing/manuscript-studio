@@ -347,6 +347,21 @@ const WriteSysNotes = {
     next.onclick = (e) => { e.stopPropagation(); this.gotoAnnotated(nextTarget); };
   },
 
+  // 052: a blank note shows its default text — derived from the sentence
+  // AS ITS OWNER SEES IT. For YOUR notes the margin derives it live (a
+  // suggested edit you just saved counts at once); someone else's keeps
+  // the server's (their own suggestion is theirs to see).
+  liveNoteDefault(sentenceId) {
+    const ND = window.WriteSysNoteDefault;
+    if (!ND) return null;
+    const R = window.WriteSysRenderer;
+    const S = window.WriteSysSuggestions;
+    const committed = (R && R.sentenceMap && R.sentenceMap[sentenceId]) || '';
+    const mine = S && S.bySentenceId ? S.bySentenceId[sentenceId] : undefined;
+    const text = mine !== undefined && String(mine).trim() !== '' ? mine : committed;
+    return ND.noteDefault(text) || null;
+  },
+
   // The manuscript margin now renders notes through the SHARED note-widget
   // (web/notes/note-widget.js) — the SAME component the scratchpad float and
   // landing cards use — so every note feature is delivered identically
@@ -365,6 +380,7 @@ const WriteSysNotes = {
     const canManage = isOwner || (window.WriteSysActions && window.WriteSysActions.has(mid, 'manage-others-notes'));
     const canPoint = window.WriteSysActions ? window.WriteSysActions.has(mid, 'award-points') : true;
     if (!isOwner) return this.createForeignNoteElement(note, !!canManage, canPoint);
+    if (note.sentence_id) note.default_body = this.liveNoteDefault(note.sentence_id) || note.default_body || null;
     const noteEl = W.buildNoteElement(note, {
       // Focus/blur tint the sentence in the note's color.
       onFocus: () => this.applyFocusHighlight(note.sentence_id, note.color),
@@ -488,9 +504,14 @@ const WriteSysNotes = {
   },
 
   createAddNewNoteElement(isFirstNote) {
-    return isFirstNote
+    const el = isFirstNote
       ? this.createFirstUncreatedNote()
       : this.createSubsequentUncreatedNote();
+    // The create card previews what a blank note here will show (052).
+    const def = this.currentSentenceId && this.liveNoteDefault(this.currentSentenceId);
+    const ta = el.querySelector('.note-input');
+    if (ta && def) ta.placeholder = def;
+    return el;
   },
 
   setupUncreatedNoteHandlers(note, textarea, colorCircle, requiresHover) {
@@ -945,7 +966,10 @@ const WriteSysNotes = {
         body: JSON.stringify({
           sentence_id: this.currentSentenceId,
           color: note.color,
-          body: noteText.trim() || null,
+          // '' — not null: the server reads a null body as "unchanged", so
+          // clearing a note's text never saved (and the default never came
+          // back, 2026-10-24).
+          body: noteText.trim(),
           priority: note.priority || 'none',
           flagged: note.flagged || false
         })

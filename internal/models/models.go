@@ -113,6 +113,9 @@ type Note struct {
 	UserID       string     `json:"user_id"`
 	Color        string     `json:"color"`    // yellow, green, blue, purple, red, orange
 	Body         *string    `json:"body"`
+	// DefaultBody (052): what the note shows while Body is blank — derived
+	// by the server (sentence.NoteDefault), never written into Body.
+	DefaultBody *string `json:"default_body"`
 	Priority string `json:"priority"` // 'none' (non-tasks) | 'can' < 'would' < 'should' < 'must'
 	// TaskType is the FIRST dimension: '' = untyped ('n/a', NULL in the DB,
 	// the state of every new note). A type in the TASK category

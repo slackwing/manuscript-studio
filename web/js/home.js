@@ -292,7 +292,7 @@ const WriteSysHome = {
     } else {
       const body = document.createElement('p');
       body.className = 'card-note-body';
-      body.textContent = n.body || '(empty note)';
+      body.textContent = n.body || n.default_body || '(empty note)';
       card.appendChild(body);
     }
 

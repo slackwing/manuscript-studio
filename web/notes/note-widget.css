@@ -65,3 +65,10 @@
   color: #333;
 }
 .note-readonly-body { white-space: pre-wrap; }
+
+/* 052: a blank note's DEFAULT text on read-only cards — the same quiet
+   look as the editable note's placeholder. */
+.note-readonly-body.note-default-text {
+  color: #999;
+  font-style: italic;
+}

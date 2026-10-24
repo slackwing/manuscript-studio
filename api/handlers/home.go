@@ -51,6 +51,7 @@ type homeNote struct {
 	NoteID       int       `json:"note_id"`
 	Color        string    `json:"color"`
 	Body         string    `json:"body"`
+	DefaultBody  string    `json:"default_body,omitempty"` // 052: shown while body is blank
 	Priority     string    `json:"priority"`
 	TaskType     string    `json:"task_type"`
 	Impact       string    `json:"impact"`
@@ -181,6 +182,9 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 				SentenceID: n.SentenceID, Tags: n.Tags, CompletedAt: n.CompletedAt,
 				PinnedAt: n.PinnedAt,
 			}
+			if n.DefaultBody != nil {
+				hn.DefaultBody = *n.DefaultBody
+			}
 			if n.Body != nil {
 				hn.Body = *n.Body
 			}
@@ -277,6 +281,9 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 			UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
 			SentenceID: n.SentenceID, Tags: n.Tags, DoneToday: n.DoneToday,
 			PinnedAt: n.PinnedAt,
+		}
+		if n.DefaultBody != nil {
+			hn.DefaultBody = *n.DefaultBody
 		}
 		if n.Body != nil {
 			hn.Body = *n.Body

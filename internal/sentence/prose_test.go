@@ -1,6 +1,10 @@
 package sentence
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
 
 func TestFirstProseSentence(t *testing.T) {
 	cases := []struct{ in, want string }{
@@ -39,5 +43,28 @@ func TestUnderscoreItalicsSegmentLikeAsterisks(t *testing.T) {
 	}
 	if got := tk.TokenizeWithMarkers("Open my_notes. Then run read_me now. Done."); len(got) != 3 {
 		t.Errorf("snake_case should not change splitting: %q", got)
+	}
+}
+
+// 2026-10-24: a blank note's default — fill-ins, else three words + "...".
+// The cases live in tests/fixtures/note-default-cases.json: the browser's
+// mirror (web/js/note-default.js) runs the same table (test-note-default-units).
+func TestNoteDefault(t *testing.T) {
+	raw, err := os.ReadFile("../../tests/fixtures/note-default-cases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Text   string `json:"text"`
+		Sketch bool   `json:"sketch"`
+		Want   string `json:"want"`
+	}
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if got := NoteDefault(c.Text, c.Sketch); got != c.Want {
+			t.Errorf("NoteDefault(%q, %v) = %q, want %q", c.Text, c.Sketch, got, c.Want)
+		}
 	}
 }

@@ -438,6 +438,16 @@
   // Back-compat alias (older call sites).
   const updatePriorityFlagUI = updateDims;
 
+  // A read-only note's text: its own, else its DEFAULT (052 — what a blank
+  // note shows: its {fill-ins}, else its first words), styled as one.
+  function fillReadonlyBody(noteEl, note) {
+    const ro = noteEl.querySelector('.note-readonly-body');
+    if (!ro) return;
+    const own = note.body && String(note.body).trim();
+    ro.textContent = own ? note.body : (note.default_body || '(empty note)');
+    ro.classList.toggle('note-default-text', !own && !!note.default_body);
+  }
+
   function autoResize(ta) {
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
@@ -606,7 +616,7 @@
       // Preview body: same Caveat font (via CSS), clamped to a few lines. No
       // events. Read-only notes carry only priority/flag/tags/context — nothing
       // interactive — so we return right after populating the preview.
-      noteEl.querySelector('.note-readonly-body').textContent = note.body || '(empty note)';
+      fillReadonlyBody(noteEl, note);
       // Cards carry the dimensions as static chips in the tag row (rendered
       // above); the interactive bottom row is edit-only — except the eye,
       // when the host offers hiding (the row then holds the eye alone).
@@ -620,11 +630,14 @@
     }
 
     if (lockBody) {
-      noteEl.querySelector('.note-readonly-body').textContent = note.body || '(empty note)';
+      fillReadonlyBody(noteEl, note);
     }
     const ta = noteEl.querySelector('.note-input');
     if (ta) {
       ta.value = note.body || '';
+      // 052: a blank note shows its DEFAULT (fill-ins / first words) as the
+      // placeholder — typing replaces it, clearing brings it back.
+      ta.placeholder = note.default_body || 'Write a note...';
       autoResize(ta);
     }
 

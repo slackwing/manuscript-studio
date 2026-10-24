@@ -1,0 +1,87 @@
+[
+ {
+  "text": "In the ambulance I enjoyed a rush of feeling that I now realize was {adjective} safety.",
+  "sketch": false,
+  "want": "{adjective}"
+ },
+ {
+  "text": "He was {adjective} and {something  here}, then {more stuff here}.",
+  "sketch": false,
+  "want": "{adjective} {something here} {more stuff here}"
+ },
+ {
+  "text": "The telephone rang twice before anyone moved.",
+  "sketch": false,
+  "want": "The telephone rang..."
+ },
+ {
+  "text": "\n\tSo, forgive me, but let me open the door.",
+  "sketch": false,
+  "want": "So, forgive me..."
+ },
+ {
+  "text": "*So it was*—the epidemic of being in our 20s.",
+  "sketch": false,
+  "want": "So it was..."
+ },
+ {
+  "text": "Hey—you there, listen up.",
+  "sketch": false,
+  "want": "Hey—you there..."
+ },
+ {
+  "text": "I can't believe it's over now.",
+  "sketch": false,
+  "want": "I can't believe..."
+ },
+ {
+  "text": "It’s done, finally.",
+  "sketch": false,
+  "want": "It’s done, finally."
+ },
+ {
+  "text": "Hello there.",
+  "sketch": false,
+  "want": "Hello there."
+ },
+ {
+  "text": "A note here&footnote{with a footnote} and more words.",
+  "sketch": false,
+  "want": "A note here..."
+ },
+ {
+  "text": "It was &mark#beacon{weak} late, said one.",
+  "sketch": false,
+  "want": "It was late..."
+ },
+ {
+  "text": "Empty {} braces and {   } spaces don't count, really.",
+  "sketch": false,
+  "want": "Empty {} braces and..."
+ },
+ {
+  "text": "She was _very_ sure of it all.",
+  "sketch": false,
+  "want": "She was very..."
+ },
+ {
+  "text": "&chapter#p1c1{I}{The wildfire.}",
+  "sketch": false,
+  "want": ""
+ },
+ {
+  "text": "&chapter#one{One}\n\nThe rain came. Then {the wind}.",
+  "sketch": true,
+  "want": "{the wind}"
+ },
+ {
+  "text": "&chapter#one{One}\n\nThe rain came. Then the wind.",
+  "sketch": true,
+  "want": "The rain came."
+ },
+ {
+  "text": "",
+  "sketch": false,
+  "want": ""
+ }
+]

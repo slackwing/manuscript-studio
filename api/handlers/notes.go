@@ -455,6 +455,10 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Failed to create note", http.StatusInternalServerError)
 		return
 	}
+	// Its default text (052), shown while its own text is blank.
+	if err := h.DB.RefreshSentenceNoteDefaults(ctx, []string{req.SentenceID}); err != nil {
+		log.Printf("notes: default for new note on %s: %v", req.SentenceID, err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -509,6 +513,9 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.Body != nil {
 		existing.Body = req.Body
+		if strings.TrimSpace(*req.Body) == "" {
+			existing.Body = nil // blank is NULL: the note shows its default (052)
+		}
 	}
 	if req.Priority != nil {
 		existing.Priority = *req.Priority
@@ -536,12 +543,6 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 			log.Printf("notes: update versionless note %d: %v", noteID, err)
 			http.Error(w, "Failed to update note", http.StatusInternalServerError)
 			return
-		}
-		// An emptied sketch note goes back to its sketch's first sentence (050).
-		if existing.SketchID != nil && req.Body != nil && strings.TrimSpace(*req.Body) == "" {
-			if err := h.DB.RederiveSketchNoteBody(ctx, noteID); err != nil {
-				log.Printf("notes: rederive sketch note %d: %v", noteID, err)
-			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(existing)

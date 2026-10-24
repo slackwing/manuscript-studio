@@ -281,6 +281,7 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 			http.Error(w, "Failed to delete suggestion", http.StatusInternalServerError)
 			return
 		}
+		h.refreshNoteDefaults(ctx, target)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -299,6 +300,7 @@ func (h *SuggestionHandlers) HandlePutSuggestion(w http.ResponseWriter, r *http.
 		http.Error(w, "Failed to save suggestion", http.StatusInternalServerError)
 		return
 	}
+	h.refreshNoteDefaults(ctx, target)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(saved)
@@ -337,7 +339,17 @@ func (h *SuggestionHandlers) HandleDeleteSuggestion(w http.ResponseWriter, r *ht
 		http.Error(w, "Failed to delete suggestion", http.StatusInternalServerError)
 		return
 	}
+	h.refreshNoteDefaults(ctx, target)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// refreshNoteDefaults (052): the sentence's notes show defaults from the
+// sentence as each owner sees it — their suggested edit included — so a
+// suggestion save/clear refreshes them. Cosmetic: logged, never fatal.
+func (h *SuggestionHandlers) refreshNoteDefaults(ctx context.Context, sentenceID string) {
+	if err := h.DB.RefreshSentenceNoteDefaults(ctx, []string{sentenceID}); err != nil {
+		log.Printf("suggestions: note defaults for %s: %v", sentenceID, err)
+	}
 }
 
 // forwardWait bounds how long a write waits out a running migration

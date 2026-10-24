@@ -91,6 +91,8 @@ FAST_TESTS=(
   test-note-hide
   test-sketch-note-derive
   test-sketch-note-type-color
+  test-note-defaults
+  test-note-default-units
   test-shared-icons
   test-material-points
   test-note-nav

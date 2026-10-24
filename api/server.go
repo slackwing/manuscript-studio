@@ -167,16 +167,16 @@ func (s *Server) BackfillPointDailyFlags(ctx context.Context) {
 	}
 }
 
-// BackfillSketchNoteBodies (050) fills every empty sketch note from its
-// sketch's first sentence — once, in the background, at startup.
-func (s *Server) BackfillSketchNoteBodies(ctx context.Context) {
-	n, err := s.dbWrapper.BackfillSketchNoteBodies(ctx)
+// BackfillNoteDefaults (052) gives every note still without one its
+// default text — once, in the background, at startup.
+func (s *Server) BackfillNoteDefaults(ctx context.Context) {
+	n, err := s.dbWrapper.BackfillNoteDefaults(ctx)
 	if err != nil {
-		log.Printf("sketch note backfill: %v", err)
+		log.Printf("note defaults backfill: %v", err)
 		return
 	}
 	if n > 0 {
-		log.Printf("sketch note backfill: %d filled", n)
+		log.Printf("note defaults backfill: %d filled", n)
 	}
 }
 
