@@ -370,6 +370,9 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
     psql(`SELECT value FROM user_pref WHERE user_id='${TEST_USERNAME}' AND key='marker_display'`).trim() === 'on');
   await page.reload();
   await page.waitForSelector('#mk-display', { timeout: 8000 });
+  // The box is ticked once the saved pref LOADS (async after render) —
+  // under suite load an immediate read caught it before that.
+  await page.waitForFunction(() => document.getElementById('mk-display').checked, null, { timeout: 8000 }).catch(() => {});
   check('reload keeps the toggle on', await page.locator('#mk-display').isChecked());
   await page.locator('#mk-display').uncheck();
   await page.waitForFunction(() => document.getElementById('mk-status').textContent === '', null, { timeout: 5000 });
