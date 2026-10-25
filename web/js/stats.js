@@ -55,6 +55,8 @@ const WriteSysStats = {
     });
     document.addEventListener('ms:layers-reflowed', () => this.syncLayerButtons());
 
+    document.addEventListener('visibilitychange', () => this.onVisible());
+
     const saved = localStorage.getItem('ms_pane');
     this.setPane(saved === 'stats' || saved === 'people' ? saved : 'outline');
     this.load();
@@ -75,14 +77,41 @@ const WriteSysStats = {
     if (this.pane === 'people' && window.WriteSysPeople) window.WriteSysPeople.load();
   },
 
+  // Live (2026-10-25): the numbers come from the server's wordcount cron,
+  // which runs on the clock (interval_minutes — 15 → :00/:15/:30/:45). The
+  // pane re-fetches just after each run, and when the tab comes back into
+  // view; it re-renders only when something actually changed, and the
+  // changed numbers flash (render).
+  REFRESH_LAG_MS: 20000,  // after the boundary: the cron takes ~a second
   async load() {
+    let fresh;
     try {
-      this.data = await fetchJSON(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/wordcount-history`);
+      fresh = await fetchJSON(`${this.apiBaseUrl}/manuscripts/${this.manuscriptId}/wordcount-history`);
     } catch (e) {
       console.error('stats: failed to load wordcount history', e);
-      this.data = null;
+      fresh = this.data ? this.data : null; // a failed refresh keeps what's shown
     }
-    if (this.pane === 'stats') this.render();
+    this._loadedAt = Date.now();
+    const changed = JSON.stringify(fresh) !== JSON.stringify(this.data);
+    this.data = fresh;
+    if (changed && this.pane === 'stats') this.render();
+    this.scheduleRefresh();
+  },
+
+  scheduleRefresh() {
+    clearTimeout(this._refreshTimer);
+    const d = this.data;
+    if (!d || !d.enabled) return;
+    const step = Math.max(1, d.interval_minutes || 60) * 60000;
+    const next = Math.ceil(Date.now() / step) * step + this.REFRESH_LAG_MS;
+    this._nextRefreshAt = next; // (tests read it)
+    this._refreshTimer = setTimeout(() => this.load(), Math.max(5000, next - Date.now()));
+  },
+
+  // Back to the tab after a while (timers sleep in background tabs): catch up.
+  onVisible() {
+    if (document.visibilityState !== 'visible' || !this._loadedAt) return;
+    if (Date.now() - this._loadedAt > 60000) this.load();
   },
 
   // ---- date helpers. All x positions are "UTC midnight of a calendar
@@ -147,8 +176,8 @@ const WriteSysStats = {
     // Read-only since the settings modal took over editing
     // (MANUSCRIPT_LIFECYCLE_PLAN §4) — values still display here.
     const birthdayVal = m.birthT != null
-      ? `<span class="stats-row-value" id="stats-birthday">${this.fmtDayLong(m.birthT)}</span>`
-      : `<span class="stats-row-value stats-unset" id="stats-birthday" title="Set in settings">unknown</span>`;
+      ? `<span class="stats-row-value" id="stats-birthday" data-stat="birthday">${this.fmtDayLong(m.birthT)}</span>`
+      : `<span class="stats-row-value stats-unset" id="stats-birthday" data-stat="birthday" title="Set in settings">unknown</span>`;
     const haveRates = m.birthT != null && m.current != null;
     const rate = (r) => haveRates
       ? `${this.fmtNum(r)} <span class="stats-row-unit">words/day</span>`
@@ -156,14 +185,14 @@ const WriteSysStats = {
     const rowsHTML =
       `<div class="stats-row"><span class="stats-row-label">BIRTHDAY</span>${birthdayVal}</div>` +
       `<div class="stats-row"><span class="stats-row-label">WORD GOAL</span>` +
-        `<span class="stats-row-value" id="stats-goal">${this.fmtNum(m.goal)}</span></div>` +
+        `<span class="stats-row-value" id="stats-goal" data-stat="goal">${this.fmtNum(m.goal)}</span></div>` +
       // Word count lives here now, not in the chrome info line.
       `<div class="stats-row"><span class="stats-row-label">WORDS</span>` +
-        `<span class="stats-row-value" id="stats-words">${m.current != null ? this.fmtNum(m.current) : '<span class="stats-row-unit">&mdash;</span>'}</span></div>` +
-      `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value">${rate(m.avgRate)}</span></div>` +
-      `<div class="stats-row"><span class="stats-row-label">PAST 30D</span><span class="stats-row-value">${rate(m.trendRate)}</span></div>` +
+        `<span class="stats-row-value" id="stats-words" data-stat="words">${m.current != null ? this.fmtNum(m.current) : '<span class="stats-row-unit">&mdash;</span>'}</span></div>` +
+      `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value" data-stat="avg">${rate(m.avgRate)}</span></div>` +
+      `<div class="stats-row"><span class="stats-row-label">PAST 30D</span><span class="stats-row-value" data-stat="trend">${rate(m.trendRate)}</span></div>` +
       // The pace that finishes the goal one year from now.
-      `<div class="stats-row"><span class="stats-row-label">1Y RATE</span><span class="stats-row-value">${rate(m.needRate)}</span></div>`;
+      `<div class="stats-row"><span class="stats-row-label">1Y RATE</span><span class="stats-row-value" data-stat="need">${rate(m.needRate)}</span></div>`;
 
     let graphHTML;
     if (m.birthT == null) {
@@ -204,12 +233,34 @@ const WriteSysStats = {
     const toggles = (mkDenied ? '' : layerBtn('markers')) + attnBtn + layerBtn('footnotes');
 
     this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}<div class="stats-toggles">${toggles}</div></div>`;
+    this.flashChanged();
     this.wireHover();
     this.wireAttentionToggle();
     this.wireLayerToggles();
   },
 
   // Click toggles the pin; aria-pressed mirrors it (CSS paints the on-state).
+  // A number that changed since you last SAW the pane flashes — a quick
+  // highlight that decays at once (a refresh while you watch, or one that
+  // landed while another tab was showing). Re-renders for resize/toggles
+  // change nothing, so nothing flashes; the first render has nothing to
+  // compare with.
+  flashChanged() {
+    const prev = this._shown || null;
+    const now = {};
+    this.el.querySelectorAll('[data-stat]').forEach((el) => {
+      const key = el.dataset.stat;
+      now[key] = el.textContent;
+      if (prev && prev[key] !== undefined && prev[key] !== now[key]) {
+        el.classList.remove('stats-flash');
+        void el.offsetWidth; // restart the animation if it's mid-flash
+        el.classList.add('stats-flash');
+        el.addEventListener('animationend', () => el.classList.remove('stats-flash'), { once: true });
+      }
+    });
+    this._shown = now;
+  },
+
   wireAttentionToggle() {
     const btn = document.getElementById('stats-attention');
     if (!btn) return;

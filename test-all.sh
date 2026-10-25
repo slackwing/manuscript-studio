@@ -93,6 +93,7 @@ FAST_TESTS=(
   test-sketch-note-type-color
   test-note-defaults
   test-note-default-units
+  test-stats-live
   test-shared-icons
   test-material-points
   test-note-nav

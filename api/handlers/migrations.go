@@ -343,7 +343,10 @@ func (h *MigrationHandlers) HandleGetWordcountHistory(w http.ResponseWriter, r *
 		Rows     []database.WordcountRow `json:"rows"`
 		Birthday *string                 `json:"birthday"`
 		WordGoal int                     `json:"word_goal"`
-	}{h.Config.WordcountHistory.Enabled, rows, dateString(m.Birthday), m.WordGoal})
+		// The cron's cadence, on the clock (15 → :00/:15/:30/:45): the
+		// statistics pane re-fetches just after each run (2026-10-25).
+		IntervalMinutes int `json:"interval_minutes"`
+	}{h.Config.WordcountHistory.Enabled, rows, dateString(m.Birthday), m.WordGoal, h.Config.WordcountHistory.IntervalMinutes})
 }
 
 // dateString formats a DATE column for the API as plain YYYY-MM-DD — a
