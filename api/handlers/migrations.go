@@ -350,7 +350,8 @@ func (h *MigrationHandlers) HandleGetWordcountHistory(w http.ResponseWriter, r *
 		// The cron's cadence, on the clock (15 → :00/:15/:30/:45): the
 		// statistics pane re-fetches just after each run (2026-10-25).
 		IntervalMinutes int `json:"interval_minutes"`
-		// Words added by every accepted suggested edit (NEW ACCEPTED).
+		// Words added by the edits accepted right now, not yet committed
+		// (NEW ACCEPTED).
 		NewAccepted int `json:"new_accepted"`
 	}{h.Config.WordcountHistory.Enabled, rows, dateString(m.Birthday), m.WordGoal, h.Config.WordcountHistory.IntervalMinutes, newAccepted})
 }

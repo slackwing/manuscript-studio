@@ -1,9 +1,9 @@
 // Statistics rows added 2026-10-26: "1Y RATE" reads "1Y FINISH"; below it
 // the word count as it stood 1Y / 30D / 1W / 1D ago (the latest history
-// row on or before that day), and NEW ACCEPTED — the words added by every
-// accepted suggested edit (one frequency counter per edit: new words +1,
-// removed −1, positives summed — a moved word nets 0), which refreshes
-// right after you accept. The graph's plot lines are 1 unit thinner.
+// row on or before that day), and NEW ACCEPTED — the words added by the
+// edits accepted right now, not yet committed (one frequency counter per
+// edit: new words +1, removed −1, positives summed — a moved word nets 0),
+// which refreshes right after you accept. The graph's plot lines are 1 unit thinner.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
 const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestAnnotations } = require('./test-utils');

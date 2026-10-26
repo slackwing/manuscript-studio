@@ -186,7 +186,8 @@ const WriteSysStats = {
       w1: asOf(today - 7 * this.DAY),
       d1: asOf(today - this.DAY),
     };
-    // Words added by every accepted suggested edit (server-counted).
+    // Words added by the edits accepted right now, not yet committed
+    // (server-counted; a commit resets it).
     m.newAccepted = d.new_accepted;
     return m;
   },

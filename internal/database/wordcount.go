@@ -282,25 +282,22 @@ func (db *DB) ListWordcountHistory(ctx context.Context, manuscriptID int) ([]Wor
 	return out, rows.Err()
 }
 
-// AcceptedNewWords (2026-10-26, the statistics pane's NEW ACCEPTED): the
-// words added by every accepted suggested edit of the manuscript, each
-// edit counted ONCE — sentence.NewWords per edit (moved words net 0),
-// summed. A migration COPIES suggestions forward, so one edit can sit on
-// several migrations' sentences; only the end of each copy chain counts
-// (no identical copy — same author, same text — on the successor
-// sentence), whether it was pushed or still awaits its push.
+// AcceptedNewWords (the statistics pane's NEW ACCEPTED): the words added
+// by the edits accepted RIGHT NOW — accepted on the manuscript's current
+// version and not yet committed (pushed); a commit resets it to 0
+// (2026-10-26: counting every accepted edit ever was the wrong reading).
+// One frequency counter per edit — its words +1, the committed sentence's
+// words −1 — positives summed (sentence.NewWords), so a moved word nets 0.
 func (db *DB) AcceptedNewWords(ctx context.Context, manuscriptID int) (int, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT s.text, sc.text
 		FROM suggested_change sc
 		JOIN sentence s ON s.sentence_id = sc.sentence_id
-		JOIN migration m ON m.migration_id = s.migration_id
-		WHERE m.manuscript_id = $1 AND m.status = 'done' AND sc.review_status = 'accepted'
-		  AND NOT EXISTS (
-		      SELECT 1 FROM sentence s2
-		      JOIN suggested_change sc2 ON sc2.sentence_id = s2.sentence_id
-		      WHERE s2.previous_sentence_id = s.sentence_id
-		        AND sc2.user_id = sc.user_id AND sc2.text = sc.text)
+		WHERE s.migration_id = (
+		        SELECT migration_id FROM migration
+		        WHERE manuscript_id = $1 AND status = 'done'
+		        ORDER BY processed_at DESC LIMIT 1)
+		  AND sc.review_status = 'accepted' AND sc.pushed_in_commit IS NULL
 	`, manuscriptID)
 	if err != nil {
 		return 0, fmt.Errorf("accepted new words: %w", err)
