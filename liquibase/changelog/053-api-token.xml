@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 053 (2026-10-26): personal API tokens (README "API tokens"). A token
+         lets another service act as one user over the token-only /api/v1
+         routes, limited to its scopes. Only the SHA-256 of the token is
+         stored; the token itself is shown once, when it's minted.
+         prefix keeps the first characters for telling tokens apart in
+         listings. A token stops working when revoked_at is set or
+         expires_at passes; rows are kept (audit), never reused. -->
+    <changeSet id="053-api-token" author="claude">
+        <createTable tableName="api_token">
+            <column name="token_id" type="INTEGER" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="username" type="VARCHAR(50)">
+                <constraints nullable="false" foreignKeyName="fk_api_token_user"
+                             referencedTableName="user" referencedColumnNames="username"
+                             deleteCascade="true"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="token_hash" type="CHAR(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_api_token_hash"/>
+            </column>
+            <column name="prefix" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="scopes" type="TEXT[]">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_used_at" type="TIMESTAMPTZ"/>
+            <column name="expires_at" type="TIMESTAMPTZ"/>
+            <column name="revoked_at" type="TIMESTAMPTZ"/>
+        </createTable>
+        <createIndex tableName="api_token" indexName="idx_api_token_username">
+            <column name="username"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

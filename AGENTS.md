@@ -192,6 +192,15 @@ annotations.js, the `@media` value, and the smallest case in
 `spacing-invariants-test.js` (its horizontal-gap invariant only holds ≥
 breakpoint). `tests/test-responsive-layout.js` asserts the mirror + breakpoint.
 
+### N14 — Never log or echo secrets (tokens, passwords)
+
+Personal API tokens (`mst_…`), the system token, session ids and passwords
+never go to logs, error messages or test output. Log a token's `prefix`
+(first 12 chars) or id instead — `api/handlers/apitokens.go` shows the
+pattern. A token route names its scope via `auth.TokenMiddleware(store,
+scope)`; handlers that serve both cookie and token callers read the user
+with `auth.Username(r)`, never `GetSession` (README "API tokens").
+
 ---
 
 ## 1. Core principles

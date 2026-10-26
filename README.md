@@ -101,6 +101,33 @@ auth:
    - Add the same secret
    - Select "Just the push event"
 
+## API tokens
+
+A personal API token lets another service read one user's data without
+their password — e.g. a dashboard showing that user's daily points. Tokens
+are scoped, revocable, optionally expiring, and only ever shown once.
+
+Mint one with the system token (`auth.system_token` in config.yaml):
+
+```bash
+curl -s -X POST https://yourdomain.com/api/admin/api-tokens \
+  -H "Authorization: Bearer $SYSTEM_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"username": "alice", "name": "status dashboard", "scopes": ["points:read"]}'
+# → {"id": 1, "prefix": "mst_8v6ZX89u", "scopes": ["points:read"], …, "token": "mst_…"}
+```
+
+The `token` in that response is the only copy (the server keeps its
+SHA-256). Use it as `Authorization: Bearer mst_…` on the token routes:
+
+| Route | Scope | Returns |
+|---|---|---|
+| `GET /api/v1/points-daily` | `points:read` | `{today, days: [{date, points, daily}]}` — the same as the home page's points grid |
+
+`GET /api/admin/api-tokens?username=alice` lists tokens (no secrets);
+`DELETE /api/admin/api-tokens/{id}` revokes one. Optional
+`"expires_at": "2027-06-01T00:00:00Z"` when minting. Token routes are
+rate-limited per token; a token never opens the cookie-session routes.
+
 ## Architecture
 
 Manuscript Studio consists of:

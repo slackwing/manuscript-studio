@@ -32,6 +32,7 @@ type AdminHandlers struct {
 	DB        *database.DB
 	Config    *config.Config
 	Processor *migrations.Processor
+	APITokens *auth.APITokenStore
 }
 
 type GitHubWebhookPayload struct {

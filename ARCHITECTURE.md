@@ -438,6 +438,15 @@ AGENTS.md for the full rule.
   webhook, `/api/admin/sync`, `/api/admin/users`, `/api/admin/grants`).
   Checked against `auth.system_token` from config via
   `Authorization: Bearer <token>`.
+- **Personal API tokens** (`internal/auth/apitoken.go`, table `api_token`,
+  changeset 053) — let another service act as ONE user on the token-only
+  `/api/v1` routes, limited to the token's scopes (`points:read` for
+  `/api/v1/points-daily`). `mst_` + 32 random bytes; only the SHA-256 is
+  stored, looked up by hash; revoked/expired rows stay but never match.
+  `auth.TokenMiddleware(store, scope)` admits a request (401 bad token,
+  403 missing scope) and `auth.Username(r)` gives the acting user from a
+  session OR a token, so one handler can serve both routes. Minted, listed
+  and revoked via `/api/admin/api-tokens` (system token).
 - **Timing-safe login** — login always runs bcrypt, even for unknown users
   (dummy hash), so response time doesn't leak whether a username exists.
 - **Generic error messages** — failed login always says "Invalid

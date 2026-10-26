@@ -307,12 +307,13 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// HandleDailyPoints: GET /api/points-daily — the user's full per-day points
+// HandleDailyPoints: GET /api/points-daily (session) and GET
+// /api/v1/points-daily (API token, scope points:read) — the user's full per-day points
 // history plus today's date, both in the configured timezone. Feeds the
 // landing page's points grid (which needs ALL history for its left-to-right
 // overflow cascade).
 func (h *HomeHandlers) HandleDailyPoints(w http.ResponseWriter, r *http.Request) {
-	session, err := auth.GetSession(r)
+	username, err := auth.Username(r) // cookie session, or an API token on /api/v1
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -321,14 +322,14 @@ func (h *HomeHandlers) HandleDailyPoints(w http.ResponseWriter, r *http.Request)
 	tz := loc.String()
 	// Points scored before 049 carry no daily/other flag yet: classify this
 	// user's once, here (the startup pass usually got there first).
-	if pending, err := h.DB.HasUnclassifiedPoints(r.Context(), session.Username); err == nil && pending {
-		if d, o, err := h.DB.BackfillPointDailyFlags(r.Context(), session.Username, loc); err != nil {
-			log.Printf("points-daily: backfill %s: %v", session.Username, err)
+	if pending, err := h.DB.HasUnclassifiedPoints(r.Context(), username); err == nil && pending {
+		if d, o, err := h.DB.BackfillPointDailyFlags(r.Context(), username, loc); err != nil {
+			log.Printf("points-daily: backfill %s: %v", username, err)
 		} else {
-			log.Printf("points-daily: backfilled %s — %d daily, %d other", session.Username, d, o)
+			log.Printf("points-daily: backfilled %s — %d daily, %d other", username, d, o)
 		}
 	}
-	days, err := h.DB.ListDailyPoints(r.Context(), session.Username, tz)
+	days, err := h.DB.ListDailyPoints(r.Context(), username, tz)
 	if err != nil {
 		log.Printf("points-daily: list: %v", err)
 		http.Error(w, "Failed to list daily points", http.StatusInternalServerError)

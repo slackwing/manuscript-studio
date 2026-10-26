@@ -29,6 +29,7 @@ type Server struct {
 	dbWrapper          *database.DB
 	router             chi.Router
 	sessionStore       *auth.SessionStore
+	apiTokens          *auth.APITokenStore
 	authHandlers       *handlers.AuthHandlers
 	migrationHandlers  *handlers.MigrationHandlers
 	noteHandlers *handlers.NoteHandlers
@@ -50,12 +51,14 @@ type Server struct {
 func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 	dbWrapper := &database.DB{Pool: db}
 	sessionStore := auth.NewSessionStore(db)
+	apiTokens := auth.NewAPITokenStore(db)
 
 	s := &Server{
 		config:       cfg,
 		db:           db,
 		dbWrapper:    dbWrapper,
 		sessionStore: sessionStore,
+		apiTokens:    apiTokens,
 		signupHandlers: &handlers.SignupHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
@@ -118,6 +121,7 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 			DB:        dbWrapper,
 			Config:    cfg,
 			Processor: migrations.NewProcessor(db),
+			APITokens: apiTokens,
 		},
 	}
 	// The local-mode commit path (suggestions → commit → migrate) reuses the
@@ -430,6 +434,13 @@ func (s *Server) setupRouter() {
 			return ratelimit.HostOnly(r.RemoteAddr)
 		}
 
+		// Token-authenticated API: personal API tokens, one scope per route
+		// (README "API tokens"). Rate-limited per token like /admin.
+		r.Route("/v1", func(r chi.Router) {
+			r.Use(adminLimiter.Middleware(adminKey))
+			r.With(auth.TokenMiddleware(s.apiTokens, auth.ScopePointsRead)).Get("/points-daily", s.homeHandlers.HandleDailyPoints)
+		})
+
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(adminLimiter.Middleware(adminKey))
 			r.Post("/webhook", s.adminHandlers.HandleWebhook)
@@ -439,6 +450,9 @@ func (s *Server) setupRouter() {
 			r.Post("/invites", s.signupHandlers.HandleMintInvite)
 			r.Post("/grants", s.adminHandlers.HandleCreateGrant)
 			r.Post("/wordcount-compute", s.adminHandlers.HandleWordcountCompute)
+			r.Post("/api-tokens", s.adminHandlers.HandleCreateAPIToken)
+			r.Get("/api-tokens", s.adminHandlers.HandleListAPITokens)
+			r.Delete("/api-tokens/{token_id}", s.adminHandlers.HandleRevokeAPIToken)
 		})
 	})
 
