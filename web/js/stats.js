@@ -469,17 +469,24 @@ const WriteSysStats = {
     const X = t => padL + ((t - xMin) / (xMax - xMin)) * (w - padL - padR);
     const Y = v => (h - padB) - (Math.max(0, v) / yMax) * (h - padB - padT);
 
-    const pts = (key) => m.ratePts
-      .filter(p => p.t <= xMax)
+    // The past-30d pace only where a FULL 30 days of history stand behind
+    // it (2026-10-26) — earlier days' values came from a shorter window.
+    const firstT = m.rows.length ? m.rows[0].t : Infinity;
+    const full30 = (p) => p.t - firstT >= 30 * this.DAY;
+    const series = (key) => m.ratePts.filter(p => p.t <= xMax && (key !== 'trend' || full30(p)));
+    const pts = (key) => series(key)
       .map(p => `${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
     const parts = [];
     parts.push(this.seasonBands(X, xMin, xMax, padT, h - padB));
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
     parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="0.4"/>`);
     parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="0.4"/>`);
-    // Where we are today: the current (past-30d) pace, the line's last point.
-    const lastPt = m.ratePts.filter(p => p.t <= xMax).pop();
-    if (lastPt) parts.push(this.todayDot(X(lastPt.t), Y(lastPt.trend)));
+    // Where we are today: the current (past-30d) pace's last point — or
+    // the average's, while the history is under 30 days old.
+    const lastTrend = series('trend').pop();
+    const lastAvg = series('avg').pop();
+    if (lastTrend) parts.push(this.todayDot(X(lastTrend.t), Y(lastTrend.trend)));
+    else if (lastAvg) parts.push(this.todayDot(X(lastAvg.t), Y(lastAvg.avg)));
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },
 

@@ -107,6 +107,25 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     check('both graphs carry today\'s dot', dots.length === 2 && dots.every(Boolean), JSON.stringify(dots));
     check('…tiny and blue, on the line\'s latest point (actual words / current pace)', dots.every((d) => d && d.onLine && d.blue && d.r <= 3), JSON.stringify(dots));
     check('…and pinging (looping ring)', dots.every((d) => d && d.pinging), JSON.stringify(dots));
+
+    // The past-30d line only where a full 30 days of history stand behind
+    // the point (pane fed synthetic data — no DB writes).
+    const synth = (agos) => page.evaluate((agos) => {
+      const S = window.WriteSysStats;
+      const day = (ago) => { const d = new Date(); d.setDate(d.getDate() - ago); return d.toLocaleDateString('en-CA'); };
+      S.data = { enabled: true, interval_minutes: 15, word_goal: 40000, new_accepted: 0, birthday: day(100),
+        rows: agos.map((a, i) => ({ day: day(a), words_effective: 1000 + i * 100, words_sketches: 0, rate_average: 10 + i, rate_past_30d: 20 + i * 5 })) };
+      S.render();
+      const svg = document.querySelectorAll('#stats-margin .stats-graph svg')[1];
+      const [trend, avg] = [...svg.querySelectorAll('polyline')].map((p) => p.getAttribute('points').trim().split(/\s+/).filter(Boolean));
+      const dot = svg.querySelector('.stats-today circle:not(.stats-ping)');
+      const lastAvg = avg[avg.length - 1].split(',').map(Number);
+      return { trend: trend.length, avg: avg.length, dotOnAvg: !!dot && Math.abs(+dot.getAttribute('cx') - lastAvg[0]) < 0.2 && Math.abs(+dot.getAttribute('cy') - lastAvg[1]) < 0.2 };
+    }, agos);
+    const young = await synth([20, 10, 5, 0]);
+    check('history under 30 days: no past-30d points (average still drawn; dot on the average)', young.trend === 0 && young.avg === 4 && young.dotOnAvg, JSON.stringify(young));
+    const older = await synth([60, 40, 20, 0]);
+    check('60 days of history: only the points with 30 days behind them', older.trend === 2 && older.avg === 4 && !older.dotOnAvg, JSON.stringify(older));
     await page.close();
   } catch (e) {
     check('run', false, e.message);
