@@ -89,7 +89,19 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     const m = new Date().getMonth() + 1, d = new Date().getDate();
     const nowSeason = (m > 12 || (m === 12 && d >= 21) || m < 3 || (m === 3 && d < 20)) ? 'winter'
       : (m < 6 || (m === 6 && d < 21)) ? 'spring' : (m < 9 || (m === 9 && d < 22)) ? 'summer' : 'autumn';
-    check('the rate graph ends (today) in the current season', seasons[1].last.s === nowSeason, `${seasons[1].last.s} vs ${nowSeason}`);
+    // The rate graph runs a season past today: today's dot sits clear of the
+    // right edge, over the CURRENT season's band.
+    const ahead = await page.evaluate(() => {
+      const svg = document.querySelectorAll('#stats-margin .stats-graph svg')[1];
+      const frame = svg.querySelector('rect[stroke="#cccccc"]');
+      const right = +frame.getAttribute('x') + +frame.getAttribute('width');
+      const cx = +svg.querySelector('.stats-today circle:not(.stats-ping)').getAttribute('cx');
+      const band = [...svg.querySelectorAll('rect.stats-season')].find((r) => +r.getAttribute('x') <= cx && cx < +r.getAttribute('x') + +r.getAttribute('width'));
+      return { gap: Math.round(right - cx), width: Math.round(+frame.getAttribute('width')), season: band && band.dataset.season };
+    });
+    // Birthday 500 days back: a season (91.3 d) of 591 → ~15% of the width.
+    check('the rate graph runs a season past today (dot clear of the right edge)', Math.abs(ahead.gap - ahead.width * 91.3 / 591.3) <= 3, JSON.stringify(ahead));
+    check('…over the current season', ahead.season === nowSeason, `${ahead.season} vs ${nowSeason}`);
 
     // Today: a tiny blue pinging dot on each graph, at its line's latest point.
     const dots = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg, i) => {

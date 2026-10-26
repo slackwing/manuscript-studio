@@ -22,6 +22,7 @@ const WriteSysStats = {
   pane: 'outline',  // 'outline' | 'stats'
 
   DAY: 86400000,
+  SEASON_MS: 365.25 / 4 * 86400000,
   COLOR_ACTUAL: '#333333',
   COLOR_TREND: '#c0392b',
   COLOR_AVG: '#4b8ec9',
@@ -462,7 +463,11 @@ const WriteSysStats = {
     const h = isBar ? 56 : 84;
     const padL = 6, padR = 6, padT = 6, padB = 6;
 
-    const xMin = m.birthT, xMax = Math.max(this.todayT(), xMin + this.DAY);
+    // A season of room past today (2026-10-26): the lines end at today, so
+    // today's dot sits clear of the right edge and the coming season shows.
+    const xMin = m.birthT;
+    const today = Math.max(this.todayT(), xMin + this.DAY);
+    const xMax = today + this.SEASON_MS;
     let yMax = 1;
     for (const p of m.ratePts) yMax = Math.max(yMax, p.avg, p.trend);
     yMax *= 1.05;
@@ -473,7 +478,7 @@ const WriteSysStats = {
     // it (2026-10-26) — earlier days' values came from a shorter window.
     const firstT = m.rows.length ? m.rows[0].t : Infinity;
     const full30 = (p) => p.t - firstT >= 30 * this.DAY;
-    const series = (key) => m.ratePts.filter(p => p.t <= xMax && (key !== 'trend' || full30(p)));
+    const series = (key) => m.ratePts.filter(p => p.t <= today && (key !== 'trend' || full30(p)));
     const pts = (key) => series(key)
       .map(p => `${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
     const parts = [];
