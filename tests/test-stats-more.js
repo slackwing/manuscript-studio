@@ -90,6 +90,23 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     const nowSeason = (m > 12 || (m === 12 && d >= 21) || m < 3 || (m === 3 && d < 20)) ? 'winter'
       : (m < 6 || (m === 6 && d < 21)) ? 'spring' : (m < 9 || (m === 9 && d < 22)) ? 'summer' : 'autumn';
     check('the rate graph ends (today) in the current season', seasons[1].last.s === nowSeason, `${seasons[1].last.s} vs ${nowSeason}`);
+
+    // Today: a tiny blue pinging dot on each graph, at its line's latest point.
+    const dots = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg, i) => {
+      const g = svg.querySelector('.stats-today');
+      if (!g) return null;
+      const c = g.querySelector('circle:not(.stats-ping)');
+      const line = svg.querySelectorAll('polyline')[0]; // progress: actual; rate: past-30d (drawn first)
+      const pts = line.getAttribute('points').trim().split(/\s+/);
+      const [lx, ly] = pts[pts.length - 1].split(',').map(Number);
+      const ping = g.querySelector('.stats-ping');
+      return { onLine: Math.abs(+c.getAttribute('cx') - lx) < 0.2 && Math.abs(+c.getAttribute('cy') - ly) < 0.2,
+        blue: c.getAttribute('fill') === '#2a6fb0', r: +c.getAttribute('r'),
+        pinging: getComputedStyle(ping).animationName === 'stats-ping' && getComputedStyle(ping).animationIterationCount === 'infinite' };
+    }));
+    check('both graphs carry today\'s dot', dots.length === 2 && dots.every(Boolean), JSON.stringify(dots));
+    check('…tiny and blue, on the line\'s latest point (actual words / current pace)', dots.every((d) => d && d.onLine && d.blue && d.r <= 3), JSON.stringify(dots));
+    check('…and pinging (looping ring)', dots.every((d) => d && d.pinging), JSON.stringify(dots));
     await page.close();
   } catch (e) {
     check('run', false, e.message);

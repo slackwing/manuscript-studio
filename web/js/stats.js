@@ -404,15 +404,12 @@ const WriteSysStats = {
     // No x-axis labels: the birthday is in the header rows above, and each
     // line's projected finish appears via its hover/tap drop marker.
 
+    // Where we are today: the actual line's latest point.
+    parts.push(this.todayDot(X(m.last.t), Y(m.current)));
+
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },
 
-  // buildRateGraph: the pace-over-time companion below the progress graph.
-  // Same boxed style, NO labels at all — it reads as relative shape. Red is
-  // the past-30d pace, blue the average, each day's value as frozen by the
-  // cron. X spans birthday → today (the right edge is today, where the
-  // progress graph's projections take over); days before rate tracking
-  // simply have no line.
   // The background shaded by SEASON (2026-10-26; replaced Jan 1 lines):
   // northern-hemisphere astronomical starts — spring Mar 20, summer Jun 21,
   // autumn Sep 22, winter Dec 21. Pale tints under the data; no labels.
@@ -446,6 +443,19 @@ const WriteSysStats = {
     return out;
   },
 
+  // Today on a graph: a tiny blue dot that pings — a ring that swells and
+  // fades on a loop (CSS .stats-ping; still under reduced motion).
+  todayDot(x, y) {
+    const c = (cls) => `<circle${cls ? ` class="${cls}"` : ''} cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.2" fill="#2a6fb0"/>`;
+    return `<g class="stats-today">${c('stats-ping')}${c('')}</g>`;
+  },
+
+  // buildRateGraph: the pace-over-time companion below the progress graph.
+  // Same boxed style, NO labels at all — it reads as relative shape. Red is
+  // the past-30d pace, blue the average, each day's value as frozen by the
+  // cron. X spans birthday → today (the right edge is today, where the
+  // progress graph's projections take over); days before rate tracking
+  // simply have no line.
   buildRateGraph(m) {
     const w = Math.max(180, (this.el.clientWidth || 280) - 30);
     const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
@@ -467,6 +477,9 @@ const WriteSysStats = {
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
     parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="0.4"/>`);
     parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="0.4"/>`);
+    // Where we are today: the current (past-30d) pace, the line's last point.
+    const lastPt = m.ratePts.filter(p => p.t <= xMax).pop();
+    if (lastPt) parts.push(this.todayDot(X(lastPt.t), Y(lastPt.trend)));
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },
 
