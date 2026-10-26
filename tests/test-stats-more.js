@@ -72,16 +72,24 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     const widths = await page.evaluate(() => [...document.querySelectorAll('#stats-margin svg polyline')].map((p) => p.getAttribute('stroke-width')));
     check('plot lines are 1 unit thinner (0.6 actual / 0.4 rates)', widths.length && widths.every((w) => w === '0.6' || w === '0.4'), widths.join(','));
 
-    // A thin gray vertical at each Jan 1, on both graphs, no label.
-    const years = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg) => {
-      const ls = [...svg.querySelectorAll('line.stats-year')];
-      return { n: ls.length, vertical: ls.every((l) => l.getAttribute('x1') === l.getAttribute('x2')), gray: ls.every((l) => l.getAttribute('stroke') === '#dddddd'), texts: svg.querySelectorAll('text').length };
+    // The background is shaded by season on both graphs (2026-10-26):
+    // spring light green, summer deeper green, autumn gold, winter white.
+    const seasons = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg) => {
+      const frame = svg.querySelector('rect[stroke="#cccccc"]').getBBox();
+      const bands = [...svg.querySelectorAll('rect.stats-season')].map((r) => ({ s: r.dataset.season, x: +r.getAttribute('x'), w: +r.getAttribute('width'), fill: r.getAttribute('fill') }));
+      const covered = bands.reduce((a, b) => a + b.w, 0);
+      return { n: bands.length, last: bands[bands.length - 1], covered: Math.round(covered), frame: Math.round(frame.width),
+        fills: [...new Set(bands.map((b) => `${b.s}:${b.fill}`))].sort(), noYearLines: !svg.querySelector('line.stats-year') };
     }));
-    const thisYear = new Date().getFullYear();
-    check('both graphs draw (fixture)', years.length === 2, JSON.stringify(years));
-    check('progress graph: a gray line at each Jan 1 in range (incl. next year\'s, the axis runs ahead)', years[0] && years[0].n >= 2 && years[0].vertical && years[0].gray, JSON.stringify(years[0]));
-    if (process.env.SHOT_DIR) await page.locator('#stats-margin').screenshot({ path: `${process.env.SHOT_DIR}/stats-years.png` });
-    check('rate graph: the Jan 1 that falls before today', years[1] && years[1].n === 1 && years[1].vertical && years[1].gray, JSON.stringify(years[1]) + ` (year ${thisYear})`);
+    if (process.env.SHOT_DIR) await page.locator('#stats-margin').screenshot({ path: `${process.env.SHOT_DIR}/stats-seasons.png` });
+    const palette = { spring: '#e9f3dd', summer: '#d3e8c4', autumn: '#f2e2b3', winter: '#ffffff' };
+    check('both graphs are shaded by season (fixture)', seasons.length === 2 && seasons.every((g) => g.n >= 2 && g.noYearLines), JSON.stringify(seasons.map((g) => g.n)));
+    check('the bands tile the whole plot width', seasons.every((g) => Math.abs(g.covered - g.frame) <= 2), JSON.stringify(seasons.map((g) => [g.covered, g.frame])));
+    check('each season wears its color', seasons.every((g) => g.fills.every((f) => palette[f.split(':')[0]] === f.split(':')[1])), JSON.stringify(seasons[0].fills));
+    const m = new Date().getMonth() + 1, d = new Date().getDate();
+    const nowSeason = (m > 12 || (m === 12 && d >= 21) || m < 3 || (m === 3 && d < 20)) ? 'winter'
+      : (m < 6 || (m === 6 && d < 21)) ? 'spring' : (m < 9 || (m === 9 && d < 22)) ? 'summer' : 'autumn';
+    check('the rate graph ends (today) in the current season', seasons[1].last.s === nowSeason, `${seasons[1].last.s} vs ${nowSeason}`);
     await page.close();
   } catch (e) {
     check('run', false, e.message);

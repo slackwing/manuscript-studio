@@ -355,8 +355,8 @@ const WriteSysStats = {
 
     // Boxed axes (recessive) with the goal number tucked just below the
     // top edge. No "0" — the bottom edge speaks for itself.
+    parts.push(this.seasonBands(X, xMin, xMax, padT, Y(0)));
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${(Y(0) - padT).toFixed(1)}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
-    parts.push(this.yearLines(X, xMin, xMax, padT, Y(0)));
     if (m.current > m.goal) {
       parts.push(line(padL, Y(m.goal), w - padR, Y(m.goal), '#dddddd', 1, '2 3'));
     }
@@ -413,16 +413,35 @@ const WriteSysStats = {
   // cron. X spans birthday → today (the right edge is today, where the
   // progress graph's projections take over); days before rate tracking
   // simply have no line.
-  // A thin gray vertical at each Jan 1 inside the x-range (2026-10-26) —
-  // no label; drawn under the data. Day stamps are UTC midnights.
-  yearLines(X, xMin, xMax, top, bottom) {
+  // The background shaded by SEASON (2026-10-26; replaced Jan 1 lines):
+  // northern-hemisphere astronomical starts — spring Mar 20, summer Jun 21,
+  // autumn Sep 22, winter Dec 21. Pale tints under the data; no labels.
+  SEASONS: [
+    { name: 'winter', m: 11, d: 21, fill: '#ffffff' }, // from Dec 21 (prev. year)
+    { name: 'spring', m: 2, d: 20, fill: '#e9f3dd' },
+    { name: 'summer', m: 5, d: 21, fill: '#d3e8c4' },
+    { name: 'autumn', m: 8, d: 22, fill: '#f2e2b3' },
+    { name: 'winter', m: 11, d: 21, fill: '#ffffff' },
+  ],
+  seasonBands(X, xMin, xMax, top, bottom) {
     let out = '';
-    for (let y = new Date(xMin).getUTCFullYear() + 1; ; y++) {
-      const t = Date.UTC(y, 0, 1);
-      if (t >= xMax) break;
-      if (t <= xMin) continue;
-      const x = X(t).toFixed(1);
-      out += `<line class="stats-year" x1="${x}" y1="${top.toFixed(1)}" x2="${x}" y2="${bottom.toFixed(1)}" stroke="#dddddd" stroke-width="0.6"/>`;
+    for (let y = new Date(xMin).getUTCFullYear(); y <= new Date(xMax).getUTCFullYear(); y++) {
+      for (let i = 0; i < 4; i++) {
+        const a = this.SEASONS[i], b = this.SEASONS[i + 1];
+        const start = Date.UTC(i === 0 ? y - 1 : y, a.m, a.d);
+        const end = Date.UTC(y, b.m, b.d);
+        const s = Math.max(start, xMin), e = Math.min(end, xMax);
+        if (e <= s) continue;
+        const x1 = X(s), x2 = X(e);
+        out += `<rect class="stats-season" data-season="${a.name}" x="${x1.toFixed(1)}" y="${top.toFixed(1)}" width="${(x2 - x1).toFixed(1)}" height="${(bottom - top).toFixed(1)}" fill="${a.fill}"/>`;
+      }
+    }
+    // The loop's last year ends at its Dec 21; past that is the next
+    // winter's start (the loop draws it as year+1's first band) — add it.
+    const tail = Date.UTC(new Date(xMax).getUTCFullYear(), 11, 21);
+    if (xMax > tail) {
+      const s = Math.max(tail, xMin), x1 = X(s), x2 = X(xMax);
+      out += `<rect class="stats-season" data-season="winter" x="${x1.toFixed(1)}" y="${top.toFixed(1)}" width="${(x2 - x1).toFixed(1)}" height="${(bottom - top).toFixed(1)}" fill="#ffffff"/>`;
     }
     return out;
   },
@@ -444,8 +463,8 @@ const WriteSysStats = {
       .filter(p => p.t <= xMax)
       .map(p => `${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
     const parts = [];
+    parts.push(this.seasonBands(X, xMin, xMax, padT, h - padB));
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
-    parts.push(this.yearLines(X, xMin, xMax, padT, h - padB));
     parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="0.4"/>`);
     parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="0.4"/>`);
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
