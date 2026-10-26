@@ -356,6 +356,7 @@ const WriteSysStats = {
     // Boxed axes (recessive) with the goal number tucked just below the
     // top edge. No "0" — the bottom edge speaks for itself.
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${(Y(0) - padT).toFixed(1)}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
+    parts.push(this.yearLines(X, xMin, xMax, padT, Y(0)));
     if (m.current > m.goal) {
       parts.push(line(padL, Y(m.goal), w - padR, Y(m.goal), '#dddddd', 1, '2 3'));
     }
@@ -412,6 +413,20 @@ const WriteSysStats = {
   // cron. X spans birthday → today (the right edge is today, where the
   // progress graph's projections take over); days before rate tracking
   // simply have no line.
+  // A thin gray vertical at each Jan 1 inside the x-range (2026-10-26) —
+  // no label; drawn under the data. Day stamps are UTC midnights.
+  yearLines(X, xMin, xMax, top, bottom) {
+    let out = '';
+    for (let y = new Date(xMin).getUTCFullYear() + 1; ; y++) {
+      const t = Date.UTC(y, 0, 1);
+      if (t >= xMax) break;
+      if (t <= xMin) continue;
+      const x = X(t).toFixed(1);
+      out += `<line class="stats-year" x1="${x}" y1="${top.toFixed(1)}" x2="${x}" y2="${bottom.toFixed(1)}" stroke="#dddddd" stroke-width="0.6"/>`;
+    }
+    return out;
+  },
+
   buildRateGraph(m) {
     const w = Math.max(180, (this.el.clientWidth || 280) - 30);
     const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
@@ -430,6 +445,7 @@ const WriteSysStats = {
       .map(p => `${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
     const parts = [];
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
+    parts.push(this.yearLines(X, xMin, xMax, padT, h - padB));
     parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="0.4"/>`);
     parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="0.4"/>`);
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;

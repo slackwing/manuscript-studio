@@ -22,7 +22,7 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
   psql(`DELETE FROM wordcount_history WHERE manuscript_id=${M}`);
   const seed = [[400, 100], [31, 500], [8, 800], [1, 950], [0, 1000]];
   for (const [ago, n] of seed) {
-    psql(`INSERT INTO wordcount_history (manuscript_id, day, words_effective) VALUES (${M}, current_date - ${ago}, ${n})`);
+    psql(`INSERT INTO wordcount_history (manuscript_id, day, words_effective, rate_average, rate_past_30d) VALUES (${M}, current_date - ${ago}, ${n}, ${n / 100}, ${n / 50})`);
   }
   const browser = await chromium.launch({ headless: true });
   try {
@@ -71,6 +71,17 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     // Thinner plot lines.
     const widths = await page.evaluate(() => [...document.querySelectorAll('#stats-margin svg polyline')].map((p) => p.getAttribute('stroke-width')));
     check('plot lines are 1 unit thinner (0.6 actual / 0.4 rates)', widths.length && widths.every((w) => w === '0.6' || w === '0.4'), widths.join(','));
+
+    // A thin gray vertical at each Jan 1, on both graphs, no label.
+    const years = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg) => {
+      const ls = [...svg.querySelectorAll('line.stats-year')];
+      return { n: ls.length, vertical: ls.every((l) => l.getAttribute('x1') === l.getAttribute('x2')), gray: ls.every((l) => l.getAttribute('stroke') === '#dddddd'), texts: svg.querySelectorAll('text').length };
+    }));
+    const thisYear = new Date().getFullYear();
+    check('both graphs draw (fixture)', years.length === 2, JSON.stringify(years));
+    check('progress graph: a gray line at each Jan 1 in range (incl. next year\'s, the axis runs ahead)', years[0] && years[0].n >= 2 && years[0].vertical && years[0].gray, JSON.stringify(years[0]));
+    if (process.env.SHOT_DIR) await page.locator('#stats-margin').screenshot({ path: `${process.env.SHOT_DIR}/stats-years.png` });
+    check('rate graph: the Jan 1 that falls before today', years[1] && years[1].n === 1 && years[1].vertical && years[1].gray, JSON.stringify(years[1]) + ` (year ${thisYear})`);
     await page.close();
   } catch (e) {
     check('run', false, e.message);
