@@ -94,6 +94,7 @@ FAST_TESTS=(
   test-note-defaults
   test-note-default-units
   test-stats-live
+  test-stats-more
   test-shared-icons
   test-material-points
   test-note-nav

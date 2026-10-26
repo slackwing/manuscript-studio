@@ -924,7 +924,8 @@ p.section-break {
   padding: 2px 0;
 }
 .stats-row-label {
-  flex: 0 0 62px;
+  flex: 0 0 90px; /* NEW ACCEPTED fits on one line */
+  white-space: nowrap;
   font: 10px "Helvetica", sans-serif;
   letter-spacing: 0.02em;
   color: #a39d90;

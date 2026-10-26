@@ -171,7 +171,7 @@ function resetMeta() {
   check('rate graph has no labels at all', rateTexts === 0, `texts=${rateTexts}`);
   const avgText = await page.locator('#stats-margin .stats-pane').innerText();
   check('average words/day shown', /AVERAGE/.test(avgText) && /words\/day/.test(avgText));
-  check('PAST 30D and 1Y RATE rows shown', /PAST 30D/.test(avgText) && /1Y RATE/.test(avgText), avgText.replace(/\n/g, ' | '));
+  check('PAST 30D and 1Y FINISH rows shown', /PAST 30D/.test(avgText) && /1Y FINISH/.test(avgText), avgText.replace(/\n/g, ' | '));
 
   // Set the goal to 80,000 via the settings modal; the pane just displays.
   await page.click('#mc-settings');

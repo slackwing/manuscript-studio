@@ -104,3 +104,45 @@ func plainProse(s string) string {
 	out = spaceBeforePunct.ReplaceAllString(out, "$1")
 	return strings.TrimSpace(out)
 }
+
+// NewWords counts the words an edit ADDS (2026-10-26, the statistics
+// pane's NEW ACCEPTED): one frequency counter per edit — every word of the
+// new text +1, every word of the old text −1 — then the sum of the
+// positives. A word that only MOVED nets 0; a rewrite counts just what's
+// new. Words are compared as they read (commands and emphasis marks
+// stripped, case folded).
+func NewWords(oldText, newText string) int {
+	freq := map[string]int{}
+	for _, w := range proseWords(newText) {
+		freq[w]++
+	}
+	for _, w := range proseWords(oldText) {
+		freq[w]--
+	}
+	n := 0
+	for _, c := range freq {
+		if c > 0 {
+			n += c
+		}
+	}
+	return n
+}
+
+// proseWords: the words of manuscript-form text as they read — runs of
+// letters/digits, an inner apostrophe kept ("can't"), lowercased.
+func proseWords(text string) []string {
+	plain := []rune(plainProse(text))
+	var out []string
+	for i := 0; i < len(plain); i++ {
+		if !isWordRune(plain[i]) {
+			continue
+		}
+		start := i
+		for i < len(plain) && (isWordRune(plain[i]) || (isApostrophe(plain[i]) && i+1 < len(plain) && isWordRune(plain[i+1]))) {
+			i++
+		}
+		out = append(out, strings.ToLower(strings.ReplaceAll(string(plain[start:i]), "’", "'")))
+	}
+	return out
+}
+

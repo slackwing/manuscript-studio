@@ -108,6 +108,13 @@ const WriteSysStats = {
     this._refreshTimer = setTimeout(() => this.load(), Math.max(5000, next - Date.now()));
   },
 
+  // A review just changed what's accepted (NEW ACCEPTED): refresh shortly
+  // — debounced, so a batch accept is one fetch.
+  refreshSoon() {
+    clearTimeout(this._soonTimer);
+    this._soonTimer = setTimeout(() => this.load(), 800);
+  },
+
   // Back to the tab after a while (timers sleep in background tabs): catch up.
   onVisible() {
     if (document.visibilityState !== 'visible' || !this._loadedAt) return;
@@ -163,6 +170,24 @@ const WriteSysStats = {
     // The per-day rates the cron froze (024) — the rate graph's series.
     // Days from before the cron tracked rates simply have none.
     m.ratePts = rows.filter(r => r.avg != null && r.trend != null);
+    // Words as they stood back then (2026-10-26): the latest history row
+    // on or before the day; null when the history doesn't reach back.
+    const today = this.todayT();
+    const asOf = (t) => {
+      let hit = null;
+      for (const r of rows) { if (r.t <= t) hit = r; else break; }
+      return hit ? hit.total : null;
+    };
+    const lastYear = new Date(today);
+    lastYear.setUTCFullYear(lastYear.getUTCFullYear() - 1);
+    m.ago = {
+      y1: asOf(lastYear.getTime()),
+      d30: asOf(today - 30 * this.DAY),
+      w1: asOf(today - 7 * this.DAY),
+      d1: asOf(today - this.DAY),
+    };
+    // Words added by every accepted suggested edit (server-counted).
+    m.newAccepted = d.new_accepted;
     return m;
   },
 
@@ -179,6 +204,7 @@ const WriteSysStats = {
       ? `<span class="stats-row-value" id="stats-birthday" data-stat="birthday">${this.fmtDayLong(m.birthT)}</span>`
       : `<span class="stats-row-value stats-unset" id="stats-birthday" data-stat="birthday" title="Set in settings">unknown</span>`;
     const haveRates = m.birthT != null && m.current != null;
+    const count = (n) => n != null ? this.fmtNum(n) : '<span class="stats-row-unit">&mdash;</span>';
     const rate = (r) => haveRates
       ? `${this.fmtNum(r)} <span class="stats-row-unit">words/day</span>`
       : '<span class="stats-row-unit">&mdash;</span>';
@@ -192,7 +218,12 @@ const WriteSysStats = {
       `<div class="stats-row"><span class="stats-row-label">AVERAGE</span><span class="stats-row-value" data-stat="avg">${rate(m.avgRate)}</span></div>` +
       `<div class="stats-row"><span class="stats-row-label">PAST 30D</span><span class="stats-row-value" data-stat="trend">${rate(m.trendRate)}</span></div>` +
       // The pace that finishes the goal one year from now.
-      `<div class="stats-row"><span class="stats-row-label">1Y RATE</span><span class="stats-row-value" data-stat="need">${rate(m.needRate)}</span></div>`;
+      `<div class="stats-row"><span class="stats-row-label">1Y FINISH</span><span class="stats-row-value" data-stat="need">${rate(m.needRate)}</span></div>` +
+      // The word count as it stood back then (2026-10-26).
+      [['1Y AGO', 'y1'], ['30D AGO', 'd30'], ['1W AGO', 'w1'], ['1D AGO', 'd1']].map(([label, k]) =>
+        `<div class="stats-row"><span class="stats-row-label">${label}</span><span class="stats-row-value" data-stat="ago-${k}">${count(m.ago[k])}</span></div>`).join('') +
+      // Words added by accepted suggested edits (moved words don't count).
+      `<div class="stats-row"><span class="stats-row-label">NEW ACCEPTED</span><span class="stats-row-value" data-stat="accepted">${count(m.newAccepted)}</span></div>`;
 
     let graphHTML;
     if (m.birthT == null) {
@@ -332,11 +363,11 @@ const WriteSysStats = {
     // Assumed ramp: birthday (0 words) to the first recorded day — dotted,
     // in the actual series' color, since it's the same story minus the data.
     const first = m.rows[0];
-    parts.push(line(X(m.birthT), Y(0), X(first.t), Y(first.total), this.COLOR_ACTUAL, 1.4, '1.5 3'));
+    parts.push(line(X(m.birthT), Y(0), X(first.t), Y(first.total), this.COLOR_ACTUAL, 0.4, '1.5 3'));
 
     // Actual series.
     const pts = m.rows.map(r => `${X(r.t).toFixed(1)},${Y(r.total).toFixed(1)}`).join(' ');
-    parts.push(`<polyline points="${pts}" fill="none" stroke="${this.COLOR_ACTUAL}" stroke-width="1.6"/>`);
+    parts.push(`<polyline points="${pts}" fill="none" stroke="${this.COLOR_ACTUAL}" stroke-width="0.6"/>`);
 
     // Extrapolations, all anchored at the latest actual point. Each gets a
     // fat transparent twin for hovering. endAt() clips a rising line to the
@@ -354,7 +385,7 @@ const WriteSysStats = {
       extras.push({ key: 'need', color: this.COLOR_NEED, dash: '', rate: m.needRate, end: { x: X(m.last.t + 365 * this.DAY), y: Y(m.goal) }, crossT: m.last.t + 365 * this.DAY });
     }
     for (const e of extras) {
-      parts.push(line(anchorX, anchorY, e.end.x, e.end.y, e.color, 1.4, e.dash));
+      parts.push(line(anchorX, anchorY, e.end.x, e.end.y, e.color, 0.4, e.dash));
       // Hidden until its line is hovered: a same-color dotted drop from the
       // line's end to the axis, captioned "May 27, 2027 @ 271 wpd" beside it
       // just above y=0. That caption is the WHOLE hint — no tooltips.
@@ -398,8 +429,8 @@ const WriteSysStats = {
       .map(p => `${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
     const parts = [];
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${h - padT - padB}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
-    parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="1.4"/>`);
-    parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="1.4"/>`);
+    parts.push(`<polyline points="${pts('trend')}" fill="none" stroke="${this.COLOR_TREND}" stroke-width="0.4"/>`);
+    parts.push(`<polyline points="${pts('avg')}" fill="none" stroke="${this.COLOR_AVG}" stroke-width="0.4"/>`);
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },
 

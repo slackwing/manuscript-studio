@@ -197,6 +197,7 @@ const WriteSysSuggestions = {
         out.failed++;
       }
     }
+    if (out.accepted && window.WriteSysStats) window.WriteSysStats.refreshSoon(); // NEW ACCEPTED
     this.rebuildMaps();
     return out;
   },
@@ -411,6 +412,7 @@ const WriteSysSuggestions = {
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         row.review_status = next;
+        if (window.WriteSysStats) window.WriteSysStats.refreshSoon(); // NEW ACCEPTED
         // Accepting FRESHENS a stale row (server does the same): it becomes
         // a live accepted edit of the sentence as it now reads — and its
         // badge basis rebases to the current text.

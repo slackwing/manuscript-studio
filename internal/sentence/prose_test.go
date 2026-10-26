@@ -68,3 +68,23 @@ func TestNoteDefault(t *testing.T) {
 		}
 	}
 }
+
+// NEW ACCEPTED's rule: one frequency counter per edit, positives summed.
+func TestNewWords(t *testing.T) {
+	for _, c := range []struct {
+		old, new string
+		want     int
+	}{
+		{"The cat sat.", "The cat sat on the mat.", 3},              // on, the(2nd), mat
+		{"He left. Then she came.", "Then she came. He left.", 0},   // moved, not new
+		{"It was late.", "", 0},                                     // a deletion adds nothing
+		{"It was late.", "It was *very* late.", 1},                  // emphasis marks don't count
+		{"I can't go.", "I can’t go now.", 1},                       // curly/straight apostrophes match
+		{"So it was.", "so it was, &mark#x{weak} truly.", 1},        // case folded, commands dropped
+		{"", "Brand new words here.", 4},
+	} {
+		if got := NewWords(c.old, c.new); got != c.want {
+			t.Errorf("NewWords(%q, %q) = %d, want %d", c.old, c.new, got, c.want)
+		}
+	}
+}

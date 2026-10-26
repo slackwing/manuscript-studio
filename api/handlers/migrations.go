@@ -337,6 +337,10 @@ func (h *MigrationHandlers) HandleGetWordcountHistory(w http.ResponseWriter, r *
 		http.Error(w, "Failed to load manuscript", http.StatusInternalServerError)
 		return
 	}
+	newAccepted, err := h.DB.AcceptedNewWords(r.Context(), manuscriptID)
+	if err != nil {
+		log.Printf("wordcount-history: accepted new words for %d: %v", manuscriptID, err) // a stat, not fatal
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(struct {
 		Enabled  bool                    `json:"enabled"`
@@ -346,7 +350,9 @@ func (h *MigrationHandlers) HandleGetWordcountHistory(w http.ResponseWriter, r *
 		// The cron's cadence, on the clock (15 → :00/:15/:30/:45): the
 		// statistics pane re-fetches just after each run (2026-10-25).
 		IntervalMinutes int `json:"interval_minutes"`
-	}{h.Config.WordcountHistory.Enabled, rows, dateString(m.Birthday), m.WordGoal, h.Config.WordcountHistory.IntervalMinutes})
+		// Words added by every accepted suggested edit (NEW ACCEPTED).
+		NewAccepted int `json:"new_accepted"`
+	}{h.Config.WordcountHistory.Enabled, rows, dateString(m.Birthday), m.WordGoal, h.Config.WordcountHistory.IntervalMinutes, newAccepted})
 }
 
 // dateString formats a DATE column for the API as plain YYYY-MM-DD — a

@@ -281,3 +281,38 @@ func (db *DB) ListWordcountHistory(ctx context.Context, manuscriptID int) ([]Wor
 	}
 	return out, rows.Err()
 }
+
+// AcceptedNewWords (2026-10-26, the statistics pane's NEW ACCEPTED): the
+// words added by every accepted suggested edit of the manuscript, each
+// edit counted ONCE — sentence.NewWords per edit (moved words net 0),
+// summed. A migration COPIES suggestions forward, so one edit can sit on
+// several migrations' sentences; only the end of each copy chain counts
+// (no identical copy — same author, same text — on the successor
+// sentence), whether it was pushed or still awaits its push.
+func (db *DB) AcceptedNewWords(ctx context.Context, manuscriptID int) (int, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT s.text, sc.text
+		FROM suggested_change sc
+		JOIN sentence s ON s.sentence_id = sc.sentence_id
+		JOIN migration m ON m.migration_id = s.migration_id
+		WHERE m.manuscript_id = $1 AND m.status = 'done' AND sc.review_status = 'accepted'
+		  AND NOT EXISTS (
+		      SELECT 1 FROM sentence s2
+		      JOIN suggested_change sc2 ON sc2.sentence_id = s2.sentence_id
+		      WHERE s2.previous_sentence_id = s.sentence_id
+		        AND sc2.user_id = sc.user_id AND sc2.text = sc.text)
+	`, manuscriptID)
+	if err != nil {
+		return 0, fmt.Errorf("accepted new words: %w", err)
+	}
+	defer rows.Close()
+	total := 0
+	for rows.Next() {
+		var committed, suggested string
+		if err := rows.Scan(&committed, &suggested); err != nil {
+			return 0, fmt.Errorf("accepted new words: scan: %w", err)
+		}
+		total += sentence.NewWords(committed, suggested)
+	}
+	return total, rows.Err()
+}
