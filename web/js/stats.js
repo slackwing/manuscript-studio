@@ -461,8 +461,9 @@ const WriteSysStats = {
   // and with the season shading (2026-10-29). Each day's bar is its IDEAL
   // width — the plot width over the days shown — so the bars tile edge to
   // edge and fill each season band. Gains rise from the zero line, cuts
-  // drop below it. Dark gray; the last 30 days blue. A cron gap lumps its
-  // missed days into the next recorded one. Linear scale.
+  // drop below it. Dark gray bars; the last 30 days' region is tinted blue
+  // over the season shading. A cron gap lumps its missed days into the
+  // next recorded one. Linear scale.
   buildDeltaGraph(m) {
     const w = Math.max(180, (this.el.clientWidth || 280) - 30);
     const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
@@ -477,7 +478,7 @@ const WriteSysStats = {
     for (let i = 1; i < m.rows.length; i++) {
       const r = m.rows[i];
       if (r.t < xMin || r.t >= xMax) continue;
-      days.push({ t: r.t, delta: r.total - m.rows[i - 1].total, recent: r.t > recentFrom });
+      days.push({ t: r.t, delta: r.total - m.rows[i - 1].total });
     }
     const maxUp = Math.max(1, ...days.map(d => d.delta));
     const maxDown = Math.max(0, ...days.map(d => -d.delta));
@@ -487,15 +488,19 @@ const WriteSysStats = {
 
     const parts = [];
     parts.push(this.seasonBands(X, xMin, xMax, padT, h - padB));
+    // The last 30 days (today's slot included), tinted blue over the seasons.
+    const r1 = Math.max(xMin, recentFrom + this.DAY), r2 = Math.min(xMax, this.todayT() + this.DAY);
+    if (r2 > r1) {
+      parts.push(`<rect class="stats-delta-recent" x="${X(r1).toFixed(3)}" y="${padT}" width="${(X(r2) - X(r1)).toFixed(3)}" height="${plotH}" fill="#3b82f6" fill-opacity="0.45"/>`);
+    }
     parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${plotH}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
     if (maxDown > 0) {
       parts.push(`<line class="stats-delta-zero" x1="${padL}" y1="${y0.toFixed(2)}" x2="${w - padR}" y2="${y0.toFixed(2)}" stroke="#bbbbbb" stroke-width="0.5"/>`);
     }
     for (const d of days) {
       if (!d.delta) continue;
-      const fill = d.recent ? '#2a6fb0' : '#555555';
       const top = d.delta > 0 ? y0 - d.delta * unit : y0;
-      parts.push(`<rect class="stats-delta-bar" data-sign="${d.delta > 0 ? 'up' : 'down'}" x="${X(d.t).toFixed(3)}" y="${top.toFixed(2)}" width="${slot.toFixed(3)}" height="${(Math.abs(d.delta) * unit).toFixed(2)}" fill="${fill}"/>`);
+      parts.push(`<rect class="stats-delta-bar" data-sign="${d.delta > 0 ? 'up' : 'down'}" x="${X(d.t).toFixed(3)}" y="${top.toFixed(2)}" width="${slot.toFixed(3)}" height="${(Math.abs(d.delta) * unit).toFixed(2)}" fill="#555555"/>`);
     }
     return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
   },

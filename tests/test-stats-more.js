@@ -122,7 +122,7 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
 
     // The daily-delta histogram (2026-10-29): between the two graphs, on
     // the BOTTOM graph's x-scale with the season shading; each day's bar its
-    // ideal width; gray, the last 30 days blue.
+    // ideal width; gray, over a blue tint on the last 30 days' region.
     const delta = await page.evaluate(() => {
       const graphs = [...document.querySelectorAll('#stats-margin .stats-graph')];
       const svg = document.querySelector('#stats-margin .stats-delta-graph svg');
@@ -130,15 +130,30 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
       const bands = (g) => [...g.querySelectorAll('rect.stats-season')].map((r) => `${r.getAttribute('x')}+${r.getAttribute('width')}`).join(' ');
       const frame = svg.querySelector('rect[stroke="#cccccc"]');
       const bars = [...svg.querySelectorAll('rect.stats-delta-bar')].map((b) => ({ x: +b.getAttribute('x'), w: +b.getAttribute('width'), sign: b.dataset.sign, fill: b.getAttribute('fill') }));
+      const band = svg.querySelector('rect.stats-delta-recent');
+      const kids = [...svg.children];
+      const lastSeason = Math.max(...[...svg.querySelectorAll('rect.stats-season')].map((r) => kids.indexOf(r)));
+      const firstBar = Math.min(...[...svg.querySelectorAll('rect.stats-delta-bar')].map((r) => kids.indexOf(r)));
       return { between: graphs.indexOf(svg.parentElement) === 1 && graphs.indexOf(rate.parentElement) === 2,
-        sameScale: bands(svg) === bands(rate), frameW: +frame.getAttribute('width'), bars };
+        sameScale: bands(svg) === bands(rate), frameW: +frame.getAttribute('width'), frameX: +frame.getAttribute('x'), bars,
+        band: band && { x: +band.getAttribute('x'), w: +band.getAttribute('width'), y: +band.getAttribute('y'), h: +band.getAttribute('height'),
+          fill: band.getAttribute('fill'), op: +band.getAttribute('fill-opacity'), overSeasons: kids.indexOf(band) > lastSeason, underBars: kids.indexOf(band) < firstBar },
+        frameY: +frame.getAttribute('y'), frameH: +frame.getAttribute('height') };
     });
     check('a daily-delta graph sits between the two graphs', delta.between, JSON.stringify(delta.between));
     check('…on the bottom graph\'s x-scale (identical season bands)', delta.sameScale);
     // Seeded deltas: +400 (31 days ago), +300 (8), +150 (1), +50 (today).
     const slot = delta.frameW / (500 + 91.3125);
     check('…one bar per changed day, each the ideal day width', delta.bars.length === 4 && delta.bars.every((b) => Math.abs(b.w - slot) < 0.01), JSON.stringify(delta.bars.map((b) => b.w.toFixed(3))) + ` slot ${slot.toFixed(3)}`);
-    check('…dark gray, the last 30 days blue', delta.bars.map((b) => b.fill).join(',') === '#555555,#2a6fb0,#2a6fb0,#2a6fb0', delta.bars.map((b) => b.fill).join(','));
+    check('…all dark gray', delta.bars.every((b) => b.fill === '#555555'), delta.bars.map((b) => b.fill).join(','));
+    // The last 30 days' region tinted blue: the 30 day-slots ending with
+    // today's (the domain runs birthday −500d → today + a season).
+    const b30 = delta.band;
+    check('…the last 30 days\' region tinted blue (translucent) over the season shading, under the bars',
+      !!b30 && b30.fill === '#3b82f6' && b30.op > 0 && b30.op < 1 && b30.overSeasons && b30.underBars, JSON.stringify(b30));
+    check('…spanning exactly the last 30 day-slots, full plot height',
+      !!b30 && Math.abs(b30.w - 30 * slot) < 0.01 && Math.abs(b30.x - (delta.frameX + 471 * slot)) < 0.01 && b30.y === delta.frameY && Math.abs(b30.h - delta.frameH) < 0.01,
+      b30 && `x ${b30.x.toFixed(3)} vs ${(delta.frameX + 471 * slot).toFixed(3)}, w ${b30.w.toFixed(3)} vs ${(30 * slot).toFixed(3)}`);
     check('…all gains here (no zero line without a cut)', delta.bars.every((b) => b.sign === 'up'));
 
     // The past-30d line only where a full 30 days of history stand behind
