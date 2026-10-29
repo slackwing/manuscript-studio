@@ -74,7 +74,7 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
 
     // The background is shaded by season on both graphs (2026-10-26):
     // spring light green, summer deeper green, autumn gold, winter white.
-    const seasons = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg) => {
+    const seasons = await page.evaluate(() => [document.querySelector('#stats-margin .stats-graph:not(.stats-delta-graph):not(.stats-rate-graph) svg'), document.querySelector('#stats-margin .stats-rate-graph svg')].map((svg) => {
       const frame = svg.querySelector('rect[stroke="#cccccc"]').getBBox();
       const bands = [...svg.querySelectorAll('rect.stats-season')].map((r) => ({ s: r.dataset.season, x: +r.getAttribute('x'), w: +r.getAttribute('width'), fill: r.getAttribute('fill') }));
       const covered = bands.reduce((a, b) => a + b.w, 0);
@@ -92,7 +92,7 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     // The rate graph runs a season past today: today's dot sits clear of the
     // right edge, over the CURRENT season's band.
     const ahead = await page.evaluate(() => {
-      const svg = document.querySelectorAll('#stats-margin .stats-graph svg')[1];
+      const svg = document.querySelector('#stats-margin .stats-rate-graph svg');
       const frame = svg.querySelector('rect[stroke="#cccccc"]');
       const right = +frame.getAttribute('x') + +frame.getAttribute('width');
       const cx = +svg.querySelector('.stats-today circle:not(.stats-ping)').getAttribute('cx');
@@ -104,7 +104,7 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     check('…over the current season', ahead.season === nowSeason, `${ahead.season} vs ${nowSeason}`);
 
     // Today: a tiny blue pinging dot on each graph, at its line's latest point.
-    const dots = await page.evaluate(() => [...document.querySelectorAll('#stats-margin .stats-graph svg')].map((svg, i) => {
+    const dots = await page.evaluate(() => [document.querySelector('#stats-margin .stats-graph:not(.stats-delta-graph):not(.stats-rate-graph) svg'), document.querySelector('#stats-margin .stats-rate-graph svg')].map((svg, i) => {
       const g = svg.querySelector('.stats-today');
       if (!g) return null;
       const c = g.querySelector('circle:not(.stats-ping)');
@@ -120,6 +120,27 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     check('…tiny and blue, on the line\'s latest point (actual words / current pace)', dots.every((d) => d && d.onLine && d.blue && d.r <= 3), JSON.stringify(dots));
     check('…and pinging (looping ring)', dots.every((d) => d && d.pinging), JSON.stringify(dots));
 
+    // The daily-delta histogram (2026-10-29): between the two graphs, on
+    // the BOTTOM graph's x-scale with the season shading; each day's bar its
+    // ideal width; gray, the last 30 days blue.
+    const delta = await page.evaluate(() => {
+      const graphs = [...document.querySelectorAll('#stats-margin .stats-graph')];
+      const svg = document.querySelector('#stats-margin .stats-delta-graph svg');
+      const rate = document.querySelector('#stats-margin .stats-rate-graph svg');
+      const bands = (g) => [...g.querySelectorAll('rect.stats-season')].map((r) => `${r.getAttribute('x')}+${r.getAttribute('width')}`).join(' ');
+      const frame = svg.querySelector('rect[stroke="#cccccc"]');
+      const bars = [...svg.querySelectorAll('rect.stats-delta-bar')].map((b) => ({ x: +b.getAttribute('x'), w: +b.getAttribute('width'), sign: b.dataset.sign, fill: b.getAttribute('fill') }));
+      return { between: graphs.indexOf(svg.parentElement) === 1 && graphs.indexOf(rate.parentElement) === 2,
+        sameScale: bands(svg) === bands(rate), frameW: +frame.getAttribute('width'), bars };
+    });
+    check('a daily-delta graph sits between the two graphs', delta.between, JSON.stringify(delta.between));
+    check('…on the bottom graph\'s x-scale (identical season bands)', delta.sameScale);
+    // Seeded deltas: +400 (31 days ago), +300 (8), +150 (1), +50 (today).
+    const slot = delta.frameW / (500 + 91.3125);
+    check('…one bar per changed day, each the ideal day width', delta.bars.length === 4 && delta.bars.every((b) => Math.abs(b.w - slot) < 0.01), JSON.stringify(delta.bars.map((b) => b.w.toFixed(3))) + ` slot ${slot.toFixed(3)}`);
+    check('…dark gray, the last 30 days blue', delta.bars.map((b) => b.fill).join(',') === '#555555,#2a6fb0,#2a6fb0,#2a6fb0', delta.bars.map((b) => b.fill).join(','));
+    check('…all gains here (no zero line without a cut)', delta.bars.every((b) => b.sign === 'up'));
+
     // The past-30d line only where a full 30 days of history stand behind
     // the point (pane fed synthetic data — no DB writes).
     const synth = (agos) => page.evaluate((agos) => {
@@ -128,7 +149,7 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
       S.data = { enabled: true, interval_minutes: 15, word_goal: 40000, new_accepted: 0, birthday: day(100),
         rows: agos.map((a, i) => ({ day: day(a), words_effective: 1000 + i * 100, words_sketches: 0, rate_average: 10 + i, rate_past_30d: 20 + i * 5 })) };
       S.render();
-      const svg = document.querySelectorAll('#stats-margin .stats-graph svg')[1];
+      const svg = document.querySelector('#stats-margin .stats-rate-graph svg');
       const [trend, avg] = [...svg.querySelectorAll('polyline')].map((p) => p.getAttribute('points').trim().split(/\s+/).filter(Boolean));
       const dot = svg.querySelector('.stats-today circle:not(.stats-ping)');
       const lastAvg = avg[avg.length - 1].split(',').map(Number);
@@ -138,6 +159,28 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     check('history under 30 days: no past-30d points (average still drawn; dot on the average)', young.trend === 0 && young.avg === 4 && young.dotOnAvg, JSON.stringify(young));
     const older = await synth([60, 40, 20, 0]);
     check('60 days of history: only the points with 30 days behind them', older.trend === 2 && older.avg === 4 && !older.dotOnAvg, JSON.stringify(older));
+
+    // Consecutive days tile edge to edge; a cut drops below the zero line.
+    const tiled = await page.evaluate(() => {
+      const S = window.WriteSysStats;
+      const day = (ago) => { const d = new Date(); d.setDate(d.getDate() - ago); return d.toLocaleDateString('en-CA'); };
+      const totals = [1000, 1100, 1150, 900, 950, 1000, 1080];
+      S.data = { enabled: true, interval_minutes: 15, word_goal: 40000, new_accepted: 0, birthday: day(60),
+        rows: totals.map((n, i) => ({ day: day(totals.length - 1 - i), words_effective: n, words_sketches: 0, rate_average: 10, rate_past_30d: 20 })) };
+      S.render();
+      const svg = document.querySelector('#stats-margin .stats-delta-graph svg');
+      const bars = [...svg.querySelectorAll('rect.stats-delta-bar')].map((b) => ({ x: +b.getAttribute('x'), y: +b.getAttribute('y'), w: +b.getAttribute('width'), h: +b.getAttribute('height'), sign: b.dataset.sign }));
+      const zero = svg.querySelector('.stats-delta-zero');
+      const z = zero ? +zero.getAttribute('y1') : null;
+      let maxGap = 0;
+      for (let i = 1; i < bars.length; i++) maxGap = Math.max(maxGap, Math.abs(bars[i].x - (bars[i - 1].x + bars[i - 1].w)));
+      const down = bars.filter((b) => b.sign === 'down');
+      return { n: bars.length, maxGap, zero: z, down: down.length, downBelow: down.every((b) => Math.abs(b.y - z) < 0.05 && b.h > 0),
+        upAbove: bars.filter((b) => b.sign === 'up').every((b) => Math.abs(b.y + b.h - z) < 0.05) };
+    });
+    check('consecutive days tile edge to edge (no gaps)', tiled.n === 6 && tiled.maxGap < 0.01, JSON.stringify(tiled));
+    check('a day of cuts drops below the zero line; gains rise above it', tiled.zero != null && tiled.down === 1 && tiled.downBelow && tiled.upAbove, JSON.stringify(tiled));
+    if (process.env.SHOT_DIR) await page.locator('#stats-margin').screenshot({ path: `${process.env.SHOT_DIR}/stats-delta-synth.png` });
     await page.close();
   } catch (e) {
     check('run', false, e.message);

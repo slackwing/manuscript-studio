@@ -234,6 +234,9 @@ const WriteSysStats = {
       graphHTML = '<div class="stats-empty">No word-count history yet.</div>';
     } else {
       graphHTML = `<div class="stats-graph">${this.buildGraph(m)}</div>`;
+      if (m.rows.length >= 2) {
+        graphHTML += `<div class="stats-graph stats-delta-graph">${this.buildDeltaGraph(m)}</div>`;
+      }
       if (m.ratePts.length >= 2) {
         graphHTML += `<div class="stats-graph stats-rate-graph">${this.buildRateGraph(m)}</div>`;
       }
@@ -444,6 +447,59 @@ const WriteSysStats = {
     return out;
   },
 
+  // The rate graph's x-domain — birthday → a season past today (2026-10-26:
+  // the lines end at today, so today's dot sits clear of the right edge and
+  // the coming season shows). Shared with the daily-delta histogram.
+  rateXDomain(m) {
+    const xMin = m.birthT;
+    const today = Math.max(this.todayT(), xMin + this.DAY);
+    return { xMin, today, xMax: today + this.SEASON_MS };
+  },
+
+  // Words gained (or cut) per day — each day's total minus the previous
+  // day's — between the two graphs, on the BOTTOM (rate) graph's x-scale
+  // and with the season shading (2026-10-29). Each day's bar is its IDEAL
+  // width — the plot width over the days shown — so the bars tile edge to
+  // edge and fill each season band. Gains rise from the zero line, cuts
+  // drop below it. Dark gray; the last 30 days blue. A cron gap lumps its
+  // missed days into the next recorded one. Linear scale.
+  buildDeltaGraph(m) {
+    const w = Math.max(180, (this.el.clientWidth || 280) - 30);
+    const isBar = this.el.classList.contains('pane-on') && window.innerWidth <= 1239;
+    const h = isBar ? 56 : 84;
+    const padL = 6, padR = 6, padT = 6, padB = 6;
+    const { xMin, xMax } = this.rateXDomain(m);
+    const X = t => padL + ((t - xMin) / (xMax - xMin)) * (w - padL - padR);
+    const slot = X(xMin + this.DAY) - X(xMin); // one day's ideal bar width
+    const recentFrom = this.todayT() - 30 * this.DAY;
+
+    const days = [];
+    for (let i = 1; i < m.rows.length; i++) {
+      const r = m.rows[i];
+      if (r.t < xMin || r.t >= xMax) continue;
+      days.push({ t: r.t, delta: r.total - m.rows[i - 1].total, recent: r.t > recentFrom });
+    }
+    const maxUp = Math.max(1, ...days.map(d => d.delta));
+    const maxDown = Math.max(0, ...days.map(d => -d.delta));
+    const plotH = h - padT - padB;
+    const unit = plotH / (maxUp + maxDown);
+    const y0 = padT + maxUp * unit; // the zero line
+
+    const parts = [];
+    parts.push(this.seasonBands(X, xMin, xMax, padT, h - padB));
+    parts.push(`<rect x="${padL}" y="${padT}" width="${w - padL - padR}" height="${plotH}" fill="none" stroke="#cccccc" stroke-width="1"/>`);
+    if (maxDown > 0) {
+      parts.push(`<line class="stats-delta-zero" x1="${padL}" y1="${y0.toFixed(2)}" x2="${w - padR}" y2="${y0.toFixed(2)}" stroke="#bbbbbb" stroke-width="0.5"/>`);
+    }
+    for (const d of days) {
+      if (!d.delta) continue;
+      const fill = d.recent ? '#2a6fb0' : '#555555';
+      const top = d.delta > 0 ? y0 - d.delta * unit : y0;
+      parts.push(`<rect class="stats-delta-bar" data-sign="${d.delta > 0 ? 'up' : 'down'}" x="${X(d.t).toFixed(3)}" y="${top.toFixed(2)}" width="${slot.toFixed(3)}" height="${(Math.abs(d.delta) * unit).toFixed(2)}" fill="${fill}"/>`);
+    }
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${parts.join('')}</svg>`;
+  },
+
   // Today on a graph: a tiny blue dot that pings — a ring that swells and
   // fades on a loop (CSS .stats-ping; still under reduced motion).
   todayDot(x, y) {
@@ -463,11 +519,7 @@ const WriteSysStats = {
     const h = isBar ? 56 : 84;
     const padL = 6, padR = 6, padT = 6, padB = 6;
 
-    // A season of room past today (2026-10-26): the lines end at today, so
-    // today's dot sits clear of the right edge and the coming season shows.
-    const xMin = m.birthT;
-    const today = Math.max(this.todayT(), xMin + this.DAY);
-    const xMax = today + this.SEASON_MS;
+    const { xMin, today, xMax } = this.rateXDomain(m);
     let yMax = 1;
     for (const p of m.ratePts) yMax = Math.max(yMax, p.avg, p.trend);
     yMax *= 1.05;
