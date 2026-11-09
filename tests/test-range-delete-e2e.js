@@ -146,7 +146,10 @@ const psql = (sql) => execSync(
     await clickSentence(picks.b, ['Shift']);
     await clickSentence(picks.c); // re-anchor
     st = await modeState();
-    check('D3: plain sentence click exits the mode', !st.modeOn && st.selected.length === 0);
+    // ...leaving the clicked sentence as a SINGLE selection (its own copy +
+    // trash stack, 2026-11-09).
+    check('D3: plain sentence click exits the mode (the clicked sentence stays singly selected)',
+      !st.modeOn && st.selected.length === 1 && st.selected[0] === picks.c, JSON.stringify(st.selected));
     await clickSentence(picks.d, ['Shift']);
     st = await modeState();
     check('D3: ...and re-anchors (shift-click from the new anchor works)',
@@ -272,12 +275,15 @@ const psql = (sql) => execSync(
         ? Math.abs((st.top + st.bottom) / 2 - (top + bottom) / 2) <= 8
         : st.top >= top - 1 && st.bottom <= bottom + 1;
       const m = document.querySelector('.pagedjs_pages').style.transform.match(/scale\(([\d.]+)\)/);
-      return { scale: m ? parseFloat(m[1]) : 1, rightVsSheet: st.right - sr.left, placed };
+      return { scale: m ? parseFloat(m[1]) : 1, rightVsSheet: st.right - sr.left, placed,
+        left: st.left, gutterRoom: sr.left >= st.width + 10 };
     });
     check('D6: trash rendered under scale', !!d6, d6 && `scale=${d6.scale}`);
     if (d6) {
-      check('D6: button stack sits fully off the sheet in the gutter (scaled space)',
-        d6.rightVsSheet < 0, `right-vs-sheet=${d6.rightVsSheet.toFixed(1)}px`);
+      // Off the sheet when the gutter has room; on a phone (no gutter) it
+      // stays on screen over the page margin (2026-11-09).
+      check('D6: button stack on screen — in the gutter if there is one (scaled space)',
+        d6.left >= 0 && (!d6.gutterRoom || d6.rightVsSheet < 0), `left=${d6.left.toFixed(1)} right-vs-sheet=${d6.rightVsSheet.toFixed(1)}px gutterRoom=${d6.gutterRoom}`);
       check('D6: button stack sits within the selection under scale', d6.placed);
       await page.locator('.range-trash.range-del').click();
       check('D6: trash is clickable under scale (arms)',

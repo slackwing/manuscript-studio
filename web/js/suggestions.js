@@ -171,15 +171,19 @@ const WriteSysSuggestions = {
     return this.rows.filter(s => !s.stale && s.user_id === this.viewer && !s.review_status).length;
   },
 
-  // acceptMany (2026-10-18, the range gutter's ✓): accept the suggestion
-  // each sentence SHOWS — the rendered winner, deletion proposals included —
-  // through the same review endpoint as the modal's ✓. Already-accepted
-  // rows are left alone; a sentence whose other suggestion is accepted
-  // (409) is counted, not forced. Returns { accepted, conflicts, failed }.
-  async acceptMany(sentenceIds) {
+  // acceptMany: accept the suggestion each sentence SHOWS — the rendered
+  // winner, deletion proposals included — or, given a username, THAT
+  // user's suggestion (range Delete auto-accepts the viewer's own deletions,
+  // 2026-11-09), through the same review endpoint as the modal's ✓.
+  // Already-accepted rows are left alone; a sentence whose other suggestion
+  // is accepted (409) is counted, not forced. Returns { accepted, conflicts,
+  // failed }.
+  async acceptMany(sentenceIds, username) {
     const out = { accepted: 0, conflicts: 0, failed: 0 };
     for (const sid of sentenceIds) {
-      const row = this.renderRowBySentence[sid];
+      const row = username
+        ? (this.rowsBySentence[sid] || []).find(r => r.user_id === username)
+        : this.renderRowBySentence[sid];
       if (!row || row.review_status === 'accepted') continue;
       try {
         const resp = await authenticatedFetch(
@@ -272,7 +276,7 @@ const WriteSysSuggestions = {
         if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
           window.WriteSysRenderer.scrollToSentence(target);
         }
-        this.openModal(target);
+        this.openModal(target, { viaNav: true });
       }
       return;
     }
@@ -284,7 +288,7 @@ const WriteSysSuggestions = {
       if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
         window.WriteSysRenderer.scrollToSentence(target);
       }
-      this.openModal(target);
+      this.openModal(target, { viaNav: true });
     }
   },
 
@@ -424,6 +428,13 @@ const WriteSysSuggestions = {
         syncReviewShade();
         w.refresh();
         if (window.WriteSysPush) window.WriteSysPush.refresh();
+        // Accepting the sentence you OPENED is the last step — close
+        // (2026-11-09: it was always ✓ then click out). On a tour (‹ ›,
+        // ←/→, push's first-edit) the modal stays for the next one.
+        if (next === 'accepted' && !opts.viaNav) {
+          await close();
+          return;
+        }
         // A verdict ends the look-closer: back to the formatted view, focus
         // released — so ←/→ flips straight to the next suggested edit.
         if (textarea) textarea.blur();
@@ -728,10 +739,17 @@ const WriteSysSuggestions = {
         if (own) pane.autoGrow();
       },
       hideMono: () => { pane.wrap.hidden = true; otherView.hidden = true; },
-      focusMono: () => {
+      // The caret lands where the formatted view was clicked.
+      rawText: () => {
         const entry = leftEntry();
-        if (!entry || entry.kind === 'me') textarea.focus();
-        else otherView.focus();
+        return (!entry || entry.kind === 'me') ? textarea.value : '';
+      },
+      focusMono: (at) => {
+        const entry = leftEntry();
+        if (!entry || entry.kind === 'me') {
+          textarea.focus();
+          if (at != null) textarea.setSelectionRange(at, at);
+        } else otherView.focus();
       },
     });
     rightCtl = window.WriteSysPaneWidget.formattedMono({
@@ -739,7 +757,11 @@ const WriteSysSuggestions = {
       render: () => fmtRaw(rightFmt, rightTextNow()),
       showMono: () => { versionPane.wrap.hidden = false; versionPane.autoGrow(); },
       hideMono: () => { versionPane.wrap.hidden = true; },
-      focusMono: () => versionPane.textarea.focus(),
+      rawText: () => versionPane.textarea.value,
+      focusMono: (at) => {
+        versionPane.textarea.focus();
+        if (at != null) versionPane.textarea.setSelectionRange(at, at);
+      },
     });
     syncReviewShade();
     otherView.tabIndex = -1; // focusable, so blur can return it to formatted

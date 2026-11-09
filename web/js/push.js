@@ -192,7 +192,7 @@ const WriteSysPush = {
     if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
       window.WriteSysRenderer.scrollToSentence(list[0]);
     }
-    S.openModal(list[0]);
+    S.openModal(list[0], { viaNav: true }); // a tour's start: ✓ keeps it open
   },
 
   async _accept(variant) {

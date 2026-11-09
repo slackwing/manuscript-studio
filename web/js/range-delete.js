@@ -3,14 +3,18 @@
  * sentence between them (inclusive, manuscript order) highlights as a range.
  * While the range is active:
  *   - the canonize + affordances hide (no gap-hover noise);
- *   - a button stack floats in the left gutter (✓ / copy / sketch / trash;
- *     see showTrash). The trash keeps the house mechanics: first click arms
- *     it ("click again") and turns the range red, second click applies; no
+ *   - a button stack floats in the left gutter (copy / sketch / trash; see
+ *     showTrash). The trash keeps the house mechanics: first click arms it
+ *     ("click again") and turns the range red, second click applies; no
  *     second click within 2s disarms both back (the usual selection gray).
+ * A SINGLE selected sentence (plain click) gets the stack too — copy +
+ * trash (2026-11-09); its second click still opens suggest-edit.
  * Applying PUTs an EMPTY suggestion on every sentence in the range — the
  * standard "clear this sentence" proposal (same as emptying it in
- * suggest-edit), one suggested delete per sentence, reviewable and revertible
- * sentence-by-sentence, committed on the next push.
+ * suggest-edit), one suggested delete per sentence, revertible
+ * sentence-by-sentence, committed on the next push. A reviewer's deletions
+ * are ACCEPTED on the spot (2026-11-09): the trash's two clicks are the
+ * confirmation — the old select-them-again-and-✓ step is gone.
  * Escape or a plain (unshifted) click anywhere exits the mode.
  */
 const WriteSysRangeDelete = {
@@ -53,6 +57,19 @@ const WriteSysRangeDelete = {
       this.exit();
       this.anchorId = id;
     }, true);
+    // Bubble phase — after the sentence's own click-select: a plain click
+    // that leaves ONE sentence selected shows the stack for it (a re-click
+    // that opened suggest-edit doesn't).
+    document.addEventListener('click', (e) => {
+      if (e.shiftKey) return;
+      const span = e.target.closest && e.target.closest('.sentence[data-sentence-id]');
+      if (!span) return;
+      const id = span.dataset.sentenceId;
+      const R = window.WriteSysRenderer;
+      if (!R || R.currentSelectedSentenceId !== id || !span.classList.contains('selected')) return;
+      if (document.getElementById('suggestion-modal')) return;
+      this.showSingle(id);
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.range.length) this.exit();
     });
@@ -70,6 +87,11 @@ const WriteSysRangeDelete = {
     if (a > b) { const t = a; a = b; b = t; }
     this.clearHighlights();
     this.range = ids.slice(a, b + 1);
+    // The range REPLACES the single click-select: drop it from the
+    // renderer too, or a later click on the anchor reads as a re-click
+    // and opens suggest-edit on a sentence that no longer looks selected.
+    const R = window.WriteSysRenderer;
+    if (R) R.currentSelectedSentenceId = null;
     const set = new Set(this.range);
     document.querySelectorAll('.sentence[data-sentence-id]').forEach((el) => {
       if (set.has(el.dataset.sentenceId)) el.classList.add('range-selected');
@@ -82,8 +104,19 @@ const WriteSysRangeDelete = {
     this.showTrash();
   },
 
+  // One sentence, selected by the renderer's plain click: the same stack,
+  // copy + trash. No range mode (affordances and native text selection
+  // stay); range-selected only so the stack can measure it and an armed
+  // trash can red it.
+  showSingle(id) {
+    this.range = [id];
+    document.querySelectorAll(`.sentence[data-sentence-id="${CSS.escape(id)}"]`)
+      .forEach((el) => el.classList.add('range-selected'));
+    this.showTrash();
+  },
+
   // The button stack (2026-10-23): ONE fixed column in the page's left
-  // gutter — ✓ / copy / sketch / trash, top to bottom — that FLOATS: it
+  // gutter — copy / sketch / trash, top to bottom — that FLOATS: it
   // holds the middle of the screen while the selection spans it, and pegs
   // to the selection's top or bottom edge once you scroll past either.
   // (It used to be pinned beside the selection's first page — a long or
@@ -104,39 +137,6 @@ const WriteSysRangeDelete = {
     const n = this.range.length;
     const s = n > 1 ? 's' : '';
 
-    // ACCEPT (✓) tops the stack (2026-10-18): accept the suggestion every
-    // selected sentence shows — deletion proposals included — for "I
-    // deleted a run of sentences and want to accept them too". Reviewers
-    // only (manage-suggestions). House two-click, like the trash: the first
-    // click arms it and greens the range; no second click within 2s
-    // disarms both.
-    const S = window.WriteSysSuggestions;
-    if (S && S.canReview && S.acceptMany) {
-      const idleTitle = `Accept the suggested edits in ${n} sentence${s}`;
-      const ac = make('range-accept', idleTitle,
-        window.WriteSysIcons && window.WriteSysIcons.check ? window.WriteSysIcons.check(12) : '✓');
-      let acArmed = false, acTimer = null;
-      ac.addEventListener('click', async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (!acArmed) {
-          acArmed = true;
-          ac.classList.add('confirming');
-          document.body.classList.add('range-accept-armed');
-          ac.title = 'Click again to accept them';
-          acTimer = setTimeout(() => {
-            acArmed = false;
-            ac.classList.remove('confirming');
-            ac.title = idleTitle;
-            document.body.classList.remove('range-accept-armed');
-          }, 2000);
-          return;
-        }
-        clearTimeout(acTimer);
-        await this.acceptRange();
-      });
-      stack.appendChild(ac);
-      this.acceptBtn = ac;
-    }
     // COPY: the selection's text with every suggestion applied
     // (copy-selection.js).
     if (window.WriteSysCopySelection) {
@@ -150,8 +150,8 @@ const WriteSysRangeDelete = {
       this.copyBtn = cp;
     }
     // SKETCH: rework this selection through sketches (A = frozen original,
-    // B = editable copy, placed).
-    if (window.WriteSysSketchFromSelection) {
+    // B = editable copy, placed). Ranges only.
+    if (n > 1 && window.WriteSysSketchFromSelection) {
       const sk = make('range-sketch', `Sketch from ${n} selected sentence${s}`,
         window.WriteSysSketchFromSelection.buttonHTML());
       sk.addEventListener('click', (e) => {
@@ -163,7 +163,11 @@ const WriteSysRangeDelete = {
     }
     // TRASH (range-del) at the bottom: house two-click — the first click
     // arms it and reds the range; no second click within 2s disarms both.
-    const btn = make('range-del', `Suggest deleting ${n} sentence${s}`,
+    // A reviewer's delete is accepted on the spot (apply); anyone else's
+    // stays a suggestion.
+    const S = window.WriteSysSuggestions;
+    const verb = S && S.canReview ? 'Delete' : 'Suggest deleting';
+    const btn = make('range-del', `${verb} ${n} sentence${s}`,
       window.WriteSysIcons.trash(12)); // the house trash, never a new copy
     let armed = false, resetTimer = null;
     btn.addEventListener('click', (e) => {
@@ -173,7 +177,7 @@ const WriteSysRangeDelete = {
         btn.classList.add('confirming');
         document.body.classList.add('range-delete-armed'); // the range turns red
         const idleTitle = btn.title;
-        btn.title = 'Click again to suggest deleting the selection';
+        btn.title = `Click again to ${verb.toLowerCase()} the selection`;
         resetTimer = setTimeout(() => {
           armed = false;
           btn.classList.remove('confirming');
@@ -198,7 +202,7 @@ const WriteSysRangeDelete = {
 
   // Where the stack goes, measured live (viewport coordinates, so it works
   // at any page scale and inside a split-pane frame): x = just off the
-  // sheet's left edge; y = the screen's middle, clamped so the stack never
+  // sheet's left edge (never off screen); y = the screen's middle, clamped so the stack never
   // leaves the selection's vertical extent.
   placeStack() {
     const stack = this.stack;
@@ -218,25 +222,10 @@ const WriteSysRangeDelete = {
     if (bottom - top <= h) center = (top + bottom) / 2;
     else center = Math.min(Math.max(mid, top + h / 2), bottom - h / 2);
     const sr = sheet.getBoundingClientRect();
-    stack.style.left = `${Math.round(sr.left - 6 - stack.offsetWidth)}px`;
+    // Phones have no gutter: the stack stays on screen, over the page's
+    // own margin.
+    stack.style.left = `${Math.max(4, Math.round(sr.left - 6 - stack.offsetWidth))}px`;
     stack.style.top = `${Math.round(center - h / 2)}px`;
-  },
-
-  async acceptRange() {
-    const ids = this.range.slice();
-    const firstId = ids[0];
-    if (this.acceptBtn) { this.acceptBtn.disabled = true; }
-    const r = window.WriteSysRenderer;
-    const S = window.WriteSysSuggestions;
-    const res = await S.acceptMany(ids);
-    this.exit();
-    if (r && r.renderManuscript) await r.renderManuscript({ anchorSentenceId: firstId });
-    if (window.WriteSysPush) window.WriteSysPush.refresh();
-    if (res.conflicts || res.failed) {
-      alert(`Accepted ${res.accepted}.`
-        + (res.conflicts ? ` ${res.conflicts} sentence${res.conflicts > 1 ? 's have' : ' has'} another suggestion already accepted.` : '')
-        + (res.failed ? ` ${res.failed} failed — retry.` : ''));
-    }
   },
 
   async apply() {
@@ -260,7 +249,19 @@ const WriteSysRangeDelete = {
     }
     this.exit();
     const r = window.WriteSysRenderer;
-    if (window.WriteSysSuggestions && r) await window.WriteSysSuggestions.loadForMigration(r.currentMigrationID);
+    if (r) r.currentSelectedSentenceId = null; // the re-render drops the gray
+    const S = window.WriteSysSuggestions;
+    if (S && r) await S.loadForMigration(r.currentMigrationID);
+    // A reviewer's deletions are accepted right away — the viewer's own
+    // empty suggestion on each sentence (failed PUTs have none to accept).
+    if (S && S.canReview && S.acceptMany) {
+      const res = await S.acceptMany(ids, S.viewer);
+      if (res.conflicts || res.failed) {
+        alert(`Deleted ${res.accepted}.`
+          + (res.conflicts ? ` ${res.conflicts} sentence${res.conflicts > 1 ? 's have' : ' has'} another edit already accepted — left as a suggestion.` : '')
+          + (res.failed ? ` ${res.failed} failed to accept — retry from the edit.` : ''));
+      }
+    }
     if (r && r.renderManuscript) await r.renderManuscript({ anchorSentenceId: firstId });
     if (window.WriteSysPush) window.WriteSysPush.refresh();
   },
@@ -279,13 +280,12 @@ const WriteSysRangeDelete = {
     this.btn = null;
     this.sketchBtn = null;
     this.copyBtn = null;
-    this.acceptBtn = null;
   },
   exit() {
     this.clearHighlights();
     this.removeTrash();
     this.range = [];
-    document.body.classList.remove('range-delete-mode', 'range-delete-armed', 'range-accept-armed');
+    document.body.classList.remove('range-delete-mode', 'range-delete-armed');
   },
 };
 

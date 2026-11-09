@@ -1442,8 +1442,11 @@ const WriteSysRenderer = {
 
         // Re-click on the selected sentence opens the suggested-edit modal.
         // From a footnote body: the host's modal, caret at that note
-        // (FOOTNOTES_PLAN.md §5).
-        if (sentenceId === this.currentSelectedSentenceId && window.WriteSysSuggestions) {
+        // (FOOTNOTES_PLAN.md §5). Only on a sentence that LOOKS selected —
+        // a re-render or a range can drop the gray while the id lingers,
+        // and a click there must just select (2026-11-09).
+        if (sentenceId === this.currentSelectedSentenceId && span.classList.contains('selected')
+            && window.WriteSysSuggestions) {
           const opts = (span.classList.contains('fn-body') && span.dataset.fnOrdinal !== undefined)
             ? { caret: { token: '&footnote{', ordinal: parseInt(span.dataset.fnOrdinal, 10) || 0 } }
             : undefined;

@@ -44,7 +44,11 @@ window.WriteSysPaneWidget = {
   // other pane's text for the "compare to what's over there" reading);
   // `showMono`/`hideMono` flip the caller's mono elements; `focusMono`
   // lands the caret. Wire the mono surface's blur to `.exitMono()`.
-  formattedMono({ fmtEl, render, showMono, hideMono, focusMono }) {
+  // Optional `rawText()` returns the mono surface's text: the click's spot
+  // in the formatted view is mapped onto it (rawOffsetAt) and handed to
+  // focusMono(offset) — the caret lands where you clicked (2026-11-09);
+  // null when the click can't be placed.
+  formattedMono({ fmtEl, render, showMono, hideMono, focusMono, rawText }) {
     let mono = false;
     const sync = () => {
       fmtEl.hidden = mono;
@@ -55,10 +59,12 @@ window.WriteSysPaneWidget = {
         render();
       }
     };
-    fmtEl.addEventListener('click', () => {
+    fmtEl.addEventListener('click', (e) => {
+      // Measure BEFORE the flip — the formatted view is about to hide.
+      const at = rawText ? this.rawOffsetAt(fmtEl, e, rawText()) : null;
       mono = true;
       sync();
-      if (focusMono) focusMono();
+      if (focusMono) focusMono(at);
     });
     const ctl = {
       sync,
@@ -67,6 +73,57 @@ window.WriteSysPaneWidget = {
     };
     sync();
     return ctl;
+  },
+
+  // rawOffsetAt: the offset in `raw` of the character boundary under a
+  // click in a FORMATTED view of it (null when it can't tell). The view is
+  // a transform of raw — markup dropped (*, &fix{, &footnote{), glyphs
+  // added (→ ↵ ¶ §, command icons), and in a diff, struck old text that
+  // isn't in raw at all — but each surviving text node is a verbatim slice
+  // of raw, in order. So: find the text node + offset under the point,
+  // then align the view's text nodes onto raw left to right, each matched
+  // a short hop past the last (markup gaps are short); nodes that don't
+  // match nearby (glyphs) are skipped, struck text never counts.
+  rawOffsetAt(host, e, raw) {
+    if (!e || !raw || (e.clientX === 0 && e.clientY === 0)) return null; // synthetic .click()
+    const root = host.shadowRoot || host;
+    let node = null, offset = 0;
+    try {
+      if (document.caretPositionFromPoint) {
+        const p = document.caretPositionFromPoint(e.clientX, e.clientY,
+          host.shadowRoot ? { shadowRoots: [host.shadowRoot] } : undefined);
+        if (p) { node = p.offsetNode; offset = p.offset; }
+      }
+      if ((!node || !root.contains(node)) && document.caretRangeFromPoint) {
+        const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+        if (r) { node = r.startContainer; offset = r.startOffset; }
+      }
+    } catch (err) { return null; }
+    if (!node || node.nodeType !== 3 || !root.contains(node)) return null;
+    const notRaw = (n) => n.parentElement && n.parentElement.closest('del, .sd-g, .cmd-diamond, svg, .fn-removed');
+    if (notRaw(node)) return null;
+    const HOP = 80;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let cursor = 0;
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+      if (notRaw(t)) continue;
+      const text = t.data;
+      if (t === node) {
+        if (!text) return cursor;
+        let at = raw.indexOf(text, cursor);
+        if (at < 0 || at - cursor > HOP) {
+          // A partial match: the clicked node's text up to the caret.
+          const head = text.slice(0, offset);
+          at = head ? raw.indexOf(head, cursor) : cursor;
+          if (at < 0) return null;
+        }
+        return Math.min(raw.length, at + offset);
+      }
+      if (!text.trim()) continue; // layout whitespace: never anchors
+      const at = raw.indexOf(text, cursor);
+      if (at >= 0 && at - cursor <= HOP) cursor = at + text.length;
+    }
+    return null;
   },
 
   create(cfg) {

@@ -1,5 +1,5 @@
 // The range button stack floats (2026-10-23): one fixed column in the
-// page's left gutter — ✓ / copy / sketch / trash — that holds the middle of
+// page's left gutter — copy / sketch / trash — that holds the middle of
 // the screen while the selection spans it, and pegs to the selection's top
 // (scrolled above it) or bottom (scrolled below it) edge. It used to be
 // pinned beside the selection's first page, so a long or low-starting

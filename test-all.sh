@@ -87,7 +87,7 @@ FAST_TESTS=(
   test-note-layout
   test-uncreated-type
   test-insert-plus
-  test-range-accept
+  test-select-stack
   test-range-float
   test-note-hide
   test-sketch-note-derive
