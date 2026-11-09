@@ -289,6 +289,20 @@ function psql(sql) {
     await (await suggestEditor(page)).fill(first.text + ' ACCEPTME.');
     await page.locator('.suggestion-modal-textarea').dispatchEvent('input');
     await page.waitForTimeout(600);
+    // ✓ on the sentence you OPENED closes the modal (2026-11-09); on a ‹ ›
+    // tour it stays — tour away and back so the verdict-state checks below
+    // run in the modal.
+    const tourCount = await page.evaluate(() => document.querySelector('#suggestion-modal .pw-nav-count').textContent.trim());
+    await page.locator('#suggestion-modal .pw-nav-next').click();
+    await page.waitForFunction((prev) => {
+      const c = document.querySelector('#suggestion-modal .pw-nav-count');
+      return c && c.textContent.trim() !== prev;
+    }, tourCount, { timeout: 10000 });
+    await page.locator('#suggestion-modal .pw-nav-prev').click();
+    await page.waitForFunction(() => {
+      const ta = document.querySelector('#suggestion-modal .suggestion-modal-textarea');
+      return ta && /ACCEPTME/.test(ta.value);
+    }, null, { timeout: 10000 });
     await page.locator('#suggestion-modal .pw-actionrow-left .sgm-accept').click();
     await page.waitForFunction(() =>
       document.querySelector('#suggestion-modal .pw-actionrow-left .sgm-accept.pw-on'), null, { timeout: 10000 });
