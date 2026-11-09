@@ -150,10 +150,21 @@ console.log('=== S8 structural-markers-4-rules ===');
   check('mid-content ¶ → break, 2em indent, then ¶ opens the line (never ends the old one)',
     midP === 'Hello<br><span class="suggested-pindent">\u00a0</span><span class="suggested-marker">¶</span>world', midP);
 
-  // Rule 4: inside <del>, mid-content marker → struck glyph only, no <br>.
+  // Rule 4: inside <del>, a mid-content marker still renders its break —
+  // a removed paragraph shows WHERE it was, struck glyph and struck text
+  // opening their own line, never pre-joined onto the line before
+  // (2026-11-09; it used to skip the break as "being removed").
   const inDel = renderStructuralMarkers('<del>Hello\n\nworld</del>');
-  check('in-del mid marker: glyph only (no <br>)',
-    inDel === '<del>Hello<span class="suggested-marker">§</span>world</del>', inDel);
+  check('in-del mid §: blank line, then struck § opens the flush line',
+    inDel === '<del>Hello<br><br><span class="suggested-marker">§</span>world</del>', inDel);
+  const inDelP = renderStructuralMarkers('<del>Hello\n\tworld</del>');
+  check('in-del mid ¶: break + 2em indent, then struck ¶ opens the line',
+    inDelP === '<del>Hello<br><span class="suggested-pindent">\u00a0</span><span class="suggested-marker">¶</span>world</del>', inDelP);
+  // A whole paragraph deleted from kept text: the struck ¶ + text open
+  // their own line and the kept tail rides on after them (the old shape).
+  const delPara = renderStructuralMarkers('Kept.<del>\n\tGone.</del> Tail.');
+  check('deleted paragraph inside kept text opens its own struck line',
+    delPara === 'Kept.<del><br><span class="suggested-pindent">\u00a0</span><span class="suggested-marker">¶</span>Gone.</del> Tail.', delPara);
 
   // Tag-state tracking survives adjacent tags; EQ text after content is mid.
   const mixed = renderStructuralMarkers('<del>gone</del> kept\n\ttail');

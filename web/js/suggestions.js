@@ -1397,9 +1397,10 @@ function renderDiffHTMLCore(oldText, newText, dmp) {
 //   \n\n  → "§" + line break + indent (section break)
 //   \n\t  → "¶" + line break + indent (paragraph break)
 // The break is purely visual — the surrounding .sentence span still owns
-// the click handler / data-sentence-id. Inside a <del> we render a
-// struck-through marker only (no actual <br>), so removed paragraph
-// breaks read naturally instead of pulling text down to a new line.
+// the click handler / data-sentence-id. Inside a <del> the break renders
+// too: a removed paragraph shows WHERE it was — struck ¶/§, then its
+// struck text, opening their own line — never pre-joined onto the line
+// before (a removal shows what was there; owner, 2026-11-09).
 //
 // Indent matches p.indented (text-indent: 2em) so the preview reads like
 // a real paragraph break would after commit + resegmentation.
@@ -1412,17 +1413,17 @@ function renderStructuralMarkers(html) {
   //     noise the user didn't add or change.
   //   * Leading INS or DEL marker: emit the glyph (so the user sees
   //     they added/removed it) but no <br>+indent — the renderer's
-  //     paragraph grouping already previews the suggested structure
-  //     (renderSentencesToHTML follows the suggestion's leading marker),
-  //     so an added break gets a real <p> and a removed one merges the
-  //     sentence into the previous <p>, with the struck-through glyph
-  //     (via parent <del>) marking the join.
-//   * Mid-content marker: full preview — <br> + 2em indent + glyph — the
-//     glyph LEADS the new line, exactly where a leading marker's glyph
-//     sits (before the paragraph's first word), so every ¶/§ reads as
-//     "this line opens a paragraph/section" and never dangles at the end
-//     of the line before it (2026-09-21). Except inside <del>, where we
-//     skip the break (it's being removed).
+  //     paragraph grouping already previews the structure
+  //     (renderSentencesToHTML opens a real <p> for an added leading
+  //     break AND keeps the committed <p> for a removed one), so the
+  //     green / struck glyph at the paragraph's head is the whole story.
+  //   * Mid-content marker: full preview — <br> + 2em indent + glyph — the
+  //     glyph LEADS the new line, exactly where a leading marker's glyph
+  //     sits (before the paragraph's first word), so every ¶/§ reads as
+  //     "this line opens a paragraph/section" and never dangles at the end
+  //     of the line before it (2026-09-21). Inside <del> too (2026-11-09):
+  //     a removed break still renders as the break it was, the struck
+  //     glyph and struck text at the head of their own line.
   let out = '';
   let inDel = false;
   let inStrong = false;
@@ -1452,7 +1453,7 @@ function renderStructuralMarkers(html) {
       const isEq = !inDel && !inStrong;
       if (leading && isEq) {
         // Pre-existing marker at sentence start — drop entirely.
-      } else if (leading || inDel) {
+      } else if (leading) {
         out += `<span class="suggested-marker">${glyph}</span>`;
       } else {
         // Only a ¶ (\n\t) indents — a section's first paragraph starts

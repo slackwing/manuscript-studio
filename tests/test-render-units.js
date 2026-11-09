@@ -62,6 +62,30 @@ const { suggestEditor } = require('./test-utils');
     check('R2: empty suggestion → suggested-delete class',
       /class="sentence has-suggestion suggested-delete"/.test(html), html);
     check('R2: committed text still visible (not blank)', html.includes('Keep me.'), html);
+    // A delete proposal on a paragraph LEADER keeps its paragraph: the
+    // break still renders, a struck ¶ then the struck text at its head,
+    // and the rest of the old paragraph follows in that same <p> — the
+    // removal shows in place, never pre-joined onto the previous
+    // paragraph (2026-11-09; it used to "preview the join").
+    const lead = await render([
+      { id: 'r2a', text: 'Before.' },
+      { id: 'r2b', text: '\n\tGone leader.' },
+      { id: 'r2c', text: 'Stays.' },
+    ], { r2b: '' });
+    const leadParas = lead.split('\n');
+    check('R2: deleted ¶-leader still opens <p class="indented"> (two paragraphs)',
+      leadParas.length === 2 && leadParas[1].startsWith('<p class="indented">'), lead);
+    check('R2: struck ¶ glyph heads the struck leader',
+      leadParas[1].startsWith('<p class="indented"><span class="sentence has-suggestion suggested-delete" data-sentence-id="r2b"><span class="marker-removed">¶</span>Gone leader.</span>'), lead);
+    check('R2: the previous paragraph does not absorb it',
+      leadParas[0] === '<p><span class="sentence" data-sentence-id="r2a">Before.</span></p>', lead);
+    check('R2: the rest of the old paragraph follows in the same <p>',
+      leadParas[1].endsWith('<span class="sentence" data-sentence-id="r2c">Stays.</span></p>'), lead);
+    const secLead = await render([
+      { id: 'r2d', text: 'Before.' }, { id: 'r2e', text: '\n\nGone section.' },
+    ], { r2e: '' });
+    check('R2: deleted §-leader still opens <p class="section-break"> behind a struck §',
+      secLead.split('\n')[1] === '<p class="section-break"><span class="sentence has-suggestion suggested-delete" data-sentence-id="r2e"><span class="marker-removed">§</span>Gone section.</span></p>', secLead);
   }
 
   // ---- R3: lone-prose diffs; multi-fragment doesn't ---------------------
@@ -115,6 +139,25 @@ const { suggestEditor } = require('./test-utils');
     const integ = await render([{ id: 'r4', text: 'Hello.' }], { r4: '\n\tHello.' });
     check('R4: integrated — added ¶ glyph rides the diffed span',
       integ.includes('marker-added">¶</span>') && /<p class="indented"/.test(integ), integ);
+    // A REMOVED break shows in place: the paragraph still opens where it
+    // did (committed class) with the struck ¶ at its head and its tail
+    // sentences behind it — never a join onto the previous paragraph
+    // (2026-11-09). A type change follows the suggestion's class.
+    const gone = await render([
+      { id: 'r4a', text: 'Before.' },
+      { id: 'r4b', text: '\n\tHello.' },
+      { id: 'r4c', text: 'After.' },
+    ], { r4b: 'Hello.' });
+    const goneParas = gone.split('\n');
+    check('R4: removed ¶ still opens <p class="indented"> behind the struck glyph',
+      goneParas.length === 2 && goneParas[1].startsWith('<p class="indented"><span class="sentence has-suggestion" data-sentence-id="r4b"><span class="marker-removed">¶</span>'), gone);
+    check('R4: removed ¶ — the previous paragraph is untouched',
+      goneParas[0] === '<p><span class="sentence" data-sentence-id="r4a">Before.</span></p>', gone);
+    check('R4: removed ¶ — the paragraph tail stays with it',
+      goneParas[1].endsWith('<span class="sentence" data-sentence-id="r4c">After.</span></p>'), gone);
+    const typed = await render([{ id: 'r4d', text: '\n\tHello.' }], { r4d: '\n\nHello.' });
+    check('R4: type change follows the suggestion (section-break): struck ¶ + green §',
+      typed.startsWith('<p class="section-break"><span class="sentence has-suggestion" data-sentence-id="r4d"><span class="marker-removed">¶</span><span class="marker-added">§</span>'), typed);
   }
 
   // ---- R5: meta fragment hidden vs suggested ----------------------------

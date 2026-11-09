@@ -717,13 +717,17 @@ const WriteSysRenderer = {
       // sentence's real ID (SUGGESTION_RENDER_PLAN.md). Each renders by kind.
       let frags = cmdLib ? cmdLib.segmentFragments(effective) : [{ kind: 'prose', text: effective, marker: '' }];
       // A DELETE proposal on a paragraph-LEADING sentence deletes its break
-      // too: preview the join — the struck sentence rides at the END of the
-      // previous paragraph behind a struck ¶/§ glyph, and the rest of its
-      // old paragraph follows in the same flow (what the push produces).
+      // too. Preview what WAS there: the paragraph still opens where it did
+      // (the fragment keeps its marker), with a struck ¶/§ glyph and then
+      // the struck sentence at its head, and the rest of its old paragraph
+      // following in the same <p>. A removal shows in place, like a struck
+      // word — the join is what the push produces, not what the reviewer
+      // needs to see (an earlier "preview the join" rendering, which rode
+      // the struck leader onto the END of the previous paragraph, read as
+      // confusing — owner, 2026-11-09).
       let deletedLeadGlyph = '';
       if (isDeleteProposal && frags.length && frags[0].marker) {
         deletedLeadGlyph = this.markerGlyphDiff(frags[0].marker, '');
-        frags[0] = { ...frags[0], marker: '' };
       }
       // A MULTI-PARAGRAPH prose rewrite — every suggested fragment prose,
       // committed all-prose too (e.g. a placed sketch region) — collapses
@@ -828,6 +832,14 @@ const WriteSysRenderer = {
           }
         }
         let cls = this.markerClass(f.marker);
+        // A lone-prose suggestion that REMOVES the committed break: the
+        // paragraph still opens where it did (committed class) and the
+        // struck ¶/§ at its head says the break is going — a removal shows
+        // in place; the join is what the push does, not what the preview
+        // shows (2026-11-09). A type change (§ ↔ ¶) follows the suggestion.
+        if (!cls && loneProse && diffableProse) {
+          cls = this.markerClass(this.leadingMarker(canonCommitted));
+        }
         const body = this.stripLeadingMarker(pieceText);
         let inner;
         if (f.kind === 'prose' && diffableProse) {
