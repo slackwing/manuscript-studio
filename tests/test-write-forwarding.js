@@ -21,6 +21,7 @@ const { chromium } = require('playwright');
 const {
   TEST_URL, TEST_MANUSCRIPT_NAME, TEST_MANUSCRIPT_ID, TEST_USERNAME, API_BASE_URL, SYSTEM_TOKEN,
   cleanupTestAnnotations, resetTestManuscript, loginAsTestUser, waitForPagination,
+  ensureWorkerUniquified,
 } = require('./test-utils');
 
 const REPO_PARENT = process.env.MANUSCRIPT_STUDIO_DEV_CONFIG_DIR || `${process.env.HOME}/.config/manuscript-studio-dev`;
@@ -57,6 +58,10 @@ const D_TEXT = 'So let me just start with the one that\'s knocking now.';
   await cleanupTestAnnotations();
   const initialCommit = git('rev-list', '--max-parents=0', 'HEAD').trim();
   git('reset', '--hard', initialCommit);
+  // The root commit is worker 1's fixture byte-for-byte: on workers ≥2 put
+  // the uniquify commit back, or this worker's sentence ids collide with
+  // worker 1's (sentence_pkey) and worker 1 can no longer bootstrap.
+  ensureWorkerUniquified(REPO_DIR);
   const original = fs.readFileSync(MANUSCRIPT_FILE, 'utf-8');
   const browser = await chromium.launch({ headless: true });
   let fakeMig = null;
@@ -150,7 +155,7 @@ const D_TEXT = 'So let me just start with the one that\'s knocking now.';
     check('run', false, e.message);
   } finally {
     if (fakeMig) psql(`DELETE FROM migration WHERE migration_id=${fakeMig}`);
-    try { git('reset', '--hard', initialCommit); } catch (e) { /* continue */ }
+    try { git('reset', '--hard', initialCommit); ensureWorkerUniquified(REPO_DIR); } catch (e) { /* continue */ }
     await resetTestManuscript();
     await browser.close();
   }
