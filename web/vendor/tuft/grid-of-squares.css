@@ -1,0 +1,105 @@
+/* grid-of-squares (tuft lib/ui) — every selector lives under .gos.
+   Theme by overriding the custom properties on .gos or an ancestor. */
+.gos {
+  --gos-cell: 10px;
+  --gos-gap: 2px;
+  --gos-radius: 2px;
+  --gos-empty: rgba(87, 80, 63, 0.14);
+  --gos-light-edge: rgba(0, 0, 0, 0.2);
+  --gos-ink: #1a1a1a;
+  --gos-muted: #666;
+  /* holidays: the forgiven squares a darker grey than empty ones; the real
+     squares earned that day a bonus — the whole spectrum in each square */
+  --gos-holiday: rgba(87, 80, 63, 0.34);
+  --gos-bonus: linear-gradient(135deg, #e05d5d 0%, #f0913a 20%, #f0c419 40%, #74b355 60%, #5aa9e0 80%, #a77bca 100%);
+}
+
+.gos-grid {
+  display: flex;
+  align-items: flex-end; /* columns of different heights share a bottom */
+  gap: var(--gos-gap);
+  overflow: hidden;
+}
+
+.gos-col {
+  display: flex;
+  flex-direction: column-reverse; /* first cell = bottom */
+  gap: var(--gos-gap);
+  flex: 0 0 auto;
+}
+
+.gos-cell {
+  width: var(--gos-cell);
+  height: var(--gos-cell);
+  border-radius: var(--gos-radius);
+  background: var(--gos-empty);
+}
+
+.gos-cell.is-holiday,
+.gos-swatch.is-holiday {
+  background: var(--gos-holiday);
+}
+
+.gos-cell.is-bonus {
+  background: var(--gos-bonus);
+}
+
+.gos-cell.is-light,
+.gos-swatch.is-light {
+  box-shadow: inset 0 0 0 1px var(--gos-light-edge);
+}
+
+/* TODAY marker: a small triangle under today's column + caption. */
+.gos-today {
+  position: relative;
+  height: 22px;
+  margin-top: 3px;
+}
+
+.gos-mark {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.gos-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--gos-ink);
+}
+
+.gos-caption {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--gos-ink);
+}
+
+.gos-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--gos-muted);
+}
+
+.gos-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.gos-swatch {
+  display: inline-block;
+  width: var(--gos-cell);
+  height: var(--gos-cell);
+  border-radius: var(--gos-radius);
+}

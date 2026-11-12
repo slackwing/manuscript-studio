@@ -25,6 +25,8 @@ vendor/
 !web/js/vendor/**
 !web/scratchpad/vendor/
 !web/scratchpad/vendor/**
+!web/vendor/
+!web/vendor/**
 
 # IDE files
 .idea/
