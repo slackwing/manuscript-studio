@@ -26,6 +26,7 @@ FAST_TESTS=(
   test-signup-invites
   test-sketch-from-selection
   test-points-grid
+  test-points-grid-units
   test-daily-tasks
   test-settings
   test-wordcount

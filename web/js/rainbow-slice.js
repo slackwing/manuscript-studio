@@ -3,7 +3,7 @@
  * variety: if there's room, keep duplicates (quantity cue); if there isn't,
  * drop duplicates from the back so every unique value gets shown.
  *
- * Used for note-color sidebar bars (first note = sentence highlight,
+ * Used for annotation-color sidebar bars (first annotation = sentence highlight,
  * next up to 4 = sidebar bars).
  *
  * See test-rainbow-slice.js.

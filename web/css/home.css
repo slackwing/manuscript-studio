@@ -396,41 +396,12 @@ body.home-page {
   z-index: 2;
 }
 .daily-check svg { filter: drop-shadow(0 3px 10px rgba(170, 125, 0, 0.55)); }
-/* Points grid: columns = days (bottom-up stacks). GREEN = points scored on
-   a daily-tasks-board task, GOLD (the daily check's gold) = every other
-   point (049); a bulldozed block keeps its color. */
-.points-grid { display: flex; gap: 2px; overflow: hidden; }
-.points-col { display: flex; flex-direction: column-reverse; gap: 2px; flex: 0 0 auto; }
-.points-cell {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  background: rgba(87, 80, 63, 0.14);
-}
-.points-cell.lit { background: #f0c419; }
-/* Bulldozed overflow keeps the same gold — the darker shade read as a
-   "today" highlight, which today's TRIANGLE marker now handles instead. */
-.points-cell.lit.bulldozed { background: #f0c419; }
-.points-cell.lit.daily { background: #74b355; }
-/* TODAY marker: a small black triangle under today's column + caption. */
-.points-today-row { position: relative; height: 22px; margin-top: 3px; }
-.pt-mark {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-.pt-arrow {
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 7px solid #1a1a1a;
-}
-.pt-caption { font-size: 9px; font-weight: 600; letter-spacing: 1.5px; color: #1a1a1a; }
+/* Points grid (#points-grid): tuft's grid-of-squares, vendored at
+   web/vendor/tuft/ with its own stylesheet (.gos). Its defaults ARE this
+   page's look — 10px cells, 2px gaps, the daily check's gold, the daily
+   green (#74b355), the same empty grey and TODAY marker — so nothing is
+   overridden here; theme via the --gos-* custom properties if that changes.
+   Settings (types, heights, bulldozing) live in home.js POINTS_GRID. */
 #settings-link { display: inline-flex; align-items: center; color: #8a8378; margin-right: 4px; }
 #settings-link:hover { color: #57503f; }
 

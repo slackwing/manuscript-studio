@@ -103,11 +103,13 @@ re-vendor instead via the script.
 | File | Source | Vendor script |
 |------|--------|---------------|
 | `internal/segman/segman.go` | github.com/slackwing/segman (tag pinned in script) | `scripts/vendor-segman.sh` |
-| `web/js/rainbow-slice.js` | github.com/slackwing/tuft | `scripts/vendor-tuft.sh` |
+| `web/js/rainbow-slice.js` | github.com/slackwing/tuft (`lib/js`) | `scripts/vendor-tuft.sh` |
+| `web/vendor/tuft/grid-of-squares.{js,css}` | github.com/slackwing/tuft (`lib/ui`) — the landing page's points grid | `scripts/vendor-tuft.sh` |
 
 Provenance stamps live next to the vendored files
-(`internal/segman/UPSTREAM`, `web/js/TUFT_UPSTREAM`). PR review can
-read them to see "what got vendored when, from what ref/sha."
+(`internal/segman/UPSTREAM`, `web/js/TUFT_UPSTREAM`,
+`web/vendor/tuft/TUFT_UPSTREAM`). PR review can read them to see "what
+got vendored when, from what ref/sha."
 
 Segmentation is **server-side only**. The Go segman library produces
 sentence rows during migration; the browser receives pre-segmented

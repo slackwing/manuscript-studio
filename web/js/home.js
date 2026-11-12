@@ -15,11 +15,8 @@ const WriteSysHome = {
     window.addEventListener('scratchpad-modal-closed', () => this.reload());
     // Manuscript created/settings-saved → refresh cards.
     window.addEventListener('manuscript-modal-saved', () => this.reload());
-    // The points grid sizes itself to the content width — refit on resize.
-    window.addEventListener('resize', () => {
-      clearTimeout(this._pgResize);
-      this._pgResize = setTimeout(() => this.renderPointsGrid(), 150);
-    });
+    // (The points grid refits itself on resize — grid-of-squares' mount
+    // watches its host.)
     window.addEventListener('popstate', () => { this._noteDeepLinked = false; this.reload(); });
     // After an in-place re-login (session-guard), the page's data fetches
     // had 401'd — reload them, else the landing page stays broken until a
@@ -58,106 +55,63 @@ const WriteSysHome = {
     return new URLSearchParams(window.location.search).get('view') || 'home';
   },
 
-  // ---- Points grid (GitHub-contribution style, with a bulldozer) ----
+  // ---- Points grid: tuft's grid-of-squares (vendored, web/vendor/tuft/) ----
   //
-  // One COLUMN per day, 14 ROWS, one row = 1 point; a day's points light
-  // squares bottom-up in gold. Today sits ~80% of the way across; the ~20%
-  // to its right is the future. As many columns as fit the content width
-  // (same left/right edges as the card grids). Empty cells stay gray.
-  //
-  // QUIRK (deliberate — keep it): a day displays at most 14 points, but
-  // points 15+ do NOT vanish. Picture a bulldozer shoving the excess blocks
-  // off the top of the stack RIGHTWARD into the next day's column,
-  // cascading as far as needed — even into days that haven't happened yet.
-  //   17, 6, 13  →  14, 9, 13
-  //   17, 12, 14 →  14, 14, 14, 1   (the trailing 1 lands in the future)
-  // Per spec the implementation is the LITERAL simulation — build the
-  // matrix, then bulldoze; simple beats efficient:
-  //   1. Stack every day's actual points as 'natural' blocks (stacks may
-  //      be taller than 14 at this stage).
-  //   2. Scan columns left→right; while a column is taller than 14, pop
-  //      its TOP block and drop it on TOP of the next column, marked
-  //      'bulldozed'. Carried-in blocks therefore sit ABOVE the day's own
-  //      points, and an overfull day sheds those carried blocks first —
-  //      they keep rolling rightward.
-  // Colors (2026-10-13): a block's color says where its point came from —
-  // GREEN = scored on a task on that day's daily-tasks board, GOLD = any
-  // other task (point_event.from_daily, 049). A day stacks its daily
-  // points first (bottom), the rest above; a bulldozed block keeps its
-  // color wherever it lands (the old "future = green" rule is gone).
-  // The cascade runs over the FULL history (the API returns every day
-  // since the first point), so a monster day left of the visible window
-  // still spills into view correctly.
+  // One COLUMN per day, one square = 1 point, stacked bottom-up; today sits
+  // ~80% of the way across with the future to its right; as many columns
+  // as fit the content width (the card grids' edges). The settings
+  // reproduce the hand-rolled grid this replaced (2026-11-12):
+  //   - two square types at EQUAL rank. A day's GREEN points (scored on a
+  //     task on its owner's daily-tasks board — point_event.from_daily,
+  //     049) are added first, so they stack first; GOLD (every other
+  //     point) sits above them.
+  //   - skim bulldozing: a day shows at most its column height, and the
+  //     squares on top roll into the next day's column — cascading as far
+  //     as needed, even into days that haven't happened yet
+  //     (17, 6, 13 → 14, 9, 13). Equal ranks are what keep a carried-in
+  //     square ON TOP of a day's own squares (ranked types would sink a
+  //     carried green under the next day's gold); a carried square keeps
+  //     its color. The component simulates the days before the window, so
+  //     a monster day long ago still spills into view — hence the API's
+  //     FULL history.
+  //   - column height 14, and 21 from 2026-11-12 on (heightChanges: the
+  //     columns share a baseline, so the grid grows from the bottom).
+  //   - `today` is the server's tz-resolved date (the API's), never the
+  //     browser's; each column's tooltip reads "Nov 12 — daily 3 · other 2".
+  POINTS_GRID: {
+    schema: [
+      { type: 'daily', color: 'green', bulldoze: true },
+      { type: 'other', color: 'yellow', bulldoze: true },
+    ],
+    height: 14,
+    heightChanges: [{ from: '2026-11-12', height: 21 }],
+    bulldozeMode: 'skim',
+    lookahead: 0.2,
+    cellSize: 10,
+    gap: 2,
+    minColumns: 10,
+    todayMarker: true,
+    legend: false,
+    tooltip: 'counts',
+  },
+
+  pointsGridSettings(today) {
+    return Object.assign({}, this.POINTS_GRID, { today });
+  },
+
   renderPointsGrid() {
-    const grid = document.getElementById('points-grid');
-    if (!grid || !this.points) return;
-    const CELL = 10, GAP = 2, ROWS = 14;
-    const cols = Math.max(10, Math.floor((grid.clientWidth + GAP) / (CELL + GAP)));
-    const future = Math.max(1, Math.round(cols * 0.2)); // today ≈ 80% across
-    // All date math in UTC on the tz-resolved YYYY-MM-DD labels the server
-    // sent — stepping by whole days can never straddle a DST boundary.
-    const DAY = 86400000;
-    const parse = (s) => new Date(s + 'T00:00:00Z');
-    const fmt = (d) => d.toISOString().slice(0, 10);
-    const today = parse(this.points.today);
-    const byDate = {};
-    (this.points.days || []).forEach(d => { byDate[d.date] = d; });
-    // The matrix starts at the EARLIER of (first data day, window start):
-    // history left of the window still bulldozes into view.
-    const windowStart = new Date(today.getTime() - (cols - future - 1) * DAY);
-    const firstData = (this.points.days || []).length ? parse(this.points.days[0].date) : windowStart;
-    const start = firstData < windowStart ? firstData : windowStart;
-    const end = new Date(today.getTime() + future * DAY);
-    const days = [];
-    for (let t = start.getTime(); t <= end.getTime(); t += DAY) days.push(fmt(new Date(t)));
-    // 1. Stack natural blocks: the day's daily points first, then the rest.
-    const matrix = days.map((d) => {
-      const day = byDate[d];
-      if (!day) return [];
-      const daily = Math.min(day.daily || 0, day.points);
-      return [...Array(daily).fill(null).map(() => ({ k: 'daily' })),
-        ...Array(day.points - daily).fill(null).map(() => ({ k: 'other' }))];
+    if (this._pointsGrid) { this._pointsGrid.destroy(); this._pointsGrid = null; }
+    const host = document.getElementById('points-grid');
+    const GOS = window.Tuft && window.Tuft.GridOfSquares;
+    if (!host || !this.points || !GOS) return;
+    const grid = GOS.mount(host, this.pointsGridSettings(this.points.today));
+    (this.points.days || []).forEach((d) => {
+      const daily = Math.min(d.daily || 0, d.points);
+      if (daily > 0) grid.add(d.date, 'daily', daily);
+      if (d.points - daily > 0) grid.add(d.date, 'other', d.points - daily);
     });
-    // 2. Bulldoze — a block keeps its kind as it rolls right.
-    for (let i = 0; i < matrix.length; i++) {
-      while (matrix[i].length > ROWS) {
-        const top = matrix[i].pop();
-        if (!matrix[i + 1]) {
-          matrix.push([]);
-          days.push(fmt(new Date(parse(days[days.length - 1]).getTime() + DAY)));
-        }
-        matrix[i + 1].push({ k: top.k, moved: true });
-      }
-    }
-    // Render only the visible window (the cascade may extend past it).
-    grid.innerHTML = '';
-    const startIdx = days.indexOf(fmt(windowStart));
-    for (let c = 0; c < cols; c++) {
-      const idx = startIdx + c;
-      const date = days[idx] || fmt(new Date(windowStart.getTime() + c * DAY));
-      const stack = matrix[idx] || [];
-      const col = document.createElement('div');
-      col.className = 'points-col' + (date === this.points.today ? ' today' : '');
-      col.dataset.date = date;
-      for (let row = 0; row < ROWS; row++) {
-        const cell = document.createElement('div');
-        cell.className = 'points-cell';
-        if (row < stack.length) {
-          cell.classList.add('lit', stack[row].k);
-          if (stack[row].moved) cell.classList.add('bulldozed');
-        }
-        col.appendChild(cell);
-      }
-      grid.appendChild(col);
-    }
-    // TODAY marker: a little black triangle under today's column + caption.
-    // (The column itself stays plain gold — no special shade for today.)
-    const marker = document.getElementById('points-today');
-    if (marker) {
-      const c = Math.round((today.getTime() - windowStart.getTime()) / DAY);
-      marker.innerHTML = `<span class="pt-mark" style="left:${c * (CELL + GAP) + CELL / 2}px">
-        <span class="pt-arrow"></span><span class="pt-caption">TODAY</span></span>`;
-    }
+    grid.render();
+    this._pointsGrid = grid;
   },
 
   esc(t) {
@@ -394,8 +348,7 @@ const WriteSysHome = {
       const live = nt.filter(n => !n.completed_at);
       noteList = live.slice(0, this.RECENT);
       html = (this.points ? `<section class="home-section" id="points-section">
-          <div id="points-grid" class="points-grid"></div>
-          <div id="points-today" class="points-today-row"></div>
+          <div id="points-grid"></div>
         </section>` : '')
         + this.section('Manuscripts', ms.length,
         ms.slice(0, this.RECENT).map(m => this.manuscriptCard(m)).join(''),
@@ -545,6 +498,10 @@ const WriteSysHome = {
     window.WriteSysScratchpadModal.open(pad.scratchpad_id);
   },
 };
+
+// Node (tests): the points grid's settings are checked against the vendored
+// component without a browser.
+if (typeof module !== 'undefined' && module.exports) module.exports = { WriteSysHome };
 
 if (typeof window !== 'undefined') {
   window.WriteSysHome = WriteSysHome;
