@@ -95,42 +95,28 @@ async function cleanupTestNotes() {
       DELETE FROM point_event WHERE note_id IN (
         SELECT note_id FROM note WHERE user_id = '${TEST_USERNAME}'
       );
+      -- Notes PLACED on this manuscript's sentences (note_sentence —
+      -- NOTE_PLACEMENTS_PLAN.md); note_tag / note_version / placements
+      -- cascade from the note row.
       DELETE FROM point_event WHERE note_id IN (
-        SELECT note_id FROM note WHERE sentence_id IN (
+        SELECT ns.note_id FROM note_sentence ns WHERE ns.sentence_id IN (
           SELECT sentence_id FROM sentence WHERE migration_id IN (
             SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
           )
         )
       );
-      DELETE FROM note_tag WHERE note_id IN (
-        SELECT note_id FROM note WHERE sentence_id IN (
+      DELETE FROM note WHERE note_id IN (
+        SELECT ns.note_id FROM note_sentence ns WHERE ns.sentence_id IN (
           SELECT sentence_id FROM sentence WHERE migration_id IN (
             SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
           )
         )
       );
-      DELETE FROM note_version WHERE note_id IN (
-        SELECT note_id FROM note WHERE sentence_id IN (
-          SELECT sentence_id FROM sentence WHERE migration_id IN (
-            SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
-          )
-        )
-      );
-      DELETE FROM note WHERE sentence_id IN (
-        SELECT sentence_id FROM sentence WHERE migration_id IN (
-          SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
-        )
-      );
-      -- Scratchpad/standalone notes have NO sentence, so the sentence-scoped
-      -- wipe above misses them; a crashed test's leftover note then haunts the
-      -- next test's landing page as an orphaned "no context" card.
-      DELETE FROM note_tag WHERE note_id IN (
-        SELECT note_id FROM note WHERE user_id = '${TEST_USERNAME}' AND sentence_id IS NULL
-      );
-      DELETE FROM note_version WHERE note_id IN (
-        SELECT note_id FROM note WHERE user_id = '${TEST_USERNAME}' AND sentence_id IS NULL
-      );
-      DELETE FROM note WHERE user_id = '${TEST_USERNAME}' AND sentence_id IS NULL;
+      -- Pad / free notes have no sentence placement, so the wipe above misses
+      -- them; a crashed test's leftover note then haunts the next test's
+      -- landing page as an orphaned "no context" card.
+      DELETE FROM note WHERE user_id = '${TEST_USERNAME}'
+        AND NOT EXISTS (SELECT 1 FROM note_sentence ns WHERE ns.note_id = note.note_id);
       DELETE FROM suggested_change WHERE sentence_id IN (
         SELECT sentence_id FROM sentence WHERE migration_id IN (
           SELECT migration_id FROM migration WHERE manuscript_id = ${TEST_MANUSCRIPT_ID}
@@ -157,6 +143,40 @@ async function cleanupTestNotes() {
   } catch (error) {
     console.warn('[CLEANUP] Warning:', error.message);
   }
+}
+
+/**
+ * seedNote: insert a note the way the schema is shaped now (NOTE_PLACEMENTS_PLAN.md):
+ * the note row has no home — a `sentence_id` becomes a note_sentence row (with
+ * `position`, default 'a0'), a `scratchpad_id` a note_scratchpad row. Any other
+ * key is a note column (user_id, color, body, priority, task_type, impact,
+ * manuscript_id, created_at, completed_at, sketch_id, default_body …). Values are
+ * SQL literals: strings are quoted here; pass raw SQL (now(), intervals, NULL)
+ * as { sql: '...' }. Returns the new note_id.
+ */
+function seedNote(row) {
+  const lit = (v) => (v === null || v === undefined) ? 'NULL'
+    : (v && typeof v === 'object' && 'sql' in v) ? v.sql
+    : typeof v === 'number' ? String(v)
+    : typeof v === 'boolean' ? (v ? 'true' : 'false')
+    : `'${String(v).replace(/'/g, "''")}'`;
+  const { sentence_id, scratchpad_id, position, ...cols } = row;
+  if (!cols.user_id) cols.user_id = TEST_USERNAME;
+  if (!cols.color) cols.color = 'yellow';
+  if (!cols.priority) cols.priority = 'none';
+  const names = Object.keys(cols);
+  let sql = `WITH n AS (INSERT INTO note (${names.join(', ')}) VALUES (${names.map((k) => lit(cols[k])).join(', ')}) RETURNING note_id, user_id)`;
+  if (sentence_id) {
+    sql += `, ns AS (INSERT INTO note_sentence (note_id, sentence_id, position, origin_sentence_id, created_by)
+      SELECT note_id, ${lit(sentence_id)}, ${lit(position || 'a0')}, ${lit(sentence_id)}, user_id FROM n RETURNING note_id)`;
+  }
+  if (scratchpad_id) {
+    sql += `, np AS (INSERT INTO note_scratchpad (note_id, scratchpad_id) SELECT note_id, ${lit(scratchpad_id)} FROM n RETURNING note_id)`;
+  }
+  sql += ` SELECT note_id FROM n`;
+  const id = parseInt(psql(sql).split('\n').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).pop(), 10);
+  if (!Number.isFinite(id)) throw new Error('seedNote: no note_id returned');
+  return id;
 }
 
 /**
@@ -346,6 +366,7 @@ module.exports = {
   cleanupTestSessions,
   loginAsTestUser,
   loginViaForm,
+  seedNote,
   waitForPagination,
   paginationStamp,
   waitForRepagination,

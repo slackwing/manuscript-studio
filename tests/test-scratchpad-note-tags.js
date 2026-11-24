@@ -41,7 +41,7 @@ function psql(sql) {
 
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');
   check('scratchpad note created', !!noteId, `noteId=${noteId}`);
-  const kind = psql(`SELECT (sentence_id IS NULL) no_sentence, (scratchpad_id IS NOT NULL) has_pad FROM note WHERE note_id=${noteId}`).trim();
+  const kind = psql(`SELECT NOT EXISTS (SELECT 1 FROM note_sentence WHERE note_id=${noteId}) AS no_sentence, EXISTS (SELECT 1 FROM note_scratchpad WHERE note_id=${noteId} AND removed_at IS NULL) AS has_pad`).trim();
   check('note is a scratchpad note (no sentence, has pad)', /t\|t/.test(kind), kind);
 
   // Add a tag through the shared widget's inline input inside the float.

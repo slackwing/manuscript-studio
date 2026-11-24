@@ -13,8 +13,7 @@ const {
   TEST_URL,
   TEST_MANUSCRIPT_ID,
   cleanupTestAnnotations,
-  loginAsTestUser, TEST_USERNAME,
-} = require('./test-utils');
+  loginAsTestUser, TEST_USERNAME, seedNote } = require('./test-utils');
 const { execSync } = require('child_process');
 
 const DB_HOST = 'localhost';
@@ -65,8 +64,10 @@ function psql(sql) {
     // Inject an annotation directly into the DB with an XSS payload note.
     const payload = '<img src=x onerror="window.__xss_fired=true">';
     psql(`
-      INSERT INTO note (sentence_id, user_id, color, body, priority, position)
-      VALUES ('${sentenceId}', '${TEST_USERNAME}', 'yellow', '${payload}', 'none', 0);
+      WITH n AS (INSERT INTO note (user_id, color, body, priority)
+                 VALUES ('${TEST_USERNAME}', 'yellow', '${payload}', 'none') RETURNING note_id, user_id)
+      INSERT INTO note_sentence (note_id, sentence_id, position, origin_sentence_id, created_by)
+      SELECT note_id, '${sentenceId}', 'a0', '${sentenceId}', user_id FROM n;
     `);
 
     // Reload the page so the renderer fetches the new annotation.

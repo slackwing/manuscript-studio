@@ -18,10 +18,8 @@ const LOCAL_REPO_DIR = path.join(os.homedir(), '.config', 'manuscript-studio-dev
 
 function cleanup() {
   if (process.env.KEEP_STATE) { console.log('[KEEP_STATE] skipping cleanup'); return; }
-  try { psql(`DELETE FROM note_hide WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
-  try { psql(`DELETE FROM note_tag WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
-  try { psql(`DELETE FROM note_version WHERE note_id IN (SELECT note_id FROM note WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
-  try { psql(`DELETE FROM note WHERE sentence_id LIKE '${SLUG}-%';`); } catch (e) {}
+  // Placed notes (note_sentence); hide/tag/version/placement rows cascade from the note.
+  try { psql(`DELETE FROM note WHERE note_id IN (SELECT note_id FROM note_sentence WHERE sentence_id LIKE '${SLUG}-%');`); } catch (e) {}
   try { psql(`DELETE FROM suggested_change WHERE sentence_id LIKE '${SLUG}-%';`); } catch (e) {}
   try { psql(`DELETE FROM suggestion_review_event WHERE manuscript_id IN (SELECT manuscript_id FROM manuscript WHERE name = '${SLUG}');`); } catch (e) {}
   try { psql(`DELETE FROM people_order WHERE manuscript_id IN (SELECT manuscript_id FROM manuscript WHERE name = '${SLUG}');`); } catch (e) {}

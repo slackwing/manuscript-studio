@@ -42,8 +42,8 @@ func TestListNotesForHome_ContextResolution(t *testing.T) {
 	mkFree := func(body string, manuscriptID int) int {
 		var id int
 		if err := f.pool.QueryRow(f.ctx, `
-			INSERT INTO note (user_id, color, body, priority, position, manuscript_id)
-			VALUES ($1, 'yellow', $2, 'none', 'a0000', $3)
+			INSERT INTO note (user_id, color, body, priority, manuscript_id)
+			VALUES ($1, 'yellow', $2, 'none', $3)
 			RETURNING note_id
 		`, f.username, body, manuscriptID).Scan(&id); err != nil {
 			t.Fatalf("insert free note: %v", err)
@@ -76,8 +76,8 @@ func TestListNotesForHome_ContextResolution(t *testing.T) {
 	}
 	var sketchNoteID int
 	if err := f.pool.QueryRow(f.ctx, `
-		INSERT INTO note (user_id, color, body, priority, position, sketch_id)
-		VALUES ($1, 'yellow', 'sketch note', 'none', 'a0000', $2)
+		INSERT INTO note (user_id, color, body, priority, sketch_id)
+		VALUES ($1, 'yellow', 'sketch note', 'none', $2)
 		RETURNING note_id
 	`, f.username, sketchID).Scan(&sketchNoteID); err != nil {
 		t.Fatalf("sketch note: %v", err)
@@ -144,8 +144,8 @@ func TestListDailyTaskNotes_Determinism(t *testing.T) {
 	mkNote := func(body, tt string) int {
 		var id int
 		if err := f.pool.QueryRow(f.ctx, `
-			INSERT INTO note (user_id, color, body, priority, position, manuscript_id, task_type)
-			VALUES ($1, 'yellow', $2, 'none', 'a0000', $3, NULLIF($4, ''))
+			INSERT INTO note (user_id, color, body, priority, manuscript_id, task_type)
+			VALUES ($1, 'yellow', $2, 'none', $3, NULLIF($4, ''))
 			RETURNING note_id
 		`, f.username, body, f.manuscriptID, tt).Scan(&id); err != nil {
 			t.Fatalf("insert note: %v", err)

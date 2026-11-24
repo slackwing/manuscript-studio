@@ -22,9 +22,13 @@ type NoteHandlers struct {
 	Config       *config.Config
 }
 
+// CreateNoteRequest: where the note starts out. sentence_id → placed on that
+// sentence; scratchpad_id → placed in that pad; neither → a FREE note
+// (NOTE_PLACEMENTS_PLAN.md phase 2), optionally about a manuscript.
 type CreateNoteRequest struct {
 	SentenceID   string  `json:"sentence_id"`
-	ScratchpadID *int    `json:"scratchpad_id"` // set → a scratchpad note (no sentence)
+	ScratchpadID *int    `json:"scratchpad_id"`
+	ManuscriptID *int    `json:"manuscript_id"` // free notes only; placed notes derive it
 	Color        string  `json:"color"`
 	Body         *string `json:"body"`
 	Priority     string  `json:"priority"`
@@ -42,9 +46,9 @@ type UpdateNoteRequest struct {
 }
 
 type ReorderNoteRequest struct {
-	// SentenceID is accepted for backwards compatibility but IGNORED — the
-	// sentence is derived from the note row server-side, never trusted from
-	// the body.
+	// SentenceID names WHICH placement's stack to reorder within (a note can
+	// sit on several sentences); "" = the note's primary placement. The
+	// server verifies the note is actually placed there.
 	SentenceID string `json:"sentence_id"`
 	NewIndex   int    `json:"new_index"`
 }
@@ -87,14 +91,41 @@ func (h *NoteHandlers) requireOwnedNote(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return nil
 	}
-	// Sentence notes additionally require manuscript access. A scratchpad/free
-	// note (no sentence) is gated by user ownership alone (checked above).
-	if existing.SentenceID != "" {
-		if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, existing.SentenceID) {
-			return nil
-		}
+	// A note placed in a manuscript additionally requires access to that
+	// manuscript — to ANY of them when it is placed in several (losing one
+	// book must not lock the owner out of their own note). A pad/free note
+	// is gated by ownership alone (checked above).
+	if !h.requireAccessToAPlacedManuscript(w, r, noteID) {
+		return nil
 	}
 	return existing
+}
+
+// requireAccessToAPlacedManuscript: the manuscripts a note's sentence
+// placements live in; passes when there are none or the user can access at
+// least one. Writes the error response when it fails.
+func (h *NoteHandlers) requireAccessToAPlacedManuscript(w http.ResponseWriter, r *http.Request, noteID int) bool {
+	mids, err := h.DB.ManuscriptIDsForNote(r.Context(), noteID)
+	if err != nil {
+		log.Printf("notes: manuscripts for %d: %v", noteID, err)
+		http.Error(w, "Failed to load note", http.StatusInternalServerError)
+		return false
+	}
+	if len(mids) == 0 {
+		return true
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	for _, mid := range mids {
+		if ok, err := h.DB.HasAnyRole(r.Context(), session.Username, mid); err == nil && ok {
+			return true
+		}
+	}
+	http.Error(w, "Forbidden", http.StatusForbidden)
+	return false
 }
 
 // requireNoteWithAction is the multi-user variant (v3): the OWNER always
@@ -115,27 +146,33 @@ func (h *NoteHandlers) requireNoteWithAction(w http.ResponseWriter, r *http.Requ
 		return nil
 	}
 	if existing.UserID == username {
-		if existing.SentenceID != "" {
-			if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, existing.SentenceID) {
-				return nil
-			}
+		if !h.requireAccessToAPlacedManuscript(w, r, noteID) {
+			return nil
 		}
 		return existing
 	}
-	mid := 0
-	if existing.SentenceID != "" {
-		mid, _ = manuscriptIDForSentence(r.Context(), h.DB, existing.SentenceID)
-	} else if existing.ManuscriptID != nil {
-		mid = *existing.ManuscriptID
+	// A non-owner holds `action` on some manuscript the note is placed in,
+	// or — unplaced — on the manuscript it is about.
+	mids, err := h.DB.ManuscriptIDsForNote(r.Context(), noteID)
+	if err != nil {
+		log.Printf("notes: manuscripts for %d: %v", noteID, err)
+		http.Error(w, "Failed to load note", http.StatusInternalServerError)
+		return nil
 	}
-	if mid == 0 {
+	if len(mids) == 0 && existing.ManuscriptID != nil {
+		mids = []int{*existing.ManuscriptID}
+	}
+	if len(mids) == 0 {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return nil
 	}
-	if !requireAction(w, r, h.DB, mid, action) {
-		return nil
+	for _, mid := range mids {
+		if ok, err := userHasAction(r.Context(), h.DB, username, mid, action); err == nil && ok {
+			return existing
+		}
 	}
-	return existing
+	http.Error(w, "Forbidden", http.StatusForbidden)
+	return nil
 }
 
 func (h *NoteHandlers) HandleGetNotesByCommit(w http.ResponseWriter, r *http.Request) {
@@ -427,11 +464,40 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// --- Sentence note (today's path) ---
+	// --- Free note: placed nowhere (NOTE_PLACEMENTS_PLAN.md phase 2). May be
+	//     ABOUT a manuscript the user can access (daily board, pins, points). ---
 	if req.SentenceID == "" {
-		http.Error(w, "Missing required fields: color, and one of sentence_id / scratchpad_id", http.StatusBadRequest)
+		note := &models.Note{
+			UserID:   session.Username,
+			Color:    req.Color,
+			Body:     req.Body,
+			Priority: priority,
+			TaskType: taskType,
+			Impact:   impact,
+		}
+		if req.ManuscriptID != nil && *req.ManuscriptID != 0 {
+			if !requireManuscriptAccess(w, r, h.DB, h.Config, *req.ManuscriptID) {
+				return
+			}
+			note.ManuscriptID = req.ManuscriptID
+		}
+		if err := h.DB.CreateFreeNote(ctx, note); err != nil {
+			log.Printf("notes: create free note: %v", err)
+			http.Error(w, "Failed to create note", http.StatusInternalServerError)
+			return
+		}
+		resp := map[string]interface{}{"note_id": note.NoteID}
+		if note.ManuscriptID != nil {
+			resp["manuscript_id"] = *note.ManuscriptID
+			resp["manuscript_name"] = manuscriptDisplayName(ctx, h.DB, h.Config, *note.ManuscriptID)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
+
+	// --- Sentence note ---
 	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, req.SentenceID) {
 		return
 	}
@@ -534,21 +600,8 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Scratchpad and SKETCH notes have no version history (no sentence
-	// origin) — update them directly; the versioned path's origin lookup
-	// explodes on their empty note_version history. Sentence notes append a
-	// version row (audit + migration lineage).
-	if existing.ScratchpadID != nil || existing.SketchID != nil {
-		if err := h.DB.UpdateScratchpadNote(ctx, noteID, req.Color, req.Body, req.Priority, req.TaskType, req.Impact, req.Blocked); err != nil {
-			log.Printf("notes: update versionless note %d: %v", noteID, err)
-			http.Error(w, "Failed to update note", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(existing)
-		return
-	}
-
+	// One path for every kind of note (phase 2): the head row changes and a
+	// CONTENT version is appended — lineage lives on the placements now.
 	version := &models.NoteVersion{
 		MigrationConfidence: nil,
 	}
@@ -594,7 +647,7 @@ func (h *NoteHandlers) HandleReorderNote(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.DB.ReorderNote(ctx, noteID, req.NewIndex); err != nil {
+	if err := h.DB.ReorderNote(ctx, noteID, req.SentenceID, req.NewIndex); err != nil {
 		log.Printf("notes: reorder %d: %v", noteID, err)
 		http.Error(w, "Failed to reorder", http.StatusInternalServerError)
 		return
@@ -748,9 +801,11 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Note not found", http.StatusNotFound)
 		return
 	}
+	// The manuscript whose pointer role is needed: the one the note is placed
+	// in (its primary placement), else the one it is about.
 	mid := 0
-	if note.SentenceID != "" {
-		mid, _ = manuscriptIDForSentence(ctx, h.DB, note.SentenceID)
+	if mids, merr := h.DB.ManuscriptIDsForNote(ctx, noteID); merr == nil && len(mids) > 0 {
+		mid = mids[0]
 	} else if note.ManuscriptID != nil {
 		mid = *note.ManuscriptID
 	}
@@ -799,6 +854,124 @@ func (h *NoteHandlers) HandleScoreNotePoints(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- Placements (NOTE_PLACEMENTS_PLAN.md phase 2) ---------------------------
+
+// HandleGetNotePlacements: GET /api/notes/{note_id}/placements — where the
+// note is: its sentence placements (primary first) and the pads holding it.
+func (h *NoteHandlers) HandleGetNotePlacements(w http.ResponseWriter, r *http.Request) {
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if h.requireNoteWithAction(w, r, noteID, session.Username, "see-others-notes") == nil {
+		return
+	}
+	p, err := h.DB.GetNotePlacements(r.Context(), noteID)
+	if err != nil {
+		log.Printf("notes: placements %d: %v", noteID, err)
+		http.Error(w, "Failed to load placements", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(p)
+}
+
+// HandleAttachSentence: PUT /api/notes/{note_id}/sentences/{sentence_id} —
+// place an existing note (free, pad, or already on other sentences) on a
+// sentence. Owner only; needs access to the sentence's manuscript. Returns
+// the note's placements.
+func (h *NoteHandlers) HandleAttachSentence(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	sentenceID := chi.URLParam(r, "sentence_id")
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	note := h.requireOwnedNote(w, r, noteID, session.Username)
+	if note == nil {
+		return
+	}
+	if !requireManuscriptAccessForSentence(w, r, h.DB, h.Config, sentenceID) {
+		return
+	}
+	if err := h.DB.AttachNoteToSentence(ctx, noteID, sentenceID); err != nil {
+		log.Printf("notes: attach %d → %s: %v", noteID, sentenceID, err)
+		http.Error(w, "Failed to place note", http.StatusInternalServerError)
+		return
+	}
+	// Its default text follows its primary placement (052).
+	if err := h.DB.RefreshSentenceNoteDefaults(ctx, []string{sentenceID}); err != nil {
+		log.Printf("notes: default after attach %d: %v", noteID, err)
+	}
+	p, err := h.DB.GetNotePlacements(ctx, noteID)
+	if err != nil {
+		log.Printf("notes: placements %d: %v", noteID, err)
+		http.Error(w, "Failed to load placements", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(p)
+}
+
+// HandleDetachSentence: DELETE /api/notes/{note_id}/sentences/{sentence_id}
+// — take the note off that sentence. The note is NOT deleted: it stays on
+// its other placements, or becomes a free note. 404 when it wasn't there.
+func (h *NoteHandlers) HandleDetachSentence(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	sentenceID := chi.URLParam(r, "sentence_id")
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	if h.requireOwnedNote(w, r, noteID, session.Username) == nil {
+		return
+	}
+	ok, err := h.DB.DetachNoteFromSentence(ctx, noteID, sentenceID)
+	if err != nil {
+		log.Printf("notes: detach %d from %s: %v", noteID, sentenceID, err)
+		http.Error(w, "Failed to remove placement", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Note is not placed on that sentence", http.StatusNotFound)
+		return
+	}
+	p, err := h.DB.GetNotePlacements(ctx, noteID)
+	if err != nil {
+		log.Printf("notes: placements %d: %v", noteID, err)
+		http.Error(w, "Failed to load placements", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(p)
 }
 
 // HandleTagCounts: GET /api/tag-counts — the user's tags ranked by how many

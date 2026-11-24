@@ -169,7 +169,7 @@ func TestReorderNote_FractionalTargetSlot(t *testing.T) {
 	c := f.createNote(t, sids[0], "c")
 
 	// Move c to the front.
-	if err := f.db.ReorderNote(f.ctx, c.NoteID, 0); err != nil {
+	if err := f.db.ReorderNote(f.ctx, c.NoteID, "", 0); err != nil {
 		t.Fatalf("reorder: %v", err)
 	}
 	notes, err := f.db.GetNotesBySentence(f.ctx, sids[0], f.username)
@@ -189,7 +189,7 @@ func TestReorderNote_FractionalTargetSlot(t *testing.T) {
 
 	// Move c between a and b (index 1 of [c a b] target list semantics: the
 	// slot positions come from the CURRENT list) — must land between them.
-	if err := f.db.ReorderNote(f.ctx, c.NoteID, 2); err != nil {
+	if err := f.db.ReorderNote(f.ctx, c.NoteID, "", 2); err != nil {
 		t.Fatalf("reorder 2: %v", err)
 	}
 	notes, err = f.db.GetNotesBySentence(f.ctx, sids[0], f.username)
@@ -221,14 +221,14 @@ func TestReorderNote_UserScopedPositions(t *testing.T) {
 	// Index 1 over MY list [mineA, mineB] = between them → the new position
 	// must sort AFTER mineA's. (Unscoped, index 1 of [theirs, mineA, mineB]
 	// lands BEFORE mineA.)
-	if err := f.db.ReorderNote(f.ctx, mineB.NoteID, 1); err != nil {
+	if err := f.db.ReorderNote(f.ctx, mineB.NoteID, "", 1); err != nil {
 		t.Fatalf("reorder: %v", err)
 	}
 	var posA, posB string
-	if err := f.pool.QueryRow(f.ctx, `SELECT position FROM note WHERE note_id = $1`, mineA.NoteID).Scan(&posA); err != nil {
+	if err := f.pool.QueryRow(f.ctx, `SELECT position FROM note_sentence WHERE note_id = $1`, mineA.NoteID).Scan(&posA); err != nil {
 		t.Fatalf("read a: %v", err)
 	}
-	if err := f.pool.QueryRow(f.ctx, `SELECT position FROM note WHERE note_id = $1`, mineB.NoteID).Scan(&posB); err != nil {
+	if err := f.pool.QueryRow(f.ctx, `SELECT position FROM note_sentence WHERE note_id = $1`, mineB.NoteID).Scan(&posB); err != nil {
 		t.Fatalf("read b: %v", err)
 	}
 	if !(posB > posA) {

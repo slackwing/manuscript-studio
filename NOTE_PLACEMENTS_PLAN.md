@@ -1,6 +1,6 @@
 # NOTE_PLACEMENTS_PLAN.md — a note is a note; placements are rows
 
-Status: **PHASE 1 IN PROGRESS** (2026-11-24). Supersedes NOTES_PLAN.md locked
+Status: **PHASES 1–3 SHIPPED, PHASE 4 (057) IN FLIGHT** (2026-11-24). Supersedes NOTES_PLAN.md locked
 decision 2 ("one home per note, carry-forward only WHERE sentence_id IS NOT
 NULL") by the owner's call on 2026-11-24.
 
@@ -164,80 +164,120 @@ Legend: ⏸ = stop and wait for the owner's "continue" before this step.
 
 ### Phase 1 — additive schema, backfill, dual-write (deploy #1)
 Readers untouched; nothing visible changes.
-- [ ] `054-note-placements.xml`: create `note_sentence` + `note_scratchpad`
+- [x] `054-note-placements.xml`: create `note_sentence` + `note_scratchpad`
   (+ indexes). DDL only — short lock.
-- [ ] `055-note-placements-backfill.xml`: `INSERT … SELECT … ON CONFLICT DO
+- [x] `055-note-placements-backfill.xml`: `INSERT … SELECT … ON CONFLICT DO
   NOTHING` from the legacy columns; `note_sentence` origin from version 1,
   history/confidence from the latest version; `note_scratchpad.removed_at`
   = NULL when a live pad doc references the note, else `note.updated_at`.
   Idempotent; re-runnable as SQL by hand.
-- [ ] `ReconcileNotePlacements()` at boot (and callable): the same inserts
+- [x] `ReconcileNotePlacements()` at boot (and callable): the same inserts
   plus the doc-derived pad rows — closes the window where the old container
   wrote notes after Liquibase committed, and any rollback window.
-- [ ] Dual-write: `CreateNote` → `note_sentence`; `CreateScratchpadNote` →
+- [x] Dual-write: `CreateNote` → `note_sentence`; `CreateScratchpadNote` →
   `note_scratchpad`; `MigrateNotes` → repoint `note_sentence` rows too
   (history/confidence on the row); `SoftDeleteScratchpad` → `removed_at`;
   `ReorderNote` → placement positions; pad `HandleUpdate` → diff `noteRef`
   ids against live `note_scratchpad` rows (insert / set / clear
   `removed_at`), best-effort — a diff failure is logged and never fails the
   save.
-- [ ] Tests: Go — parity after every write (junction == legacy columns),
+- [x] Tests: Go — parity after every write (junction == legacy columns),
   doc-diff cases (add, remove, re-add, deleted note, legacy noteAnchor shape
   ignored), reconcile idempotent, processor integration: placements move
   with notes, merge dedupe. JS — `test-utils` gains `seedNote()` writing both
   shapes; `cleanupTestNotes` and the Go nuke helpers delete via the junction
   too (cascade from `note` covers the rest).
-- [ ] Deploy #1 after `snapshot_notes.sh`. Not a data-loss step. Verify
+- [x] Deploy #1 after `snapshot_notes.sh`. Not a data-loss step. Verify
   `/readyz`, container logs for "placements reconcile", and parity counts via
-  `connect_db.sh`.
+  `connect_db.sh`. (Shipped 2026-11-24, 76cc5d2: 054/055 ran, 193 sentence
+  + 63 pad rows, parity 193/193 and 63/63, reconcile +0/+0.)
 
 ### Phase 2 — readers, carry-forward and semantics on the junction (deploy #2)
-Legacy columns still written (safety net), no longer read.
-- [ ] `056-note-version-content-only.xml`: `note_version.sentence_id` and
-  `origin_sentence_id` nullable; sentence FK → `ON DELETE SET NULL` (today
-  RESTRICT, which blocks migration undo). UpdateNote versions every note.
-- [ ] Readers → junction: book payload (one row per placement), per-sentence
-  lists, migration gather, note defaults (earliest placement), home/daily
-  context (manuscript name + pad titles aggregated server-side), access
-  helpers (per-placement manuscript), points' manuscript resolution,
-  reorder.
-- [ ] Carry-forward iterates `note_sentence`; merge dedupe; stale tag per
-  note; `note_version` no longer written by migrations.
-- [ ] API: `POST /api/notes` without sentence or pad creates a free note
-  (optional `manuscript_id`); `PUT|DELETE /api/notes/{id}/sentences/{sid}`
-  attach/detach; `GET /api/notes/{id}/placements`. Delete semantics per
-  "Semantics" above (pad delete no longer deletes notes).
-- [ ] Frontend (minimal): pad `destroy()` stops deleting; the float trash
-  calls DELETE explicitly; `home.js` shows the server's context string. No
-  margin changes needed (one row per placement).
-- [ ] Tests: everything in Phase 1 plus free-note create/update/delete,
-  attach/detach, two-sentence note in two margins, pad delete leaves notes,
-  multi-placement migration (split/merge/fallback) in processor tests,
-  authorization per placement, `/api/v1/points-daily` unchanged.
-- [ ] ⏸ **Before deploy #2**: owner holds manuscript commits (the webhook
-  migrates notes) and margin edits for ~10 minutes; snapshot; deploy; verify;
-  then `continue`.
+Legacy columns still written (= the PRIMARY placement: the earliest sentence
+the note was placed on; NULL when none), no longer read.
+- [x] `056-note-placements-readers.xml`: `note_version.sentence_id`,
+  `origin_sentence_id`, `origin_commit_hash` nullable; sentence FK → `ON
+  DELETE SET NULL` (was RESTRICT, which blocked migration undo). Plus a
+  TRANSITIONAL TRIGGER `trg_note_legacy_home_mirror`: an INSERT with a
+  legacy `sentence_id`/`scratchpad_id`, or an UPDATE of `sentence_id`,
+  mirrors into the junction — covers the phase-1 container in the deploy
+  window, a rollback, and the suite's raw-SQL fixtures (nothing can drift
+  the index while both shapes coexist). Dropped with the columns in phase 4.
+- [x] Readers → junction: `noteColumns` derives sentence/position/pad from
+  the primary placement for single-note readers; `placementColumns` for the
+  per-placement list readers (book payload: one row per placement;
+  per-sentence lists; the migration gather); note defaults from the
+  primary placement; home/daily context = first live pad (deleted pads
+  never) + primary sentence; access helpers check the manuscripts of a
+  note's placements (owner: any one; non-owner: `action` on any one, else
+  `manuscript_id`); points resolve the manuscript the same way; reorder
+  takes the placement's sentence (`sentence_id` in the body, "" = primary).
+- [x] Carry-forward per placement (`NoteMigrationItem.OldSentenceID`);
+  insert-then-delete repoint merges placements that land together; the
+  stale tag once per note; migrations write NO `note_version` rows any
+  more — `note_version` is content history (one row per edit, for every
+  kind of note; `UpdateNote` is the single update path, the versionless
+  `UpdateScratchpadNote` is gone).
+- [x] API: `POST /api/notes` with neither sentence nor pad → free note
+  (optional `manuscript_id`, access-checked); `PUT|DELETE
+  /api/notes/{id}/sentences/{sid}`; `GET /api/notes/{id}/placements`.
+  `SoftDeleteScratchpad` closes placements and leaves the notes alive.
+- [x] Frontend: the pad's NodeView `destroy()` no longer deletes (an anchor
+  leaving the doc closes the placement on save); the trash
+  (`deleteNoteViaDoc`) deletes explicitly; the teardown/suppress flags are
+  retired. No margin or home changes needed (one row per placement; the
+  server composes the context).
+- [x] Tests: Go — free/attach/detach/placements/manuscripts-for-note, pad
+  delete leaves notes, content-version semantics, carry per placement
+  (follow both, merge, free note untouched); JS — `test-note-placements`
+  (API: both shapes, save mirroring, two margins, attach/detach, free note
+  lifecycle, pad delete); `test-scratchpad-notes` re-pinned to the new
+  rules. Raw-SQL fixtures keep working through the trigger.
+- [x] ~~⏸ Before deploy #2~~ The owner lifted the pause ("I'm not working on
+  the book at all, power through the phases", 2026-11-24) — phases 2 and 3
+  shipped as ONE deploy (see phase 3), after `snapshot_notes.sh`.
 
-### Phase 3 — stop writing legacy columns (deploy #3)
-- [ ] Remove the dual-writes, the legacy-column reads in tests, the raw-SQL
-  seeds; `undo_migration.sh` rewritten for `note_sentence` or retired
-  (already stale: it still says `annotation`).
-- [ ] One deploy cycle of soak (DEFERRED.md's rule).
+### Phase 3 — stop writing legacy columns (deployed WITH phase 2)
+- [x] Remove the dual-writes (`CreateNote`, `CreateScratchpadNote`,
+  `CreateFreeNote`, sketch notes, `MigrateNotes`, `ReorderNote`, attach /
+  detach — `syncLegacyPrimarySentence` is gone; 056 also makes
+  `note.position` nullable so the still-present column tolerates it), the
+  legacy-column reads in tests (`seedNote()` in `test-utils` writes a note
+  row + its placement; the nuke helpers delete via `note_sentence`; the Go
+  helpers read the primary placement), the raw-SQL seeds; `undo_migration.sh`
+  + its test retired (stale since the `annotation` rename; a rewrite can
+  come back when it is needed). `ReconcileNotePlacements` is pad-doc
+  mirroring only.
+- [x] ~~One deploy cycle of soak~~ replaced, at the owner's "power through",
+  by the full prod-copy rehearsal: the final binary against the copy with
+  the columns present (every write path over HTTP as `andrew`: create
+  sentence / pad / free note, attach, reorder, update, detach, complete,
+  trash — and 542 captured payloads), then 057, then the same captures again
+  byte-identical.
 
 ### Phase 4 — contract (deploy #4)
-- [ ] ⏸ Guard changeset (raise unless junction counts == non-null legacy
-  counts) + `057-note-drop-legacy-columns.xml` dropping `note.sentence_id`,
-  `note.scratchpad_id`, `note.position` and their indexes. Snapshot first.
-- [ ] Docs: ARCHITECTURE.md data model, NOTES_PLAN.md pointer, DEFERRED.md.
+- [ ] `057-note-placements-drop-legacy.xml`: a guarded `DO` block (raises —
+  and the changeset rolls back, the old container keeps serving — if any
+  legacy home lacks its placement row), then drops the mirror trigger and
+  `note.sentence_id`, `note.scratchpad_id`, `note.position` (their indexes
+  and the pad FK go with the columns). Snapshot first. Rehearsed on the prod
+  copy: guard 0/0, payloads identical before and after.
+- [x] Docs: ARCHITECTURE.md data model + migration notes, NOTES_PLAN.md
+  pointer, DEFERRED.md (placing notes from the UI), install.sh tool list.
 
 ## Rollback story
 - Phase 1: nothing reads the new tables; a bad deploy rolls the container
   back and the tables sit unused. `ReconcileNotePlacements` repairs drift on
   the next boot.
-- Phase 2: legacy columns are still written, so container rollback to the
-  phase-1 image restores the old readers losslessly. A junction bug shows as
-  notes missing from a view, not data loss; the snapshot CSVs cover the rest.
-- Phase 4 is the only irreversible step; it waits for the owner.
+- Phases 2+3 (one deploy): the legacy columns stay but are no longer
+  written, so a rollback to the phase-1 image shows notes created in between
+  without a margin home until the phase-2/3 image comes back (nothing is
+  lost: the placement rows are there). The window was empty by arrangement
+  (owner away). A junction bug shows as notes missing from a view, not data
+  loss; the snapshot CSVs cover the rest.
+- Phase 4 is the only irreversible step: the columns can be re-added from
+  the snapshot CSVs (`note.csv` has them) if a rollback to a pre-057 image
+  were ever needed; no image after phase 1 reads them.
 
 ## Out of scope (noted for later)
 - UI for placing an existing note (pad→sentence, sentence→pad, free→anywhere)

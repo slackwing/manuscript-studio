@@ -12,12 +12,14 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/slackwing/manuscript-studio/internal/models"
@@ -288,13 +290,16 @@ func (f *itFixture) noteVersionCount(t *testing.T, noteID int) int {
 	return n
 }
 
-// noteSentenceID reads the head row's sentence_id (nil when the note has none).
+// noteSentenceID reads the note's PRIMARY placement (nil when it has none).
 func (f *itFixture) noteSentenceID(t *testing.T, noteID int) *string {
 	t.Helper()
 	var sid *string
 	if err := f.pool.QueryRow(f.ctx,
-		`SELECT sentence_id FROM note WHERE note_id = $1`, noteID).Scan(&sid); err != nil {
-		t.Fatalf("read note %d: %v", noteID, err)
+		`SELECT sentence_id FROM note_sentence WHERE note_id = $1 ORDER BY created_at, sentence_id LIMIT 1`, noteID).Scan(&sid); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		t.Fatalf("read note %d placement: %v", noteID, err)
 	}
 	return sid
 }

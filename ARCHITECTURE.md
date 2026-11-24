@@ -92,6 +92,21 @@ test-all.sh          Test runner with fast/slow/all/js-only modes
 
 ## 4. Data model (see liquibase/changelog/001-initial-schema.xml)
 
+> **Notes, since 2026-11-24 (NOTE_PLACEMENTS_PLAN.md):** the `annotation`
+> table described below is today's `note` (renamed 2026-07), and a note no
+> longer has a home column. Where a note appears is rows in two junction
+> tables: **`note_sentence`** (one row per sentence placement — position in
+> that margin stack, origin sentence/migration/commit, `sentence_id_history`,
+> `migration_confidence`) and **`note_scratchpad`** (one row per pad the
+> note appears in, `removed_at` when its anchor left the doc; the pad doc's
+> `noteRef` atoms are the source of truth and are mirrored on every save).
+> A note can sit on several sentences, in several pads, or nowhere (a FREE
+> note). `note.manuscript_id` is the book a note is *about* (daily board,
+> pins, points), not a placement. `note_version` is CONTENT history only
+> (one row per edit, for every kind of note); carry-forward lineage lives on
+> the `note_sentence` row. `note.sentence_id`, `note.scratchpad_id` and
+> `note.position` were dropped in changeset 057.
+
 ### Core tables
 
 - **`user`** — `username` (PK), bcrypted `password_hash`, `role`.
@@ -190,6 +205,12 @@ any information.
 ---
 
 ## 6. Annotation migration algorithm
+
+> **Since 2026-11-24:** the unit carried across a migration is the
+> `note_sentence` PLACEMENT, not the note — each placement follows its own
+> sentence (same matcher and confidence), placements that land on one
+> sentence merge, and `note_version` is no longer written by migrations.
+> See NOTE_PLACEMENTS_PLAN.md. The description below predates that.
 
 Lives in `internal/migrations/processor.go`. Two modes:
 

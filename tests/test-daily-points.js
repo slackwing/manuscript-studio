@@ -6,7 +6,7 @@
 // other; the landing grid paints them green / gold (test-points-grid).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser, seedNote } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -29,12 +29,9 @@ function psql(sql) {
     // three tasks created three days ago. Plus a task created TODAY (never
     // on today's random pick) and one created YESTERDAY (on today's board,
     // not on yesterday's).
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, created_at)
-          SELECT '${U}', 'yellow', 'Board task ' || i, 'can', 'write', 'a' || i, ${M}, now() - interval '3 days'
-          FROM generate_series(1, 3) i`);
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, created_at)
-          VALUES ('${U}', 'green', 'Fresh task', 'can', 'write', 'b1', ${M}, now()),
-                 ('${U}', 'blue', 'Yesterday task', 'can', 'write', 'b2', ${M}, now() - interval '1 day 1 minute')`);
+    for (let i = 1; i <= 3; i++) seedNote({ user_id: U, color: 'yellow', body: `Board task ${i}`, priority: 'can', task_type: 'write', manuscript_id: M, created_at: { sql: "now() - interval '3 days'" } });
+    seedNote({ user_id: U, color: 'green', body: 'Fresh task', priority: 'can', task_type: 'write', manuscript_id: M, created_at: { sql: 'now()' } });
+    seedNote({ user_id: U, color: 'blue', body: 'Yesterday task', priority: 'can', task_type: 'write', manuscript_id: M, created_at: { sql: "now() - interval '1 day 1 minute'" } });
     const idOf = (body) => parseInt(psql(`SELECT note_id FROM note WHERE user_id='${U}' AND body='${body}'`), 10);
 
     await loginAsTestUser(page);

@@ -4,7 +4,7 @@
 // /api/tag-counts, cached in localStorage and busted on tag add/remove.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, loginAsTestUser, seedNote } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -24,7 +24,7 @@ const psql = (sql) => execSync(
   };
   wipe();
   const noteIds = [1, 2, 3].map((i) =>
-    psql(`INSERT INTO note (user_id, color, body, position) VALUES ('${TEST_USERNAME}','yellow','tagac fixture note ${i}','a${i}') RETURNING note_id`));
+    seedNote({ color: 'yellow', body: `tagac fixture note ${i}` }));
   const tagId = (name) => psql(`INSERT INTO tag (tag_name, user_id) VALUES ('${name}','${TEST_USERNAME}') RETURNING tag_id`);
   const ideas = tagId('ideas'), imagery = tagId('imagery'), plot = tagId('plot');
   noteIds.forEach((n) => psql(`INSERT INTO note_tag (note_id, tag_id) VALUES (${n},${ideas})`));

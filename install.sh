@@ -5,7 +5,7 @@
 #
 # SCRIPT_VERSION: bump on EVERY change to this file (see AGENTS.md).
 # Format: YYYY-MM-DD.N (N increments within the same day).
-SCRIPT_VERSION="2026-08-21.1"
+SCRIPT_VERSION="2026-11-24.1"
 
 set -euo pipefail
 
@@ -535,6 +535,6 @@ log_info "Container:      $CONTAINER_NAME"
 echo ""
 echo "Tools:"
 echo "  $SRC_DIR/debug/connect_db.sh        # psql shell against this DB"
-echo "  $SRC_DIR/debug/undo_migration.sh    # roll a manuscript back to an earlier migration"
+echo "  $SRC_DIR/debug/snapshot_notes.sh     # CSV snapshot of the note tables (before schema changes)"
 echo ""
 log_info "Installation complete!"

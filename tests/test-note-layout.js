@@ -7,7 +7,7 @@
 // note width; the trash stays on the right.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes, seedNote } = require('./test-utils');
 function psql(sql) {
   return execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
 }
@@ -45,10 +45,8 @@ function psql(sql) {
       await waitForPagination(page);
       const sid = await page.evaluate(() => document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]')[2].dataset.sentenceId);
       psql(`DELETE FROM note WHERE user_id='${U}' AND body LIKE 'Layout note%'`);
-      psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, sentence_id) VALUES
-        ('${U}', 'yellow', 'Layout note one', 'can', 'write', 'l1', ${M}, '${sid}'),
-        ('${U}', 'green', 'Layout note two', 'can', 'write', 'l2', ${M}, '${sid}'),
-        ('${U}', 'blue', 'Layout note three', 'can', 'write', 'l3', ${M}, '${sid}')`);
+      [['yellow', 'Layout note one', 'l1'], ['green', 'Layout note two', 'l2'], ['blue', 'Layout note three', 'l3']]
+        .forEach(([color, body, position]) => seedNote({ user_id: U, color, body, priority: 'can', task_type: 'write', manuscript_id: M, sentence_id: sid, position }));
       await page.reload();
       await waitForPagination(page);
       await page.evaluate(() => { window.WriteSysRenderer.currentSelectedSentenceId = null; });

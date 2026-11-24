@@ -5,7 +5,7 @@
 // clickable. Today-created and non-task notes never appear.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser, seedNote } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -24,14 +24,9 @@ function psql(sql) {
   const M = TEST_MANUSCRIPT_ID;
   // 18 eligible task notes (created yesterday), 2 today-created tasks and one
   // yesterday non-task — the latter three must never appear.
-  psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, created_at)
-        SELECT '${TEST_USERNAME}', 'yellow', 'Daily seed ' || i, 'can', 'write', 'a' || i, ${M}, now() - interval '1 day'
-        FROM generate_series(1, 18) i`);
-  psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id)
-        SELECT '${TEST_USERNAME}', 'green', 'Today task ' || i, 'can', 'write', 'b' || i, ${M}
-        FROM generate_series(1, 2) i`);
-  psql(`INSERT INTO note (user_id, color, body, position, manuscript_id, created_at)
-        VALUES ('${TEST_USERNAME}', 'blue', 'Yesterday non-task', 'c0', ${M}, now() - interval '1 day')`);
+  for (let i = 1; i <= 18; i++) seedNote({ color: 'yellow', body: `Daily seed ${i}`, priority: 'can', task_type: 'write', manuscript_id: M, created_at: { sql: "now() - interval '1 day'" } });
+  for (let i = 1; i <= 2; i++) seedNote({ color: 'green', body: `Today task ${i}`, priority: 'can', task_type: 'write', manuscript_id: M });
+  seedNote({ color: 'blue', body: 'Yesterday non-task', manuscript_id: M, created_at: { sql: "now() - interval '1 day'" } });
 
   await loginAsTestUser(page);
   await page.goto(HOME_URL);

@@ -66,7 +66,7 @@ const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98
   await page.waitForTimeout(2000); // debounced save
 
   const noteId = await page.locator('.sn-note-ref').first().getAttribute('data-note-id');
-  const row = psql(`SELECT color, body, (sentence_id IS NULL) AS no_sentence, (scratchpad_id IS NOT NULL) AS has_pad FROM note WHERE note_id=${noteId}`);
+  const row = psql(`SELECT color, body, NOT EXISTS (SELECT 1 FROM note_sentence WHERE note_id=n.note_id) AS no_sentence, EXISTS (SELECT 1 FROM note_scratchpad WHERE note_id=n.note_id AND removed_at IS NULL) AS has_pad FROM note n WHERE note_id=${noteId}`);
   check('note persisted as a scratchpad note (purple, no sentence, has pad)',
     /purple/.test(row) && /\|t\|t/.test(row.replace(/\s/g, '')), row.trim());
   // The doc stores note_id + text but NO color (one source of truth).
@@ -103,28 +103,33 @@ const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98
   check('ref color re-sourced from note data on reload (red, from DB — not the doc)',
     /color-red/.test(afterClass), afterClass);
 
-  // KEY: completely change the doc, THEN the note is deterministically
-  // soft-deleted when its ref leaves the doc (no sweep).
+  // An anchor LEAVING the doc is not a deletion (NOTE_PLACEMENTS_PLAN.md
+  // phase 2): the save closes the note's placement in this pad; the note
+  // lives on as a free note. (The trash deletes — test-note-delete-restores-text.)
   await page.locator('.spm-editor .ProseMirror').click();
   await page.keyboard.press('Control+A');
   await page.keyboard.type('totally different text now');
-  await page.waitForTimeout(600);
+  let closed = '';
+  for (let i = 0; i < 40 && closed !== 't'; i++) { // autosave debounce (1.2s) + the save
+    await page.waitForTimeout(100);
+    closed = psql(`SELECT removed_at IS NOT NULL FROM note_scratchpad WHERE note_id=${noteId}`).trim();
+  }
+  check('removing the ref (via bulk edit) closes the pad placement after the save', closed === 't', closed);
   const delRow = psql(`SELECT deleted_at IS NOT NULL AS del FROM note WHERE note_id=${noteId}`).trim();
-  check('removing the ref (via bulk edit) soft-deletes the note deterministically (no sweep)',
-    /^t$/.test(delRow), delRow);
+  check('…and does NOT delete the note (it is a free note now)', /^f$/.test(delRow), delRow);
 
-  // Deleting a PAD takes its notes with it — an orphaned pad note used to
-  // haunt the landing page with no UI left to remove it.
-  const padId = psql(`SELECT scratchpad_id FROM note WHERE note_id=${noteId}`).trim();
-  psql(`UPDATE note SET deleted_at = NULL WHERE note_id=${noteId}`); // resurrect as the pad's note
+  // Deleting a PAD closes its placements; the notes survive (as free notes,
+  // or on their other placements) — a free note is a first-class card now.
+  const padId = psql(`SELECT scratchpad_id FROM note_scratchpad WHERE note_id=${noteId}`).trim();
   const csrf = await page.evaluate(() => localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token'));
   const delStatus = await page.evaluate(async ({ padId, csrf }) => {
     const r = await fetch(`api/scratchpads/${padId}`, { method: 'DELETE', headers: { 'X-CSRF-Token': csrf }, credentials: 'include' });
     return r.status;
   }, { padId, csrf });
   check('pad deleted via API', delStatus === 204 || delStatus === 200, `status=${delStatus}`);
-  const orphanRow = psql(`SELECT deleted_at IS NOT NULL FROM note WHERE note_id=${noteId}`).trim();
-  check('deleting the pad soft-deletes its notes (no orphans)', /^t$/.test(orphanRow), orphanRow);
+  const survivor = psql(`SELECT deleted_at IS NULL FROM note WHERE note_id=${noteId}`).trim();
+  check('deleting the pad leaves its notes alive', /^t$/.test(survivor), survivor);
+  check('…with no live placement in the dead pad', psql(`SELECT count(*) FROM note_scratchpad WHERE scratchpad_id=${padId} AND removed_at IS NULL`).trim() === '0');
 
   await browser.close();
   process.exit(failed ? 1 : 0);

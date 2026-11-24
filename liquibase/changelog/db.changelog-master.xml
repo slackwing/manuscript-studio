@@ -62,5 +62,6 @@
     <include file="changelog/053-api-token.xml"/>
     <include file="changelog/054-note-placements.xml"/>
     <include file="changelog/055-note-placements-backfill.xml"/>
+    <include file="changelog/056-note-placements-readers.xml"/>
 
 </databaseChangeLog>

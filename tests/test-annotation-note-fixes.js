@@ -179,7 +179,7 @@ function psql(sql) {
     assert(race.currentSentenceId === raceSidB && race.realNotesInPanel === 0,
       `Panel for the newly-clicked sentence shows no stray note (got ${race.realNotesInPanel})`);
 
-    const dbSentence = psql(`SELECT sentence_id FROM note WHERE body='z' AND deleted_at IS NULL`);
+    const dbSentence = psql(`SELECT ns.sentence_id FROM note n JOIN note_sentence ns USING (note_id) WHERE n.body='z' AND n.deleted_at IS NULL`);
     assert(dbSentence === raceSidA,
       `Server row points at the original sentence (got "${dbSentence}")`);
 

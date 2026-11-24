@@ -12,7 +12,7 @@
 // points API's lazy backfill of pre-049 rows).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, cleanupTestNotes, loginAsTestUser, seedNote } = require('./test-utils');
 const GOS = require('../web/vendor/tuft/grid-of-squares.js');
 const { WriteSysHome } = require('../web/js/home.js');
 const HOME_URL = new URL('home.html', TEST_URL).href;
@@ -40,8 +40,7 @@ const heightOn = (date) => GOS.heightOn(WriteSysHome.POINTS_GRID, date);
 
   // One host note; the owner's example sequence (day-2 three over its
   // height, 6, 13 across day-2, day-1, today) → must display H2, 9, 13.
-  const noteId = psql(`INSERT INTO note (user_id, color, body, priority, task_type, position)
-    VALUES ('${TEST_USERNAME}', 'yellow', 'points host', 'can', 'write', 'pg0') RETURNING note_id`).split('\n')[0];
+  const noteId = seedNote({ color: 'yellow', body: 'points host', priority: 'can', task_type: 'write' });
   psql(`INSERT INTO point_event (note_id, points, scored_at) VALUES
     (${noteId}, ${H2 + 3}, now() - interval '2 days'),
     (${noteId}, 6,  now() - interval '1 day'),

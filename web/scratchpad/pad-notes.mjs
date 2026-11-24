@@ -1,18 +1,21 @@
 /**
  * Scratchpad NOTES (split out of editor-core.mjs — CODE_REVIEW_AUG_2026.md §1):
  * the atomic noteRef subsystem — active-view registry, note cache + ref-view
- * registry, note CRUD via the doc, NoteRefView, the floating note, the toolbar
- * color bar, and the teardown flags (editorTearingDown / suppressNoteDelete)
- * that keep destroy() from soft-deleting live notes (invariants §1.2#2–3).
+ * registry, note CRUD via the doc, NoteRefView, the floating note and the
+ * toolbar color bar.
  *
- * Module-boundary state (activeView, editorTearingDown) is shared through
- * exported getter/setter FUNCTIONS, not mutable exported bindings — the
- * setters are synchronous, so the editor-core teardown bracket
- * (setEditorTearingDown(true) strictly around view.destroy()) keeps its exact
- * old semantics.
+ * Since NOTE_PLACEMENTS_PLAN.md phase 2 a noteRef is a PLACEMENT: the server
+ * mirrors the doc's refs into note_scratchpad on every save, so a ref
+ * leaving the doc closes the placement and never deletes the note. Only the
+ * trash deletes (deleteNoteViaDoc). The old delete-on-unmount rule and its
+ * teardown/suppress flags are gone; setEditorTearingDown stays as an inert
+ * seam for editor-core's teardown bracket.
+ *
+ * Module-boundary state (activeView) is shared through exported
+ * getter/setter FUNCTIONS, not mutable exported bindings.
  */
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=6';
+import { holdScroll } from './scroll.mjs?v=7';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -239,26 +242,26 @@ function removeNoteFromDoc(noteId) {
   return true;
 }
 
-// Delete a note via the doc — removing the ref triggers destroy() → soft-delete.
+// Delete a note: the TRASH. Removes its refs from this doc AND deletes the
+// note on the server — explicitly (NOTE_PLACEMENTS_PLAN.md phase 2). An
+// anchor merely LEAVING the doc (typing over it, cut, undo, a paragraph
+// deleted) no longer deletes anything: the pad save closes the note's
+// placement here and the note lives on — on its other placements, or as a
+// free note on the landing page.
 function deleteNoteViaDoc(noteId) {
   removeNoteFromDoc(noteId);
   closeNoteFloat();
+  if (window.WriteSysNoteAPI && noteId) window.WriteSysNoteAPI.remove(noteId).catch(() => {});
 }
 
-// Set true while the editor is being torn down (modal close) so ref
-// NodeView.destroy() does NOT soft-delete the notes.
+// Kept for editor-core's teardown bracket (setEditorTearingDown(true) around
+// view.destroy()); destroy() no longer deletes, so the flag is inert.
 let editorTearingDown = false;
-// Setter seam (module split): editor-core brackets view.destroy() with
-// setEditorTearingDown(true/false) — synchronous, the exact old bracket
-// semantics (invariant §1.2#2).
 export function setEditorTearingDown(v) { editorTearingDown = v; }
-// Note ids whose ref is being removed for a reason OTHER than deletion (e.g.
-// "complete"). destroy() consults this and skips the soft-delete.
-const suppressNoteDelete = new Set();
+// Remove a note's refs WITHOUT deleting the note (e.g. "complete") — the
+// same operation as any other anchor removal now.
 function removeNoteRefNoDelete(noteId) {
-  suppressNoteDelete.add(noteId);
   removeNoteFromDoc(noteId);
-  setTimeout(() => suppressNoteDelete.delete(noteId), 0);
 }
 
 // The red trash glyph, reused from the sticky-note widget for visual
@@ -338,25 +341,14 @@ export class NoteRefView {
     this.dom.querySelector('.sn-note-ref-text').textContent = node.attrs.text;
     return true;
   }
+  // A ref leaving the doc is NOT a deletion (NOTE_PLACEMENTS_PLAN.md phase
+  // 2): the save mirrors the doc into note_scratchpad and the placement
+  // closes server-side; the note itself is only deleted by the trash
+  // (deleteNoteViaDoc). This retires the delete-on-unmount rule and its
+  // teardown / suppress flags — and the cut-then-paste hazard with it.
   destroy() {
     unregisterNoteRefView(this.noteId, this);
-    if (editorTearingDown || suppressNoteDelete.has(this.noteId) || !window.WriteSysNoteAPI || !this.noteId) return;
-    // Defense in depth: even when destroy fires, only soft-delete if the ref
-    // is GENUINELY gone from the doc after this transaction settles — a
-    // recreated view (any future update()-miss) must never kill a live note.
-    const noteId = this.noteId;
-    setTimeout(() => {
-      if (editorTearingDown) return;
-      const view = activeView;
-      let still = false;
-      if (view) {
-        view.state.doc.descendants((n) => {
-          if (still) return false;
-          if (n.type.name === 'noteRef' && n.attrs.noteId === noteId) { still = true; return false; }
-        });
-      }
-      if (!still) window.WriteSysNoteAPI.remove(noteId).catch(() => {});
-    }, 0);
+    void editorTearingDown;
   }
   stopEvent() { return true; }
   ignoreMutation() { return true; }

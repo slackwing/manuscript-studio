@@ -4,7 +4,6 @@ package database
 // skips #36, #37 race leg, #46 column leg are enabled — their fixes landed.)
 
 import (
-	"strings"
 	"sync"
 	"testing"
 
@@ -85,83 +84,6 @@ func TestGetNotesBySentence_EmptyIsJSONArray(t *testing.T) {
 	}
 }
 
-// #32: origin info aggregates from version 1 even after later versions exist.
-func TestGetNoteOriginInfo_MinAggregates(t *testing.T) {
-	f := newITFixture(t)
-	migID, sids := f.makeDoneMigration(t, "c32", "Origin sentence.", "Moved-to sentence.")
-	note := f.createNote(t, sids[0], "note body")
-
-	// Append a version pointing elsewhere.
-	moved := *note
-	moved.SentenceID = sids[1]
-	if err := f.db.UpdateNote(f.ctx, note.NoteID, &moved, &models.NoteVersion{}); err != nil {
-		t.Fatalf("update: %v", err)
-	}
-
-	tx, err := f.pool.Begin(f.ctx)
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	defer tx.Rollback(f.ctx)
-	originSID, originCommit, createdBy, originMigID, err := getNoteOriginInfo(f.ctx, tx, note.NoteID)
-	if err != nil {
-		t.Fatalf("getNoteOriginInfo: %v", err)
-	}
-	if originSID != sids[0] {
-		t.Errorf("origin sentence = %s, want %s (version 1's)", originSID, sids[0])
-	}
-	if originCommit != "c32" {
-		t.Errorf("origin commit = %s, want c32", originCommit)
-	}
-	if createdBy != f.username {
-		t.Errorf("created_by = %s, want %s", createdBy, f.username)
-	}
-	if originMigID == nil || *originMigID != migID {
-		t.Errorf("origin migration = %v, want %d", originMigID, migID)
-	}
-}
-
-// #33: history appends onto the stored chain, and CORRUPT stored JSON must
-// hard-error — never be silently replaced by a fresh chain (audit invariant).
-func TestGetSentenceHistory_AppendsAndRejectsCorrupt(t *testing.T) {
-	f := newITFixture(t)
-	_, sids := f.makeDoneMigration(t, "c33", "A sentence.")
-	note := f.createNote(t, sids[0], "note")
-
-	tx, err := f.pool.Begin(f.ctx)
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	historyJSON, err := getSentenceHistory(f.ctx, tx, note.NoteID, 1, "new-sid-1")
-	tx.Rollback(f.ctx)
-	if err != nil {
-		t.Fatalf("getSentenceHistory: %v", err)
-	}
-	if string(historyJSON) != `["new-sid-1"]` {
-		t.Errorf("history = %s, want [\"new-sid-1\"]", historyJSON)
-	}
-
-	// Corrupt the stored history (valid jsonb, wrong shape).
-	if _, err := f.pool.Exec(f.ctx, `
-		UPDATE note_version SET sentence_id_history = '{"not":"a chain"}'::jsonb
-		WHERE note_id = $1 AND version = 1
-	`, note.NoteID); err != nil {
-		t.Fatalf("corrupt: %v", err)
-	}
-	tx2, err := f.pool.Begin(f.ctx)
-	if err != nil {
-		t.Fatalf("begin 2: %v", err)
-	}
-	defer tx2.Rollback(f.ctx)
-	_, err = getSentenceHistory(f.ctx, tx2, note.NoteID, 1, "new-sid-2")
-	if err == nil {
-		t.Fatal("corrupt sentence_id_history must hard-error, not regenerate")
-	}
-	if !strings.Contains(err.Error(), "corrupt sentence_id_history") {
-		t.Errorf("error should name the corruption, got: %v", err)
-	}
-}
-
 // #34: CreateNote writes version 1 with the sentence's commit/migration as
 // origin, and stamps the note's manuscript_id.
 func TestCreateNote_FirstVersionAndOrigin(t *testing.T) {
@@ -210,8 +132,9 @@ func TestCreateNote_PositionAfterReorderedMax(t *testing.T) {
 	_, sids := f.makeDoneMigration(t, "c35", "A sentence.")
 
 	first := f.createNote(t, sids[0], "first")
+	// Positions live on the PLACEMENT (NOTE_PLACEMENTS_PLAN.md phase 2).
 	if _, err := f.pool.Exec(f.ctx,
-		`UPDATE note SET position = 'a00015' WHERE note_id = $1`, first.NoteID); err != nil {
+		`UPDATE note_sentence SET position = 'a00015' WHERE note_id = $1`, first.NoteID); err != nil {
 		t.Fatalf("set fractional position: %v", err)
 	}
 
@@ -253,59 +176,35 @@ func TestCreateNote_ManuscriptStampNeverSilentlySkipped(t *testing.T) {
 	}
 }
 
-// #37 (behavior leg): a scratchpad note gets NO note_version row, a per-pad
-// position, NULL sentence_id, and inherits manuscript_id only when given.
-func TestCreateScratchpadNote_NoVersionRow(t *testing.T) {
+// A scratchpad note (NOTES_PLAN.md Phase 2) has no sentence; since
+// NOTE_PLACEMENTS_PLAN.md phase 2 it still gets CONTENT version 1 — with a
+// NULL sentence — like every other note. Pad notes have no position.
+func TestCreateScratchpadNote_VersionOneWithoutSentence(t *testing.T) {
 	f := newITFixture(t)
-	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "pad 37")
+	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "pad 38")
 	if err != nil {
-		t.Fatalf("CreateScratchpad: %v", err)
+		t.Fatalf("pad: %v", err)
 	}
-	otherPad, err := f.db.CreateScratchpad(f.ctx, f.username, "pad 37b")
-	if err != nil {
-		t.Fatalf("CreateScratchpad 2: %v", err)
-	}
-
-	a := f.createPadNote(t, pad.ScratchpadID, "pad note a")
-	b := f.createPadNote(t, pad.ScratchpadID, "pad note b")
-	c := f.createPadNote(t, otherPad.ScratchpadID, "other pad note")
-
-	if f.noteVersionCount(t, a.NoteID) != 0 {
-		t.Errorf("scratchpad note has %d version rows, want 0", f.noteVersionCount(t, a.NoteID))
-	}
-	if sid := f.noteSentenceID(t, a.NoteID); sid != nil {
-		t.Errorf("scratchpad note sentence_id = %q, want NULL", *sid)
-	}
+	a := f.createPadNote(t, pad.ScratchpadID, "first")
+	b := f.createPadNote(t, pad.ScratchpadID, "second")
 	if a.ScratchpadID == nil || *a.ScratchpadID != pad.ScratchpadID {
 		t.Errorf("scratchpad_id = %v, want %d", a.ScratchpadID, pad.ScratchpadID)
 	}
-	// Position is per-pad: b appends after a; a fresh pad starts over.
-	if !(b.Position > a.Position) {
-		t.Errorf("b position %q must sort after a %q", b.Position, a.Position)
+	if sid := f.noteSentenceID(t, a.NoteID); sid != nil {
+		t.Errorf("sentence_id = %q, want NULL", *sid)
 	}
-	if c.Position != a.Position {
-		t.Errorf("fresh pad should restart positions: got %q, want %q", c.Position, a.Position)
+	if f.noteVersionCount(t, a.NoteID) != 1 {
+		t.Errorf("scratchpad note has %d version rows, want 1 (content version)", f.noteVersionCount(t, a.NoteID))
 	}
-	if a.ManuscriptID != nil {
-		t.Errorf("un-linked pad note has manuscript_id %v, want nil", a.ManuscriptID)
+	v, err := f.db.GetLatestNoteVersion(f.ctx, a.NoteID)
+	if err != nil {
+		t.Fatalf("latest: %v", err)
 	}
-
-	// Inheritance: note.ManuscriptID set by the caller (linked pad) persists.
-	body := "inherits"
-	linked := &models.Note{
-		UserID: f.username, Color: "green", Body: &body,
-		Priority: "none", TaskType: "", Impact: "n/a", ManuscriptID: &f.manuscriptID,
+	if v.Version != 1 || v.SentenceID != "" || v.OriginSentenceID != "" || v.Body == nil || *v.Body != "first" {
+		t.Errorf("version 1 = %+v, want v1 with no sentence and the body", v)
 	}
-	if err := f.db.CreateScratchpadNote(f.ctx, linked, pad.ScratchpadID); err != nil {
-		t.Fatalf("linked create: %v", err)
-	}
-	var stored *int
-	if err := f.pool.QueryRow(f.ctx,
-		`SELECT manuscript_id FROM note WHERE note_id = $1`, linked.NoteID).Scan(&stored); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if stored == nil || *stored != f.manuscriptID {
-		t.Errorf("inherited manuscript_id = %v, want %d", stored, f.manuscriptID)
+	if a.Position != "" || b.Position != "" {
+		t.Errorf("pad notes have no position (the doc orders them): %q / %q", a.Position, b.Position)
 	}
 }
 
@@ -339,92 +238,22 @@ func TestCreateScratchpadNote_ConcurrentPositionRace(t *testing.T) {
 			t.Fatalf("create %d: %v", i, err)
 		}
 	}
-	var distinct, total int
+	var live int
 	if err := f.pool.QueryRow(f.ctx, `
-		SELECT count(DISTINCT position), count(*) FROM note WHERE scratchpad_id = $1
-	`, pad.ScratchpadID).Scan(&distinct, &total); err != nil {
+		SELECT count(*) FROM note_scratchpad WHERE scratchpad_id = $1 AND removed_at IS NULL
+	`, pad.ScratchpadID).Scan(&live); err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if distinct != total {
-		t.Errorf("positions collided: %d distinct of %d notes", distinct, total)
+	if live != n {
+		t.Errorf("want %d live placements after %d concurrent creates, got %d", n, n, live)
 	}
 }
 
-// #38: the versionless-update guard excludes sentence notes; NULLIF task_type
-// and the body CASE behave as designed.
-func TestUpdateScratchpadNote_GuardExcludesSentenceNotes(t *testing.T) {
-	f := newITFixture(t)
-	_, sids := f.makeDoneMigration(t, "c38", "A sentence.")
-	sentenceNote := f.createNote(t, sids[0], "sentence note")
-
-	// A sentence note must be unreachable here — zero rows touched.
-	if err := f.db.UpdateScratchpadNote(f.ctx, sentenceNote.NoteID,
-		strPtr("red"), strPtr("hijacked"), nil, nil, nil, nil); err != nil {
-		t.Fatalf("update sentence note: %v", err)
-	}
-	var color, body string
-	if err := f.pool.QueryRow(f.ctx,
-		`SELECT color, body FROM note WHERE note_id = $1`, sentenceNote.NoteID).Scan(&color, &body); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if color != "yellow" || body != "sentence note" {
-		t.Errorf("guard failed: sentence note mutated to (%s, %s)", color, body)
-	}
-
-	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "pad 38")
-	if err != nil {
-		t.Fatalf("pad: %v", err)
-	}
-	tt := f.newTaskType(t, true)
-	padNote := f.createPadNote(t, pad.ScratchpadID, "pad body")
-
-	readNote := func() (color string, body *string, taskType *string, priority string, blocked bool) {
-		if err := f.pool.QueryRow(f.ctx,
-			`SELECT color, body, task_type, priority, blocked FROM note WHERE note_id = $1`,
-			padNote.NoteID).Scan(&color, &body, &taskType, &priority, &blocked); err != nil {
-			t.Fatalf("read pad note: %v", err)
-		}
-		return
-	}
-
-	// nil body → body untouched; nil taskType → kept.
-	if err := f.db.UpdateScratchpadNote(f.ctx, padNote.NoteID,
-		strPtr("blue"), nil, strPtr("must"), nil, nil, boolPtr(true)); err != nil {
-		t.Fatalf("update 1: %v", err)
-	}
-	color2, body2, tt2, prio2, blocked2 := readNote()
-	if color2 != "blue" || body2 == nil || *body2 != "pad body" || tt2 != nil || prio2 != "must" || !blocked2 {
-		t.Errorf("update 1: got (%s, %v, %v, %s, %v)", color2, body2, tt2, prio2, blocked2)
-	}
-
-	// Provided body pointer wins (even to clear it — blank is stored NULL,
-	// so the note shows its default, 052); task type set by name.
-	if err := f.db.UpdateScratchpadNote(f.ctx, padNote.NoteID,
-		nil, strPtr("  "), nil, &tt, nil, nil); err != nil {
-		t.Fatalf("update 2: %v", err)
-	}
-	_, body3, tt3, _, _ := readNote()
-	if body3 != nil {
-		t.Errorf("a provided blank body should clear the text (NULL), got %q", *body3)
-	}
-	if tt3 == nil || *tt3 != tt {
-		t.Errorf("task_type = %v, want %s", tt3, tt)
-	}
-
-	// taskType pointer to "" → NULLIF clears to NULL.
-	if err := f.db.UpdateScratchpadNote(f.ctx, padNote.NoteID,
-		nil, nil, nil, strPtr(""), nil, nil); err != nil {
-		t.Fatalf("update 3: %v", err)
-	}
-	_, _, tt4, _, _ := readNote()
-	if tt4 != nil {
-		t.Errorf("task_type = %v, want NULL after empty-string clear", *tt4)
-	}
-}
-
-// #39: each update appends version max+1, the sentence-id history grows, and
-// origin fields carry forward from version 1.
-func TestUpdateNote_AppendsVersionWithHistory(t *testing.T) {
+// #39 (phase 2 form): each update appends CONTENT version max+1; origin
+// fields carry forward from version 1; the sentence-id history is the
+// placements' business now and is carried through UNCHANGED by content
+// versions (no edit ever "moves" a note).
+func TestUpdateNote_AppendsContentVersion(t *testing.T) {
 	f := newITFixture(t)
 	migID, sids := f.makeDoneMigration(t, "c39", "Sentence A.", "Sentence B.")
 	note := f.createNote(t, sids[0], "v1")
@@ -440,10 +269,10 @@ func TestUpdateNote_AppendsVersionWithHistory(t *testing.T) {
 		t.Errorf("version = %d, want 2", v2.Version)
 	}
 
-	moved := edit
-	moved.SentenceID = sids[1]
+	again := edit
+	again.Priority = "must"
 	v3 := &models.NoteVersion{}
-	if err := f.db.UpdateNote(f.ctx, note.NoteID, &moved, v3); err != nil {
+	if err := f.db.UpdateNote(f.ctx, note.NoteID, &again, v3); err != nil {
 		t.Fatalf("update 2: %v", err)
 	}
 	if v3.Version != 3 {
@@ -455,18 +284,23 @@ func TestUpdateNote_AppendsVersionWithHistory(t *testing.T) {
 	if v3.OriginMigrationID == nil || *v3.OriginMigrationID != migID {
 		t.Errorf("origin migration = %v, want %d", v3.OriginMigrationID, migID)
 	}
+	if v3.SentenceID != sids[0] {
+		t.Errorf("content version carries the primary placement %s, got %s", sids[0], v3.SentenceID)
+	}
 
 	latest, err := f.db.GetLatestNoteVersion(f.ctx, note.NoteID)
 	if err != nil {
 		t.Fatalf("latest: %v", err)
 	}
-	// History: v1 [], v2 [sidA], v3 [sidA, sidB].
-	if len(latest.SentenceIDHistory) != 2 ||
-		latest.SentenceIDHistory[0] != sids[0] || latest.SentenceIDHistory[1] != sids[1] {
-		t.Errorf("history = %v, want [%s %s]", latest.SentenceIDHistory, sids[0], sids[1])
+	if len(latest.SentenceIDHistory) != 0 {
+		t.Errorf("content versions must not grow the carry history: %v", latest.SentenceIDHistory)
 	}
-	if latest.Body == nil || *latest.Body != "v2" || latest.Color != "blue" {
-		t.Errorf("latest fields = (%v, %s)", latest.Body, latest.Color)
+	if latest.Body == nil || *latest.Body != "v2" || latest.Color != "blue" || latest.Priority != "must" {
+		t.Errorf("latest fields = (%v, %s, %s)", latest.Body, latest.Color, latest.Priority)
+	}
+	// The placement is untouched by edits.
+	if sid := f.noteSentenceID(t, note.NoteID); sid == nil || *sid != sids[0] {
+		t.Errorf("edit moved the note: %v", sid)
 	}
 }
 
@@ -478,8 +312,8 @@ func TestMigrateNotes_AllOrNothing(t *testing.T) {
 	note := f.createNote(t, sids[0], "migrates")
 
 	items := []NoteMigrationItem{
-		{NoteID: note.NoteID, NewSentenceID: newSids[0], Confidence: 1.0},
-		{NoteID: -12345, NewSentenceID: newSids[0], Confidence: 1.0},
+		{NoteID: note.NoteID, OldSentenceID: sids[0], NewSentenceID: newSids[0], Confidence: 1.0},
+		{NoteID: -12345, OldSentenceID: sids[0], NewSentenceID: newSids[0], Confidence: 1.0},
 	}
 	n, err := f.db.MigrateNotes(f.ctx, items)
 	if err == nil {
@@ -524,15 +358,15 @@ func TestMigrateNotes_SkipsNullSentenceNotes(t *testing.T) {
 	if sid := f.noteSentenceID(t, padNote.NoteID); sid != nil {
 		t.Errorf("scratchpad note was repointed to %q — must stay NULL", *sid)
 	}
-	if got := f.noteVersionCount(t, padNote.NoteID); got != 0 {
-		t.Errorf("version rows = %d, want 0", got)
+	if got := f.noteVersionCount(t, padNote.NoteID); got != 1 {
+		t.Errorf("version rows = %d, want 1 (content version 1 only)", got)
 	}
 }
 
-// #42: the appended migration version copies fields from the LATEST
-// note_version, not from the (possibly desynced) head row, and records the
-// pairing confidence.
-func TestMigrateNotes_VersionFieldsFromLatestVersion(t *testing.T) {
+// #42 (phase 2 form): a migration carries the PLACEMENT — new sentence,
+// confidence and history on the note_sentence row — and writes NO content
+// version; the latest version is still the owner's last edit.
+func TestMigrateNotes_CarriesPlacementNotVersions(t *testing.T) {
 	f := newITFixture(t)
 	_, sids := f.makeDoneMigration(t, "c42a", "Old sentence.")
 	_, newSids := f.makeDoneMigration(t, "c42b", "New sentence.")
@@ -545,14 +379,9 @@ func TestMigrateNotes_VersionFieldsFromLatestVersion(t *testing.T) {
 	if err := f.db.UpdateNote(f.ctx, note.NoteID, &edit, &models.NoteVersion{}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	// Desync the head row on purpose.
-	if _, err := f.pool.Exec(f.ctx,
-		`UPDATE note SET color = 'red', priority = 'can' WHERE note_id = $1`, note.NoteID); err != nil {
-		t.Fatalf("desync: %v", err)
-	}
 
 	n, err := f.db.MigrateNotes(f.ctx, []NoteMigrationItem{
-		{NoteID: note.NoteID, NewSentenceID: newSids[0], Confidence: 0.87},
+		{NoteID: note.NoteID, OldSentenceID: sids[0], NewSentenceID: newSids[0], Confidence: 0.87},
 	})
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -561,18 +390,30 @@ func TestMigrateNotes_VersionFieldsFromLatestVersion(t *testing.T) {
 		t.Errorf("count = %d, want 1", n)
 	}
 
+	var placedOn string
+	var conf *float64
+	var hist []byte
+	if err := f.pool.QueryRow(f.ctx, `
+		SELECT sentence_id, migration_confidence, sentence_id_history FROM note_sentence WHERE note_id = $1`,
+		note.NoteID).Scan(&placedOn, &conf, &hist); err != nil {
+		t.Fatalf("placement: %v", err)
+	}
+	if placedOn != newSids[0] || conf == nil || *conf != 0.87 || string(hist) != `["`+newSids[0]+`"]` {
+		t.Errorf("placement = (%s, %v, %s), want (%s, 0.87, [%s])", placedOn, conf, hist, newSids[0], newSids[0])
+	}
+	if got := f.noteVersionCount(t, note.NoteID); got != 2 {
+		t.Errorf("version rows = %d, want 2 (migrations write none)", got)
+	}
 	latest, err := f.db.GetLatestNoteVersion(f.ctx, note.NoteID)
 	if err != nil {
 		t.Fatalf("latest: %v", err)
 	}
-	if latest.Version != 3 || latest.SentenceID != newSids[0] {
-		t.Errorf("latest = v%d @ %s, want v3 @ %s", latest.Version, latest.SentenceID, newSids[0])
+	if latest.Version != 2 || latest.Color != "blue" || latest.Body == nil || *latest.Body != "v2 body" {
+		t.Errorf("latest should still be the owner's edit: v%d %s %v", latest.Version, latest.Color, latest.Body)
 	}
-	if latest.Color != "blue" || latest.Priority != "must" || latest.Body == nil || *latest.Body != "v2 body" {
-		t.Errorf("fields came from head, not note_version: (%s, %s, %v)", latest.Color, latest.Priority, latest.Body)
-	}
-	if latest.MigrationConfidence == nil || *latest.MigrationConfidence != 0.87 {
-		t.Errorf("confidence = %v, want 0.87", latest.MigrationConfidence)
+	// Legacy column mirrors the (only) placement.
+	if sid := f.noteSentenceID(t, note.NoteID); sid == nil || *sid != newSids[0] {
+		t.Errorf("legacy sentence_id = %v, want %s", sid, newSids[0])
 	}
 }
 
@@ -627,15 +468,16 @@ func TestScorePoints_WritesEvent(t *testing.T) {
 	}
 }
 
-// #45: the latest version is picked and the history JSON round-trips.
+// #45 (phase 2 form): the latest version is picked and the history JSON
+// round-trips — an empty chain stays an empty slice, never a nil crash.
 func TestGetLatestNoteVersion_HistoryUnmarshal(t *testing.T) {
 	f := newITFixture(t)
 	_, sids := f.makeDoneMigration(t, "c45", "Sentence A.", "Sentence B.")
 	note := f.createNote(t, sids[0], "v1")
 
-	moved := *note
-	moved.SentenceID = sids[1]
-	if err := f.db.UpdateNote(f.ctx, note.NoteID, &moved, &models.NoteVersion{}); err != nil {
+	edit := *note
+	edit.Body = strPtr("v2")
+	if err := f.db.UpdateNote(f.ctx, note.NoteID, &edit, &models.NoteVersion{}); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
@@ -646,11 +488,9 @@ func TestGetLatestNoteVersion_HistoryUnmarshal(t *testing.T) {
 	if latest.Version != 2 {
 		t.Errorf("version = %d, want 2 (the latest)", latest.Version)
 	}
-	// getSentenceHistory appends the NEW sentence id onto v1's empty chain.
-	if len(latest.SentenceIDHistory) != 1 || latest.SentenceIDHistory[0] != sids[1] {
-		t.Errorf("history = %v, want [%s]", latest.SentenceIDHistory, sids[1])
+	if latest.SentenceIDHistory == nil || len(latest.SentenceIDHistory) != 0 {
+		t.Errorf("history = %v, want an empty (non-nil) chain", latest.SentenceIDHistory)
 	}
-	// Version 1's empty history also round-trips (as empty, not nil-crash).
 	if _, err := f.db.GetLatestNoteVersion(f.ctx, -1); err == nil {
 		t.Error("missing note should error (no ErrNoRows special case)")
 	}

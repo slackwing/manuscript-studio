@@ -47,3 +47,9 @@ away. Prune when shipped.
   (`POST api/admin/invites` / `debug/mint_invite.sh`) and live only in
   the DB; an admin surface for listing/revoking codes can come with the
   email work. Same origin.
+- **Placing notes from the UI** — the backend supports a note on several
+  sentences / pads and free notes (NOTE_PLACEMENTS_PLAN.md, 2026-11-24):
+  `PUT /api/notes/{id}/sentences/{sid}`, a `noteRef` for an existing note
+  in a pad, `POST /api/notes` with no home. No UI yet for "put this note
+  there too", for creating a free note, or for a card context with N
+  placements. Origin: NOTE_PLACEMENTS_PLAN.md "Out of scope".

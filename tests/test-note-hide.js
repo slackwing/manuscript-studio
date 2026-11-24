@@ -9,7 +9,7 @@
 // SHOT_DIR=<dir> saves screenshots.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes, seedNote } = require('./test-utils');
 function psql(sql) {
   return execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
 }
@@ -29,10 +29,9 @@ function psql(sql) {
     await page.goto(TEST_URL);
     await waitForPagination(page);
     const sid = await page.evaluate(() => document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]')[2].dataset.sentenceId);
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, sentence_id) VALUES
-      ('${U}', 'yellow', 'Eye note A', 'can', 'write', 'e1', ${M}, '${sid}'),
-      ('${U}', 'green', 'Eye note B', 'none', NULL, 'e2', ${M}, '${sid}'),
-      ('${other}', 'blue', 'Eye note C (someone else)', 'none', NULL, 'e3', ${M}, '${sid}')`);
+    seedNote({ user_id: U, color: 'yellow', body: 'Eye note A', priority: 'can', task_type: 'write', manuscript_id: M, sentence_id: sid, position: 'e1' });
+    seedNote({ user_id: U, color: 'green', body: 'Eye note B', manuscript_id: M, sentence_id: sid, position: 'e2' });
+    seedNote({ user_id: other, color: 'blue', body: 'Eye note C (someone else)', manuscript_id: M, sentence_id: sid, position: 'e3' });
     const idOf = (b) => psql(`SELECT note_id FROM note WHERE body='${b}'`);
     const hides = (b, who = U) => psql(`SELECT count(*) FROM note_hide WHERE username='${who}' AND note_id=${idOf(b)}`);
     const noteSel = (b) => `#sticky-notes-container .sticky-note[data-annotation-id="${idOf(b)}"]`;
@@ -96,8 +95,7 @@ function psql(sql) {
     check('…with the slashed eye; view arrow only on my own note', rowA.icon && rowA.view && !rowC.view, JSON.stringify(rows));
     // A hide older than the newest 20 other actions still lists.
     psql(`UPDATE note_hide SET created_at = now() - interval '400 days' WHERE username='${U}' AND note_id=${idOf('Eye note C (someone else)')}`);
-    psql(`INSERT INTO note (user_id, color, body, priority, position, manuscript_id, completed_at)
-          SELECT '${U}', 'yellow', 'Eye note filler ' || i, 'none', 'z' || i, ${M}, now() FROM generate_series(1, 25) i`);
+    for (let i = 1; i <= 25; i++) seedNote({ user_id: U, color: 'yellow', body: `Eye note filler ${i}`, manuscript_id: M, completed_at: { sql: 'now()' } });
     await page.reload();
     await page.waitForSelector('#na-rows .na-hidden');
     check('a hide never ages out of the list (25 newer actions)', await page.evaluate(() =>

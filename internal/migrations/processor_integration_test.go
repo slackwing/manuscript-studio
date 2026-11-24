@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/slackwing/manuscript-studio/internal/database"
@@ -73,17 +74,12 @@ func uniqueManuscript(t *testing.T, ctx context.Context, db *database.DB) (manus
 func nukeManuscript(t *testing.T, ctx context.Context, pool *pgxpool.Pool, manuscriptID int) {
 	t.Helper()
 	stmts := []string{
-		`DELETE FROM note_tag WHERE note_id IN (
-			SELECT note_id FROM note WHERE sentence_id IN (
+		// Notes placed on the manuscript's sentences (note_sentence); the
+		// junction + version + tag rows cascade from the note.
+		`DELETE FROM note WHERE note_id IN (
+			SELECT ns.note_id FROM note_sentence ns WHERE ns.sentence_id IN (
 				SELECT sentence_id FROM sentence WHERE migration_id IN (
 					SELECT migration_id FROM migration WHERE manuscript_id = $1)))`,
-		`DELETE FROM note_version WHERE note_id IN (
-			SELECT note_id FROM note WHERE sentence_id IN (
-				SELECT sentence_id FROM sentence WHERE migration_id IN (
-					SELECT migration_id FROM migration WHERE manuscript_id = $1)))`,
-		`DELETE FROM note WHERE sentence_id IN (
-			SELECT sentence_id FROM sentence WHERE migration_id IN (
-				SELECT migration_id FROM migration WHERE manuscript_id = $1))`,
 		`DELETE FROM suggested_change WHERE sentence_id IN (
 			SELECT sentence_id FROM sentence WHERE migration_id IN (
 				SELECT migration_id FROM migration WHERE manuscript_id = $1))`,
@@ -153,31 +149,35 @@ func insertNote(t *testing.T, ctx context.Context, db *database.DB, sentenceID, 
 	return a.NoteID
 }
 
+// getNoteSentenceID: the note's PRIMARY placement (its first sentence), ""
+// when it has none.
 func getNoteSentenceID(t *testing.T, ctx context.Context, pool *pgxpool.Pool, noteID int) string {
 	t.Helper()
-	var sid string
-	if err := pool.QueryRow(ctx, `SELECT sentence_id FROM note WHERE note_id = $1`, noteID).Scan(&sid); err != nil {
-		t.Fatalf("read note: %v", err)
+	var sid *string
+	if err := pool.QueryRow(ctx, `
+		SELECT sentence_id FROM note_sentence WHERE note_id = $1 ORDER BY created_at, sentence_id LIMIT 1
+	`, noteID).Scan(&sid); err != nil && err != pgx.ErrNoRows {
+		t.Fatalf("read note placement: %v", err)
 	}
-	return sid
+	if sid == nil {
+		return ""
+	}
+	return *sid
 }
 
-func getLatestVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, noteID int) (version int, sentenceID string, confidence *float64) {
+// getPlacement reads the note's (single) placement row: where it sits and
+// the last carry's confidence (NOTE_PLACEMENTS_PLAN.md: lineage is per
+// placement, not per note_version).
+func getPlacement(t *testing.T, ctx context.Context, pool *pgxpool.Pool, noteID int) (sentenceID string, confidence *float64) {
 	t.Helper()
 	if err := pool.QueryRow(ctx, `
-		SELECT version, sentence_id, migration_confidence
-		FROM note_version
-		WHERE note_id = $1
-		ORDER BY version DESC
-		LIMIT 1
-	`, noteID).Scan(&version, &sentenceID, &confidence); err != nil {
-		t.Fatalf("read latest version: %v", err)
+		SELECT sentence_id, migration_confidence FROM note_sentence WHERE note_id = $1
+	`, noteID).Scan(&sentenceID, &confidence); err != nil {
+		t.Fatalf("read placement: %v", err)
 	}
 	return
 }
 
-// Returns the first sentence_id under migrationID whose text starts with prefix,
-// so tests don't have to recompute the deterministic sentence-id hash by hand.
 func findSentenceIDByPrefix(t *testing.T, ctx context.Context, pool *pgxpool.Pool, migrationID int, prefix string) string {
 	t.Helper()
 	var sid string
@@ -248,12 +248,9 @@ func TestMigration_BootstrapThenNoOp(t *testing.T) {
 		t.Fatalf("note should now point to new sentence id %s, got %s", s2New, got)
 	}
 
-	v, sidV, conf := getLatestVersion(t, f.ctx, f.pool, annID)
-	if v < 2 {
-		t.Errorf("expected at least version 2, got %d", v)
-	}
+	sidV, conf := getPlacement(t, f.ctx, f.pool, annID)
 	if sidV != s2New {
-		t.Errorf("latest version sentence_id = %s, want %s", sidV, s2New)
+		t.Errorf("placement sentence_id = %s, want %s", sidV, s2New)
 	}
 	if conf == nil || *conf < 0.99 {
 		t.Errorf("identical text should yield confidence ~1.0, got %v", conf)
@@ -280,9 +277,9 @@ func TestMigration_SentenceEdited(t *testing.T) {
 	if got != newTarget {
 		t.Fatalf("note didn't follow the edit: pointing at %s, want %s", got, newTarget)
 	}
-	_, _, conf := getLatestVersion(t, f.ctx, f.pool, annID)
+	_, conf := getPlacement(t, f.ctx, f.pool, annID)
 	if conf == nil {
-		t.Fatal("expected non-nil confidence on migrated version")
+		t.Fatal("expected non-nil confidence on the carried placement")
 	}
 	// ~1 of 9 words changed → similarity ≈ 0.88.
 	if *conf < 0.7 {
@@ -347,13 +344,13 @@ func TestMigration_SentencelessNote_Untouched(t *testing.T) {
 	doomed := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The doomed")
 	sentNoteID := insertNote(t, f.ctx, f.db, doomed, f.username, "sentence note")
 
-	// A sentence-less note inserted directly (scratchpad-note kind; created via
-	// SQL because CreateNote derives origin from a sentence).
+	// A note with no sentence placement (a pad / free note), inserted
+	// directly.
 	body := "a scratchpad note with no sentence"
 	var slessID int
 	if err := f.pool.QueryRow(f.ctx, `
-		INSERT INTO note (sentence_id, user_id, color, body, priority, position)
-		VALUES (NULL, $1, 'green', $2, 'none', 'a0')
+		INSERT INTO note (user_id, color, body, priority)
+		VALUES ($1, 'green', $2, 'none')
 		RETURNING note_id
 	`, f.username, body).Scan(&slessID); err != nil {
 		t.Fatalf("insert sentence-less note: %v", err)
@@ -366,13 +363,9 @@ func TestMigration_SentencelessNote_Untouched(t *testing.T) {
 	if got := getNoteSentenceID(t, f.ctx, f.pool, sentNoteID); got == doomed || got == "" {
 		t.Fatalf("sentence note not migrated correctly: got %q", got)
 	}
-	// The sentence-less note is untouched: sentence_id still NULL.
-	var slessSentence *string
-	if err := f.pool.QueryRow(f.ctx, `SELECT sentence_id FROM note WHERE note_id = $1`, slessID).Scan(&slessSentence); err != nil {
-		t.Fatalf("read sentence-less note: %v", err)
-	}
-	if slessSentence != nil {
-		t.Fatalf("sentence-less note was migrated! sentence_id became %q (should stay NULL)", *slessSentence)
+	// The unplaced note is untouched: still no placement.
+	if got := getNoteSentenceID(t, f.ctx, f.pool, slessID); got != "" {
+		t.Fatalf("unplaced note was migrated! it is now on %q (should have no placement)", got)
 	}
 }
 
@@ -1037,8 +1030,103 @@ func TestMigration_PlacementRowFollowsTheNote(t *testing.T) {
 	if string(hist) != `["`+newTarget+`"]` {
 		t.Fatalf("history should chain the new sentence: %s", hist)
 	}
-	// Parity with the legacy column the phase-1 readers use.
-	if got := getNoteSentenceID(t, f.ctx, f.pool, annID); got != newTarget {
-		t.Fatalf("legacy sentence_id %s should match the placement %s", got, newTarget)
+}
+
+// NOTE_PLACEMENTS_PLAN.md phase 2: a note placed on TWO sentences is carried
+// placement by placement — each follows its own sentence.
+func TestMigration_MultiPlacementNoteFollowsBothSentences(t *testing.T) {
+	f := newFixture(t)
+	v1 := "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. The five boxing wizards jump quickly."
+	v2 := "The quick brown fox jumps over the sleepy dog. Pack my box with five dozen liquor jugs. The five boxing wizards jump very quickly."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "mp-v1", v1)
+	fox := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The quick brown fox")
+	wiz := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The five boxing")
+	annID := insertNote(t, f.ctx, f.db, fox, f.username, "on fox and wizards")
+	if err := f.db.AttachNoteToSentence(f.ctx, annID, wiz); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "mp-v2", v2)
+	foxNew := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "The quick brown fox")
+	wizNew := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "The five boxing")
+
+	rows, err := f.pool.Query(f.ctx, `SELECT sentence_id, migration_confidence FROM note_sentence WHERE note_id = $1 ORDER BY created_at`, annID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var sid string
+		var conf *float64
+		if err := rows.Scan(&sid, &conf); err != nil {
+			t.Fatal(err)
+		}
+		if conf == nil || *conf < 0.7 {
+			t.Errorf("placement %s should carry a high confidence, got %v", sid, conf)
+		}
+		got = append(got, sid)
+	}
+	if len(got) != 2 || got[0] != foxNew || got[1] != wizNew {
+		t.Fatalf("placements after the carry = %v, want [%s %s]", got, foxNew, wizNew)
+	}
+	// The primary placement stays the first-made one.
+	if primary := getNoteSentenceID(t, f.ctx, f.pool, annID); primary != foxNew {
+		t.Errorf("primary placement = %s, want %s", primary, foxNew)
+	}
+}
+
+// Two placements whose sentences MERGE land on one new sentence: one row.
+func TestMigration_MultiPlacementMergesOnMergedSentences(t *testing.T) {
+	f := newFixture(t)
+	v1 := "First sentence here. Second sentence here. Third sentence here."
+	v2 := "First sentence here. Second sentence here and third sentence here. "
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "mg-v1", v1)
+	second := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Second sentence")
+	third := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "Third sentence")
+	annID := insertNote(t, f.ctx, f.db, second, f.username, "spans two")
+	if err := f.db.AttachNoteToSentence(f.ctx, annID, third); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "mg-v2", v2)
+	var n int
+	if err := f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_sentence WHERE note_id = $1`, annID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("merged placements should collapse to one row, got %d", n)
+	}
+	var placed string
+	if err := f.pool.QueryRow(f.ctx, `SELECT sentence_id FROM note_sentence WHERE note_id = $1`, annID).Scan(&placed); err != nil {
+		t.Fatal(err)
+	}
+	var mig int
+	if err := f.pool.QueryRow(f.ctx, `SELECT migration_id FROM sentence WHERE sentence_id = $1`, placed).Scan(&mig); err != nil {
+		t.Fatal(err)
+	}
+	if mig != mID2 {
+		t.Fatalf("the surviving placement should be on the new migration %d, got %d (%s)", mID2, mig, placed)
+	}
+}
+
+// A FREE note (no placement) is never touched by a migration.
+func TestMigration_FreeNoteUntouched(t *testing.T) {
+	f := newFixture(t)
+	content := "Sentence one is here. Sentence two follows."
+	runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "free-v1", content)
+	body := "free as a bird"
+	free := &models.Note{UserID: f.username, Color: "blue", Body: &body, Priority: "none", TaskType: "reminder", Impact: "n/a"}
+	if err := f.db.CreateFreeNote(f.ctx, free); err != nil {
+		t.Fatalf("CreateFreeNote: %v", err)
+	}
+	runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "free-v2", content+" And a third.")
+	var placements, versions int
+	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_sentence WHERE note_id = $1`, free.NoteID).Scan(&placements)
+	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_version WHERE note_id = $1`, free.NoteID).Scan(&versions)
+	if placements != 0 || versions != 1 {
+		t.Fatalf("free note after a migration: placements=%d versions=%d, want 0 and 1", placements, versions)
 	}
 }

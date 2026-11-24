@@ -5,7 +5,7 @@
 // SHOT_DIR=<dir> also saves screenshots.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes, seedNote } = require('./test-utils');
 function psql(sql) {
   return execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
 }
@@ -41,9 +41,8 @@ function psql(sql) {
     await page.goto(TEST_URL);
     await waitForPagination(page);
     const sid = await page.evaluate(() => document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]')[2].dataset.sentenceId);
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, sentence_id) VALUES
-      ('${U}', 'yellow', 'Material note', 'none', '${T}', 'm1', ${M}, '${sid}'),
-      ('${U}', 'yellow', 'Reminder note', 'none', 'reminder', 'm2', ${M}, '${sid}')`);
+    seedNote({ user_id: U, color: 'yellow', body: 'Material note', task_type: T, manuscript_id: M, sentence_id: sid, position: 'm1' });
+    seedNote({ user_id: U, color: 'yellow', body: 'Reminder note', task_type: 'reminder', manuscript_id: M, sentence_id: sid, position: 'm2' });
     const idOf = (b) => psql(`SELECT note_id FROM note WHERE body='${b}' AND user_id='${U}'`);
     const noteSel = (b) => `#sticky-notes-container .sticky-note[data-annotation-id="${idOf(b)}"]`;
     const shown = (b) => page.evaluate((s) => {

@@ -18,13 +18,19 @@ import (
 )
 
 // refreshSentenceNoteDefaults recomputes default_body for the sentence
-// notes the WHERE clause (on note n) selects; $1 is its argument.
+// notes the WHERE clause (on note n / its primary sentence s) selects; $1
+// is its argument. A note's default comes from its PRIMARY placement (the
+// earliest sentence it was placed on — NOTE_PLACEMENTS_PLAN.md phase 2).
 func (db *DB) refreshSentenceNoteDefaults(ctx context.Context, where string, arg any) (int, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT n.note_id, s.text, sc.text, n.default_body
 		FROM note n
-		JOIN sentence s ON s.sentence_id = n.sentence_id
-		LEFT JOIN suggested_change sc ON sc.sentence_id = n.sentence_id AND sc.user_id = n.user_id
+		JOIN LATERAL (
+		    SELECT ns.sentence_id FROM note_sentence ns WHERE ns.note_id = n.note_id
+		    ORDER BY ns.created_at, ns.sentence_id LIMIT 1
+		) place ON true
+		JOIN sentence s ON s.sentence_id = place.sentence_id
+		LEFT JOIN suggested_change sc ON sc.sentence_id = place.sentence_id AND sc.user_id = n.user_id
 		WHERE n.deleted_at IS NULL AND `+where, arg)
 	if err != nil {
 		return 0, fmt.Errorf("note defaults: list: %w", err)
@@ -64,7 +70,7 @@ func (db *DB) refreshSentenceNoteDefaults(ctx context.Context, where string, arg
 // RefreshSentenceNoteDefaults: the notes on these sentences (a note was
 // made, or a suggestion on the sentence saved/cleared).
 func (db *DB) RefreshSentenceNoteDefaults(ctx context.Context, sentenceIDs []string) error {
-	_, err := db.refreshSentenceNoteDefaults(ctx, `n.sentence_id = ANY($1)`, sentenceIDs)
+	_, err := db.refreshSentenceNoteDefaults(ctx, `place.sentence_id = ANY($1)`, sentenceIDs)
 	return err
 }
 

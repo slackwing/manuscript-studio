@@ -54,13 +54,15 @@ type HomeNote struct {
 const homeNoteSelect = `
 		SELECT n.note_id, n.color, n.body, n.default_body, n.priority, COALESCE(n.task_type, '') AS task_type, n.impact, n.blocked, n.updated_at,
 		       n.manuscript_id,
-		       -- A sketch note has no pad of its own — its card deep-links
-		       -- to the sketch's HOME pad (earliest variation's scratchpad).
-		       COALESCE(n.scratchpad_id,
+		       -- The card's pad: the note's first LIVE pad placement, else the
+		       -- pad it was last in (a completed pad note keeps its context),
+		       -- else — a sketch note has no pad of its own — the sketch's
+		       -- HOME pad (earliest variation's scratchpad).
+		       COALESCE(pad.scratchpad_id,
 		           (SELECT sk.scratchpad_id FROM variation sk
 		            WHERE sk.sketch_id = n.sketch_id AND sk.scratchpad_id IS NOT NULL
 		            ORDER BY sk.variation_id LIMIT 1)),
-		       COALESCE(n.sentence_id, ''),
+		       COALESCE(place.sentence_id, ''),
 		       -- Fallback manuscript label (used only when the note has a
 		       -- manuscript_id but the handler can't resolve a name):
 		       -- display_name, else the row's name (037), else the repo folder
@@ -71,7 +73,7 @@ const homeNoteSelect = `
 		           NULLIF(regexp_replace(regexp_replace(m.git_repo_path, '\.git/?$', ''), '^.*/', ''), ''),
 		           ''
 		       ) AS context,
-		       COALESCE(sp.title, '') AS scratchpad_title,
+		       COALESCE(pad.title, '') AS scratchpad_title,
 		       n.sketch_id,
 		       -- Tags for the card (read-only chips). Aggregated here to avoid an
 		       -- N+1 per note; empty array when none.
@@ -83,9 +85,22 @@ const homeNoteSelect = `
 		       ) AS tags,
 		       n.completed_at, n.pinned_at`
 
+// Placements (NOTE_PLACEMENTS_PLAN.md phase 2): the card shows ONE pad and
+// ONE sentence — live pad placements first, then the most recent closed one
+// (deleted pads never); the primary (earliest) sentence placement.
 const homeNoteFrom = `
 		FROM note n
-		LEFT JOIN scratchpad sp ON sp.scratchpad_id = n.scratchpad_id
+		LEFT JOIN LATERAL (
+		    SELECT p.scratchpad_id, sp.title
+		    FROM note_scratchpad p JOIN scratchpad sp ON sp.scratchpad_id = p.scratchpad_id AND sp.deleted_at IS NULL
+		    WHERE p.note_id = n.note_id
+		    ORDER BY (p.removed_at IS NOT NULL), p.created_at
+		    LIMIT 1
+		) pad ON true
+		LEFT JOIN LATERAL (
+		    SELECT ns.sentence_id FROM note_sentence ns WHERE ns.note_id = n.note_id
+		    ORDER BY ns.created_at, ns.sentence_id LIMIT 1
+		) place ON true
 		LEFT JOIN manuscript  m ON m.manuscript_id  = n.manuscript_id`
 
 // ListNotesForHome returns a user's most-recently-touched active notes with a

@@ -32,14 +32,14 @@ type Server struct {
 	apiTokens          *auth.APITokenStore
 	authHandlers       *handlers.AuthHandlers
 	migrationHandlers  *handlers.MigrationHandlers
-	noteHandlers *handlers.NoteHandlers
+	noteHandlers       *handlers.NoteHandlers
 	suggestionHandlers *handlers.SuggestionHandlers
 	scratchpadHandlers *handlers.ScratchpadHandlers
-	variationHandlers    *handlers.VariationHandlers
-	taskTypeHandlers     *handlers.TaskTypeHandlers
-	markerHandlers       *handlers.MarkerHandlers
-	noteActionHandlers   *handlers.NoteActionHandlers
-	dailyRuleHandlers    *handlers.DailyRuleHandlers
+	variationHandlers  *handlers.VariationHandlers
+	taskTypeHandlers   *handlers.TaskTypeHandlers
+	markerHandlers     *handlers.MarkerHandlers
+	noteActionHandlers *handlers.NoteActionHandlers
+	dailyRuleHandlers  *handlers.DailyRuleHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 	signupHandlers     *handlers.SignupHandlers
@@ -385,6 +385,12 @@ func (s *Server) setupRouter() {
 			r.Post("/notes/{note_id}/pin", s.noteHandlers.HandlePinNote)
 			r.Post("/notes/{note_id}/unpin", s.noteHandlers.HandleUnpinNote)
 			r.Post("/notes/{note_id}/points", s.noteHandlers.HandleScoreNotePoints)
+			// Placements (NOTE_PLACEMENTS_PLAN.md): where a note is, and
+			// putting it on / taking it off a sentence. Pad placements are
+			// the pad doc's business (mirrored on save).
+			r.Get("/notes/{note_id}/placements", s.noteHandlers.HandleGetNotePlacements)
+			r.Put("/notes/{note_id}/sentences/{sentence_id}", s.noteHandlers.HandleAttachSentence)
+			r.Delete("/notes/{note_id}/sentences/{sentence_id}", s.noteHandlers.HandleDetachSentence)
 
 			// Task types (031/032): the settings page's dimension list.
 			r.Get("/task-types", s.taskTypeHandlers.HandleList)

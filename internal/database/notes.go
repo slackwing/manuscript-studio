@@ -20,8 +20,31 @@ import (
 // single copy shared by every note reader so the shapes can't silently
 // drift apart again (two of the five hand-copied lists had lost
 // manuscript_id/scratchpad_id). Pairs with scanNote.
-const noteColumns = `a.note_id, COALESCE(a.sentence_id, '') AS sentence_id, a.manuscript_id, a.scratchpad_id, a.user_id, a.color, a.body, a.default_body,
-	       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, a.position, a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id, a.pinned_at`
+//
+// NOTE_PLACEMENTS_PLAN.md phase 2: a note's sentence / position / scratchpad
+// are PLACEMENTS (note_sentence, note_scratchpad) — the note row itself has
+// no home columns since 057. Single-note readers get the PRIMARY placement
+// — the earliest sentence placement, the earliest live pad — through these
+// subselects; list readers that walk placements use placementColumns (one
+// row per placement, that placement's sentence and position).
+const noteColumns = `a.note_id,
+	       COALESCE((SELECT ns.sentence_id FROM note_sentence ns WHERE ns.note_id = a.note_id ORDER BY ns.created_at, ns.sentence_id LIMIT 1), '') AS sentence_id,
+	       a.manuscript_id,
+	       (SELECT p.scratchpad_id FROM note_scratchpad p JOIN scratchpad sp ON sp.scratchpad_id = p.scratchpad_id AND sp.deleted_at IS NULL
+	        WHERE p.note_id = a.note_id ORDER BY (p.removed_at IS NOT NULL), p.created_at LIMIT 1) AS scratchpad_id,
+	       a.user_id, a.color, a.body, a.default_body,
+	       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked,
+	       COALESCE((SELECT ns.position FROM note_sentence ns WHERE ns.note_id = a.note_id ORDER BY ns.created_at, ns.sentence_id LIMIT 1), '') AS position,
+	       a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id, a.pinned_at`
+
+// placementColumns: noteColumns for a query that JOINs note_sentence ns —
+// the row IS one placement, so sentence_id and position are the row's.
+const placementColumns = `a.note_id, ns.sentence_id AS sentence_id, a.manuscript_id,
+	       (SELECT p.scratchpad_id FROM note_scratchpad p JOIN scratchpad sp ON sp.scratchpad_id = p.scratchpad_id AND sp.deleted_at IS NULL
+	        WHERE p.note_id = a.note_id ORDER BY (p.removed_at IS NOT NULL), p.created_at LIMIT 1) AS scratchpad_id,
+	       a.user_id, a.color, a.body, a.default_body,
+	       a.priority, COALESCE(a.task_type, '') AS task_type, a.impact, a.blocked, ns.position AS position,
+	       a.created_at, a.updated_at, a.deleted_at, a.completed_at, a.sketch_id, a.pinned_at`
 
 // scanNote scans one noteColumns row (works for both QueryRow and Rows).
 func scanNote(row pgx.Row) (models.Note, error) {
@@ -81,16 +104,20 @@ func scanNoteHidden(row pgx.Row) (models.Note, error) {
 func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string) ([]models.Note, error) {
 	// hidden (note_hide) is viewer-relative and applies to your OWN notes
 	// too — the eye hides any note from your view (2026-10-18).
+	// One row per PLACEMENT: a note on two of the commit's sentences ships
+	// twice, each row carrying its own sentence_id and position, so the
+	// margin's per-sentence filter needs no knowledge of placements.
 	query := `
-		SELECT ` + noteColumns + `,
+		SELECT ` + placementColumns + `,
 		       EXISTS(SELECT 1 FROM note_hide h WHERE h.note_id = a.note_id AND h.username = $2) AS hidden
 		FROM note a
-		JOIN sentence s ON a.sentence_id = s.sentence_id
+		JOIN note_sentence ns ON ns.note_id = a.note_id
+		JOIN sentence s ON s.sentence_id = ns.sentence_id
 		WHERE s.commit_hash = $1
 		  AND a.user_id = $2
 		  AND a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
-		ORDER BY s.ordinal, a.position
+		ORDER BY s.ordinal, ns.position
 	`
 
 	rows, err := db.Pool.Query(ctx, query, commitHash, username)
@@ -133,14 +160,15 @@ func (db *DB) GetNotesByCommit(ctx context.Context, commitHash, username string)
 // demotes them rather than losing them.
 func (db *DB) GetAllNotesByCommit(ctx context.Context, commitHash, viewer string) ([]models.Note, error) {
 	query := `
-		SELECT ` + noteColumns + `,
+		SELECT ` + placementColumns + `,
 		       EXISTS(SELECT 1 FROM note_hide h WHERE h.note_id = a.note_id AND h.username = $2) AS hidden
 		FROM note a
-		JOIN sentence s ON a.sentence_id = s.sentence_id
+		JOIN note_sentence ns ON ns.note_id = a.note_id
+		JOIN sentence s ON s.sentence_id = ns.sentence_id
 		WHERE s.commit_hash = $1
 		  AND a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
-		ORDER BY s.ordinal, a.position
+		ORDER BY s.ordinal, ns.position
 	`
 	rows, err := db.Pool.Query(ctx, query, commitHash, viewer)
 	if err != nil {
@@ -172,13 +200,13 @@ func (db *DB) GetAllNotesByCommit(ctx context.Context, commitHash, viewer string
 // the viewer-relative Hidden flag.
 func (db *DB) GetAllNotesBySentence(ctx context.Context, sentenceID, viewer string) ([]models.Note, error) {
 	query := `
-		SELECT ` + noteColumns + `,
+		SELECT ` + placementColumns + `,
 		       EXISTS(SELECT 1 FROM note_hide h WHERE h.note_id = a.note_id AND h.username = $2) AS hidden
 		FROM note a
-		WHERE a.sentence_id = $1
-		  AND a.deleted_at IS NULL
+		JOIN note_sentence ns ON ns.note_id = a.note_id AND ns.sentence_id = $1
+		WHERE a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
-		ORDER BY a.position
+		ORDER BY ns.position
 	`
 	rows, err := db.Pool.Query(ctx, query, sentenceID, viewer)
 	if err != nil {
@@ -226,48 +254,6 @@ func (db *DB) UnhideNote(ctx context.Context, username string, noteID int) error
 	return nil
 }
 
-func getNoteOriginInfo(ctx context.Context, tx pgx.Tx, noteID int) (originSentenceID, originCommitHash, createdBy string, originMigrationID *int, err error) {
-	query := `
-		SELECT
-			MIN(origin_sentence_id),
-			MIN(origin_migration_id),
-			MIN(origin_commit_hash),
-			MIN(created_by)
-		FROM note_version
-		WHERE note_id = $1
-	`
-	err = tx.QueryRow(ctx, query, noteID).Scan(&originSentenceID, &originMigrationID, &originCommitHash, &createdBy)
-	return
-}
-
-// Read sentence_id_history from the given version and append newSentenceID.
-func getSentenceHistory(ctx context.Context, tx pgx.Tx, noteID int, version int, newSentenceID string) ([]byte, error) {
-	query := `
-		SELECT sentence_id_history
-		FROM note_version
-		WHERE note_id = $1 AND version = $2
-	`
-	var historyJSON []byte
-	if err := tx.QueryRow(ctx, query, noteID, version).Scan(&historyJSON); err != nil {
-		return nil, fmt.Errorf("failed to get sentence history: %w", err)
-	}
-
-	var history []string
-	if len(historyJSON) > 0 {
-		// A corrupt history row must surface, not be silently replaced by a
-		// fresh one-element chain — that would destroy the audit trail.
-		if err := json.Unmarshal(historyJSON, &history); err != nil {
-			return nil, fmt.Errorf("corrupt sentence_id_history for note %d version %d: %w", noteID, version, err)
-		}
-	}
-	history = append(history, newSentenceID)
-	newHistoryJSON, err := json.Marshal(history)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal sentence history: %w", err)
-	}
-	return newHistoryJSON, nil
-}
-
 func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersion, historyJSON []byte) error {
 	query := `
 		INSERT INTO note_version (
@@ -278,32 +264,41 @@ func insertNoteVersion(ctx context.Context, tx pgx.Tx, version *models.NoteVersi
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING created_at
 	`
+	// "" sentence / origin → NULL (056: a free, pad or sketch note's content
+	// version has no sentence).
 	return tx.QueryRow(ctx, query,
 		version.NoteID,
 		version.Version,
-		version.SentenceID,
+		nullIfEmpty(version.SentenceID),
 		version.Color,
 		version.Body,
 		version.Priority,
 		version.Flagged,
 		version.MigrationConfidence,
-		version.OriginSentenceID,
+		nullIfEmpty(version.OriginSentenceID),
 		version.OriginMigrationID,
-		version.OriginCommitHash,
+		nullIfEmpty(version.OriginCommitHash),
 		historyJSON,
 		version.CreatedBy,
 	).Scan(&version.CreatedAt)
 }
 
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func (db *DB) GetNotesBySentence(ctx context.Context, sentenceID, username string) ([]models.Note, error) {
 	query := `
-		SELECT ` + noteColumns + `
+		SELECT ` + placementColumns + `
 		FROM note a
-		WHERE a.sentence_id = $1
-		  AND a.user_id = $2
+		JOIN note_sentence ns ON ns.note_id = a.note_id AND ns.sentence_id = $1
+		WHERE a.user_id = $2
 		  AND a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
-		ORDER BY a.position
+		ORDER BY ns.position
 	`
 
 	rows, err := db.Pool.Query(ctx, query, sentenceID, username)
@@ -358,7 +353,7 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 	// (e.g. "a00015", "b0000") that a fixed "a%04d" parse would misread and
 	// collide with.
 	var maxPosition string
-	queryMaxPos := `SELECT COALESCE(MAX(position), '') FROM note WHERE sentence_id = $1`
+	queryMaxPos := `SELECT COALESCE(MAX(position), '') FROM note_sentence WHERE sentence_id = $1`
 	if err := tx.QueryRow(ctx, queryMaxPos, note.SentenceID).Scan(&maxPosition); err != nil {
 		return fmt.Errorf("failed to get max position: %w", err)
 	}
@@ -368,13 +363,14 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 		return fmt.Errorf("failed to compute next position after %q: %w", maxPosition, err)
 	}
 
+	// The note row carries no home (phase 4): its sentence and position are
+	// the note_sentence row written below.
 	query1 := `
-		INSERT INTO note (sentence_id, user_id, color, body, priority, task_type, impact, blocked, position)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8, $9)
+		INSERT INTO note (user_id, color, body, priority, task_type, impact, blocked)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7)
 		RETURNING note_id, created_at, updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
-		note.SentenceID,
 		note.UserID,
 		note.Color,
 		note.Body,
@@ -382,7 +378,6 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 		note.TaskType,
 		note.Impact,
 		note.Blocked,
-		nextPosition,
 	).Scan(
 		&note.NoteID,
 		&note.CreatedAt,
@@ -439,8 +434,7 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 		return fmt.Errorf("failed to create note version: %w", err)
 	}
 
-	// Placement row (NOTE_PLACEMENTS_PLAN.md phase 1: dual-write — the legacy
-	// sentence_id column above stays authoritative until phase 2).
+	// The placement (NOTE_PLACEMENTS_PLAN.md): where this note is.
 	if err := insertSentencePlacement(ctx, tx, note.NoteID, note.SentenceID, nextPosition,
 		note.SentenceID, &migrationID, commitHash, note.UserID); err != nil {
 		return err
@@ -453,81 +447,42 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 	return nil
 }
 
-// CreateScratchpadNote creates a note homed in a scratchpad (NOTES_PLAN.md
-// Phase 2). Unlike CreateNote it has NO sentence: no fractional position scoped
-// to a sentence, and NO note_version row (versioning/history is a manuscript
-// migration concept; note_version requires a sentence, and scratchpad notes
-// never migrate). Sets scratchpad_id; sentence_id stays NULL. manuscript_id is
-// set only if note.ManuscriptID is non-nil (inherited from a linked pad).
+// CreateScratchpadNote creates a note placed in a scratchpad (NOTES_PLAN.md
+// Phase 2 / NOTE_PLACEMENTS_PLAN.md): the note row plus its note_scratchpad
+// placement and content version 1 (no sentence). manuscript_id is set only
+// if note.ManuscriptID is non-nil (inherited from a linked pad).
 func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scratchpadID int) error {
-	// Same treatment as CreateNote: the MAX(position) read-then-insert is a
-	// check-then-act, so concurrent creates on one pad could mint duplicate
-	// positions without the mutex + tx (single-instance server — see
-	// createNoteMu).
-	createNoteMu.Lock()
-	defer createNoteMu.Unlock()
-
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	// Position is per-context; scratchpad notes rarely need cross-note ordering,
-	// but keep the column populated (append after the max in this scratchpad).
-	var maxPosition string
-	if err := tx.QueryRow(ctx,
-		`SELECT COALESCE(MAX(position), '') FROM note WHERE scratchpad_id = $1`, scratchpadID,
-	).Scan(&maxPosition); err != nil {
-		return fmt.Errorf("failed to get max position: %w", err)
-	}
-	nextPosition, err := fractional.GeneratePositionBetween(maxPosition, "")
-	if err != nil {
-		return fmt.Errorf("failed to compute next position: %w", err)
-	}
-
+	// A pad's order is its doc's order — a pad note has no position.
 	err = tx.QueryRow(ctx, `
-		INSERT INTO note (user_id, color, body, priority, task_type, impact, blocked, position, scratchpad_id, manuscript_id)
-		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10)
+		INSERT INTO note (user_id, color, body, priority, task_type, impact, blocked, manuscript_id)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8)
 		RETURNING note_id, created_at, updated_at
 	`,
-		note.UserID, note.Color, note.Body, note.Priority, note.TaskType, note.Impact, note.Blocked, nextPosition, scratchpadID, note.ManuscriptID,
+		note.UserID, note.Color, note.Body, note.Priority, note.TaskType, note.Impact, note.Blocked, note.ManuscriptID,
 	).Scan(&note.NoteID, &note.CreatedAt, &note.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create scratchpad note: %w", err)
 	}
-	// Placement row (NOTE_PLACEMENTS_PLAN.md phase 1 dual-write).
+	// The placement (NOTE_PLACEMENTS_PLAN.md): which pad holds it.
 	if err := insertScratchpadPlacement(ctx, tx, note.NoteID, scratchpadID); err != nil {
+		return err
+	}
+	// Content version 1: every note is versioned; a pad note's version simply
+	// has no sentence.
+	if err := appendContentVersion(ctx, tx, note.NoteID, note, &models.NoteVersion{}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	note.Position = nextPosition
+	note.Position = ""
 	note.ScratchpadID = &scratchpadID
 	return nil
-}
-
-// UpdateScratchpadNote mutates a scratchpad note's mutable fields directly (no
-// version row — see CreateScratchpadNote). Only touches notes with the given id.
-// UpdateScratchpadNote directly updates a VERSIONLESS note — scratchpad or
-// sketch notes (neither has a sentence origin, so no note_version rows).
-// The guard makes sentence notes unreachable here: they must go through
-// UpdateNote's versioned path.
-func (db *DB) UpdateScratchpadNote(ctx context.Context, noteID int, color *string, body *string, priority *string, taskType *string, impact *string, blocked *bool) error {
-	_, err := db.Pool.Exec(ctx, `
-		UPDATE note SET
-			color     = COALESCE($2, color),
-			-- Blank text is NULL: the note shows its default (052).
-			body      = CASE WHEN NOT $3::boolean THEN body WHEN btrim($4) = '' THEN NULL ELSE $4 END,
-			priority  = COALESCE($5, priority),
-			task_type = CASE WHEN $6::text IS NULL THEN task_type ELSE NULLIF($6, '') END,
-			impact    = COALESCE($7, impact),
-			blocked   = COALESCE($8, blocked),
-			updated_at = NOW()
-		WHERE note_id = $1 AND (scratchpad_id IS NOT NULL OR sketch_id IS NOT NULL) AND deleted_at IS NULL
-	`, noteID, color, body != nil, body, priority, taskType, impact, blocked)
-	return err
 }
 
 // UpdateNote mutates the head row and appends a new version.
@@ -538,14 +493,15 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 	}
 	defer tx.Rollback(ctx)
 
+	// Placements own where a note sits — an edit never touches them (the
+	// legacy sentence_id column is left exactly as it was).
 	query1 := `
 		UPDATE note
-		SET sentence_id = $1, color = $2, body = $3, priority = $4, task_type = NULLIF($5, ''), impact = $6, blocked = $7, updated_at = NOW()
-		WHERE note_id = $8
+		SET color = $1, body = $2, priority = $3, task_type = NULLIF($4, ''), impact = $5, blocked = $6, updated_at = NOW()
+		WHERE note_id = $7 AND deleted_at IS NULL
 		RETURNING updated_at
 	`
 	err = tx.QueryRow(ctx, query1,
-		note.SentenceID,
 		note.Color,
 		note.Body,
 		note.Priority,
@@ -558,36 +514,11 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 		return fmt.Errorf("failed to update note: %w", err)
 	}
 
-	var maxVersion int
-	query2 := `SELECT COALESCE(MAX(version), 0) FROM note_version WHERE note_id = $1`
-	if err := tx.QueryRow(ctx, query2, noteID).Scan(&maxVersion); err != nil {
-		return fmt.Errorf("failed to get max version: %w", err)
-	}
-
-	originSentenceID, originCommitHash, createdBy, originMigrationID, err := getNoteOriginInfo(ctx, tx, noteID)
-	if err != nil {
-		return fmt.Errorf("failed to get origin info: %w", err)
-	}
-
-	newHistoryJSON, err := getSentenceHistory(ctx, tx, noteID, maxVersion, note.SentenceID)
-	if err != nil {
+	// CONTENT version (phase 2): one per edit, for every kind of note. The
+	// sentence stamped on it is informational (the primary placement, if
+	// any); lineage lives on note_sentence now.
+	if err := appendContentVersion(ctx, tx, noteID, note, version); err != nil {
 		return err
-	}
-
-	version.NoteID = noteID
-	version.Version = maxVersion + 1
-	version.SentenceID = note.SentenceID
-	version.Color = note.Color
-	version.Body = note.Body
-	version.Priority = note.Priority
-	version.Flagged = false // note.flagged is gone (031); the version column is legacy
-	version.OriginSentenceID = originSentenceID
-	version.OriginMigrationID = originMigrationID
-	version.OriginCommitHash = originCommitHash
-	version.CreatedBy = createdBy
-
-	if err := insertNoteVersion(ctx, tx, version, newHistoryJSON); err != nil {
-		return fmt.Errorf("failed to create note version: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -597,15 +528,79 @@ func (db *DB) UpdateNote(ctx context.Context, noteID int, note *models.Note, ver
 	return nil
 }
 
-// NoteMigrationItem: one note to repoint to a new sentence.
+// appendContentVersion writes note_version max+1 as a snapshot of the note's
+// content: color / body / priority, the primary placement's sentence (NULL
+// for a free, pad or sketch note), the origin carried from version 1 when
+// there is one, and the latest version's history carried through unchanged.
+// A note that predates versioning for its kind (pad / sketch notes made
+// before phase 2 have no version 1) simply starts at version 1 here.
+func appendContentVersion(ctx context.Context, tx pgx.Tx, noteID int, note *models.Note, version *models.NoteVersion) error {
+	var (
+		maxVersion                   int
+		primarySentence              *string
+		originSentence, originCommit *string
+		originMigration              *int
+		createdBy                    *string
+		history                      []byte
+	)
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(MAX(v.version), 0),
+		       (SELECT ns.sentence_id FROM note_sentence ns WHERE ns.note_id = $1 ORDER BY ns.created_at, ns.sentence_id LIMIT 1),
+		       (SELECT v1.origin_sentence_id FROM note_version v1 WHERE v1.note_id = $1 ORDER BY v1.version ASC LIMIT 1),
+		       (SELECT v1.origin_commit_hash FROM note_version v1 WHERE v1.note_id = $1 ORDER BY v1.version ASC LIMIT 1),
+		       (SELECT v1.origin_migration_id FROM note_version v1 WHERE v1.note_id = $1 ORDER BY v1.version ASC LIMIT 1),
+		       (SELECT v1.created_by FROM note_version v1 WHERE v1.note_id = $1 ORDER BY v1.version ASC LIMIT 1),
+		       (SELECT vl.sentence_id_history FROM note_version vl WHERE vl.note_id = $1 ORDER BY vl.version DESC LIMIT 1)
+		FROM note_version v WHERE v.note_id = $1
+	`, noteID).Scan(&maxVersion, &primarySentence, &originSentence, &originCommit, &originMigration, &createdBy, &history); err != nil {
+		return fmt.Errorf("failed to read version context: %w", err)
+	}
+	if len(history) == 0 {
+		history = []byte("[]")
+	}
+	version.NoteID = noteID
+	version.Version = maxVersion + 1
+	version.Color = note.Color
+	version.Body = note.Body
+	version.Priority = note.Priority
+	version.Flagged = false // note.flagged is gone (031); the version column is legacy
+	version.MigrationConfidence = nil
+	if primarySentence != nil {
+		version.SentenceID = *primarySentence
+	}
+	if originSentence != nil {
+		version.OriginSentenceID = *originSentence
+	}
+	if originCommit != nil {
+		version.OriginCommitHash = *originCommit
+	}
+	version.OriginMigrationID = originMigration
+	if createdBy != nil {
+		version.CreatedBy = *createdBy
+	} else {
+		version.CreatedBy = note.UserID
+	}
+	if err := insertNoteVersion(ctx, tx, version, history); err != nil {
+		return fmt.Errorf("failed to create note version: %w", err)
+	}
+	return nil
+}
+
+// NoteMigrationItem: one PLACEMENT to carry — note `NoteID` on
+// `OldSentenceID` moves to `NewSentenceID` with the matcher's confidence.
 type NoteMigrationItem struct {
 	NoteID        int
+	OldSentenceID string
 	NewSentenceID string
 	Confidence    float64
 }
 
-// MigrateNotes is all-or-nothing: error means zero rows committed.
-// Each item produces one note UPDATE and one note_version INSERT.
+// MigrateNotes carries placements across a migration, all-or-nothing: error
+// means zero rows committed. Phase 2 (NOTE_PLACEMENTS_PLAN.md): the unit is
+// the note_sentence row — repointed with its history and confidence
+// (repointSentencePlacement; two placements of one note that land on the
+// same sentence merge) — and note_version is not written here (it is
+// content history).
 func (db *DB) MigrateNotes(ctx context.Context, items []NoteMigrationItem) (int, error) {
 	if len(items) == 0 {
 		return 0, nil
@@ -617,86 +612,18 @@ func (db *DB) MigrateNotes(ctx context.Context, items []NoteMigrationItem) (int,
 	}
 	defer tx.Rollback(ctx)
 
-	// Same per-note flow as UpdateNote, batched in one tx. The
-	// `sentence_id IS NOT NULL` guard means ONLY sentence notes migrate — a
-	// scratchpad/free note (null sentence_id) is never repointed by a manuscript
-	// re-migration. (Items only ever come from GetActiveNotesForSentence, which
-	// already can't return null-sentence notes, so this is defense-in-depth.)
-	updateNote := `
-		UPDATE note
-		SET sentence_id = $1, updated_at = NOW()
-		WHERE note_id = $2
-		  AND sentence_id IS NOT NULL
-		  AND deleted_at IS NULL
-		  AND completed_at IS NULL
-	`
-
 	for _, item := range items {
-		// Read latest version first so copied-forward fields + history are authoritative.
-		var (
-			color      string
-			body       *string
-			priority   string
-			flagged    bool
-			maxVersion int
-		)
-		if err := tx.QueryRow(ctx, `
-			SELECT color, body, priority, flagged, version
-			FROM note_version
-			WHERE note_id = $1
-			ORDER BY version DESC
-			LIMIT 1
-		`, item.NoteID).Scan(&color, &body, &priority, &flagged, &maxVersion); err != nil {
-			return 0, fmt.Errorf("note %d: get latest version: %w", item.NoteID, err)
+		var active bool
+		if err := tx.QueryRow(ctx,
+			`SELECT deleted_at IS NULL AND completed_at IS NULL FROM note WHERE note_id = $1`, item.NoteID,
+		).Scan(&active); err != nil {
+			// Hard fail so the whole migration rolls back rather than desyncing placements.
+			return 0, fmt.Errorf("note %d: not found: %w", item.NoteID, err)
 		}
-
-		// The placement being carried is the note's current sentence (phase 1:
-		// one placement per note, read from the legacy column).
-		var oldSentenceID string
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(sentence_id, '') FROM note WHERE note_id = $1`, item.NoteID).Scan(&oldSentenceID); err != nil {
-			return 0, fmt.Errorf("note %d: read sentence: %w", item.NoteID, err)
+		if !active {
+			return 0, fmt.Errorf("note %d: deleted or completed since it was gathered", item.NoteID)
 		}
-
-		tag, err := tx.Exec(ctx, updateNote, item.NewSentenceID, item.NoteID)
-		if err != nil {
-			return 0, fmt.Errorf("note %d: update sentence_id: %w", item.NoteID, err)
-		}
-		if tag.RowsAffected() == 0 {
-			// Hard fail so the whole migration rolls back rather than desyncing versions.
-			return 0, fmt.Errorf("note %d: not found or already deleted", item.NoteID)
-		}
-
-		originSentenceID, originCommitHash, createdBy, originMigrationID, err := getNoteOriginInfo(ctx, tx, item.NoteID)
-		if err != nil {
-			return 0, fmt.Errorf("note %d: get origin info: %w", item.NoteID, err)
-		}
-
-		newHistoryJSON, err := getSentenceHistory(ctx, tx, item.NoteID, maxVersion, item.NewSentenceID)
-		if err != nil {
-			return 0, fmt.Errorf("note %d: %w", item.NoteID, err)
-		}
-
-		conf := item.Confidence
-		newVersion := &models.NoteVersion{
-			NoteID:              item.NoteID,
-			Version:             maxVersion + 1,
-			SentenceID:          item.NewSentenceID,
-			Color:               color,
-			Body:                body,
-			Priority:            priority,
-			Flagged:             flagged,
-			MigrationConfidence: &conf,
-			OriginSentenceID:    originSentenceID,
-			OriginMigrationID:   originMigrationID,
-			OriginCommitHash:    originCommitHash,
-			CreatedBy:           createdBy,
-		}
-		if err := insertNoteVersion(ctx, tx, newVersion, newHistoryJSON); err != nil {
-			return 0, fmt.Errorf("note %d: insert version: %w", item.NoteID, err)
-		}
-
-		// Carry the placement row too (NOTE_PLACEMENTS_PLAN.md phase 1).
-		if err := repointSentencePlacement(ctx, tx, item.NoteID, oldSentenceID, item.NewSentenceID, item.Confidence); err != nil {
+		if err := repointSentencePlacement(ctx, tx, item.NoteID, item.OldSentenceID, item.NewSentenceID, item.Confidence); err != nil {
 			return 0, fmt.Errorf("note %d: %w", item.NoteID, err)
 		}
 	}
@@ -778,11 +705,13 @@ func (db *DB) CompleteNote(ctx context.Context, noteID int) error {
 }
 
 func (db *DB) GetLatestNoteVersion(ctx context.Context, noteID int) (*models.NoteVersion, error) {
+	// 056: a content version of a free / pad / sketch note has no sentence —
+	// NULLs read back as "" (the model's "none" value).
 	query := `
 		SELECT
-			note_id, version, sentence_id, color, body, priority, flagged,
+			note_id, version, COALESCE(sentence_id, ''), color, body, priority, flagged,
 			sentence_id_history, migration_confidence,
-			origin_sentence_id, origin_migration_id, origin_commit_hash, created_at, created_by
+			COALESCE(origin_sentence_id, ''), origin_migration_id, COALESCE(origin_commit_hash, ''), created_at, created_by
 		FROM note_version
 		WHERE note_id = $1
 		ORDER BY version DESC
@@ -828,10 +757,14 @@ func (db *DB) GetActiveNotesForSentences(ctx context.Context, sentenceIDs []stri
 	if len(sentenceIDs) == 0 {
 		return byID, nil
 	}
+	// One row per PLACEMENT on the asked-for sentences; the bucket key (and
+	// a.SentenceID) is the placement's sentence, so a note placed on two of
+	// them shows up in both buckets and each placement is carried on its own.
 	rows, err := db.Pool.Query(ctx, `
-		SELECT `+noteColumns+`
+		SELECT `+placementColumns+`
 		FROM note a
-		WHERE a.sentence_id = ANY($1)
+		JOIN note_sentence ns ON ns.note_id = a.note_id
+		WHERE ns.sentence_id = ANY($1)
 		  AND a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
 	`, sentenceIDs)
@@ -856,10 +789,10 @@ func (db *DB) GetActiveNotesForSentences(ctx context.Context, sentenceIDs []stri
 
 func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) ([]models.Note, error) {
 	query := `
-		SELECT ` + noteColumns + `
+		SELECT ` + placementColumns + `
 		FROM note a
-		WHERE a.sentence_id = $1
-		  AND a.deleted_at IS NULL
+		JOIN note_sentence ns ON ns.note_id = a.note_id AND ns.sentence_id = $1
+		WHERE a.deleted_at IS NULL
 		  AND a.completed_at IS NULL
 	`
 
@@ -893,27 +826,41 @@ func (db *DB) GetActiveNotesForSentence(ctx context.Context, sentenceID string) 
 // the request body), and the slot positions are computed over the OWNER's
 // active notes on that sentence only — the same user-scoped list every
 // visible note list shows.
-func (db *DB) ReorderNote(ctx context.Context, noteID int, newIndex int) error {
+//
+// Phase 2: the slot is within ONE placement's stack — `sentenceID` names it;
+// "" means the note's primary placement.
+func (db *DB) ReorderNote(ctx context.Context, noteID int, sentenceID string, newIndex int) error {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	var sentenceID *string
 	var userID string
 	if err := tx.QueryRow(ctx,
-		`SELECT sentence_id, user_id FROM note WHERE note_id = $1 AND deleted_at IS NULL AND completed_at IS NULL`,
+		`SELECT user_id FROM note WHERE note_id = $1 AND deleted_at IS NULL AND completed_at IS NULL`,
 		noteID,
-	).Scan(&sentenceID, &userID); err != nil {
+	).Scan(&userID); err != nil {
 		return fmt.Errorf("failed to load note for reorder: %w", err)
 	}
-	if sentenceID == nil {
-		return fmt.Errorf("note %d has no sentence to reorder within", noteID)
+	if sentenceID == "" {
+		var primary *string
+		if err := tx.QueryRow(ctx,
+			`SELECT sentence_id FROM note_sentence WHERE note_id = $1 ORDER BY created_at, sentence_id LIMIT 1`, noteID,
+		).Scan(&primary); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("failed to load placement for reorder: %w", err)
+		}
+		if primary == nil {
+			return fmt.Errorf("note %d has no sentence to reorder within", noteID)
+		}
+		sentenceID = *primary
 	}
 
-	query := `SELECT position FROM note WHERE sentence_id = $1 AND user_id = $2 AND deleted_at IS NULL AND completed_at IS NULL ORDER BY position`
-	rows, err := tx.Query(ctx, query, *sentenceID, userID)
+	query := `
+		SELECT ns.position FROM note_sentence ns JOIN note n ON n.note_id = ns.note_id
+		WHERE ns.sentence_id = $1 AND n.user_id = $2 AND n.deleted_at IS NULL AND n.completed_at IS NULL
+		ORDER BY ns.position`
+	rows, err := tx.Query(ctx, query, sentenceID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to query positions: %w", err)
 	}
@@ -937,16 +884,17 @@ func (db *DB) ReorderNote(ctx context.Context, noteID int, newIndex int) error {
 		return fmt.Errorf("failed to calculate new position: %w", err)
 	}
 
-	updateQuery := `UPDATE note SET position = $1, updated_at = NOW() WHERE note_id = $2`
-	_, err = tx.Exec(ctx, updateQuery, newPosition, noteID)
-	if err != nil {
-		return fmt.Errorf("failed to update note position: %w", err)
-	}
-	// The placement row carries the position too (NOTE_PLACEMENTS_PLAN.md).
-	if _, err := tx.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`UPDATE note_sentence SET position = $1 WHERE note_id = $2 AND sentence_id = $3`,
-		newPosition, noteID, *sentenceID); err != nil {
+		newPosition, noteID, sentenceID)
+	if err != nil {
 		return fmt.Errorf("failed to update placement position: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("note %d is not placed on sentence %s", noteID, sentenceID)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE note SET updated_at = NOW() WHERE note_id = $1`, noteID); err != nil {
+		return fmt.Errorf("failed to touch note: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

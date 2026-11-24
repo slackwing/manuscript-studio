@@ -214,9 +214,9 @@ func (db *DB) CreateSketch(ctx context.Context, userID string, scratchpadID *int
 		// one (033).
 		// Its default text (052) follows the sketch's text from the first save.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id)
+			INSERT INTO note (manuscript_id, user_id, color, priority, sketch_id)
 			SELECT (SELECT linked_manuscript_id FROM scratchpad WHERE scratchpad_id = $1),
-			       $2, 'yellow', 'none', 'a0', $3
+			       $2, 'yellow', 'none', $3
 		`, scratchpadID, userID, sketchID); err != nil {
 			return fmt.Errorf("create sketch note: %w", err)
 		}
@@ -771,8 +771,8 @@ func (db *DB) CreatePlacedSketchFromSelection(ctx context.Context, userID string
 		// The sketch's note (026) — every sketch carries one; its default
 		// text (052) comes from the sketch's text.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO note (manuscript_id, user_id, color, priority, position, sketch_id, default_body)
-			VALUES ($1, $2, 'yellow', 'none', 'a0', $3, NULLIF($4, ''))
+			INSERT INTO note (manuscript_id, user_id, color, priority, sketch_id, default_body)
+			VALUES ($1, $2, 'yellow', 'none', $3, NULLIF($4, ''))
 		`, manuscriptID, userID, sketchID, sentence.NoteDefault(text, true)); err != nil {
 			return fmt.Errorf("create sketch note: %w", err)
 		}

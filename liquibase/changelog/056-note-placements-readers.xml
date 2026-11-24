@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 056 (2026-11-24): NOTE PLACEMENTS phase 2 (NOTE_PLACEMENTS_PLAN.md).
+         Readers move to note_sentence / note_scratchpad; the legacy
+         note.sentence_id / note.scratchpad_id columns are still written (a
+         rollback to the phase-1 image reads them) but no longer read.
+
+         1. note_version becomes CONTENT history (color / body / priority
+            per edit) for EVERY note — free, pad, sketch and sentence alike.
+            Carry-forward lineage now lives on the placement row, so a
+            version no longer needs a sentence: sentence_id and
+            origin_sentence_id become nullable, and the sentence FK goes
+            from RESTRICT to SET NULL (RESTRICT also blocked deleting a
+            migration while any version pointed at one of its sentences).
+            Existing rows are untouched.
+
+         2. A transitional TRIGGER mirrors any write that still targets the
+            legacy columns into the junction tables: an INSERT with a
+            sentence_id / scratchpad_id, or an UPDATE of sentence_id. That
+            covers the phase-1 container during the deploy window, a
+            rolled-back deploy, and raw-SQL fixtures in the test suite —
+            nothing can drift the index while both shapes coexist. It is
+            dropped with the columns in phase 4. -->
+    <changeSet id="056-note-placements-readers" author="claude">
+        <sql splitStatements="false">
+            -- note.position moves to the placement (note_sentence.position);
+            -- the column stays until 057 but nothing writes it any more.
+            ALTER TABLE note ALTER COLUMN position DROP NOT NULL;
+
+            ALTER TABLE note_version ALTER COLUMN sentence_id DROP NOT NULL;
+            ALTER TABLE note_version ALTER COLUMN origin_sentence_id DROP NOT NULL;
+            ALTER TABLE note_version ALTER COLUMN origin_commit_hash DROP NOT NULL;
+            ALTER TABLE note_version DROP CONSTRAINT IF EXISTS fk_note_version_sentence;
+            ALTER TABLE note_version ADD CONSTRAINT fk_note_version_sentence
+                FOREIGN KEY (sentence_id) REFERENCES sentence(sentence_id) ON DELETE SET NULL;
+
+            CREATE OR REPLACE FUNCTION note_legacy_home_mirror() RETURNS trigger AS $fn$
+            BEGIN
+                IF NEW.sentence_id IS NOT NULL
+                   AND (TG_OP = 'INSERT' OR NEW.sentence_id IS DISTINCT FROM OLD.sentence_id) THEN
+                    INSERT INTO note_sentence (note_id, sentence_id, position, origin_sentence_id, origin_migration_id,
+                                               origin_commit_hash, created_by)
+                    SELECT NEW.note_id, NEW.sentence_id, NEW.position, NEW.sentence_id, s.migration_id, s.commit_hash, NEW.user_id
+                    FROM (SELECT NEW.sentence_id) AS x
+                    LEFT JOIN sentence s ON s.sentence_id = NEW.sentence_id
+                    ON CONFLICT (note_id, sentence_id) DO NOTHING;
+                END IF;
+                IF TG_OP = 'INSERT' AND NEW.scratchpad_id IS NOT NULL THEN
+                    INSERT INTO note_scratchpad (note_id, scratchpad_id)
+                    VALUES (NEW.note_id, NEW.scratchpad_id)
+                    ON CONFLICT (note_id, scratchpad_id) DO NOTHING;
+                END IF;
+                RETURN NULL;
+            END
+            $fn$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS trg_note_legacy_home_mirror ON note;
+            CREATE TRIGGER trg_note_legacy_home_mirror
+                AFTER INSERT OR UPDATE OF sentence_id ON note
+                FOR EACH ROW EXECUTE FUNCTION note_legacy_home_mirror();
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

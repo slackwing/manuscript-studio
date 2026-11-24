@@ -4,7 +4,7 @@
 // ‹ › pair is the entry point. Prev/next wrap around.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, loginAsTestUser, waitForPagination, cleanupTestNotes, seedNote } = require('./test-utils');
 function psql(sql) {
   return execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
 }
@@ -20,8 +20,7 @@ function psql(sql) {
     await page.goto(TEST_URL);
     await waitForPagination(page);
     const sids = await page.evaluate(() => [...document.querySelectorAll('.pagedjs_pages p .sentence[data-sentence-id]')].slice(1, 4).map((s) => s.dataset.sentenceId));
-    sids.forEach((sid, i) => psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, sentence_id)
-      VALUES ('${TEST_USERNAME}', 'yellow', 'Nav note ${i}', 'can', 'write', 'n${i}', ${TEST_MANUSCRIPT_ID}, '${sid}')`));
+    sids.forEach((sid, i) => seedNote({ color: 'yellow', body: `Nav note ${i}`, priority: 'can', task_type: 'write', manuscript_id: TEST_MANUSCRIPT_ID, sentence_id: sid, position: `n${i}` }));
     await page.reload();
     await waitForPagination(page);
     await page.waitForSelector('.note-nav-next:not([hidden])');

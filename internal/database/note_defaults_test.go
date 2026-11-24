@@ -55,7 +55,7 @@ func TestSketchNoteDefault_FollowsTheSketch(t *testing.T) {
 	}
 	// The owner's own text lives in body; the default keeps following.
 	mine := "My own words"
-	f.db.UpdateScratchpadNote(f.ctx, noteID, nil, &mine, nil, nil, nil, nil)
+	f.pool.Exec(f.ctx, `UPDATE note SET body = $2 WHERE note_id = $1`, noteID, mine) // the owner typing (head row only)
 	f.db.UpdateVariationText(f.ctx, f.user, aID, "Wind first.")
 	if _, body, def, _ = f.sketchNote(t, sk); deref(body) != mine || deref(def) != "Wind first." {
 		t.Errorf("owner text + default: body=%s default=%s", deref(body), deref(def))

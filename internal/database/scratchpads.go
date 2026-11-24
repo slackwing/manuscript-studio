@@ -140,17 +140,11 @@ func (db *DB) SoftDeleteScratchpad(ctx context.Context, id int) error {
 	if err != nil {
 		return err
 	}
-	// A pad's notes live in its doc (noteRefs) — deleting the pad orphans
-	// them with no UI left to remove them from (they haunted the landing
-	// page as undeletable cards). They go down with the pad.
-	// (NOTE_PLACEMENTS_PLAN.md phase 2 changes this: the placements close,
-	// the notes survive as free notes.)
-	_, err = db.Pool.Exec(ctx, `
-		UPDATE note SET deleted_at = NOW() WHERE scratchpad_id = $1 AND deleted_at IS NULL
-	`, id)
-	if err != nil {
-		return err
-	}
+	// The pad's PLACEMENTS close; the notes survive — on their other
+	// placements, or as free notes (NOTE_PLACEMENTS_PLAN.md phase 2; before
+	// it, a pad took its notes down with it because an unplaced note had no
+	// home and haunted the landing page as an undeletable card — a free
+	// note is a first-class thing now and its card deletes like any other).
 	return closeScratchpadPlacements(ctx, db.Pool, id)
 }
 

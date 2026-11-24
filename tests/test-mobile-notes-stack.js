@@ -5,7 +5,7 @@
 // (the stack is never built above the breakpoint).
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, loginAsTestUser, waitForPagination } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, loginAsTestUser, waitForPagination, seedNote } = require('./test-utils');
 const { suggestEditor } = require('./test-utils');
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
@@ -29,8 +29,8 @@ const LONG_BODY = 'Long mobile note. '.repeat(30) + `(${TEST_USERNAME})`;
   await page.goto(TEST_URL);
   await waitForPagination(page);
   const sid = await page.evaluate(() => document.querySelectorAll('.sentence[data-sentence-id]')[2].dataset.sentenceId);
-  psql(`INSERT INTO note (sentence_id, user_id, color, body, position) VALUES ('${sid}', '${TEST_USERNAME}', 'yellow', '${BODY}', 'a0')`);
-  psql(`INSERT INTO note (sentence_id, user_id, color, body, position) VALUES ('${sid}', '${TEST_USERNAME}', 'green', '${LONG_BODY}', 'a1')`);
+  seedNote({ sentence_id: sid, color: 'yellow', body: BODY, position: 'a0' });
+  seedNote({ sentence_id: sid, color: 'green', body: LONG_BODY, position: 'a1' });
   await page.reload();
   await waitForPagination(page);
   // notes preload with the manuscript — wait until the cache has ours

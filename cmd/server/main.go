@@ -84,17 +84,16 @@ func main() {
 		}
 	}()
 
-	// Note placements (NOTE_PLACEMENTS_PLAN.md): junction rows for whatever
-	// the previous container wrote after changeset 055 committed, and the
-	// pad index re-mirrored from the docs. Idempotent.
+	// Note placements (NOTE_PLACEMENTS_PLAN.md): the pad index re-mirrored
+	// from the live pad docs (the doc is the truth). Idempotent.
 	go func() {
 		dbw := &database.DB{Pool: db}
-		s, p, pads, err := dbw.ReconcileNotePlacements(context.Background())
+		pads, err := dbw.ReconcileNotePlacements(context.Background())
 		if err != nil {
 			log.Printf("note placements reconcile: %v", err)
 			return
 		}
-		log.Printf("note placements reconcile: +%d sentence, +%d scratchpad rows; %d pads synced", s, p, pads)
+		log.Printf("note placements reconcile: %d pads synced", pads)
 	}()
 
 	httpServer := &http.Server{

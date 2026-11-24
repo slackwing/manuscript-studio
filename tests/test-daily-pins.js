@@ -8,7 +8,7 @@
 // without opening the note. The daily board is at most 4 cards across.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser, waitForPagination } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_MANUSCRIPT_ID, cleanupTestNotes, loginAsTestUser, waitForPagination, seedNote } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 function psql(sql) {
   return execSync(
@@ -31,15 +31,10 @@ function psql(sql) {
     // Pool: 8 eligible (yesterday) tasks — seeds 1-4 hone, 5-8 write — plus
     // two tasks created TODAY (never in the day's random pick) and a
     // yesterday non-task.
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, created_at)
-          SELECT '${U}', 'yellow', 'Pin seed ' || i, 'can', CASE WHEN i <= 4 THEN 'hone' ELSE 'write' END,
-                 'a' || i, ${M}, now() - interval '1 day'
-          FROM generate_series(1, 8) i`);
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id)
-          VALUES ('${U}', 'green', 'Today hone', 'can', 'hone', 'b1', ${M}),
-                 ('${U}', 'green', 'Today write', 'can', 'write', 'b2', ${M})`);
-    psql(`INSERT INTO note (user_id, color, body, position, manuscript_id, created_at)
-          VALUES ('${U}', 'blue', 'Plain note', 'c0', ${M}, now() - interval '1 day')`);
+    for (let i = 1; i <= 8; i++) seedNote({ user_id: U, color: 'yellow', body: `Pin seed ${i}`, priority: 'can', task_type: i <= 4 ? 'hone' : 'write', manuscript_id: M, created_at: { sql: "now() - interval '1 day'" } });
+    seedNote({ user_id: U, color: 'green', body: 'Today hone', priority: 'can', task_type: 'hone', manuscript_id: M });
+    seedNote({ user_id: U, color: 'green', body: 'Today write', priority: 'can', task_type: 'write', manuscript_id: M });
+    seedNote({ user_id: U, color: 'blue', body: 'Plain note', manuscript_id: M, created_at: { sql: "now() - interval '1 day'" } });
     const idOf = (body) => parseInt(psql(`SELECT note_id FROM note WHERE user_id='${U}' AND body='${body}'`), 10);
 
     await loginAsTestUser(page);
@@ -128,8 +123,7 @@ function psql(sql) {
     await page.goto(TEST_URL);
     await waitForPagination(page);
     const sid = await page.evaluate(() => document.querySelector('.pagedjs_pages .sentence[data-sentence-id]').dataset.sentenceId);
-    psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, manuscript_id, sentence_id)
-          VALUES ('${U}', 'yellow', 'Chip note', 'can', 'write', 'd0', ${M}, '${sid}')`);
+    seedNote({ user_id: U, color: 'yellow', body: 'Chip note', priority: 'can', task_type: 'write', manuscript_id: M, sentence_id: sid, position: 'd0' });
     await page.reload();
     await waitForPagination(page);
     await page.locator(`.pagedjs_pages .sentence[data-sentence-id="${sid}"]`).first().click();

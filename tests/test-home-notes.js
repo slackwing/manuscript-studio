@@ -2,7 +2,7 @@
 // a card in the Notes grid with its color + body + context.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, cleanupTestNotes, loginAsTestUser } = require('./test-utils');
+const { TEST_URL, cleanupTestNotes, loginAsTestUser, seedNote } = require('./test-utils');
 const HOME_URL = new URL('home.html', TEST_URL).href;
 const OUT = '/tmp/claude-1000/-home-slackwing--config-my/8ba4eaee-57a9-43f6-8b98-5a406662b25a/scratchpad';
 function psql(sql) {
@@ -21,7 +21,7 @@ function psql(sql) {
 
   // Seed a scratchpad + a scratchpad note directly (independent of the editor).
   const padId = psql(`INSERT INTO scratchpad (user_id, title, doc, schema_version) VALUES ('test','My Pad', json_build_object('type','doc','content', json_build_array())::jsonb, 1) RETURNING scratchpad_id`).trim().split('\n').filter(x => /^\d+$/.test(x)).pop();
-  psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, scratchpad_id) VALUES ('test','orange','A landing-grid note.','should','write','a0',${padId})`);
+  seedNote({ user_id: 'test', color: 'orange', body: 'A landing-grid note.', priority: 'should', task_type: 'write', scratchpad_id: padId });
 
   await page.goto(HOME_URL);
   await page.waitForSelector('.home-section');
@@ -53,7 +53,7 @@ function psql(sql) {
   await page.screenshot({ path: `${OUT}/home-notes.png` });
 
   // ---- All-notes view: search filters (shared criteria row + literal text) ----
-  psql(`INSERT INTO note (user_id, color, body, priority, task_type, position, scratchpad_id) VALUES ('test','blue','Come back to this scene.','can','hone','a1',${padId})`);
+  seedNote({ user_id: 'test', color: 'blue', body: 'Come back to this scene.', priority: 'can', task_type: 'hone', scratchpad_id: padId });
   await page.goto(new URL('home.html?view=notes', HOME_URL).href);
   await page.waitForSelector('.nf-bar');
   check('filter bar shows the shared criteria chips',
@@ -82,8 +82,7 @@ function psql(sql) {
 
   // ---- Completed notes: shown in All notes (marked done), hidden from the
   // landing grid (2026-09-09; filters later). ----
-  psql(`INSERT INTO note (user_id, color, body, priority, position, scratchpad_id, completed_at)
-        VALUES ('test','green','A finished thought.','can','a2',${padId}, NOW())`);
+  seedNote({ user_id: 'test', color: 'green', body: 'A finished thought.', priority: 'can', scratchpad_id: padId, completed_at: { sql: 'NOW()' } });
   await page.goto(new URL('home.html?view=notes', HOME_URL).href);
   await page.waitForSelector('.card-note');
   const doneCard = page.locator('.card-note.note-done');

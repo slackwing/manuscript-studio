@@ -332,7 +332,11 @@ func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog
 		userID string
 	}
 	var stale []staleNote
+	staleSeen := map[int]bool{}
 	sources := 0
+	// One item per PLACEMENT (NOTE_PLACEMENTS_PLAN.md phase 2): a note on
+	// two mapped sentences is carried twice, each placement to its own
+	// target; the DB merges them if the targets coincide.
 	for oldID, move := range plan {
 		annots := notesByOld[oldID]
 		if len(annots) == 0 {
@@ -341,11 +345,13 @@ func (p *Processor) migrateNotes(ctx context.Context, db *database.DB, log *slog
 		sources++
 		for _, a := range annots {
 			items = append(items, database.NoteMigrationItem{
-				NoteID:  a.NoteID,
+				NoteID:        a.NoteID,
+				OldSentenceID: oldID,
 				NewSentenceID: move.NewSentenceID,
 				Confidence:    move.Confidence,
 			})
-			if move.Confidence == 0 {
+			if move.Confidence == 0 && !staleSeen[a.NoteID] {
+				staleSeen[a.NoteID] = true
 				stale = append(stale, staleNote{noteID: a.NoteID, userID: a.UserID})
 			}
 		}

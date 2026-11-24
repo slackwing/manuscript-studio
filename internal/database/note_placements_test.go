@@ -9,6 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
+
+	"github.com/slackwing/manuscript-studio/internal/models"
 )
 
 type sentencePlacement struct {
@@ -198,16 +201,13 @@ func TestPlacements_ReorderUpdatesPlacementPosition(t *testing.T) {
 	_, sids := f.makeDoneMigration(t, "pl-reorder", "One sentence to stack notes on.")
 	n1 := f.createNote(t, sids[0], "first")
 	n2 := f.createNote(t, sids[0], "second")
-	if err := f.db.ReorderNote(f.ctx, n2.NoteID, 0); err != nil {
+	if err := f.db.ReorderNote(f.ctx, n2.NoteID, "", 0); err != nil {
 		t.Fatalf("ReorderNote: %v", err)
 	}
-	var notePos string
-	if err := f.pool.QueryRow(f.ctx, `SELECT position FROM note WHERE note_id = $1`, n2.NoteID).Scan(&notePos); err != nil {
-		t.Fatal(err)
-	}
+	first := f.sentencePlacements(t, n1.NoteID)
 	got := f.sentencePlacements(t, n2.NoteID)
-	if len(got) != 1 || got[0].position != notePos {
-		t.Fatalf("placement position %q should equal note position %q", got[0].position, notePos)
+	if len(got) != 1 || len(first) != 1 || !(got[0].position < first[0].position) {
+		t.Fatalf("after moving to slot 0 the placement %q should sort before the first note's %q", got[0].position, first[0].position)
 	}
 	if got[0].position >= f.sentencePlacements(t, n1.NoteID)[0].position {
 		t.Fatalf("after moving to slot 0 the placement should sort before the first note")
@@ -225,11 +225,10 @@ func TestPlacements_MigrateNotesRepointsAndMerges(t *testing.T) {
 	}
 
 	// Both placements carry to sentence three (a merge): one row survives.
-	if _, err := f.db.MigrateNotes(f.ctx, []NoteMigrationItem{{NoteID: n.NoteID, NewSentenceID: sids[2], Confidence: 0.9}}); err != nil {
+	if _, err := f.db.MigrateNotes(f.ctx, []NoteMigrationItem{{NoteID: n.NoteID, OldSentenceID: sids[0], NewSentenceID: sids[2], Confidence: 0.9}}); err != nil {
 		t.Fatalf("MigrateNotes: %v", err)
 	}
-	// MigrateNotes repoints the note's CURRENT legacy sentence (sids[0]); the
-	// extra row on sids[1] is a phase-2 concern and must simply survive.
+	// Only the named placement (sids[0]) is carried; the other row survives.
 	got := f.sentencePlacements(t, n.NoteID)
 	bySentence := map[string]sentencePlacement{}
 	for _, p := range got {
@@ -270,39 +269,30 @@ func TestPlacements_MigrateNotesRepointsAndMerges(t *testing.T) {
 	}
 }
 
-func TestPlacements_ReconcileRepairsDriftAndIsIdempotent(t *testing.T) {
+func TestPlacements_ReconcileRemirrorsPadDocsAndIsIdempotent(t *testing.T) {
 	f := newITFixture(t)
-	_, sids := f.makeDoneMigration(t, "pl-recon", "A sentence to drift from.")
-	n := f.createNote(t, sids[0], "drifted")
+	_, sids := f.makeDoneMigration(t, "pl-recon", "A sentence to paste from.")
+	n := f.createNote(t, sids[0], "pasted into a pad")
 	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "Drift pad")
 	if err != nil {
 		t.Fatal(err)
 	}
-	pn := f.createPadNote(t, pad.ScratchpadID, "pad drifted")
-	// The pad doc references pn (so the reconcile must keep it live) and the
-	// sentence note too (a paste), which has no pad row yet.
+	pn := f.createPadNote(t, pad.ScratchpadID, "pad note")
+	// The pad doc references pn and the sentence note (a paste) …
 	if err := f.db.UpdateScratchpad(f.ctx, pad.ScratchpadID, "Drift pad", padDoc(pn.NoteID, n.NoteID)); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate the dual-write window: the previous container wrote the notes
-	// without junction rows.
-	if _, err := f.pool.Exec(f.ctx, `DELETE FROM note_sentence WHERE note_id = $1`, n.NoteID); err != nil {
-		t.Fatal(err)
-	}
+	// … but the index got lost (a save whose placement sync failed).
 	if _, err := f.pool.Exec(f.ctx, `DELETE FROM note_scratchpad WHERE note_id IN ($1, $2)`, pn.NoteID, n.NoteID); err != nil {
 		t.Fatal(err)
 	}
 
-	s, p, pads, err := f.db.ReconcileNotePlacements(f.ctx)
+	pads, err := f.db.ReconcileNotePlacements(f.ctx)
 	if err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	if s < 1 || p < 1 || pads < 1 {
-		t.Fatalf("reconcile should have added rows and synced pads: s=%d p=%d pads=%d", s, p, pads)
-	}
-	got := f.sentencePlacements(t, n.NoteID)
-	if len(got) != 1 || got[0].sentenceID != sids[0] || got[0].origin != sids[0] {
-		t.Fatalf("sentence placement should be rebuilt from the column + version 1: %+v", got)
+	if pads < 1 {
+		t.Fatalf("reconcile should have synced at least this pad, got %d", pads)
 	}
 	pp := f.padPlacements(t, pad.ScratchpadID)
 	if removed, ok := pp[pn.NoteID]; !ok || removed {
@@ -311,23 +301,141 @@ func TestPlacements_ReconcileRepairsDriftAndIsIdempotent(t *testing.T) {
 	if removed, ok := pp[n.NoteID]; !ok || removed {
 		t.Fatalf("the pasted sentence note should get a live pad row from the doc: %v", pp)
 	}
+	// The sentence placement is untouched by the pad reconcile.
+	if got := f.sentencePlacements(t, n.NoteID); len(got) != 1 || got[0].sentenceID != sids[0] {
+		t.Fatalf("sentence placement should be untouched: %+v", got)
+	}
 
-	// Second run: nothing new to add for these notes.
-	before := f.sentencePlacements(t, n.NoteID)
-	if _, _, _, err := f.db.ReconcileNotePlacements(f.ctx); err != nil {
+	// Second run: nothing changes.
+	before := fmt.Sprint(f.padPlacements(t, pad.ScratchpadID), f.sentencePlacements(t, n.NoteID))
+	if _, err := f.db.ReconcileNotePlacements(f.ctx); err != nil {
 		t.Fatalf("reconcile 2: %v", err)
 	}
-	after := f.sentencePlacements(t, n.NoteID)
-	if fmt.Sprint(before) != fmt.Sprint(after) {
-		t.Fatalf("reconcile must be idempotent: %v → %v", before, after)
+	after := fmt.Sprint(f.padPlacements(t, pad.ScratchpadID), f.sentencePlacements(t, n.NoteID))
+	if before != after {
+		t.Fatalf("reconcile must be idempotent: %s → %s", before, after)
+	}
+}
+
+// ---- phase 2 ---------------------------------------------------------------
+
+func TestPlacements_FreeNoteAttachDetach(t *testing.T) {
+	f := newITFixture(t)
+	_, sids := f.makeDoneMigration(t, "pl-free", "Sentence one here.", "Sentence two here.")
+	body := "free note"
+	n := &models.Note{UserID: f.username, Color: "blue", Body: &body, Priority: "none", Impact: "n/a"}
+	if err := f.db.CreateFreeNote(f.ctx, n); err != nil {
+		t.Fatalf("CreateFreeNote: %v", err)
+	}
+	if got := f.sentencePlacements(t, n.NoteID); len(got) != 0 {
+		t.Fatalf("a free note has no placements: %+v", got)
+	}
+	if f.noteVersionCount(t, n.NoteID) != 1 {
+		t.Fatalf("free note should have content version 1")
+	}
+	if n.ManuscriptID != nil {
+		t.Fatalf("a free note made without a manuscript has none")
+	}
+	// Edit a free note: version 2, no sentence anywhere.
+	edit := *n
+	edit.Body = strPtr("free note, edited")
+	if err := f.db.UpdateNote(f.ctx, n.NoteID, &edit, &models.NoteVersion{}); err != nil {
+		t.Fatalf("UpdateNote on a free note: %v", err)
+	}
+	if f.noteVersionCount(t, n.NoteID) != 2 {
+		t.Fatalf("edit should append version 2")
 	}
 
-	// Parity check the deploy uses.
-	c, err := f.db.CountNotePlacements(f.ctx)
+	// Attach to sentence one: placement at the end of the stack, origin =
+	// that sentence, manuscript stamped, legacy column follows.
+	other := f.createNote(t, sids[0], "already here")
+	if err := f.db.AttachNoteToSentence(f.ctx, n.NoteID, sids[0]); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	got := f.sentencePlacements(t, n.NoteID)
+	if len(got) != 1 || got[0].sentenceID != sids[0] || got[0].origin != sids[0] {
+		t.Fatalf("after attach: %+v", got)
+	}
+	if !(got[0].position > f.sentencePlacements(t, other.NoteID)[0].position) {
+		t.Fatalf("attached note should stack after the existing note")
+	}
+	var mid *int
+	f.pool.QueryRow(f.ctx, `SELECT manuscript_id FROM note WHERE note_id = $1`, n.NoteID).Scan(&mid)
+	if mid == nil || *mid != f.manuscriptID {
+		t.Fatalf("attach should stamp manuscript %d: got %v", f.manuscriptID, mid)
+	}
+	// Idempotent.
+	if err := f.db.AttachNoteToSentence(f.ctx, n.NoteID, sids[0]); err != nil || len(f.sentencePlacements(t, n.NoteID)) != 1 {
+		t.Fatalf("re-attach must be a no-op: %v", err)
+	}
+	// Second placement; the primary stays the first.
+	if err := f.db.AttachNoteToSentence(f.ctx, n.NoteID, sids[1]); err != nil {
+		t.Fatalf("attach 2: %v", err)
+	}
+	if primary := f.noteSentenceID(t, n.NoteID); primary == nil || *primary != sids[0] {
+		t.Fatalf("primary should stay the first placement, got %v", primary)
+	}
+	p, err := f.db.GetNotePlacements(f.ctx, n.NoteID)
+	if err != nil || len(p.Sentences) != 2 || p.Sentences[0].SentenceID != sids[0] || p.Sentences[1].SentenceID != sids[1] || p.Sentences[0].ManuscriptID != f.manuscriptID {
+		t.Fatalf("GetNotePlacements: %+v (%v)", p, err)
+	}
+	mids, err := f.db.ManuscriptIDsForNote(f.ctx, n.NoteID)
+	if err != nil || len(mids) != 1 || mids[0] != f.manuscriptID {
+		t.Fatalf("ManuscriptIDsForNote = %v (%v)", mids, err)
+	}
+	// The per-sentence and by-commit readers see both placements.
+	bySentence, err := f.db.GetNotesBySentence(f.ctx, sids[1], f.username)
+	if err != nil || len(bySentence) != 1 || bySentence[0].NoteID != n.NoteID || bySentence[0].SentenceID != sids[1] {
+		t.Fatalf("GetNotesBySentence(sentence two) = %+v (%v)", bySentence, err)
+	}
+	// Detach the primary: the other placement becomes primary.
+	ok, err := f.db.DetachNoteFromSentence(f.ctx, n.NoteID, sids[0])
+	if err != nil || !ok {
+		t.Fatalf("detach: %v %v", ok, err)
+	}
+	if primary := f.noteSentenceID(t, n.NoteID); primary == nil || *primary != sids[1] {
+		t.Fatalf("after detaching the primary, the remaining placement is primary: %v", primary)
+	}
+	// Detach the last: free again, not deleted.
+	if ok, err := f.db.DetachNoteFromSentence(f.ctx, n.NoteID, sids[1]); err != nil || !ok {
+		t.Fatalf("detach 2: %v %v", ok, err)
+	}
+	if ok, _ := f.db.DetachNoteFromSentence(f.ctx, n.NoteID, sids[1]); ok {
+		t.Fatalf("detaching twice must report false")
+	}
+	var deleted *time.Time
+	f.pool.QueryRow(f.ctx, `SELECT deleted_at FROM note WHERE note_id = $1`, n.NoteID).Scan(&deleted)
+	if primary := f.noteSentenceID(t, n.NoteID); primary != nil || deleted != nil {
+		t.Fatalf("a detached note is free, not deleted: placement=%v deleted=%v", primary, deleted)
+	}
+}
+
+func TestPlacements_SoftDeleteScratchpadLeavesNotesAlive(t *testing.T) {
+	f := newITFixture(t)
+	pad, err := f.db.CreateScratchpad(f.ctx, f.username, "Doomed pad 2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.SentencePlacements < c.LegacySentenceNotes || c.ScratchpadPlacements < c.LegacyPadNotes {
-		t.Fatalf("after reconcile every legacy home must have a placement: %+v", c)
+	n := f.createPadNote(t, pad.ScratchpadID, "survives the pad")
+	if err := f.db.SoftDeleteScratchpad(f.ctx, pad.ScratchpadID); err != nil {
+		t.Fatal(err)
+	}
+	var deleted *time.Time
+	f.pool.QueryRow(f.ctx, `SELECT deleted_at FROM note WHERE note_id = $1`, n.NoteID).Scan(&deleted)
+	if deleted != nil {
+		t.Fatalf("phase 2: a pad delete must not delete the note")
+	}
+	if pp := f.padPlacements(t, pad.ScratchpadID); !pp[n.NoteID] {
+		t.Fatalf("its placement should be closed: %v", pp)
+	}
+	// Home listing: no pad context from a deleted pad.
+	home, err := f.db.ListNotesForHome(f.ctx, f.username, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range home {
+		if h.NoteID == n.NoteID && (h.ScratchpadID != nil || h.ScratchpadTitle != "") {
+			t.Fatalf("home card should not point at a deleted pad: %+v", h)
+		}
 	}
 }
