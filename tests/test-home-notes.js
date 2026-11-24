@@ -96,7 +96,7 @@ function psql(sql) {
     && !(await page.locator('body').innerText()).includes('A finished thought'));
 
   // cleanup
-  psql(`DELETE FROM note WHERE scratchpad_id=${padId}; DELETE FROM scratchpad WHERE scratchpad_id=${padId};`);
+  psql(`DELETE FROM note WHERE note_id IN (SELECT note_id FROM note_scratchpad WHERE scratchpad_id=${padId}); DELETE FROM scratchpad WHERE scratchpad_id=${padId};`);
   await browser.close();
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -60,7 +60,7 @@ const LEGACY_DOC = JSON.stringify({
   const refClass = await page.locator('.sn-note-ref').first().getAttribute('class').catch(() => '');
   check('converted noteRef sources color from note data (green)', /color-green/.test(refClass), refClass);
 
-  psql(`DELETE FROM note WHERE scratchpad_id=${padId}; DELETE FROM scratchpad WHERE scratchpad_id=${padId};`);
+  psql(`DELETE FROM note WHERE note_id IN (SELECT note_id FROM note_scratchpad WHERE scratchpad_id=${padId}); DELETE FROM scratchpad WHERE scratchpad_id=${padId};`);
   await browser.close();
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

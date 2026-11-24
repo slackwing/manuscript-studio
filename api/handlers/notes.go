@@ -32,8 +32,8 @@ type CreateNoteRequest struct {
 	Color        string  `json:"color"`
 	Body         *string `json:"body"`
 	Priority     string  `json:"priority"`
-	TaskType string `json:"task_type"`
-	Impact   string `json:"impact"`
+	TaskType     string  `json:"task_type"`
+	Impact       string  `json:"impact"`
 }
 
 type UpdateNoteRequest struct {
@@ -600,17 +600,28 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// One path for every kind of note (phase 2): the head row changes and a
-	// CONTENT version is appended — lineage lives on the placements now.
-	version := &models.NoteVersion{
-		MigrationConfidence: nil,
+	// One path for every kind of note (phase 2): ONLY the fields the request
+	// names change (PatchNote — two patches arriving together for different
+	// fields both land) and a CONTENT version is appended; lineage lives on
+	// the placements.
+	patch := database.NotePatch{Color: req.Color, Priority: req.Priority, TaskType: req.TaskType, Impact: req.Impact, Blocked: req.Blocked}
+	if req.Body != nil {
+		patch.BodySet = true
+		patch.Body = existing.Body // blank already normalised to nil above
 	}
-
-	if err := h.DB.UpdateNote(ctx, noteID, existing, version); err != nil {
+	version := &models.NoteVersion{}
+	updated, err := h.DB.PatchNote(ctx, noteID, patch, version)
+	if err != nil {
 		log.Printf("notes: update %d: %v", noteID, err)
 		http.Error(w, "Failed to update note", http.StatusInternalServerError)
 		return
 	}
+	if updated == nil {
+		http.Error(w, "Note not found", http.StatusNotFound)
+		return
+	}
+	existing.Color, existing.Body, existing.Priority = updated.Color, updated.Body, updated.Priority
+	existing.TaskType, existing.Impact, existing.Blocked, existing.UpdatedAt = updated.TaskType, updated.Impact, updated.Blocked, updated.UpdatedAt
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(existing)

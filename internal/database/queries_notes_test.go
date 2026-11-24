@@ -589,3 +589,62 @@ func TestGetActiveNotesForSentences_ManuscriptColumnsSelected(t *testing.T) {
 		t.Errorf("single ManuscriptID = %+v, want %d", singles, f.manuscriptID)
 	}
 }
+
+// The pad float sends a task-type patch and the type's recolor as two PUTs a
+// millisecond apart. Each must change only its own fields — a whole-row
+// read-modify-write lost one of them (test-settings, 2026-11-24).
+func TestPatchNote_ConcurrentFieldPatchesBothLand(t *testing.T) {
+	f := newITFixture(t)
+	_, sids := f.makeDoneMigration(t, "patch-race", "A sentence for a racing note.")
+	note := f.createNote(t, sids[0], "race me")
+
+	for round := 0; round < 5; round++ {
+		tt, color := "write", "blue"
+		if round%2 == 1 {
+			tt, color = "hone", "green"
+		}
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, errs[0] = f.db.PatchNote(f.ctx, note.NoteID, NotePatch{TaskType: &tt}, &models.NoteVersion{})
+		}()
+		go func() {
+			defer wg.Done()
+			_, errs[1] = f.db.PatchNote(f.ctx, note.NoteID, NotePatch{Color: &color}, &models.NoteVersion{})
+		}()
+		wg.Wait()
+		for i, err := range errs {
+			if err != nil {
+				t.Fatalf("round %d patch %d: %v", round, i, err)
+			}
+		}
+		var gotType, gotColor string
+		if err := f.pool.QueryRow(f.ctx, `SELECT COALESCE(task_type, ''), color FROM note WHERE note_id = $1`, note.NoteID).Scan(&gotType, &gotColor); err != nil {
+			t.Fatal(err)
+		}
+		if gotType != tt || gotColor != color {
+			t.Fatalf("round %d: want %s/%s, got %s/%s — a patch clobbered the other", round, tt, color, gotType, gotColor)
+		}
+	}
+	// Body: BodySet with nil clears; a patch without BodySet leaves it alone.
+	empty := ""
+	if _, err := f.db.PatchNote(f.ctx, note.NoteID, NotePatch{BodySet: true, Body: nil}, &models.NoteVersion{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.db.GetNoteByID(f.ctx, note.NoteID); got == nil || got.Body != nil {
+		t.Fatalf("BodySet+nil should clear the body: %+v", got)
+	}
+	if _, err := f.db.PatchNote(f.ctx, note.NoteID, NotePatch{Color: &empty}, &models.NoteVersion{}); err == nil {
+		t.Fatalf("an empty color must be rejected by the column check")
+	}
+	var versions int
+	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_version WHERE note_id = $1`, note.NoteID).Scan(&versions)
+	if versions != 1+10+1 {
+		t.Fatalf("every patch appends one content version: want 12, got %d", versions)
+	}
+	if got, err := f.db.PatchNote(f.ctx, 999999999, NotePatch{TaskType: &empty}, &models.NoteVersion{}); err != nil || got != nil {
+		t.Fatalf("patching a missing note: want nil,nil got %v,%v", got, err)
+	}
+}

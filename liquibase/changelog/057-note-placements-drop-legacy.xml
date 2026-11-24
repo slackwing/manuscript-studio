@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 057 (2026-11-24): NOTE PLACEMENTS phase 4 (NOTE_PLACEMENTS_PLAN.md) —
+         the contract. Nothing reads note.sentence_id / note.scratchpad_id /
+         note.position any more (phase 2) and nothing writes them (phase 3):
+         a note's sentences live in note_sentence (with their positions), its
+         pads in note_scratchpad. Drop the columns, the indexes that hang off
+         them and the 056 mirror trigger.
+
+         GUARDED: the first statement raises — and the changeset rolls back,
+         the old container keeps serving — if any note still has a legacy
+         home without its placement row. The backfill (055) and the boot
+         reconcile make that impossible, but a drop is the one step that
+         can't be undone, so it checks. -->
+    <changeSet id="057-note-placements-drop-legacy" author="claude">
+        <sql splitStatements="false">
+            DO $$
+            DECLARE
+                missing_sentences int;
+                missing_pads int;
+            BEGIN
+                SELECT count(*) INTO missing_sentences FROM note n
+                WHERE n.sentence_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM note_sentence ns WHERE ns.note_id = n.note_id AND ns.sentence_id = n.sentence_id);
+                SELECT count(*) INTO missing_pads FROM note n
+                WHERE n.scratchpad_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM note_scratchpad p WHERE p.note_id = n.note_id AND p.scratchpad_id = n.scratchpad_id);
+                IF missing_sentences > 0 OR missing_pads > 0 THEN
+                    RAISE EXCEPTION 'note placements: % sentence home(s) and % pad home(s) have no placement row — refusing to drop the legacy columns',
+                        missing_sentences, missing_pads;
+                END IF;
+            END
+            $$;
+
+            DROP TRIGGER IF EXISTS trg_note_legacy_home_mirror ON note;
+            DROP FUNCTION IF EXISTS note_legacy_home_mirror();
+
+            ALTER TABLE note DROP COLUMN sentence_id;
+            ALTER TABLE note DROP COLUMN scratchpad_id;
+            ALTER TABLE note DROP COLUMN position;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

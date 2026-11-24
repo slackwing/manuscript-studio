@@ -15,7 +15,7 @@ const TYPE = 'zz-ucolor';
   let failed = false;
   const check = (n, ok, extra) => { console.log(`${ok ? '✅' : '❌'} ${n}${extra ? ' — ' + extra : ''}`); if (!ok) failed = true; };
   const browser = await chromium.launch({ headless: true });
-  const notesOn = (sid) => psql(`SELECT count(*) FROM note WHERE user_id='${TEST_USERNAME}' AND sentence_id='${sid}' AND deleted_at IS NULL`);
+  const notesOn = (sid) => psql(`SELECT count(*) FROM note n JOIN note_sentence ns USING (note_id) WHERE n.user_id='${TEST_USERNAME}' AND ns.sentence_id='${sid}' AND n.deleted_at IS NULL`);
   try {
     await cleanupTestNotes();
     psql(`INSERT INTO task_type (name, built_in, color, is_task, deleted, position) VALUES ('${TYPE}', false, 'purple', true, false, 99) ON CONFLICT (name) DO UPDATE SET color='purple', is_task=true, deleted=false`);
@@ -43,7 +43,7 @@ const TYPE = 'zz-ucolor';
     check('no note yet', notesOn(sid) === '0');
     await pick(page, card, TYPE);
     await page.waitForSelector('#sticky-notes-container .sticky-note:not(.uncreated-note)', { timeout: 8000 });
-    const row = () => psql(`SELECT coalesce(task_type, '') || '|' || priority || '|' || color FROM note WHERE user_id='${TEST_USERNAME}' AND sentence_id='${sid}' AND deleted_at IS NULL`);
+    const row = () => psql(`SELECT coalesce(task_type, '') || '|' || priority || '|' || color FROM note n JOIN note_sentence ns USING (note_id) WHERE n.user_id='${TEST_USERNAME}' AND ns.sentence_id='${sid}' AND n.deleted_at IS NULL`);
     check('picking a type creates the note — typed, priority can, in the type\'s color', row() === `${TYPE}|can|purple`, row());
     const live = await page.evaluate(() => {
       const n = document.querySelector('#sticky-notes-container .sticky-note:not(.uncreated-note)');
@@ -63,7 +63,7 @@ const TYPE = 'zz-ucolor';
     await pick(page, card, 'write');
     await page.waitForSelector('#sticky-notes-container .sticky-note:not(.uncreated-note)', { timeout: 8000 });
     const def = await page.evaluate(() => window.WriteSysNotes.DEFAULT_COLOR);
-    const row2 = psql(`SELECT task_type || '|' || color FROM note WHERE user_id='${TEST_USERNAME}' AND sentence_id='${sid2}' AND deleted_at IS NULL`);
+    const row2 = psql(`SELECT task_type || '|' || color FROM note n JOIN note_sentence ns USING (note_id) WHERE n.user_id='${TEST_USERNAME}' AND ns.sentence_id='${sid2}' AND n.deleted_at IS NULL`);
     check('a gray type creates the note in the default color', row2 === `write|${def}`, row2);
     await page.close();
 
@@ -83,7 +83,7 @@ const TYPE = 'zz-ucolor';
     check('phone: the stack\'s grey card has the type chip too', (await m.locator(`${mcard} .dim-type .dim-label`).textContent()) === 'n/a');
     await pick(m, mcard, TYPE);
     await m.waitForSelector('#sgm-notes-stack .sticky-note:not(.uncreated-note)', { timeout: 8000 });
-    check('phone: picking creates the typed note', psql(`SELECT task_type FROM note WHERE user_id='${TEST_USERNAME}' AND sentence_id='${sid3}' AND deleted_at IS NULL`) === TYPE);
+    check('phone: picking creates the typed note', psql(`SELECT task_type FROM note n JOIN note_sentence ns USING (note_id) WHERE n.user_id='${TEST_USERNAME}' AND ns.sentence_id='${sid3}' AND n.deleted_at IS NULL`) === TYPE);
     await m.close();
   } catch (e) {
     console.log(`❌ Test errored: ${e.message}`);

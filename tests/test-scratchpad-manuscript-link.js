@@ -113,7 +113,7 @@ async function makeNote(page, text) {
   await linkEl.locator('.ms-chip-x').click();
   await page.waitForTimeout(500);
   check('pad shows unlinked again', !(await linkEl.evaluate(e => e.classList.contains('linked'))));
-  const padLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM scratchpad WHERE scratchpad_id=(SELECT scratchpad_id FROM note WHERE note_id=${postNote})`).trim();
+  const padLink = psql(`SELECT COALESCE(linked_manuscript_id::text,'null') FROM scratchpad WHERE scratchpad_id=(SELECT scratchpad_id FROM note_scratchpad WHERE note_id=${postNote} ORDER BY removed_at NULLS FIRST, created_at LIMIT 1)`).trim();
   check('scratchpad.linked_manuscript_id cleared', padLink === 'null', `pad link=${padLink}`);
 
   const afterUnlink = await makeNote(page, 'After unlink.');

@@ -586,6 +586,65 @@ func appendContentVersion(ctx context.Context, tx pgx.Tx, noteID int, note *mode
 	return nil
 }
 
+// NotePatch names the fields one update changes; nil = unchanged. BodySet
+// with a nil Body clears the text (blank → NULL → the default shows).
+type NotePatch struct {
+	Color    *string
+	Body     *string
+	BodySet  bool
+	Priority *string
+	TaskType *string
+	Impact   *string
+	Blocked  *bool
+}
+
+// PatchNote applies ONLY the named fields, in one statement, and appends the
+// content version from the row that statement produced. Two patches that
+// arrive together for different fields — the pad float sends a task-type
+// patch and the type's recolor back to back — therefore both land; a
+// read-modify-write of the whole row (UpdateNote) lets the later one
+// clobber the earlier one. Returns nil, nil when the note is gone.
+func (db *DB) PatchNote(ctx context.Context, noteID int, p NotePatch, version *models.NoteVersion) (*models.Note, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	var (
+		n        models.Note
+		taskType *string
+	)
+	err = tx.QueryRow(ctx, `
+		UPDATE note SET
+		  color = COALESCE($1::text, color),
+		  body = CASE WHEN $2::bool THEN $3::text ELSE body END,
+		  priority = COALESCE($4::text, priority),
+		  task_type = CASE WHEN $5::text IS NULL THEN task_type ELSE NULLIF($5::text, '') END,
+		  impact = COALESCE($6::text, impact),
+		  blocked = COALESCE($7::bool, blocked),
+		  updated_at = NOW()
+		WHERE note_id = $8 AND deleted_at IS NULL
+		RETURNING note_id, user_id, color, body, priority, task_type, impact, blocked, updated_at
+	`, p.Color, p.BodySet, p.Body, p.Priority, p.TaskType, p.Impact, p.Blocked, noteID,
+	).Scan(&n.NoteID, &n.UserID, &n.Color, &n.Body, &n.Priority, &taskType, &n.Impact, &n.Blocked, &n.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to patch note: %w", err)
+	}
+	if taskType != nil {
+		n.TaskType = *taskType
+	}
+	if err := appendContentVersion(ctx, tx, noteID, &n, version); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return &n, nil
+}
+
 // NoteMigrationItem: one PLACEMENT to carry — note `NoteID` on
 // `OldSentenceID` moves to `NewSentenceID` with the matcher's confidence.
 type NoteMigrationItem struct {

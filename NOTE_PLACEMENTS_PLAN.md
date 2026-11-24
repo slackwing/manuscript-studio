@@ -1,6 +1,6 @@
 # NOTE_PLACEMENTS_PLAN.md — a note is a note; placements are rows
 
-Status: **PHASES 1–3 SHIPPED, PHASE 4 (057) IN FLIGHT** (2026-11-24). Supersedes NOTES_PLAN.md locked
+Status: **ALL PHASES SHIPPED** (2026-11-24; 057 dropped the legacy columns in prod the same evening). Supersedes NOTES_PLAN.md locked
 decision 2 ("one home per note, carry-forward only WHERE sentence_id IS NOT
 NULL") by the owner's call on 2026-11-24.
 
@@ -256,12 +256,20 @@ the note was placed on; NULL when none), no longer read.
   byte-identical.
 
 ### Phase 4 — contract (deploy #4)
-- [ ] `057-note-placements-drop-legacy.xml`: a guarded `DO` block (raises —
+- [x] `057-note-placements-drop-legacy.xml`: a guarded `DO` block (raises —
   and the changeset rolls back, the old container keeps serving — if any
   legacy home lacks its placement row), then drops the mirror trigger and
   `note.sentence_id`, `note.scratchpad_id`, `note.position` (their indexes
   and the pad FK go with the columns). Snapshot first. Rehearsed on the prod
-  copy: guard 0/0, payloads identical before and after.
+  copy: guard 0/0, payloads identical before and after. Shipped
+  2026-11-24 after a fresh `snapshot_notes.sh`; the full local suite on the
+  post-057 schema was green except the five tests that cannot run on the
+  scratch stack (dev-repo paths, bare origin, >6 seeded pads).
+- [x] Found on the way (test-settings): phase 2's single update path turned
+  the pad float's two back-to-back PUTs (task-type patch, then the type's
+  recolor) into whole-row read-modify-writes that clobbered each other.
+  `PatchNote` applies only the named fields in one statement
+  (`TestPatchNote_ConcurrentFieldPatchesBothLand`).
 - [x] Docs: ARCHITECTURE.md data model + migration notes, NOTES_PLAN.md
   pointer, DEFERRED.md (placing notes from the UI), install.sh tool list.
 
