@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 055 (2026-11-24): backfill the placement tables from the legacy
+         home columns (NOTE_PLACEMENTS_PLAN.md phase 1). Every note with a
+         sentence_id gets one note_sentence row (deleted and completed notes
+         too — a restore must find its placement); origin from version 1,
+         history and confidence from the latest version. Every note with a
+         scratchpad_id gets one note_scratchpad row, live when a live pad doc
+         still references it and removed_at = updated_at when its anchor is
+         gone (a completed pad note). Any noteRef a live doc holds for a note
+         homed elsewhere gets a live row too — the doc is the truth.
+
+         Idempotent (ON CONFLICT DO NOTHING / re-open). The Go server runs
+         the same statements at boot (ReconcileNotePlacements) to close the
+         window in which the previous container kept writing after this
+         committed. Rehearsed against a copy of the production tables on
+         2026-11-24: 121 + 39 live rows, counts matched the audit. -->
+    <changeSet id="055-note-placements-backfill" author="claude">
+        <sql splitStatements="true">
+            INSERT INTO note_sentence (note_id, sentence_id, position, origin_sentence_id, origin_migration_id,
+                                       origin_commit_hash, sentence_id_history, migration_confidence, created_at, created_by)
+            SELECT n.note_id, n.sentence_id, n.position,
+                   v1.origin_sentence_id, v1.origin_migration_id, v1.origin_commit_hash,
+                   COALESCE(vl.sentence_id_history, '[]'::jsonb), vl.migration_confidence,
+                   n.created_at, n.user_id
+            FROM note n
+            LEFT JOIN LATERAL (
+                SELECT origin_sentence_id, origin_migration_id, origin_commit_hash
+                FROM note_version v WHERE v.note_id = n.note_id ORDER BY v.version ASC LIMIT 1
+            ) v1 ON true
+            LEFT JOIN LATERAL (
+                SELECT sentence_id_history, migration_confidence
+                FROM note_version v WHERE v.note_id = n.note_id ORDER BY v.version DESC LIMIT 1
+            ) vl ON true
+            WHERE n.sentence_id IS NOT NULL
+            ON CONFLICT (note_id, sentence_id) DO NOTHING;
+
+            INSERT INTO note_scratchpad (note_id, scratchpad_id, created_at, removed_at)
+            SELECT n.note_id, n.scratchpad_id, n.created_at,
+                   CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM scratchpad sp,
+                                 jsonb_path_query(sp.doc, 'strict $.**.content[*] ? (@.type == "noteRef")') r
+                            WHERE sp.scratchpad_id = n.scratchpad_id
+                              AND sp.deleted_at IS NULL
+                              AND (r->'attrs'->>'noteId') ~ '^[0-9]+$'
+                              AND (r->'attrs'->>'noteId')::int = n.note_id)
+                        THEN NULL
+                        ELSE n.updated_at END
+            FROM note n
+            WHERE n.scratchpad_id IS NOT NULL
+            ON CONFLICT (note_id, scratchpad_id) DO NOTHING;
+
+            INSERT INTO note_scratchpad (note_id, scratchpad_id, created_at)
+            SELECT DISTINCT n.note_id, sp.scratchpad_id, sp.updated_at
+            FROM scratchpad sp,
+                 jsonb_path_query(sp.doc, 'strict $.**.content[*] ? (@.type == "noteRef")') r
+            JOIN note n ON (r->'attrs'->>'noteId') ~ '^[0-9]+$' AND n.note_id = (r->'attrs'->>'noteId')::int
+            WHERE sp.deleted_at IS NULL
+            ON CONFLICT (note_id, scratchpad_id) DO UPDATE SET removed_at = NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 054 (2026-11-24): NOTE PLACEMENTS, phase 1 of NOTE_PLACEMENTS_PLAN.md.
+         A note stops being owned by one sentence or one scratchpad: where a
+         note appears becomes rows in two junction tables, so one note can sit
+         on several sentences, in several pads, or nowhere at all.
+
+           note_sentence   — one row per sentence placement. Carries what
+                             note_version carried per migration: position
+                             within the margin stack, origin (sentence /
+                             migration / commit the placement was made on),
+                             the chain of sentence ids it has been carried
+                             through, and the last carry's confidence.
+                             sentence_id has NO foreign key, like
+                             note.sentence_id since 001: sentences churn per
+                             migration and placements are repointed, never
+                             cascaded away.
+           note_scratchpad — one row per pad a note appears in. The pad's
+                             ProseMirror doc stays the source of truth (a
+                             noteRef atom IS the placement); this table is
+                             the server's index of it, rebuilt from the doc
+                             on every save. removed_at keeps a completed
+                             note's pad context after its anchor is gone.
+
+         DDL only (short lock on nothing the app writes yet). The backfill
+         from note.sentence_id / note.scratchpad_id is 055; the legacy
+         columns stay and keep being written until phase 3 and are dropped
+         in phase 4. -->
+    <changeSet id="054-note-placements" author="claude">
+        <sql>
+            CREATE TABLE note_sentence (
+                note_id              INTEGER      NOT NULL REFERENCES note(note_id) ON DELETE CASCADE,
+                sentence_id          VARCHAR(100) NOT NULL,
+                position             TEXT         NOT NULL DEFAULT 'a0',
+                origin_sentence_id   VARCHAR(100),
+                origin_migration_id  INTEGER      REFERENCES migration(migration_id) ON DELETE SET NULL,
+                origin_commit_hash   VARCHAR(40),
+                sentence_id_history  JSONB        NOT NULL DEFAULT '[]'::jsonb,
+                migration_confidence NUMERIC(3,2),
+                created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                created_by           VARCHAR(255),
+                CONSTRAINT pk_note_sentence PRIMARY KEY (note_id, sentence_id)
+            );
+            CREATE INDEX idx_note_sentence_sentence ON note_sentence(sentence_id);
+            CREATE INDEX idx_note_sentence_position ON note_sentence(sentence_id, position);
+
+            CREATE TABLE note_scratchpad (
+                note_id       INTEGER     NOT NULL REFERENCES note(note_id) ON DELETE CASCADE,
+                scratchpad_id INTEGER     NOT NULL REFERENCES scratchpad(scratchpad_id) ON DELETE CASCADE,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                removed_at    TIMESTAMPTZ,
+                CONSTRAINT pk_note_scratchpad PRIMARY KEY (note_id, scratchpad_id)
+            );
+            CREATE INDEX idx_note_scratchpad_live ON note_scratchpad(scratchpad_id) WHERE removed_at IS NULL;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

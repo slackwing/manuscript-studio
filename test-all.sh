@@ -27,6 +27,7 @@ FAST_TESTS=(
   test-sketch-from-selection
   test-points-grid
   test-points-grid-units
+  test-note-placements
   test-mobile-modal-scroll
   test-daily-tasks
   test-settings

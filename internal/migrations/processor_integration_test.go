@@ -995,3 +995,50 @@ func TestMigration_FallbackPlacedNoteGetsStaleTag(t *testing.T) {
 		t.Errorf("survivor's note must stay untagged, got %v", ns)
 	}
 }
+
+// NOTE_PLACEMENTS_PLAN.md phase 1: the note_sentence row is carried with the
+// note — same new sentence, confidence recorded, history chained, origin kept.
+func TestMigration_PlacementRowFollowsTheNote(t *testing.T) {
+	f := newFixture(t)
+	v1 := "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs."
+	v2 := "The quick brown fox jumps over the sleepy dog. Pack my box with five dozen liquor jugs."
+
+	mID1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "pl-v1", v1)
+	target := findSentenceIDByPrefix(t, f.ctx, f.pool, mID1, "The quick brown fox")
+	annID := insertNote(t, f.ctx, f.db, target, f.username, "fox placement")
+
+	mID2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "pl-v2", v2)
+	newTarget := findSentenceIDByPrefix(t, f.ctx, f.pool, mID2, "The quick brown fox")
+
+	var sentenceID, origin string
+	var conf *float64
+	var hist []byte
+	var n int
+	if err := f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_sentence WHERE note_id = $1`, annID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("want exactly one placement row after the carry, got %d", n)
+	}
+	if err := f.pool.QueryRow(f.ctx, `
+		SELECT sentence_id, origin_sentence_id, migration_confidence, sentence_id_history
+		FROM note_sentence WHERE note_id = $1`, annID).Scan(&sentenceID, &origin, &conf, &hist); err != nil {
+		t.Fatal(err)
+	}
+	if sentenceID != newTarget {
+		t.Fatalf("placement should follow the edit: %s, want %s", sentenceID, newTarget)
+	}
+	if origin != target {
+		t.Fatalf("origin should stay the first sentence: %s, want %s", origin, target)
+	}
+	if conf == nil || *conf < 0.7 {
+		t.Fatalf("expected the carry's confidence on the placement, got %v", conf)
+	}
+	if string(hist) != `["`+newTarget+`"]` {
+		t.Fatalf("history should chain the new sentence: %s", hist)
+	}
+	// Parity with the legacy column the phase-1 readers use.
+	if got := getNoteSentenceID(t, f.ctx, f.pool, annID); got != newTarget {
+		t.Fatalf("legacy sentence_id %s should match the placement %s", got, newTarget)
+	}
+}

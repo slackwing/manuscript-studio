@@ -153,6 +153,7 @@ func (f *itFixture) nuke(t *testing.T) {
 			`UPDATE sketch SET canon_variation_id = NULL, placed_from_variation_id = NULL WHERE user_id = $1`,
 			`DELETE FROM variation WHERE sketch_id IN (SELECT sketch_id FROM sketch WHERE user_id = $1)`,
 			`DELETE FROM sketch WHERE user_id = $1`,
+			`DELETE FROM scratchpad_revision WHERE scratchpad_id IN (SELECT scratchpad_id FROM scratchpad WHERE user_id = $1)`,
 			`DELETE FROM scratchpad WHERE user_id = $1`,
 			`DELETE FROM manuscript_access WHERE username = $1`,
 			`DELETE FROM role WHERE username = $1`,

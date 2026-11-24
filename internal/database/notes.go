@@ -439,6 +439,13 @@ func (db *DB) CreateNote(ctx context.Context, note *models.Note, version *models
 		return fmt.Errorf("failed to create note version: %w", err)
 	}
 
+	// Placement row (NOTE_PLACEMENTS_PLAN.md phase 1: dual-write — the legacy
+	// sentence_id column above stays authoritative until phase 2).
+	if err := insertSentencePlacement(ctx, tx, note.NoteID, note.SentenceID, nextPosition,
+		note.SentenceID, &migrationID, commitHash, note.UserID); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -488,6 +495,10 @@ func (db *DB) CreateScratchpadNote(ctx context.Context, note *models.Note, scrat
 	).Scan(&note.NoteID, &note.CreatedAt, &note.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create scratchpad note: %w", err)
+	}
+	// Placement row (NOTE_PLACEMENTS_PLAN.md phase 1 dual-write).
+	if err := insertScratchpadPlacement(ctx, tx, note.NoteID, scratchpadID); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -639,6 +650,13 @@ func (db *DB) MigrateNotes(ctx context.Context, items []NoteMigrationItem) (int,
 			return 0, fmt.Errorf("note %d: get latest version: %w", item.NoteID, err)
 		}
 
+		// The placement being carried is the note's current sentence (phase 1:
+		// one placement per note, read from the legacy column).
+		var oldSentenceID string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(sentence_id, '') FROM note WHERE note_id = $1`, item.NoteID).Scan(&oldSentenceID); err != nil {
+			return 0, fmt.Errorf("note %d: read sentence: %w", item.NoteID, err)
+		}
+
 		tag, err := tx.Exec(ctx, updateNote, item.NewSentenceID, item.NoteID)
 		if err != nil {
 			return 0, fmt.Errorf("note %d: update sentence_id: %w", item.NoteID, err)
@@ -675,6 +693,11 @@ func (db *DB) MigrateNotes(ctx context.Context, items []NoteMigrationItem) (int,
 		}
 		if err := insertNoteVersion(ctx, tx, newVersion, newHistoryJSON); err != nil {
 			return 0, fmt.Errorf("note %d: insert version: %w", item.NoteID, err)
+		}
+
+		// Carry the placement row too (NOTE_PLACEMENTS_PLAN.md phase 1).
+		if err := repointSentencePlacement(ctx, tx, item.NoteID, oldSentenceID, item.NewSentenceID, item.Confidence); err != nil {
+			return 0, fmt.Errorf("note %d: %w", item.NoteID, err)
 		}
 	}
 
@@ -918,6 +941,12 @@ func (db *DB) ReorderNote(ctx context.Context, noteID int, newIndex int) error {
 	_, err = tx.Exec(ctx, updateQuery, newPosition, noteID)
 	if err != nil {
 		return fmt.Errorf("failed to update note position: %w", err)
+	}
+	// The placement row carries the position too (NOTE_PLACEMENTS_PLAN.md).
+	if _, err := tx.Exec(ctx,
+		`UPDATE note_sentence SET position = $1 WHERE note_id = $2 AND sentence_id = $3`,
+		newPosition, noteID, *sentenceID); err != nil {
+		return fmt.Errorf("failed to update placement position: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

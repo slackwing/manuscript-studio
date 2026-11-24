@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -215,6 +216,13 @@ func (h *ScratchpadHandlers) HandleUpdate(w http.ResponseWriter, r *http.Request
 	if err := h.DB.UpdateScratchpad(r.Context(), s.ScratchpadID, title, req.Doc); err != nil {
 		http.Error(w, "Failed to save scratchpad", http.StatusInternalServerError)
 		return
+	}
+	// The doc is the truth for which notes sit in this pad; mirror it into
+	// note_scratchpad (NOTE_PLACEMENTS_PLAN.md). Best-effort: the save has
+	// landed, and the boot reconcile repairs any miss — a placement index
+	// hiccup must never fail an autosave.
+	if err := h.DB.SyncScratchpadPlacements(r.Context(), s.ScratchpadID, req.Doc); err != nil {
+		log.Printf("scratchpad %d: note placements sync: %v", s.ScratchpadID, err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

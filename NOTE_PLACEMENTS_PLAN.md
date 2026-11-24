@@ -148,12 +148,19 @@ Legend: ⏸ = stop and wait for the owner's "continue" before this step.
 ### Phase 0 — groundwork (no prod change)
 - [x] Read-only prod audit (above). Keep `scratchpad/prod-notes-audit*.sql` in
   the session for re-runs.
-- [ ] `debug/snapshot_notes.sh`: `COPY (SELECT …) TO STDOUT` of `note`,
-  `note_version`, `note_tag`, `note_hide`, `point_event`, `scratchpad`
-  (docs) to timestamped CSVs on the VM (`~/backups/notes-<ts>/`), run before
-  every deploy of this plan. Small data; seconds.
-- [ ] Rehearsal: load prod CSVs into a scratch DB (session scratchpad only,
-  deleted after) and dry-run the backfill SQL; assert the counts above.
+- [x] `debug/snapshot_notes.sh`: `\copy` of `note`, `note_version`,
+  `note_tag`, `note_hide`, `point_event`, `note_sentence`, `note_scratchpad`,
+  `scratchpad` (docs) to timestamped CSVs on the VM (`~/backups/notes-<ts>/`),
+  run before every deploy of this plan. Small data; seconds.
+- [x] Rehearsal (2026-11-24): the WHOLE prod DB copied into a scratch
+  Postgres (COPY per table over ssh — the VM's pg_dump is v13 against a
+  PG18 server), Liquibase at 053, then 054+055 applied: 193 sentence
+  placements (121 live), origin == version 1 and history == latest version
+  for every row, 63 pad rows (35 live, 5 completed closed, 1 dangling
+  anchor); the branch server's boot reconcile against it: +0/+0, 19 pads
+  synced, counts unchanged. Partial copies mislead (055 failed on the
+  `origin_migration_id` FK with an empty `migration` table) — always copy
+  everything.
 
 ### Phase 1 — additive schema, backfill, dual-write (deploy #1)
 Readers untouched; nothing visible changes.
