@@ -27,15 +27,18 @@ chmod 700 "$OUT"
 
 TABLES=(note note_version note_tag note_hide point_event note_sentence note_scratchpad scratchpad)
 
+# connect_db.sh prints a "Connecting to …" banner on stdout; keep the last line.
+q() { bash "$HERE/connect_db.sh" -Atq "$@" 2>/dev/null | grep -v '^Connecting to' | tail -1; }
+
 for t in "${TABLES[@]}"; do
     # A table that doesn't exist yet (pre-054) is skipped, not an error.
-    exists=$(bash "$HERE/connect_db.sh" -Atq -c "SELECT to_regclass('public.$t') IS NOT NULL" 2>/dev/null || echo f)
+    exists=$(q -c "SELECT to_regclass('public.$t') IS NOT NULL" || echo f)
     if [ "$exists" != "t" ]; then
         echo "  $t: (no such table, skipped)"
         continue
     fi
-    bash "$HERE/connect_db.sh" -q -c "\\copy (SELECT * FROM $t) TO '$OUT/$t.csv' WITH (FORMAT csv, HEADER)"
-    n=$(bash "$HERE/connect_db.sh" -Atq -c "SELECT count(*) FROM $t")
+    bash "$HERE/connect_db.sh" -q -c "\\copy (SELECT * FROM $t) TO '$OUT/$t.csv' WITH (FORMAT csv, HEADER)" >/dev/null 2>&1
+    n=$(q -c "SELECT count(*) FROM $t")
     echo "  $t: $n rows → $OUT/$t.csv"
 done
 echo "snapshot: $OUT"
