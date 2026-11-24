@@ -273,9 +273,7 @@ const WriteSysSuggestions = {
       if (i < 0) i = step > 0 ? 0 : list.length - 1; // nothing in that direction — wrap
       const target = list[i];
       if (!this._activeClose || await this._activeClose()) {
-        if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
-          window.WriteSysRenderer.scrollToSentence(target);
-        }
+        this._scrollForTour(target);
         this.openModal(target, { viaNav: true });
       }
       return;
@@ -285,11 +283,20 @@ const WriteSysSuggestions = {
     if (!this._activeClose || await this._activeClose()) {
       // The page follows the tour — the flipped-to edit scrolls into view
       // under the modal.
-      if (window.WriteSysRenderer && window.WriteSysRenderer.scrollToSentence) {
-        window.WriteSysRenderer.scrollToSentence(target);
-      }
+      this._scrollForTour(target);
       this.openModal(target, { viaNav: true });
     }
+  },
+
+  // The tour's scroll to the next edit. On a phone the modal that opens
+  // next PINS the page at whatever scroll position it finds (openModal
+  // lockPage), so the scroll must have landed already: instant there,
+  // smooth on desktop where nothing pins.
+  _scrollForTour(target) {
+    const R = window.WriteSysRenderer;
+    if (!R || !R.scrollToSentence) return;
+    const mobile = window.matchMedia(SUGGESTIONS_MOBILE_MEDIA).matches;
+    R.scrollToSentence(target, mobile ? 'auto' : 'smooth');
   },
 
   // putSuggestion PUTs a sentence's suggestion text — the ONE write path,
@@ -601,8 +608,34 @@ const WriteSysSuggestions = {
     // used to keep the phone layout, stack stranded top-left).
     const mobileMql = window.matchMedia(SUGGESTIONS_MOBILE_MEDIA);
     let notesStack = null;
+    // The BOOK must not move while the phone modal is up (2026-11-23). The
+    // overlay column rarely overflows, so a flick inside it chained straight
+    // through to the page, and iOS scrolls the document to reveal a focused
+    // textarea — then close() re-rendered around the edited sentence's NEW
+    // (drifted) viewport offset, stranding the reader pages away from their
+    // edit. Pin the body (the iOS-proof lock: fixed at -scrollY) while the
+    // phone layout is up, and put the scroll back exactly where it was
+    // BEFORE the re-render captures its anchor.
+    let pageLock = null; // { x, y } while the body is pinned
+    const lockPage = () => {
+      if (pageLock) return;
+      pageLock = { x: window.scrollX, y: window.scrollY };
+      document.body.style.top = `${-pageLock.y}px`;
+      document.body.style.left = `${-pageLock.x}px`;
+      document.body.classList.add('sgm-page-locked');
+    };
+    const unlockPage = () => {
+      if (!pageLock) return;
+      const { x, y } = pageLock;
+      pageLock = null;
+      document.body.classList.remove('sgm-page-locked');
+      document.body.style.top = '';
+      document.body.style.left = '';
+      window.scrollTo(x, y);
+    };
     const placeForLayout = (mobile) => {
       if (mobile) {
+        lockPage();
         overlay.appendChild(modal);
         if (!notesStack && window.WriteSysNotes && window.WriteSysNotes.buildMobileNoteStack) {
           notesStack = window.WriteSysNotes.buildMobileNoteStack(sentenceId, original);
@@ -615,6 +648,7 @@ const WriteSysSuggestions = {
           }
         }
       } else {
+        unlockPage();
         if (notesStack) { notesStack.remove(); notesStack = null; }
         document.body.appendChild(modal);
       }
@@ -837,6 +871,10 @@ const WriteSysSuggestions = {
       }
       overlay.remove();
       modal.remove();
+      // Before anything below measures the page: the book scrolls back to
+      // where it was when the modal opened, so the re-render's anchor is the
+      // sentence's real pre-edit position.
+      unlockPage();
 
       // A re-login happened while this editor was open: the renderer deferred
       // its post-restore refresh to avoid racing our autosave (see

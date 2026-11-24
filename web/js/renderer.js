@@ -573,8 +573,26 @@ const WriteSysRenderer = {
     // Same curl pass the full render applies pre-pagination — without it the
     // patch would flash straight quotes that the real render re-curls.
     window.WriteSysTextMarkers.curlQuotes(tmp);
-    spans[0].innerHTML = fresh[0].innerHTML;
-    spans[0].className = fresh[0].className;
+    // A patch that makes the page's content taller than its box is not a
+    // preview of anything: Paged.js lays each page out as a column, so the
+    // overflow wraps into a second, clipped column and the sentence (or
+    // what follows it) jumps to the TOP of the page — out of sight, and
+    // right where renderManuscript's anchor measurement would then find it.
+    // The reader ended up a few hundred px off their edit after every
+    // lengthening edit at a page bottom (2026-11-23). Measure, patch, and
+    // undo the patch if the sentence moved; the full render is seconds away.
+    const span = spans[0];
+    const before = span.getBoundingClientRect();
+    const prevHTML = span.innerHTML;
+    const prevClass = span.className;
+    span.innerHTML = fresh[0].innerHTML;
+    span.className = fresh[0].className;
+    const after = span.getBoundingClientRect();
+    if (Math.abs(after.top - before.top) > 0.5 || Math.abs(after.left - before.left) > 0.5) {
+      span.innerHTML = prevHTML;
+      span.className = prevClass;
+      return false;
+    }
     return true;
   },
 
@@ -1683,11 +1701,13 @@ const WriteSysRenderer = {
   },
 
   // Scroll a sentence into view (used by the outline navigator). Briefly
-  // flashes it so the reader sees where they landed.
-  scrollToSentence(sentenceId) {
+  // flashes it so the reader sees where they landed. `behavior` is the
+  // scrollIntoView behavior — 'auto' when the caller needs the scroll to
+  // have LANDED on return (the phone suggest-edit tour pins the page next).
+  scrollToSentence(sentenceId, behavior = 'smooth') {
     const target = document.querySelector(`.sentence[data-sentence-id="${sentenceId}"]`);
     if (!target) return;
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.scrollIntoView({ behavior, block: 'center' });
     target.classList.add('flash-highlight');
     setTimeout(() => target.classList.remove('flash-highlight'), 1200);
   },

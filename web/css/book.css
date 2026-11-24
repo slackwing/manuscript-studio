@@ -3265,6 +3265,21 @@ p.section-break {
        top+height are set). */
     height: 100vh;   /* fallback */
     height: 100dvh;
+    /* A flick past the column's end must NOT chain to the book behind it
+       (the column rarely overflows at all, so every flick used to). */
+    overscroll-behavior: contain;
+  }
+  /* While the phone modal is up the BOOK is pinned (suggestions.js
+     lockPage: the iOS-proof lock — fixed at -scrollY, restored on close).
+     Without it a flick in the modal, or iOS revealing a focused textarea,
+     scrolled the page underneath, and the post-edit re-render then kept
+     that drifted position: "sent somewhere way above my sentence". */
+  body.sgm-page-locked {
+    position: fixed;
+    left: 0;
+    right: 0;
+    width: 100%;
+    overflow-y: hidden;
   }
   #suggestion-modal {
     position: static;
