@@ -3,8 +3,10 @@
  * ⓘ between the gear and Logout; 2026-11-25).
  *
  * EXTREMELY terse by design: the command shapes, nothing else. `<name>` is
- * an argument (2026-11-25: named, not "…"), `a|b` the choices. What a line
- * does is for the author to try in the editor; this is a reminder, not
+ * an argument (2026-11-25: named, not "…"), `a|b` the choices, `[…]` optional
+ * — a whole `[{…}]` group, or `{[…]}` when the braces must be there but may
+ * be empty (every command needs at least one `{}`; `&end#<id>` none). What a
+ * line does is for the author to try in the editor; this is a reminder, not
  * documentation.
  */
 const WriteSysCheatsheet = {
@@ -13,11 +15,11 @@ const WriteSysCheatsheet = {
       title: 'Alone on a line',
       rows: [
         '&title{<title>}',
-        '&part#<slug>{<numeral>}{<title>}',
-        '&chapter#<slug>{<number>}{<title>}',
-        '&anchor#<slug>{<label>}',
-        '&placeholder#<slug>{sentences|paragraphs}{xs|s|m|l|xl|xxl|xxxl}{<label>}',
-        '&sketch#<id>{<text>} … &end#<id>',
+        '&part#<slug>{<numeral>}[{<title>}]',
+        '&chapter#<slug>{<number>}[{<title>}]',
+        '&anchor#<slug>{[<label>]}',
+        '&placeholder[#<slug>]{sentences|paragraphs}[{xs|s|m|l|xl|xxl|xxxl}][{<label>}]',
+        '&sketch#<id>{[<text>]} … &end#<id>',
       ],
     },
     {
@@ -25,9 +27,9 @@ const WriteSysCheatsheet = {
       rows: [
         '&reference#<slug>{<text>}',
         '&anchor#<slug>{}',
-        '&marker#<slug>{weak|strong}',
+        '&marker#<slug>{[weak|strong]}',
         '&footnote{<text>}',
-        '&placeholder{sentences|paragraphs}{<size>}',
+        '&placeholder{sentences|paragraphs}[{<size>}]',
       ],
     },
     {
@@ -46,7 +48,7 @@ const WriteSysCheatsheet = {
         '&meta{divider-folios}{on|off}',
         '&meta{footnote-marks}{numbers|symbols}',
         '&meta{footnote-reset}{page|chapter|never}',
-        '&meta{font}{<font>}',
+        '&meta{font}{<family>}',
       ],
     },
   ],

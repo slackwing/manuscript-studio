@@ -36,7 +36,10 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     embedded: document.documentElement.classList.contains('embedded'),
   }));
   const has = (s) => content.rows.some((r) => r.includes(s));
-  check('the sheet lists the command shapes, parameters NAMED (<title>, not …)', has('&title{<title>}') && has('&chapter#<slug>{<number>}{<title>}') && has('&placeholder#<slug>') && has('&footnote{<text>}') && has('&marker#<slug>') && has('&meta{font}{<font>}') && !content.rows.some((r) => r.includes('…') && !r.includes('&end')), content.rows.slice(0, 4).join(' | '));
+  check('the sheet lists the command shapes, parameters NAMED (<title>, not …), optionals in [ ]',
+    has('&title{<title>}') && has('&chapter#<slug>{<number>}[{<title>}]') && has('&placeholder[#<slug>]{sentences|paragraphs}[{xs|s|m|l|xl|xxl|xxxl}][{<label>}]')
+    && has('&footnote{<text>}') && has('&marker#<slug>{[weak|strong]}') && has('&meta{font}{<family>}') && has('&anchor#<slug>{[<label>]}')
+    && !content.rows.some((r) => r.includes('…') && !r.includes('&end')), content.rows.slice(0, 5).join(' | '));
   check('it is terse: shapes only, no descriptions, short section names', content.descs === 0 && content.sections.every((s) => s.split(/\s+/).length <= 4) && content.longest < 80, JSON.stringify({ descs: content.descs, sections: content.sections, longest: content.longest }));
   check('the panel page hides its own chrome (embedded)', content.embedded === true);
   // Second click: no second tab.
