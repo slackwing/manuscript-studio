@@ -2,38 +2,39 @@
  * Syntax cheatsheet — the content of cheatsheet.html (a tab, opened by the
  * ⓘ between the gear and Logout; 2026-11-25).
  *
- * EXTREMELY terse by design: the command shapes, nothing else. `{…}` is an
- * argument, `a|b` the choices. What a line does is for the author to try in
- * the editor; this is a reminder, not documentation.
+ * EXTREMELY terse by design: the command shapes, nothing else. `<name>` is
+ * an argument (2026-11-25: named, not "…"), `a|b` the choices. What a line
+ * does is for the author to try in the editor; this is a reminder, not
+ * documentation.
  */
 const WriteSysCheatsheet = {
   SECTIONS: [
     {
       title: 'Alone on a line',
       rows: [
-        '&title{…}',
-        '&part#slug{…}{…}',
-        '&chapter#slug{…}{…}',
-        '&anchor#slug{…}',
-        '&placeholder#slug{sentences|paragraphs}{xs|s|m|l|xl|xxl|xxxl}{…}',
-        '&sketch#id{…} … &end#id',
+        '&title{<title>}',
+        '&part#<slug>{<numeral>}{<title>}',
+        '&chapter#<slug>{<number>}{<title>}',
+        '&anchor#<slug>{<label>}',
+        '&placeholder#<slug>{sentences|paragraphs}{xs|s|m|l|xl|xxl|xxxl}{<label>}',
+        '&sketch#<id>{<text>} … &end#<id>',
       ],
     },
     {
       title: 'Inside a sentence',
       rows: [
-        '&reference#slug{…}',
-        '&anchor#slug{}',
-        '&marker#slug{weak|strong}',
-        '&footnote{…}',
-        '&placeholder{sentences}{l}',
+        '&reference#<slug>{<text>}',
+        '&anchor#<slug>{}',
+        '&marker#<slug>{weak|strong}',
+        '&footnote{<text>}',
+        '&placeholder{sentences|paragraphs}{<size>}',
       ],
     },
     {
       title: 'Text',
       rows: [
         '*italic*   **bold**',
-        '#slug  =  a-z 0-9 -',
+        '<slug>  =  a-z 0-9 -',
       ],
     },
     {
@@ -45,7 +46,7 @@ const WriteSysCheatsheet = {
         '&meta{divider-folios}{on|off}',
         '&meta{footnote-marks}{numbers|symbols}',
         '&meta{footnote-reset}{page|chapter|never}',
-        '&meta{font}{Georgia}',
+        '&meta{font}{<font>}',
       ],
     },
   ],
