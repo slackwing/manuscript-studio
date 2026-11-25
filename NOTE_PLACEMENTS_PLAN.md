@@ -289,6 +289,7 @@ the note was placed on; NULL when none), no longer read.
 
 ## Out of scope (noted for later)
 - UI for placing an existing note (pad→sentence, sentence→pad, free→anywhere)
-  and the card context design for N placements.
+  and the card context design for N placements — **now NOTE_UI_PLAN.md
+  (2026-11-25).**
 - The processor's stranding hazard (notes committed before `MarkMigrationDone`).
 - Sketch notes as placements.
