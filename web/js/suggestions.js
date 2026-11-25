@@ -616,10 +616,18 @@ const WriteSysSuggestions = {
     // edit. Pin the body (the iOS-proof lock: fixed at -scrollY) while the
     // phone layout is up, and put the scroll back exactly where it was
     // BEFORE the re-render captures its anchor.
-    let pageLock = null; // { x, y } while the body is pinned
+    let pageLock = null; // { x, y, top } while the body is pinned
     const lockPage = () => {
       if (pageLock) return;
-      pageLock = { x: window.scrollX, y: window.scrollY };
+      // `top`: the sentence's viewport offset as the page is pinned — the
+      // one number the close restores ABSOLUTELY (2026-11-25). Relative
+      // anchoring (measure, render, measure) trusted the scroll between
+      // unlock and render, and a phone does not keep it: iOS puts back the
+      // scroll it remembered when the keyboard opened — 0, under the pin —
+      // on blur, before or after the render lands, and the book came back
+      // at its top.
+      const frag = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${CSS.escape(sentenceId)}"]`);
+      pageLock = { x: window.scrollX, y: window.scrollY, top: frag ? frag.getBoundingClientRect().top : null };
       document.body.style.top = `${-pageLock.y}px`;
       document.body.style.left = `${-pageLock.x}px`;
       document.body.classList.add('sgm-page-locked');
@@ -871,6 +879,11 @@ const WriteSysSuggestions = {
       }
       overlay.remove();
       modal.remove();
+      // Phone: the sentence's viewport offset while the page was pinned —
+      // the close puts it back there whatever the scroll does meanwhile.
+      const pinnedTop = pageLock && typeof pageLock.top === 'number' ? pageLock.top : null;
+      const R0 = window.WriteSysRenderer;
+      const holdPinned = () => { if (pinnedTop !== null && R0 && R0.holdSentenceAt) R0.holdSentenceAt(sentenceId, pinnedTop); };
       // Before anything below measures the page: the book scrolls back to
       // where it was when the modal opened, so the re-render's anchor is the
       // sentence's real pre-edit position.
@@ -888,7 +901,7 @@ const WriteSysSuggestions = {
 
       const finalText = (this.bySentenceId[sentenceId] !== undefined)
         ? this.bySentenceId[sentenceId] : original;
-      if (finalText === openCurrent && !deferredRefresh) return true; // no net change → no re-render
+      if (finalText === openCurrent && !deferredRefresh) { holdPinned(); return true; } // no net change → no re-render
 
       // Stamp the URL so a manual hard-reload comes back to this sentence
       // instead of the top of the manuscript. replaceState — don't pollute
@@ -913,10 +926,12 @@ const WriteSysSuggestions = {
         // Refetch, then render: the local rows are missing whatever landed
         // while we sat expired.
         await r0.refreshAfterRelogin();
+        holdPinned();
       } else if (window.WriteSysRenderer && window.WriteSysRenderer.renderManuscript) {
         await window.WriteSysRenderer.renderManuscript({
           anchorSentenceId: sentenceId,
           selectSentenceId: sentenceId,
+          anchorViewportTop: pinnedTop === null ? undefined : pinnedTop,
         });
       }
       if (window.WriteSysPush) {
@@ -925,7 +940,11 @@ const WriteSysSuggestions = {
       return true;
     };
     this._activeClose = close;
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    // The backdrop closes — and so does the phone note stack's own empty
+    // space (its grid cells with no card in them): the stack is a child of
+    // the overlay, so a tap there hit the stack, not the backdrop, and the
+    // whole row swallowed the exit (2026-11-25).
+    overlay.addEventListener('click', (e) => { if (e.target === overlay || (notesStack && e.target === notesStack)) close(); });
     // Escape closes from ANYWHERE while the modal is open — the formatted
     // default means focus often never enters the modal, so a modal-scoped
     // keydown would go deaf. Removed on close.

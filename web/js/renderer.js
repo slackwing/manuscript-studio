@@ -387,6 +387,10 @@ const WriteSysRenderer = {
   //     scroll to the top during a re-paginate.
   //   selectSentenceId: string — after the new render, add the .selected
   //     class to that sentence's span(s) so it's easy to spot post-edit.
+  //   anchorViewportTop: number — restore the anchor sentence to THIS
+  //     viewport offset absolutely (and hold it, see holdSentenceAt) instead
+  //     of the measured-before/measured-after delta. The phone suggest-edit
+  //     close passes the offset the page was pinned at.
   //
   // SERIALIZED (R25): renders must never overlap — two concurrent
   // _renderManuscriptNow calls would each snapshot the same "old pages" and
@@ -425,7 +429,7 @@ const WriteSysRenderer = {
 
   async _renderManuscriptNow(opts = {}) {
     const container = document.getElementById('manuscript-content');
-    const { anchorSentenceId, selectSentenceId } = opts;
+    const { anchorSentenceId, selectSentenceId, anchorViewportTop } = opts;
 
     // Re-apply settings each render so a suggestion that adds/removes a &meta
     // (saved via the modal, which triggers a re-render) takes effect live.
@@ -521,7 +525,9 @@ const WriteSysRenderer = {
     // offset differs from the old one (it can — our edit may have changed
     // its width/wrap), shift scroll so it lands at the original viewport
     // y. The user perceives the diff appear in place.
-    if (anchorSentenceId && anchorOffset !== null) {
+    if (anchorSentenceId && typeof anchorViewportTop === 'number') {
+      this.holdSentenceAt(anchorSentenceId, anchorViewportTop);
+    } else if (anchorSentenceId && anchorOffset !== null) {
       const fresh = document.querySelector(`.sentence[data-sentence-id="${CSS.escape(anchorSentenceId)}"]`);
       if (fresh) {
         const newOffset = fresh.getBoundingClientRect().top;
@@ -968,6 +974,47 @@ const WriteSysRenderer = {
     };
     done.then(release, release);
     return done;
+  },
+
+  // Put `sentenceId` at viewport offset `top` NOW, and keep it there for
+  // `ms` against scrolls that are not the reader's (2026-11-25: the phone
+  // suggest-edit close — iOS restores the scroll it remembered when the
+  // keyboard opened, 0 under the page lock, on blur, at any moment around
+  // the render). The reader's own touch / wheel / key / pointer ends the
+  // hold at once, as does a new page lock (the next modal owns the scroll).
+  holdSentenceAt(sentenceId, top, ms = 1200) {
+    if (this._hold) this._hold.stop();
+    const sel = `.pagedjs_pages .sentence[data-sentence-id="${CSS.escape(sentenceId)}"]`;
+    const snap = () => {
+      if (document.body.classList.contains('sgm-page-locked')) return false;
+      const el = document.querySelector(sel);
+      if (!el) return false;
+      const delta = el.getBoundingClientRect().top - top;
+      if (Math.abs(delta) > 1) window.scrollTo({ left: window.scrollX, top: window.scrollY + delta, behavior: 'auto' });
+      return true;
+    };
+    const INPUT = ['touchstart', 'pointerdown', 'wheel', 'keydown'];
+    const start = Date.now();
+    let timer = null;
+    const hold = {
+      stop: () => {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        INPUT.forEach((t) => window.removeEventListener(t, hold.stop, true));
+        window.removeEventListener('scroll', onScroll, true);
+        if (this._hold === hold) this._hold = null;
+      },
+    };
+    const onScroll = () => { if (!snap()) hold.stop(); };
+    const tick = () => {
+      if (Date.now() - start >= ms || !snap()) return hold.stop();
+      timer = setTimeout(tick, 150);
+    };
+    this._hold = hold;
+    INPUT.forEach((t) => window.addEventListener(t, hold.stop, { capture: true, passive: true }));
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    snap();
+    tick();
   },
 
   // The first sentence still on screen — the re-render's scroll anchor.

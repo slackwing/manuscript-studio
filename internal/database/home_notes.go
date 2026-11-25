@@ -49,6 +49,10 @@ type HomeNote struct {
 	// Owner: the note's user — set by ListRecentNotesForUser, whose rows may
 	// be someone else's (notes on a manuscript you hold a role on).
 	Owner string
+	// PlacedManuscriptID: the manuscript of the note's primary sentence
+	// placement (ListRecentNotesForUser) — the context when manuscript_id
+	// was never stamped on the row (legacy / raw-inserted notes).
+	PlacedManuscriptID *int
 }
 
 // homeNoteSelect is the shared column list of the two home-note readers
@@ -254,7 +258,9 @@ func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscr
 // (or linked to) a manuscript the user holds a role on — minus the ones
 // they hid, newest first, optionally filtered by text. The picker's feed.
 func (db *DB) ListRecentNotesForUser(ctx context.Context, username, q string, limit int) ([]HomeNote, error) {
-	rows, err := db.Pool.Query(ctx, homeNoteSelect+`, n.user_id`+homeNoteFrom+`
+	rows, err := db.Pool.Query(ctx, homeNoteSelect+`, n.user_id,
+		       (SELECT mg.manuscript_id FROM sentence s JOIN migration mg ON mg.migration_id = s.migration_id
+		        WHERE s.sentence_id = place.sentence_id) AS placed_manuscript_id`+homeNoteFrom+`
 		WHERE n.deleted_at IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM note_hide h WHERE h.note_id = n.note_id AND h.username = $1)
 		  AND (n.user_id = $1
@@ -278,7 +284,7 @@ func (db *DB) ListRecentNotesForUser(ctx context.Context, username, q string, li
 		var h HomeNote
 		var tagsJSON []byte
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
-			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.Owner); err != nil {
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.Owner, &h.PlacedManuscriptID); err != nil {
 			return nil, fmt.Errorf("scan recent note: %w", err)
 		}
 		if len(tagsJSON) > 0 {

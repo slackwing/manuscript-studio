@@ -73,6 +73,11 @@ func TestListRecentNotesForUser(t *testing.T) {
 	if ids[minePad.NoteID].ScratchpadTitle != "Recent pad" {
 		t.Fatalf("pad context: %q", ids[minePad.NoteID].ScratchpadTitle)
 	}
+	// `theirs` was raw-inserted without manuscript_id: its book comes from
+	// the placement.
+	if ids[theirs].ManuscriptID != nil || ids[theirs].PlacedManuscriptID == nil || *ids[theirs].PlacedManuscriptID != f.manuscriptID {
+		t.Fatalf("placed manuscript fallback: %v / %v", ids[theirs].ManuscriptID, ids[theirs].PlacedManuscriptID)
+	}
 	// Search narrows by text, case-insensitively.
 	got, err = f.db.ListRecentNotesForUser(f.ctx, f.username, "IN A PAD", 50)
 	if err != nil || len(got) != 1 || got[0].NoteID != minePad.NoteID {

@@ -136,9 +136,34 @@ const LONG_BODY = 'Long mobile note. '.repeat(30) + `(${TEST_USERNAME})`;
     const n = (window.WriteSysNotes.notes || []).find(x => (x.body || '').startsWith('Stack-born'));
     if (n) return fetch(`api/notes/${n.note_id}`, { method: 'DELETE', headers: { 'X-CSRF-Token': localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token') || '' }, credentials: 'same-origin' });
   });
-  await page.keyboard.press('Escape');
+  // A tap on the stack's EMPTY space (a grid cell with no card) exits the
+  // view like the backdrop does (2026-11-25).
+  await page.evaluate(() => { const ta = document.activeElement; if (ta && ta.blur) ta.blur(); });
+  const emptyCell = await page.evaluate(() => {
+    const s = document.getElementById('sgm-notes-stack');
+    const r = s.getBoundingClientRect();
+    const cards = [...s.querySelectorAll('.sticky-note')].map((c) => c.getBoundingClientRect());
+    // Probe a grid of points inside the stack for one that no card covers.
+    for (let y = r.top + 4; y < r.bottom - 4; y += 6) for (let x = r.left + 4; x < r.right - 4; x += 6) {
+      if (y < 0 || y > innerHeight) continue;
+      if (!cards.some((c) => x >= c.left && x <= c.right && y >= c.top && y <= c.bottom)) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit === s) return { x, y };
+      }
+    }
+    return null;
+  });
+  check('the stack has empty space beside its cards', !!emptyCell, JSON.stringify(emptyCell));
+  if (emptyCell) {
+    await page.mouse.click(emptyCell.x, emptyCell.y);
+    await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 }).catch(() => {});
+    check('tapping the stack\'s empty space exits the view', (await page.locator('#suggestion-modal').count()) === 0);
+  } else {
+    await page.keyboard.press('Escape');
+  }
   await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
   await page.close();
+
 
   // ---- desktop viewport: no stack, margin untouched ----
   const desk = await browser.newPage({ viewport: { width: 1600, height: 1000 } });

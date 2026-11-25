@@ -95,6 +95,24 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   });
   check('toolbar ❝ wraps then unquotes', quoteBtnToggles.wrapped === 1 && quoteBtnToggles.after === 0, JSON.stringify(quoteBtnToggles));
 
+  // Date, then a list STRAIGHT AWAY (2026-11-25): the caret the date leaves
+  // in its fresh paragraph must be a real textblock selection — it used to
+  // sit between blocks, and the list buttons did nothing until Enter.
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Alt+d');
+  await page.keyboard.press('Control+Shift+8');
+  const dateThenList = await page.evaluate(() => {
+    const d = window.WriteSysScratchpad.view.state.doc;
+    const kinds = []; d.forEach((n) => kinds.push(n.type.name));
+    const sel = window.WriteSysScratchpad.view.state.selection.$from;
+    return { kinds: kinds.join(','), h2: d.firstChild.textContent, inList: sel.depth >= 2 && sel.node(sel.depth - 1).type.name === 'list_item' };
+  });
+  check('date then bullet at once: H2 keeps the date, the list opens under it with the caret inside',
+    dateThenList.kinds === 'heading,bullet_list' && dateThenList.h2 === wantDate && dateThenList.inList, JSON.stringify(dateThenList));
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Backspace');
+
   // Alt+D inside a variation textarea (shared edit pane).
   await page.evaluate(async () => {
     const view = window.WriteSysScratchpad.view;

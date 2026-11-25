@@ -348,11 +348,15 @@ func (h *HomeHandlers) HandleRecentNotes(w http.ResponseWriter, r *http.Request)
 			hn.Body = *n.Body
 		}
 		manuscript := ""
-		if n.ManuscriptID != nil {
-			if _, ok := names[*n.ManuscriptID]; !ok {
-				names[*n.ManuscriptID] = manuscriptDisplayName(ctx, h.DB, h.Config, *n.ManuscriptID)
+		mid := n.ManuscriptID
+		if mid == nil {
+			mid = n.PlacedManuscriptID // placed on a sentence, never stamped: its book
+		}
+		if mid != nil {
+			if _, ok := names[*mid]; !ok {
+				names[*mid] = manuscriptDisplayName(ctx, h.DB, h.Config, *mid)
 			}
-			manuscript = names[*n.ManuscriptID]
+			manuscript = names[*mid]
 		}
 		if manuscript == "" {
 			manuscript = n.Context

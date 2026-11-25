@@ -68,13 +68,33 @@ const MARK = ` [mobile-scroll ${TEST_USERNAME}]`;
   check('edit autosaved', saved);
   const pagBefore = await page.evaluate(() => document.body.dataset.paginated);
   await page.evaluate(() => document.getElementById('suggestion-modal-overlay').click());
+  // iOS puts back the scroll it remembered when the keyboard opened — 0
+  // under the pin — on blur: the instant the modal is gone (mid-render)…
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForFunction((p) => !document.getElementById('suggestion-modal') && document.body.dataset.paginated !== p, pagBefore, { timeout: 60000 });
   await page.waitForFunction((id) => !!document.querySelector(`.pagedjs_pages .sentence.selected[data-sentence-id="${id}"]`), sidA);
+  // …and again once the render has already landed (a short book).
+  await sleep(120);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sleep(700);
   const after = await posOf(sidA);
   check('page unpinned after close', !after.locked, JSON.stringify(after));
   check('scroll is back where the modal opened', Math.abs(after.y - start.y) <= 2, `${start.y} → ${after.y}`);
   check('the edited sentence sits where it was', after.top !== null && Math.abs(after.top - start.top) <= 3, `${start.top} → ${after.top}`);
   check('…and is on screen', after.top > 0 && after.top < 844, String(after.top));
+
+  // ---- a close with NO change (nothing to re-render) holds the spot too ----
+  // (The sentence is already selected, so one tap opens; a dblclick's second
+  // click would land on the backdrop and close it again.)
+  await spanA.click();
+  await page.waitForSelector('#suggestion-modal .sgm-fmt-left', { state: 'visible', timeout: 8000 });
+  await page.evaluate(() => document.getElementById('suggestion-modal-overlay').click());
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 20000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sleep(700);
+  const noop = await posOf(sidA);
+  check('no-change close: the sentence is held where it was, despite the phone\'s stray scroll', Math.abs(noop.top - start.top) <= 3 && !noop.locked, `${start.top} → ${noop.top}`);
 
   // ---- the ‹ › tour on a phone: the next modal pins the page ON its edit ----
   // A second suggested edit further down, then flip to it from A.

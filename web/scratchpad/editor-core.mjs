@@ -251,9 +251,17 @@ export async function createScratchpadEditor(els, scratchpadId) {
       const h = schema.nodes.heading.create({ level: 2 },
         schema.text(window.WriteSysEditPane.dateString()));
       let tr = state.tr.replaceSelectionWith(h);
-      const pos = tr.selection.from;
-      tr = tr.insert(pos, schema.nodes.paragraph.create());
-      tr = tr.setSelection(TextSelection.create(tr.doc, pos + 1));
+      // The paragraph goes AFTER the heading the selection now sits in —
+      // not at the selection itself. Inserting a block at a position inside
+      // the heading split it, and the caret was then set one past the
+      // heading's end: BETWEEN blocks. The DOM caret looked right (and
+      // typing worked, the DOM observer placing it), but the state
+      // selection pointed at no textblock, so the list buttons (blockRange
+      // = null) did nothing until Enter made a real one (2026-11-25).
+      const $t = tr.selection.$to;
+      const after = $t.depth ? $t.after() : $t.pos;
+      tr = tr.insert(after, schema.nodes.paragraph.create());
+      tr = tr.setSelection(TextSelection.create(tr.doc, after + 1));
       dispatch(tr.scrollIntoView());
     }
     return true;
