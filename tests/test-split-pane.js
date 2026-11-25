@@ -232,6 +232,17 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   // past the floor.
   // ======================================================================
 
+  // ---- strip: a wheel over a NON-overflowing strip goes nowhere (the shell
+  // page behind the panels must not scroll) ----
+  await page.evaluate(() => { document.body.style.minHeight = '5000px'; window.scrollTo(0, 0); });
+  const wideBar = await page.locator('#ms-tabs .ms-tabbar-left').boundingBox();
+  await page.mouse.move(wideBar.x + wideBar.width / 2, wideBar.y + wideBar.height / 2);
+  await page.mouse.wheel(0, 600);
+  await page.waitForTimeout(250);
+  check('wheel over a strip that does not overflow leaves the page behind unscrolled',
+    (await page.evaluate(() => window.scrollY)) === 0, String(await page.evaluate(() => window.scrollY)));
+  await page.evaluate(() => { document.body.style.minHeight = ''; });
+
   // ---- strip: overflow scrolls with the wheel; the focused tab is revealed ----
   await page.setViewportSize({ width: 640, height: 900 });
   const stripPads = await page.evaluate(async () => {

@@ -616,11 +616,14 @@ window.WriteSysTabs = (function () {
     if (!host.dataset.wheel) {
       host.dataset.wheel = '1';
       host.addEventListener('wheel', (e) => {
+        // The strip is chrome: a wheel over it never reaches the page
+        // behind (the shell document would scroll under the panels and
+        // its scrollbar would wander for no visible reason).
+        e.preventDefault();
         const bar = e.target.closest && e.target.closest('.ms-tabbar');
         if (!bar || bar.scrollWidth <= bar.clientWidth + 1) return;
         const d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * (e.deltaMode === 1 ? 16 : 1);
         bar.scrollLeft += d;
-        e.preventDefault();
       }, { passive: false });
     }
     host.replaceChildren();
