@@ -124,13 +124,13 @@ const WriteSysCommand = {
   // The size arg is positional but detected by value: an arg that exactly
   // matches a size keyword is the size, anything else is the label (a label
   // that IS literally a size keyword can force the default by writing the
-  // size explicitly). valid=false means mis-syntax → render as literal prose
-  // — including the pre-2026-11-25 fourth {details} arg (what a placeholder
-  // is meant to become is a sticky note on it now). Mirrors Go
-  // ParsePlaceholder — keep in lockstep.
+  // size explicitly). valid=false means mis-syntax → render as literal prose.
+  // The pre-2026-11-25 fourth {details} arg is ACCEPTED AND IGNORED (its text
+  // became a sticky note on the placeholder; the book never shows raw text
+  // over a legacy line). Mirrors Go ParsePlaceholder — keep in lockstep.
   placeholderSpec(args) {
     const spec = { unit: '', size: 'm', count: 0, label: '', valid: false };
-    if (!args || args.length === 0 || args.length > 3) return spec;
+    if (!args || args.length === 0 || args.length > 4) return spec;
     spec.unit = String(args[0]).trim();
     const counts = spec.unit === 'sentences' ? this.PLACEHOLDER_SENTENCES
       : (spec.unit === 'paragraphs' ? this.PLACEHOLDER_PARAGRAPHS : null);
@@ -141,6 +141,7 @@ const WriteSysCommand = {
       rest = rest.slice(1);
     }
     if (rest.length > 0) { spec.label = rest[0]; rest = rest.slice(1); }
+    if (rest.length > 0) rest = rest.slice(1); // the old {details}: ignored
     if (rest.length > 0) return { unit: '', size: 'm', count: 0, label: '', valid: false };
     spec.count = counts[spec.size];
     spec.valid = true;

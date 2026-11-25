@@ -2,8 +2,8 @@
 // sentences-unit placeholder renders as a grey lorem run inside its host
 // sentence, a block paragraphs-unit placeholder renders N grey lorem
 // paragraphs that are ONE sentence and lists in the outline exactly like an
-// anchor, and a mis-syntaxed placeholder — including the old fourth
-// {details} arg — prints as literal prose. Uses the suggestion preview path
+// anchor, a mis-syntaxed placeholder prints as literal prose, and the old
+// fourth {details} arg is ignored. Uses the suggestion preview path
 // (same technique as test-structural-suggestion.js) so the fixture
 // manuscript is untouched.
 const { chromium } = require('playwright');
@@ -73,9 +73,9 @@ const {
     const st0 = await put(chapterId, '&chapter{The Keg Party}');
     check('chapter suggestion PUT accepted', st0 === 200, `status ${st0}`);
 
-    // Inline: sentences-unit placeholder mid-sentence, plus two mis-syntaxed
-    // ones that must print as literal prose — a bad unit, and the old
-    // four-arg form with {details}.
+    // Inline: sentences-unit placeholder mid-sentence, a mis-syntaxed one
+    // (bad unit) that must print as literal prose, and the old four-arg
+    // form with {details}, which must render as a placeholder (never raw).
     const st1 = await put(inlineId,
       'She waited on the platform. &placeholder#reunion{sentences}{l}{Reunion beat} The end came quietly, and also &placeholder{words} stayed literal, as did &placeholder{sentences}{s}{}{legacy details}.');
     check('inline suggestion PUT accepted', st1 === 200, `status ${st1}`);
@@ -107,7 +107,8 @@ const {
         unselectable: phStyle ? phStyle.userSelect === 'none' : false,
         chip: !!span.querySelector('.ph-chip'),
         literalUnit: /&placeholder\{words\}/.test(span.textContent),
-        literalLegacy: /&placeholder\{sentences\}\{s\}\{\}\{legacy details\}/.test(span.textContent),
+        legacyRuns: span.querySelectorAll('.ph').length,
+        legacyRaw: /legacy details|&placeholder\{sentences\}\{s\}/.test(span.textContent),
       };
     }, inlineId);
     check('inline .ph rendered inside host sentence', inline.found && inline.hasPh);
@@ -118,7 +119,7 @@ const {
     check('filler is unselectable', inline.unselectable === true);
     check('no details chip anywhere', inline.chip === false);
     check('mis-syntaxed &placeholder{words} prints as literal prose', inline.literalUnit === true);
-    check('the old four-arg {details} form prints as literal prose', inline.literalLegacy === true);
+    check('the old four-arg {details} form renders as a placeholder, never raw', inline.legacyRuns === 2 && inline.legacyRaw === false, `runs=${inline.legacyRuns} raw=${inline.legacyRaw}`);
 
     // --- block form ---
     const block = await page.evaluate((id) => {

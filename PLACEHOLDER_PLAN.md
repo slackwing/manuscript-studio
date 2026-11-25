@@ -23,8 +23,10 @@ placeholder. What changed:
   aria-hidden (filler never leaks into copy or search).
 - **Grammar**: `&placeholder#slug{unit}{size?}{label?}`. The `{details}`
   arg is gone — what a placeholder is meant to become is a sticky note ON
-  it. A fourth arg is mis-syntax and prints literally (the existing rule),
-  which is how the author finds the lines to trim.
+  it. A fourth arg is still ACCEPTED and ignored (both parsers), so a line
+  written under the old grammar never prints raw in the book; the first
+  cut made it mis-syntax and the owner saw his placeholder as text within
+  minutes (2026-11-25). Trim at leisure.
 - **Migration of existing details**: `BackfillPlaceholderDetailNotes`
   (boot, idempotent) gives every placeholder in each manuscript's latest
   migration that still carries details under the old grammar a yellow

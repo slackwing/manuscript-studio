@@ -39,8 +39,16 @@ check('full signature {unit}{size}{label}', (() => {
   return s.valid && s.count === 5 && s.label === 'Reunion' && !('details' in s);
 })());
 check('bad unit is invalid', spec(['words', 'm']).valid === false);
-check('the old fourth {details} arg is mis-syntax now', spec(['sentences', 'l', 'Reunion', 'They meet.']).valid === false);
-check('label + details without a size is mis-syntax too', spec(['paragraphs', 'The argument', 'Three beats']).valid === false);
+check('the old fourth {details} arg is accepted and ignored', (() => {
+  const s = spec(['sentences', 'l', 'Reunion', 'They meet.']);
+  return s.valid && s.count === 5 && s.label === 'Reunion' && !('details' in s);
+})());
+check('label + legacy details without a size: still the label', (() => {
+  const s = spec(['paragraphs', 'The argument', 'Three beats']);
+  return s.valid && s.size === 'm' && s.label === 'The argument';
+})());
+check('blank legacy details are fine too', spec(['paragraphs', 'm', '', '']).valid === true);
+check('5 args is mis-syntax', spec(['sentences', 'a', 'b', 'c', 'd']).valid === false);
 
 // --- block/inline decisions ---
 check('sole-line placeholder is a block command', cmd.isBlockCommandText('&placeholder{paragraphs}{m}'));
