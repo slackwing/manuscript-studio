@@ -43,7 +43,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
       homeLink: !!document.getElementById('home-link'),
       brandLink: document.getElementById('brand').getAttribute('href'),
     }), DISPLAY_NAME);
-    check('four sections render (Points / Manuscripts / Scratchpads / Notes)', cards.sections === 4, String(cards.sections));
+    check('five sections render (Points / Manuscripts / Scratchpads / Boards / Notes)', cards.sections === 5, String(cards.sections));
     check('test manuscript card present', cards.manuscriptCard);
     check('no home icon (the Home tab owns that); wordmark links home',
       !cards.homeLink && cards.brandLink === 'home.html');
