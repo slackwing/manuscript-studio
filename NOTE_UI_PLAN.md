@@ -149,11 +149,14 @@ touch server-side. Per viewer: your focusing moves nothing for anyone else.
 A note card on the landing, the daily board or a board no longer "opens in
 context" — with placements a note has no single source. It opens
 `WriteSysNoteModal` (`web/notes/note-modal.js`): the page greys out, the
-FULL note (the shared widget, editable through the note API) sits centred,
-and under it one card per placement — a manuscript card per sentence
+FULL note (the shared widget at its own fixed width, growing vertically,
+editable through the note API) sits centred, and under it one standard
+square card (the landing's `.card`, manuscript / scratchpad kind) per
+placement — a manuscript card per sentence
 (`GET /api/notes/{id}/placements` now carries the sentence `text`, whether
 it is in the `current` version, and the `manuscript_name`), a pad card per
-scratchpad — tiled in a forming square (`cols = ⌈√n⌉`: 4 → 2×2, 5 → 3+2).
+scratchpad (a SKETCH note, which has no placement row of its own, shows the
+pads holding its sketch, marked "sketch") — tiled in a forming square (`cols = ⌈√n⌉`: 4 → 2×2, 5 → 3+2).
 Hovering a manuscript card shows the sentence as the book sets it
 (scratch-render's shadow-root pipeline — book.css typography, white paper,
 a shadow), as if snipped from the page; clicking goes to that sentence

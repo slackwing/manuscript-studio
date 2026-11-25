@@ -48,13 +48,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const grid = ov.querySelector('.nm-cards');
     return {
       greyed: getComputedStyle(ov).backgroundColor !== 'rgba(0, 0, 0, 0)', value: ta.value, focused: document.activeElement === ta,
-      cards: cards.map((c) => c.className.replace(/card |nm-card /g, '').trim() + ':' + c.querySelector('.card-title').textContent),
+      cards: cards.map((c) => [...c.classList].find((k) => /^nm-card-/.test(k)) + ':' + c.querySelector('.card-title').textContent),
       cols: grid.style.getPropertyValue('--nm-cols'), noTabChange: !location.hash.includes('manuscript'),
     };
   });
   check('clicking a note card greys the page and shows the full note, editable and focused', opened.greyed && opened.value === 'Modal note' && opened.focused && opened.noTabChange, JSON.stringify(opened));
   check('one card per placement — 2 manuscript + 1 pad — in a 2-column forming square', opened.cards.length === 3 && opened.cards.filter((c) => c.startsWith('nm-card-manuscript')).length === 2 && opened.cards.some((c) => c === 'nm-card-pad:Modal pad') && opened.cols === '2', JSON.stringify(opened.cards) + ' cols=' + opened.cols);
   const msNames = opened.cards.filter((c) => c.startsWith('nm-card-manuscript')).map((c) => c.split(':')[1]);
+  // AGENTS.md N15: the components are used AS THEY ARE — the sticky note at
+  // its fixed width, the tiles the landing's square 210px cards.
+  const shapes = await page.evaluate(() => {
+    const note = document.querySelector('.nm-overlay .nm-note .sticky-note').getBoundingClientRect();
+    const std = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sticky-note-width'));
+    const cards = [...document.querySelectorAll('.nm-overlay .nm-card')].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+    const landing = document.querySelector('#home-root .card-grid .card').getBoundingClientRect();
+    return { noteWidth: Math.round(note.width), std, cards, landing: [Math.round(landing.width), Math.round(landing.height)], kinds: [...document.querySelectorAll('.nm-overlay .nm-card')].map((c) => (c.classList.contains('card-manuscript') ? 'm' : (c.classList.contains('card-scratchpad') ? 's' : '?'))).join('') };
+  });
+  check('the sticky note keeps its fixed component width in the modal', shapes.noteWidth === Math.round(shapes.std), JSON.stringify({ noteWidth: shapes.noteWidth, std: shapes.std }));
+  check('the placement tiles are the landing\'s square cards, manuscript / scratchpad kinds', shapes.cards.every(([w, h]) => w === shapes.landing[0] && h === shapes.landing[1] && w === h) && shapes.kinds === 'mms', JSON.stringify(shapes));
   check('the two manuscript cards both carry the manuscript\'s name', msNames[0] && msNames[0] === msNames[1], JSON.stringify(msNames));
 
   // ---- hover: the sentence as the book sets it ----
@@ -112,6 +123,32 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('a pad card opens the scratchpad', !(await page.locator('.nm-overlay').count()));
   await page.keyboard.press('Escape');
   await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 }).catch(() => {});
+
+  // ---- a SKETCH note: no placement row of its own — its sketch's pad shows as a tile ----
+  await page.evaluate(() => window.WriteSysTabs.activate(null));
+  await page.waitForSelector('#home-root .home-section', { timeout: 15000 });
+  await page.click('.card-ghost[data-ghost="scratchpad"]');
+  await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
+  const sketchNote = await page.evaluate(async () => {
+    const ed = window.WriteSysScratchpad;
+    const ctx = await ed.insertSketch();
+    await ed.variationApi.saveText(ctx.variation.variation_id, 'A sketch with a note of its own.');
+    await new Promise((r) => setTimeout(r, 800));
+    const ids = [...document.querySelectorAll('.spm-editor .ProseMirror .sn-note-ref')].map((r) => parseInt(r.dataset.noteId, 10)).filter(Boolean);
+    return ids[0] || null;
+  });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.spm-overlay', { state: 'detached', timeout: 10000 }).catch(() => {});
+  check('a sketch got a note', !!sketchNote, String(sketchNote));
+  if (sketchNote) {
+    await page.waitForSelector(`#home-root .card-note[data-note-id="${sketchNote}"]`, { timeout: 15000 });
+    await page.click(`#home-root .card-note[data-note-id="${sketchNote}"]`);
+    await page.waitForSelector('.nm-overlay .nm-card', { timeout: 10000 });
+    const sk = await page.evaluate(() => [...document.querySelectorAll('.nm-overlay .nm-card')].map((c) => (c.classList.contains('card-scratchpad') ? 's' : 'm') + ':' + ((c.querySelector('.nm-card-sub') || {}).textContent || '')));
+    check('the sketch note\'s modal shows its sketch\'s pad as a "sketch" tile', sk.length === 1 && sk[0] === 's:sketch', JSON.stringify(sk));
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.nm-overlay', { state: 'detached', timeout: 5000 });
+  }
 
   // ---- a board's cards open the modal too ----
   const b = await page.evaluate(async () => window.WriteSysHome.api('api/boards', { method: 'POST', body: JSON.stringify({ name: 'Modal board' }) }));

@@ -42,7 +42,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForSelector('#ms-tabs .ms-tab-board.active', { timeout: 15000 });
   await page.waitForSelector('#ms-tab-panels iframe[src*="view=board"].active', { timeout: 15000 });
   const boardId = psql(`SELECT max(board_id) FROM board WHERE user_id='${TEST_USERNAME}' AND deleted_at IS NULL`);
-  check('+ creates a board and opens it as a tab', !!boardId && (await page.locator('#ms-tabs .ms-tab-board').textContent()).includes('Board'), boardId);
+  check('+ creates a board titled "Untitled M/D" (like a pad) and opens it as a tab', !!boardId && /Untitled \d+\/\d+/.test(await page.locator('#ms-tabs .ms-tab-board').textContent()), boardId);
 
   const frame = page.frames().find((f) => f.url().includes('view=board'));
   await frame.waitForSelector('.board-page #board-rules .rules-builder .dim-type', { timeout: 20000 });
@@ -54,7 +54,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     cap: (document.querySelector('.rules-builder .dim-cap .dim-label') || {}).textContent,
     name: document.querySelector('.board-name').value,
   }));
-  check('board page: the rules editor (picker + builder) sits above ALL the notes', first.notes >= 3 && first.picker.length >= 1 && first.builder && first.name === 'Board', JSON.stringify(first));
+  check('board page: the rules editor (picker + builder) sits above ALL the notes', first.notes >= 3 && first.picker.length >= 1 && first.builder && /^Untitled/.test(first.name), JSON.stringify(first));
   check('the cap chip reads ∞ by default on a board (no -1 anywhere)', first.cap === '∞', first.cap);
 
   // ---- a tag rule narrows the board ----
@@ -109,8 +109,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.waitForFunction(() => document.querySelector('#home-root .card-board'), null, { timeout: 15000 }).catch(() => {});
   await page.evaluate(() => window.WriteSysHome.reload());
   await page.waitForFunction((id) => !!document.querySelector(`#home-root .card-board[data-board-id="${id}"]`), boardId, { timeout: 15000 });
-  const card = await page.evaluate((id) => { const c = document.querySelector(`#home-root .card-board[data-board-id="${id}"]`); return { title: c.querySelector('.card-title').textContent, meta: c.querySelector('.card-meta').textContent, chips: c.querySelectorAll('.card-board-rules .tag-chip').length }; }, boardId);
-  check('landing card: name, rule chips, note count', card.title === 'Hone list' && /4 notes/.test(card.meta) && card.chips === 1, JSON.stringify(card));
+  const card = await page.evaluate((id) => { const c = document.querySelector(`#home-root .card-board[data-board-id="${id}"]`); return { title: c.querySelector('.card-title').textContent, meta: c.querySelector('.card-meta').textContent, chips: c.querySelectorAll('.tag-chip').length }; }, boardId);
+  check('landing card: the user\'s title and the note count, no rule chips', card.title === 'Hone list' && /4 notes/.test(card.meta) && card.chips === 0, JSON.stringify(card));
 
   // ---- Delete from the board page closes the tab ----
   await page.evaluate((id) => window.WriteSysTabs.openBoard(id, 'Hone list'), parseInt(boardId, 10));

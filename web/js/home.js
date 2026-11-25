@@ -174,18 +174,14 @@ const WriteSysHome = {
     </div>`;
   },
 
-  // A board card (BOARDS_PLAN.md): name, its rules as chips, how many notes
-  // it shows now. Clicking opens the board's tab.
+  // A board card (BOARDS_PLAN.md): the title the user set on the board
+  // page (defaults to "Untitled M/D", like a pad) and how many notes it
+  // shows now — no rule chips (2026-11-25). Clicking opens the board's tab.
   boardCard(b) {
-    const chips = (b.rules || []).slice(0, 4).map((r) => {
-      const bits = [r.task_type, r.priority, r.impact, r.blocked ? '⊘' : null].filter(Boolean).concat(r.tags || []);
-      return `<span class="tag-chip dim-chip">${this.esc(bits.join(' · ') || 'any')}</span>`;
-    }).join('');
     return `<div class="card card-board" data-board-id="${b.board_id}" tabindex="0" role="button">
       <span class="card-kindbar"></span>
       <button type="button" class="card-del" title="Delete board">${window.WriteSysIcons.trash(13)}</button>
       <p class="card-title">${this.esc(b.name)}</p>
-      <p class="card-sketch card-board-rules">${chips}</p>
       <p class="card-meta"><span>${b.note_count} ${b.note_count === 1 ? 'note' : 'notes'}</span></p>
     </div>`;
   },
@@ -364,7 +360,7 @@ const WriteSysHome = {
       noteList = B.notes || [];
       html = `<section class="home-section board-page" data-board-id="${B.board.board_id}">
         <div class="home-section-head board-head">
-          <input class="board-name" value="${this.esc(B.board.name)}" aria-label="Board name">
+          <input class="board-name" value="${this.esc(B.board.name)}" placeholder="Untitled" aria-label="Board title">
           <span class="home-count">${noteList.length}</span>
           <span class="board-sort" id="board-sort"></span>
           <button type="button" class="board-delete" title="Delete board">Delete</button>
@@ -561,8 +557,9 @@ const WriteSysHome = {
 
   // ---- Boards (BOARDS_PLAN.md) -------------------------------------------
   async createBoard() {
+    const now = new Date();
     let b;
-    try { b = await this.api('api/boards', { method: 'POST', body: JSON.stringify({ name: 'Board' }) }); } catch (e) { return; }
+    try { b = await this.api('api/boards', { method: 'POST', body: JSON.stringify({ name: `Untitled ${now.getMonth() + 1}/${now.getDate()}` }) }); } catch (e) { return; }
     await this.reload();
     if (window.WriteSysTabs) window.WriteSysTabs.openBoard(b.board_id, b.name);
   },

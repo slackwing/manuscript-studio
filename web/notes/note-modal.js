@@ -2,10 +2,13 @@
  * The note modal (2026-11-25): a note card on the landing, the daily board
  * or a board no longer "opens in context" — with placements (NOTE_PLACEMENTS
  * _PLAN.md) a note has no single source. Instead the page greys out and the
- * FULL note (the shared widget, editable, saving through the note API) sits
- * centred, with a tiling of one card per placement under it — a manuscript
- * card per sentence it sits on, a pad card per scratchpad — arranged in a
- * forming square (cols = ⌈√n⌉: 4 → 2×2, 5 → 3 + 2). Hovering a manuscript
+ * FULL note (the shared widget — at the widget's own fixed width, growing
+ * vertically — editable, saving through the note API) sits centred, with a
+ * tiling of one card per placement under it — the landing's own square
+ * .card of the manuscript kind per sentence it sits on, of the scratchpad
+ * kind per pad — arranged in a forming square (cols = ⌈√n⌉: 4 → 2×2,
+ * 5 → 3 + 2). Components are used AS THEY ARE (AGENTS.md N15); this file
+ * adds only the column count. Hovering a manuscript
  * card shows the sentence as the book sets it (scratch-render: the real
  * pipeline in a shadow root), as if snipped from the page; clicking goes
  * there. Escape / the backdrop close it.
@@ -93,7 +96,7 @@
 
   function placementCards(noteId, p) {
     const grid = document.createElement('div');
-    grid.className = 'nm-cards';
+    grid.className = 'card-grid nm-cards';
     const items = [];
     (p.sentences || []).forEach((s) => items.push({ kind: 'manuscript', s }));
     (p.scratchpads || []).forEach((sp) => items.push({ kind: 'pad', sp }));
@@ -101,7 +104,8 @@
     grid.style.setProperty('--nm-cols', String(cols(items.length)));
     items.forEach((it) => {
       const card = document.createElement('div');
-      card.className = 'card nm-card nm-card-' + it.kind;
+      // The landing's own card kinds — same frame, kind bar and title font.
+      card.className = 'card nm-card nm-card-' + it.kind + (it.kind === 'manuscript' ? ' card-manuscript' : ' card-scratchpad');
       card.tabIndex = 0;
       card.setAttribute('role', 'button');
       const bar = document.createElement('span');
@@ -135,6 +139,12 @@
         title.textContent = it.sp.title || 'Scratchpad';
         card.dataset.scratchpadId = it.sp.scratchpad_id;
         card.appendChild(title);
+        if (it.sp.sketch) {
+          const sub = document.createElement('p');
+          sub.className = 'card-meta nm-card-sub';
+          sub.textContent = 'sketch';
+          card.appendChild(sub);
+        }
         const go = () => {
           close();
           if (window.WriteSysScratchpadModal) window.WriteSysScratchpadModal.open(it.sp.scratchpad_id, { noteId });
@@ -164,8 +174,10 @@
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     const box = document.createElement('div');
     box.className = 'nm-box';
+    // The host is the widget's own slot (.sticky-note-grid: note-widget.css
+    // gives a note in it the standard fixed width) — no width set here.
     const noteHost = document.createElement('div');
-    noteHost.className = 'nm-note';
+    noteHost.className = 'nm-note sticky-note-grid';
     box.appendChild(noteHost);
     box.appendChild(placementCards(noteId, placements || {}));
     overlay.appendChild(box);

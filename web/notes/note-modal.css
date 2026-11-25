@@ -1,5 +1,12 @@
-/* The note modal (notes/note-modal.js, 2026-11-25): grey page, the full
-   note centred, its placements tiled under it in a forming square. */
+/* The note modal (notes/note-modal.js, 2026-11-25): grey page, the note
+   centred, its placements tiled under it in a forming square.
+
+   RULE (AGENTS.md N15): nothing here restyles a component. The sticky note
+   is the shared widget in its own slot (.sticky-note-grid → the standard
+   fixed width, from note-widget.css), growing vertically with its text;
+   the placement tiles are the landing's own
+   .card-grid / .card (square, 210px) with the manuscript / scratchpad
+   kinds. The only layout fact this file adds is the column count. */
 .nm-overlay {
   position: fixed;
   inset: 0;
@@ -12,27 +19,9 @@
   padding: 8vh 16px 40px;
 }
 .nm-box { display: flex; flex-direction: column; align-items: center; gap: 22px; max-width: 100%; }
-.nm-note { --sticky-note-width: 340px; max-width: 100%; }
-.nm-note .sticky-note { box-shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.6); }
-.nm-cards {
-  display: grid;
-  grid-template-columns: repeat(var(--nm-cols, 1), 150px);
-  gap: 12px;
-  justify-content: center;
-}
-.nm-cards .nm-card {
-  /* Compact: the grid card's tall frame does not apply here. */
-  height: auto;
-  min-height: 0;
-  aspect-ratio: auto;
-  padding: 16px 14px 14px;
-  cursor: pointer;
-  background: rgba(255, 253, 248, 0.96);
-}
-.nm-card .card-title { margin: 0; font-size: 14px; }
-.nm-card-manuscript .card-kindbar { background: #57503f; }
-.nm-card-pad .card-kindbar { background: #2a6fb0; }
-.nm-card-sub { margin: 4px 0 0; font-size: 11px; color: #8a8378; }
+/* A forming square: ⌈√n⌉ columns of the standard 210px cells. */
+.card-grid.nm-cards { grid-template-columns: repeat(var(--nm-cols, 1), 210px); justify-content: center; }
+.nm-card-sub { margin-top: auto; font-size: 11px; color: #8a8378; }
 .nm-hint {
   position: fixed;
   z-index: 25001;
@@ -44,5 +33,5 @@
   box-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 @media (max-width: 480px) {
-  .nm-cards { grid-template-columns: repeat(var(--nm-cols, 1), minmax(0, 1fr)); width: 100%; }
+  .card-grid.nm-cards { grid-template-columns: repeat(var(--nm-cols, 1), minmax(0, 1fr)); width: 100%; }
 }

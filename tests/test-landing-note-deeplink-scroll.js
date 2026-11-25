@@ -18,6 +18,8 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
 
   await cleanupTestNotes();
   await loginAsTestUser(page);
+  const posted = [];
+  page.on('request', (r) => { if (r.method() === 'POST' && /\/api\/notes$/.test(r.url())) posted.push(r.postData()); });
   await page.goto(HOME_URL);
   await page.waitForSelector('.card-ghost[data-ghost="scratchpad"]'); await page.click('.card-ghost[data-ghost="scratchpad"]');
   await page.waitForSelector('.spm-overlay .ProseMirror');
@@ -66,8 +68,9 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
     await page.locator('.sn-note-colorbar .sn-note-colorbtn').first().click();
     await page.waitForTimeout(900);
     return page.evaluate(() => {
-      const ref = document.querySelector('.spm-editor .ProseMirror .sn-note-ref');
-      return ref && parseInt(ref.dataset.noteId, 10);
+      // The newest ref is the TARGET note's (the earlier ones are the sketches').
+      const ids = [...document.querySelectorAll('.spm-editor .ProseMirror .sn-note-ref')].map((r) => parseInt(r.dataset.noteId, 10)).filter(Boolean);
+      return ids.length ? Math.max(...ids) : null;
     });
   });
   check('note created at the bottom of a long pad', !!noteId, `noteId=${noteId}`);
@@ -90,6 +93,16 @@ const LATENCY_MS = 300; // widgets must straggle in while the settle-scroll runs
   check('note card appears on the landing page', true);
 
   await card.click();
+  // Since 2026-11-25 a note card opens the note MODAL; its pad tile opens
+  // the pad at the note (NOTE_UI_PLAN.md §7).
+  await page.waitForSelector('.nm-overlay .nm-note .note-input', { timeout: 15000 });
+  const tile = await page.waitForSelector('.nm-overlay .nm-card-pad', { timeout: 15000 }).catch(async () => {
+    const p = await page.evaluate(async (id) => { const out = []; for (let i = 0; i < 4; i++) { const r = await fetch(`api/notes/${id}/placements`); out.push({ status: r.status, body: (await r.text()).slice(0, 160), t: Date.now() % 100000 }); await new Promise((res) => setTimeout(res, 700)); } out.push({ dbnote: await (await fetch(`api/notes/${id}`)).text() }); return out; }, noteId);
+    console.log('   no pad tile; placements over 2s:', JSON.stringify(p).slice(0, 900), '| POST bodies:', JSON.stringify(posted).slice(0, 200));
+    return null;
+  });
+  if (!tile) throw new Error('no pad tile in the note modal');
+  await page.click('.nm-overlay .nm-card-pad');
   await page.waitForSelector('.spm-overlay .ProseMirror', { timeout: 15000 });
 
   // The settle-scroll retries while widgets load; give it the full window,

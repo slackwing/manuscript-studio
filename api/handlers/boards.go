@@ -162,7 +162,7 @@ func (h *BoardHandlers) HandleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	name := "Board"
+	name := "Untitled"
 	if req.Name != nil && *req.Name != "" {
 		name = *req.Name
 	}

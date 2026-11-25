@@ -205,6 +205,33 @@ with `auth.Username(r)`, never `GetSession` (README "API tokens").
 
 ---
 
+### N15 — Standard components keep their look everywhere
+
+Andrew's single biggest irritation across this project (2026-11-25): a
+standardized component used in an unstandard way, or changing appearance
+in some context — usually a per-context CSS override, sometimes a quiet
+reimplementation. Concretely:
+
+- A **sticky note** is always its fixed width (`--sticky-note-width`,
+  232px) and grows **vertically** when its text needs more room. Never
+  widen it, shrink it, or restyle it for a modal, a card, a panel.
+- A **card** is the landing's square `.card` in a `.card-grid` of fixed
+  210px cells. Never flatten it, resize it, or give a context its own
+  card look. A tile that stands for a manuscript or a scratchpad wears
+  that kind's classes (`card-manuscript`, `card-scratchpad`).
+- The same goes for chips, the criteria row, the rules editor, the
+  pickers: ONE implementation, mounted wherever it is needed, with
+  behaviour injected through handlers/options — never a context-local
+  copy, never `.some-context .component { … }` overrides of size or
+  typography.
+
+If a context truly needs a variant, add a named option to the component
+and its stylesheet, with the reason, so every context can use it. A new
+container (an overlay, a tiling) may add LAYOUT between components —
+where they sit, how many per row — and nothing more. Before shipping a
+surface that shows an existing component, compare it side by side with
+the component where it was born; if it reads differently, that is a bug.
+
 ## 1. Core principles
 
 1. **Markdown in git is the source of truth** — annotations are a layer on top.

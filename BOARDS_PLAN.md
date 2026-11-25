@@ -66,8 +66,9 @@ list (the viewer's manuscripts). `GET /api/home` carries `boards` (with
   notes editable in place). Opened as a **tab** (tabs.js type `board`, key
   `b<id>`, like a pad's named tab); standalone links route to the shell.
 - **Landing**: a Boards section between Scratchpads and Notes — a card per
-  board (name, rule chips, note count, ×) and a ghost "+" that creates a
-  board and opens its tab.
+  board (the title the user set on the board page, defaulting to
+  "Untitled M/D" like a pad; the note count; ×) and a ghost "+" that
+  creates a board and opens its tab.
 
 ## Later
 

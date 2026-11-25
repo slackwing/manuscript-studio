@@ -364,6 +364,10 @@ type ScratchpadPlacement struct {
 	ScratchpadID int    `json:"scratchpad_id"`
 	Title        string `json:"title"`
 	Live         bool   `json:"live"` // the pad doc still holds the anchor
+	// Sketch (2026-11-25): a SKETCH note has no placement row of its own —
+	// it lives with its sketch, whose variations sit in pads. Those pads are
+	// listed as placements with this flag so the note modal can show them.
+	Sketch bool `json:"sketch,omitempty"`
 }
 
 type NotePlacements struct {
@@ -418,7 +422,48 @@ func (db *DB) GetNotePlacements(ctx context.Context, noteID int) (*NotePlacement
 		}
 		out.Scratchpads = append(out.Scratchpads, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// A sketch note's home(s): every live pad holding one of its sketch's
+	// variations, earliest variation first; pads already listed are skipped.
+	srows, err := db.Pool.Query(ctx, `
+		SELECT DISTINCT ON (v.scratchpad_id) v.scratchpad_id, sp.title, v.variation_id
+		FROM note n
+		JOIN variation v ON v.sketch_id = n.sketch_id AND v.scratchpad_id IS NOT NULL
+		JOIN scratchpad sp ON sp.scratchpad_id = v.scratchpad_id AND sp.deleted_at IS NULL
+		WHERE n.note_id = $1 AND n.sketch_id IS NOT NULL
+		  AND NOT EXISTS (SELECT 1 FROM note_scratchpad p WHERE p.note_id = n.note_id AND p.scratchpad_id = v.scratchpad_id)
+		ORDER BY v.scratchpad_id, v.variation_id
+	`, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("placements: sketch pads: %w", err)
+	}
+	defer srows.Close()
+	type sk struct {
+		p   ScratchpadPlacement
+		vid int
+	}
+	var sks []sk
+	for srows.Next() {
+		var s sk
+		if err := srows.Scan(&s.p.ScratchpadID, &s.p.Title, &s.vid); err != nil {
+			return nil, fmt.Errorf("placements: scan sketch pad: %w", err)
+		}
+		s.p.Live, s.p.Sketch = true, true
+		sks = append(sks, s)
+	}
+	for i := 0; i < len(sks); i++ { // earliest variation first
+		for j := i + 1; j < len(sks); j++ {
+			if sks[j].vid < sks[i].vid {
+				sks[i], sks[j] = sks[j], sks[i]
+			}
+		}
+	}
+	for _, s := range sks {
+		out.Scratchpads = append(out.Scratchpads, s.p)
+	}
+	return out, srows.Err()
 }
 
 // ManuscriptIDsForNote: the manuscripts a note is placed in (via its
