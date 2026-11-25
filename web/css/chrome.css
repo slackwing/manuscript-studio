@@ -424,7 +424,8 @@ html.ms-divider-drag .ms-panel { pointer-events: none; }
 html.ms-split-edge-left #ms-split-divider,
 html.ms-split-edge-right #ms-split-divider {
   width: 12px;
-  background: #ebe6da;
+  background: #e2dbcb;
+  box-shadow: inset 0 0 0 1px #cfc6b2;
 }
 html.ms-split-edge-left #ms-split-divider { left: 0; }
 html.ms-split-edge-right #ms-split-divider { left: auto; right: 0; }
@@ -438,7 +439,7 @@ html.ms-split-edge-right #ms-split-divider::before {
   left: 5px;
   height: 28px;
   margin-top: -14px;
-  border-left: 2px dotted #8c8470;
+  border-left: 2px dotted #6f6756;
 }
 
 /* Inside a panel the page is chrome-less — the shell owns header + tabs. */
