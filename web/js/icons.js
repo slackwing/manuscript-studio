@@ -90,8 +90,9 @@
     // Bell curve over a baseline — the attention envelope (its red/green
     // plots are curves over the page).
     bellCurve(size) {
-      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"',
-        '<path d="M1.5 13.5h13"/><path d="M1.5 13.2C5.5 13.2 6.4 3 8 3s2.5 10.2 6.5 10.2"/>');
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"',
+        '<path d="M1.5 13.2C4.3 13.2 5.9 3.2 8 3.2s3.7 10 6.5 10z" fill="currentColor" fill-opacity=".22" stroke="none"/>'
+        + '<path d="M1.5 13.2C4.3 13.2 5.9 3.2 8 3.2s3.7 10 6.5 10"/><path d="M1.5 13.5h13"/>');
     },
     // Diamond — the beacon / marker glyph (marker-symbols' default shape,
     // same 9:13 proportion), as the markers view toggle.
