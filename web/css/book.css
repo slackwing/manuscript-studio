@@ -3396,6 +3396,11 @@ body.range-delete-mode .pagedjs_pages {
   color: #faf8f2;
 }
 .mc-btn.mc-toggle[aria-pressed="true"]:hover:not(:disabled) { background: #6a624f; border-color: #6a624f; color: #fff; }
+/* Attention: the area under the bell goes green (the envelope's colour)
+   on hover and while pinned. */
+#mc-attention:hover:not(:disabled) .ic-fill,
+#mc-attention[aria-pressed="true"] .ic-fill { fill: #3fae4a; fill-opacity: .55; }
+#mc-attention[aria-pressed="true"] .ic-fill { fill: #8fe09a; fill-opacity: .8; }
 .mc-btn.mc-toggle:disabled { opacity: 1; color: #a8a08c; cursor: default; }
 .mc-btn.mc-toggle[aria-pressed="true"]:disabled { color: #c9c1ad; }
 .mc-btn.mc-toggle:disabled > * { visibility: hidden; }
