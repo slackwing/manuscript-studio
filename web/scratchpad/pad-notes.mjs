@@ -21,7 +21,7 @@
  */
 import { TextSelection } from './vendor/prosemirror.mjs';
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=8';
+import { holdScroll } from './scroll.mjs?v=9';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -219,6 +219,52 @@ async function createBlockNote(color) {
     const ta = view.dom.querySelector(`.sn-note-block[data-note-id="${noteId}"] .note-input`);
     if (ta) ta.focus();
   });
+}
+
+// Place an EXISTING note picked from the picker (NOTE_UI_PLAN.md phase 2):
+// with nothing selected it becomes a block at the caret; with a selection
+// the selected words become that note's text run (a noteRef). Either way
+// the save makes the pad placement.
+function placeExistingNote(note, sel) {
+  const view = activeView;
+  if (!view || !note) return;
+  const noteId = note.note_id;
+  noteCache.set(noteId, Object.assign(noteCache.get(noteId) || {}, {
+    color: note.color, body: note.body || null, default_body: note.default_body || null,
+    priority: note.priority || 'none', task_type: note.task_type || '', impact: note.impact || 'n/a',
+    blocked: !!note.blocked, tags: note.tags || [], manuscript_id: note.manuscript_id || null,
+    owner: note.owner || null,
+  }));
+  const size = view.state.doc.content.size;
+  const from = Math.min(sel.from, size), to = Math.min(sel.to, size);
+  if (sel.empty) {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from)));
+    insertNoteBlock(noteId);
+  } else {
+    const sc = view.state.schema;
+    const snapshot = view.state.doc.textBetween(from, to, ' ');
+    view.dispatch(view.state.tr.replaceRangeWith(from, to, sc.nodes.noteRef.create({ noteId, text: snapshot })));
+    view.focus();
+  }
+  // The full note (manuscript name, tags…) for the widget — then redraw.
+  ensureNoteCached(noteId, true).then((n) => {
+    const s = noteRefViews.get(noteId);
+    if (n && s) s.forEach((v) => v.applyColor(n.color));
+  });
+}
+
+// The ↗ button: pick an existing note (mine, or one on a manuscript I hold
+// a role on) and place it here. Notes already in this doc are left out.
+export function openExistingNotePicker(anchorEl) {
+  const view = activeView;
+  if (!view || !window.WriteSysNotePicker) return;
+  const { from, to, empty } = view.state.selection;
+  const sc = view.state.schema;
+  const exclude = new Set();
+  view.state.doc.descendants((node) => {
+    if (node.type === sc.nodes.noteRef || node.type === sc.nodes.noteBlock) exclude.add(node.attrs.noteId);
+  });
+  window.WriteSysNotePicker.open(anchorEl, { exclude, onPick: (note) => placeExistingNote(note, { from, to, empty }) });
 }
 
 // Create a scratchpad note from the current selection in `color` — or, with
@@ -605,6 +651,15 @@ export function buildNoteColorBar(toolbarEl, getView) {
     });
     group.appendChild(btn);
   });
+  // The 7th: ↗ — place an EXISTING note (block at the caret, or onto the
+  // selection as its text run).
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'sn-note-pickbtn';
+  pick.title = 'Existing note…';
+  pick.innerHTML = window.WriteSysIcons && window.WriteSysIcons.goto ? window.WriteSysIcons.goto(12) : '↗';
+  pick.addEventListener('mousedown', (e) => { e.preventDefault(); openExistingNotePicker(pick); });
+  group.appendChild(pick);
   toolbarEl.appendChild(group);
   group._getView = getView;
   noteColorGroups.push(group);

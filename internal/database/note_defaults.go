@@ -20,7 +20,11 @@ import (
 // refreshSentenceNoteDefaults recomputes default_body for the sentence
 // notes the WHERE clause (on note n / its primary sentence s) selects; $1
 // is its argument. A note's default comes from its PRIMARY placement (the
-// earliest sentence it was placed on — NOTE_PLACEMENTS_PLAN.md phase 2).
+// earliest sentence it was placed on — NOTE_PLACEMENTS_PLAN.md phase 2) —
+// but ONLY for a note BORN on a sentence (its first content version
+// carries one): a default is set by the context a note is created in and
+// never rewritten by a later placement (NOTE_UI_PLAN.md). A pad-born note
+// placed on a sentence keeps whatever it had.
 func (db *DB) refreshSentenceNoteDefaults(ctx context.Context, where string, arg any) (int, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT n.note_id, s.text, sc.text, n.default_body
@@ -31,7 +35,9 @@ func (db *DB) refreshSentenceNoteDefaults(ctx context.Context, where string, arg
 		) place ON true
 		JOIN sentence s ON s.sentence_id = place.sentence_id
 		LEFT JOIN suggested_change sc ON sc.sentence_id = place.sentence_id AND sc.user_id = n.user_id
-		WHERE n.deleted_at IS NULL AND `+where, arg)
+		WHERE n.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM note_version v WHERE v.note_id = n.note_id AND v.version = 1 AND v.sentence_id IS NOT NULL)
+		  AND `+where, arg)
 	if err != nil {
 		return 0, fmt.Errorf("note defaults: list: %w", err)
 	}

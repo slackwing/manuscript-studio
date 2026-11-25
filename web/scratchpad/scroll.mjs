@@ -7,7 +7,7 @@
 // Import cycle note: pad-notes.mjs imports holdScroll from here; we import
 // getActiveView (diagnostics only) from pad-notes. Both uses are strictly
 // call-time (never at module evaluation), so the ESM cycle is safe.
-import { getActiveView } from './pad-notes.mjs?v=8';
+import { getActiveView } from './pad-notes.mjs?v=9';
 
 // ---- Scroll flight recorder ------------------------------------------------
 // Always-on ring buffer of scroll-relevant events in the pad. When the scroll

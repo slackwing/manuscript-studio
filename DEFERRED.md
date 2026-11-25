@@ -47,9 +47,9 @@ away. Prune when shipped.
   (`POST api/admin/invites` / `debug/mint_invite.sh`) and live only in
   the DB; an admin surface for listing/revoking codes can come with the
   email work. Same origin.
-- **Placing notes from the UI** — the backend supports a note on several
-  sentences / pads and free notes (NOTE_PLACEMENTS_PLAN.md, 2026-11-24):
-  `PUT /api/notes/{id}/sentences/{sid}`, a `noteRef` for an existing note
-  in a pad, `POST /api/notes` with no home. No UI yet for "put this note
-  there too", for creating a free note, or for a card context with N
-  placements. Origin: NOTE_PLACEMENTS_PLAN.md "Out of scope".
+- **Notes: a free note born on the landing page; a note's other placements
+  shown on the widget** — the placing UI itself shipped 2026-11-25
+  (NOTE_UI_PLAN.md: pad block notes, the ↗ picker in the pad and on the
+  margin's grey card, detach-vs-delete). Left for later: creating a note
+  from the landing page with no home at all, and a "·2"/hop list on a note
+  that lives in several places. Origin: NOTE_UI_PLAN.md §4.

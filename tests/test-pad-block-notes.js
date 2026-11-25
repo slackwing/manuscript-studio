@@ -114,8 +114,10 @@ const psql = (sql) => execSync(
   await page.locator('.sn-note-block .note-trash').click();
   await page.waitForTimeout(150);
   await page.locator('.sn-note-block .note-trash').click(); // two-click confirm
-  await page.waitForTimeout(400);
-  check('the widget\'s trash removes the block and deletes the note', (await page.locator('.sn-note-block').count()) === 0 && psql(`SELECT deleted_at IS NOT NULL FROM note WHERE note_id=${id2}`) === 't');
+  await page.waitForFunction(() => !document.querySelector('.sn-note-block'), null, { timeout: 5000 });
+  let gone = 'f';
+  for (let i = 0; i < 20 && gone !== 't'; i++) { await page.waitForTimeout(250); gone = psql(`SELECT deleted_at IS NOT NULL FROM note WHERE note_id=${id2}`); }
+  check('the widget\'s trash removes the block and deletes the note', gone === 't');
 
   await page.click('#spm-close').catch(() => {});
   await cleanupTestNotes();

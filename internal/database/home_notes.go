@@ -46,6 +46,9 @@ type HomeNote struct {
 	// DeletedAt: only GetHomeNoteByID sets it (the settings note modal can
 	// show a soft-deleted note from the actions audit table).
 	DeletedAt *time.Time
+	// Owner: the note's user — set by ListRecentNotesForUser, whose rows may
+	// be someone else's (notes on a manuscript you hold a role on).
+	Owner string
 }
 
 // homeNoteSelect is the shared column list of the two home-note readers
@@ -237,6 +240,46 @@ func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscr
 		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
 			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.DoneToday); err != nil {
 			return nil, fmt.Errorf("scan pinned daily note: %w", err)
+		}
+		if len(tagsJSON) > 0 {
+			_ = json.Unmarshal(tagsJSON, &h.Tags)
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ListRecentNotesForUser (NOTE_UI_PLAN.md phase 2): the notes a user may
+// PLACE somewhere — live notes they own, plus live notes others placed on
+// (or linked to) a manuscript the user holds a role on — minus the ones
+// they hid, newest first, optionally filtered by text. The picker's feed.
+func (db *DB) ListRecentNotesForUser(ctx context.Context, username, q string, limit int) ([]HomeNote, error) {
+	rows, err := db.Pool.Query(ctx, homeNoteSelect+`, n.user_id`+homeNoteFrom+`
+		WHERE n.deleted_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM note_hide h WHERE h.note_id = n.note_id AND h.username = $1)
+		  AND (n.user_id = $1
+		       OR EXISTS (SELECT 1 FROM note_sentence ns
+		                  JOIN sentence s ON s.sentence_id = ns.sentence_id
+		                  JOIN migration mg ON mg.migration_id = s.migration_id
+		                  JOIN role r ON r.manuscript_id = mg.manuscript_id AND r.username = $1
+		                  WHERE ns.note_id = n.note_id)
+		       OR (n.manuscript_id IS NOT NULL
+		           AND EXISTS (SELECT 1 FROM role r WHERE r.manuscript_id = n.manuscript_id AND r.username = $1)))
+		  AND ($2 = '' OR n.body ILIKE '%' || $2 || '%' OR n.default_body ILIKE '%' || $2 || '%')
+		ORDER BY n.updated_at DESC
+		LIMIT $3
+	`, username, q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recent notes: %w", err)
+	}
+	defer rows.Close()
+	var out []HomeNote
+	for rows.Next() {
+		var h HomeNote
+		var tagsJSON []byte
+		if err := rows.Scan(&h.NoteID, &h.Color, &h.Body, &h.DefaultBody, &h.Priority, &h.TaskType, &h.Impact, &h.Blocked, &h.UpdatedAt,
+			&h.ManuscriptID, &h.ScratchpadID, &h.SentenceID, &h.Context, &h.ScratchpadTitle, &h.SketchID, &tagsJSON, &h.CompletedAt, &h.PinnedAt, &h.Owner); err != nil {
+			return nil, fmt.Errorf("scan recent note: %w", err)
 		}
 		if len(tagsJSON) > 0 {
 			_ = json.Unmarshal(tagsJSON, &h.Tags)

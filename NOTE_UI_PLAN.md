@@ -1,7 +1,7 @@
 # NOTE_UI_PLAN — the UI for free-standing notes
 
-Status: **PLANNED 2026-11-25**, building phase by phase (local tests +
-screenshots before each deploy). Follows NOTE_PLACEMENTS_PLAN.md (shipped
+Status: **SHIPPED 2026-11-25** (phases 1–4; each phase ran its tests and a
+screenshot locally before its deploy). Follows NOTE_PLACEMENTS_PLAN.md (shipped
 2026-11-24): a note has no home; where it appears is rows in
 `note_sentence` / `note_scratchpad`; a note can sit on N sentences, in N
 pads, or nowhere. This plan gives the author ways to USE that.
@@ -59,7 +59,8 @@ pads, or nowhere. This plan gives the author ways to USE that.
   ↗ chip sits on BOTH grey cards (first and subsequent), right-aligned in
   the chip row.
 - **Defaults:** `default_body` is set by the context a note is BORN in and
-  never rewritten by a later placement. Sentence-born: the sentence's
+  never rewritten by a later placement (`refreshSentenceNoteDefaults` only
+  touches notes whose content version 1 carries a sentence). Sentence-born: the sentence's
   `{fill-ins}`, else its first words (052 — already so, kept current while
   the note's primary sentence changes). Pad text note: its body IS the
   snapshot (no default needed). Pad block note: none — the widget's
@@ -87,20 +88,20 @@ pads, or nowhere. This plan gives the author ways to USE that.
   it; save → `note_scratchpad` row; Backspace removes the block → placement
   closed on save, note alive; trash → note deleted. Screenshot.
 
-### Phase 2 — the picker and the pad's ↗ (deploy #2)
+### Phase 2 — the picker and the pad's ↗ (deploy #2) — SHIPPED 2026-11-25
 - API `GET /api/notes/recent` (+ Go test: visibility set, search, order).
 - `note-picker.js`; the 7th button; insert as block / apply to selection.
 - tests: API; e2e — pick a manuscript note into a pad as a block and as a
   text note; placements rows; a note I can't see is not listed. Screenshot.
 
-### Phase 3 — the margin's ↗ chip and detach (deploy #3)
+### Phase 3 — the margin's ↗ chip and detach (deployed with phase 2)
 - grey cards' right-aligned ↗ chip → picker → attach → margin refresh.
 - margin trash: detach when multi-placed, delete when last.
 - tests: e2e — attach a pad-born note to a sentence; it shows in the margin
   with its text; trash there detaches (note still in the pad); trash in
   the pad's block of a sentence-only note deletes. Screenshot.
 
-### Phase 4 — docs
+### Phase 4 — docs — SHIPPED with phases 2+3
 - ARCHITECTURE.md (frontend note contexts), NOTES_PLAN pointer, DEFERRED
   ("placing notes from the UI" retired), memory.
 
@@ -110,3 +111,24 @@ pads, or nowhere. This plan gives the author ways to USE that.
 - Showing a note's other placements on the widget (a "·2" chip, a hop
   list) — useful once notes travel; later.
 - Reordering a note's placements / choosing the primary.
+
+## 5. As built (2026-11-25)
+
+- Pad: `noteBlock` node + `NoteBlockView` (pad-notes.mjs) on the shared
+  widget; `insertNoteBlock` splits the paragraph and parks the caret below;
+  the float and the block share `noteWidgetHandlers`. Colour bar: six
+  colours (text note with a selection, block without) + the ↗
+  `.sn-note-pickbtn`. Server `noteIDsInDoc` reads `noteBlock`.
+- Picker: `web/notes/note-picker.js` (`WriteSysNotePicker.open`), fed by
+  `GET /api/notes/recent` (`ListRecentNotesForUser`: mine ∪ others' on my
+  manuscripts, minus hidden; newest first; `q` search; `owner` in rows).
+- Margin: `.attach-chip` on both grey cards → `attachExistingNote` (PUT
+  sentences, then re-reads the sentence's notes); `removeOrDeleteNote`
+  (placements count > 1 → DELETE the sentence placement, else delete);
+  the trash's title says "Remove from this sentence" when the book shows
+  the note on several sentences.
+- Tests: test-pad-block-notes, test-note-picker-pad, test-note-attach-
+  margin (all FAST), TestListRecentNotesForUser, noteIDsInDoc noteBlock.
+  Gotcha found: two test runs on the shared dev DB wipe each other's pads
+  (cleanupTestNotes hard-deletes every pad of user `test`) — never run
+  DB-touching tests or probes in parallel.

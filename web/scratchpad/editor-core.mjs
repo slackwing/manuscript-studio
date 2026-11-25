@@ -32,27 +32,27 @@ import {
 } from './vendor/prosemirror.mjs';
 import { schema, modernizeDoc } from './schema.mjs?v=3';
 import { csrf, bookData, variationApi, uploadImage } from './api.mjs?v=2';
-import { scrollDiag } from './scroll.mjs?v=8';
+import { scrollDiag } from './scroll.mjs?v=9';
 import {
   SketchView, variationFlushers, dirtyVariations, refreshSketchSiblings,
-} from './sketch-view.mjs?v=11';
+} from './sketch-view.mjs?v=12';
 import {
   NoteRefView, NoteBlockView, buildNoteColorBar, noteColorGroups, noteCache, closeNoteFloat,
   setActiveView, getActiveView, setEditorTearingDown,
-} from './pad-notes.mjs?v=8';
+} from './pad-notes.mjs?v=9';
 import {
   insertBlockSafely, markActive, headingActive, inTable, inBlockquote,
   toggleBlockquote, buildTablePicker, buildSketchMenu,
-} from './menus.mjs?v=9';
+} from './menus.mjs?v=10';
 
 // Re-exports: the one public surface (modal.mjs and the unit tests import
 // ONLY from this module; the sibling modules are an internal layout).
 export { schema, modernizeDoc } from './schema.mjs?v=3';
 export { apiCall, bookData, variationApi, setCurrentScratchpadId } from './api.mjs?v=2';
-export { suspendScrollHolds } from './scroll.mjs?v=8';
-export { letterOf, parseVariationRef } from './sketch-view.mjs?v=11';
-export { findNormalized } from './pad-notes.mjs?v=8';
-export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=9';
+export { suspendScrollHolds } from './scroll.mjs?v=9';
+export { letterOf, parseVariationRef } from './sketch-view.mjs?v=12';
+export { findNormalized } from './pad-notes.mjs?v=9';
+export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=10';
 
 // ---------------------------------------------------------------- helpers
 

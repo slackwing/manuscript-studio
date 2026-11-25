@@ -22,6 +22,8 @@ FAST_TESTS=(
   test-api-tokens
   test-chrome-rows
   test-pad-block-notes
+  test-note-picker-pad
+  test-note-attach-margin
   test-tabs
   test-split-pane
   test-manuscript-normalize

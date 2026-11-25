@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -40,7 +41,7 @@ type homeScratchpad struct {
 	Title        string    `json:"title"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
-	Sketch      string    `json:"sketch"`
+	Sketch       string    `json:"sketch"`
 	BlockCount   int       `json:"block_count"`
 	Canonized    int       `json:"canonized_count"`
 }
@@ -48,19 +49,19 @@ type homeScratchpad struct {
 // A note card for the landing grid (NOTES_PLAN.md Phase 3): the note itself plus
 // a short human context ("The Wildfire", a scratchpad title, or "").
 type homeNote struct {
-	NoteID       int       `json:"note_id"`
-	Color        string    `json:"color"`
-	Body         string    `json:"body"`
-	DefaultBody  string    `json:"default_body,omitempty"` // 052: shown while body is blank
-	Priority     string    `json:"priority"`
-	TaskType     string    `json:"task_type"`
-	Impact       string    `json:"impact"`
-	Blocked      bool      `json:"blocked"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	Context      string    `json:"context"`               // display label
-	ManuscriptID *int      `json:"manuscript_id,omitempty"`
-	ScratchpadID *int      `json:"scratchpad_id,omitempty"`
-	SentenceID   string    `json:"sentence_id,omitempty"`
+	NoteID       int          `json:"note_id"`
+	Color        string       `json:"color"`
+	Body         string       `json:"body"`
+	DefaultBody  string       `json:"default_body,omitempty"` // 052: shown while body is blank
+	Priority     string       `json:"priority"`
+	TaskType     string       `json:"task_type"`
+	Impact       string       `json:"impact"`
+	Blocked      bool         `json:"blocked"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	Context      string       `json:"context"` // display label
+	ManuscriptID *int         `json:"manuscript_id,omitempty"`
+	ScratchpadID *int         `json:"scratchpad_id,omitempty"`
+	SentenceID   string       `json:"sentence_id,omitempty"`
 	Tags         []models.Tag `json:"tags,omitempty"`
 	// Daily-tasks page only: points were awarded to this note today.
 	DoneToday bool `json:"done_today,omitempty"`
@@ -69,6 +70,8 @@ type homeNote struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 	// PinnedAt (048): the card's pin shows lit; the daily board shows it first.
 	PinnedAt *time.Time `json:"pinned_at,omitempty"`
+	// Owner: set by the recent-notes picker feed (rows may be someone else's).
+	Owner string `json:"owner,omitempty"`
 }
 
 // joinContext renders a note's context label from its manuscript and scratchpad,
@@ -305,6 +308,64 @@ func (h *HomeHandlers) HandleDailyTasks(w http.ResponseWriter, r *http.Request) 
 		"manuscript_name": name,
 		"notes":           notes,
 	})
+}
+
+// HandleRecentNotes: GET /api/notes/recent?q=&limit= — the picker's feed
+// (NOTE_UI_PLAN.md phase 2): notes the caller may place somewhere, newest
+// first, in the landing-card shape plus `owner`.
+func (h *HomeHandlers) HandleRecentNotes(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	ctx := r.Context()
+	limit := 30
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 100 {
+		limit = v
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	rows, err := h.DB.ListRecentNotesForUser(ctx, session.Username, q, limit)
+	if err != nil {
+		log.Printf("recent notes: %v", err)
+		http.Error(w, "Failed to list notes", http.StatusInternalServerError)
+		return
+	}
+	names := map[int]string{}
+	notes := make([]homeNote, 0, len(rows))
+	for _, n := range rows {
+		hn := homeNote{
+			NoteID: n.NoteID, Color: n.Color, Priority: n.Priority,
+			TaskType: n.TaskType, Impact: n.Impact, Blocked: n.Blocked,
+			UpdatedAt: n.UpdatedAt, ManuscriptID: n.ManuscriptID, ScratchpadID: n.ScratchpadID,
+			SentenceID: n.SentenceID, Tags: n.Tags, CompletedAt: n.CompletedAt, PinnedAt: n.PinnedAt,
+			Owner: n.Owner,
+		}
+		if n.DefaultBody != nil {
+			hn.DefaultBody = *n.DefaultBody
+		}
+		if n.Body != nil {
+			hn.Body = *n.Body
+		}
+		manuscript := ""
+		if n.ManuscriptID != nil {
+			if _, ok := names[*n.ManuscriptID]; !ok {
+				names[*n.ManuscriptID] = manuscriptDisplayName(ctx, h.DB, h.Config, *n.ManuscriptID)
+			}
+			manuscript = names[*n.ManuscriptID]
+		}
+		if manuscript == "" {
+			manuscript = n.Context
+		}
+		if n.SketchID != nil {
+			hn.Context = joinContext(manuscript, "Sketch")
+		} else {
+			hn.Context = joinContext(manuscript, n.ScratchpadTitle)
+		}
+		notes = append(notes, hn)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"notes": notes})
 }
 
 // HandleDailyPoints: GET /api/points-daily (session) and GET

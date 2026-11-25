@@ -1,6 +1,6 @@
 # NOTES_PLAN.md — Notes everywhere
 
-Status: **PHASES 1a–3 SHIPPED** (2026-07-28). **Superseded in part by NOTE_PLACEMENTS_PLAN.md (2026-11-24):** locked decision 2 (one home per note) is gone — placements are junction rows, notes can be free; decision 6 (soft-delete when the anchor leaves) is gone too — the placement closes, the note lives. annotation→note rename (prod data
+Status: **PHASES 1a–3 SHIPPED** (2026-07-28). **Superseded in part by NOTE_PLACEMENTS_PLAN.md (2026-11-24):** locked decision 2 (one home per note) is gone — placements are junction rows, notes can be free; decision 6 (soft-delete when the anchor leaves) is gone too — the placement closes, the note lives. The UI that places notes (pad block notes, the ↗ picker) is NOTE_UI_PLAN.md (2026-11-25). annotation→note rename (prod data
 preserved: 52 notes), nullable context columns, reusable note-api/note-widget,
 scratchpad notes (highlight→colored note+anchor+float), and the landing Notes
 section are all live and test-covered. Future: filters/sort on the Notes grid;

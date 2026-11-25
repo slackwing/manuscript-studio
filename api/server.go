@@ -384,6 +384,7 @@ func (s *Server) setupRouter() {
 			r.Post("/scratchpad-images", s.scratchpadHandlers.HandleUploadImage)
 			r.Get("/scratchpad-images/{image_id}", s.scratchpadHandlers.HandleGetImage)
 
+			r.Get("/notes/recent", s.homeHandlers.HandleRecentNotes) // the picker's feed (NOTE_UI_PLAN.md)
 			r.Get("/notes/id/{note_id}", s.noteHandlers.HandleGetNoteByID)
 			r.Get("/notes/sentence/{sentence_id}", s.noteHandlers.HandleGetNotesBySentence)
 			r.Get("/notes/{commit_hash}", s.noteHandlers.HandleGetNotesByCommit)

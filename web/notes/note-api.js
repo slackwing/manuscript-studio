@@ -93,6 +93,32 @@
       return jsonOrThrow(resp);
     },
 
+    // The picker's feed (NOTE_UI_PLAN.md): notes I may place somewhere —
+    // mine, plus others' on manuscripts I hold a role on — newest first.
+    async recent(q = '', limit = 40) {
+      const resp = await authFetch(`${BASE}/recent?q=${encodeURIComponent(q)}&limit=${limit}`, { method: 'GET' });
+      return jsonOrThrow(resp); // { notes: [{note_id, color, body, default_body, context, owner, ...}] }
+    },
+
+    // Where a note lives (NOTE_PLACEMENTS_PLAN.md): { sentences: [...], scratchpads: [{..., live}] }.
+    async placements(noteId) {
+      const resp = await authFetch(`${BASE}/${noteId}/placements`, { method: 'GET' });
+      return jsonOrThrow(resp);
+    },
+    // Place an existing note on a sentence / take it off one (the note lives on).
+    async attachSentence(noteId, sentenceId) {
+      const resp = await authFetch(`${BASE}/${noteId}/sentences/${encodeURIComponent(sentenceId)}`, {
+        method: 'PUT', headers: { 'X-CSRF-Token': csrf() },
+      });
+      return jsonOrThrow(resp);
+    },
+    async detachSentence(noteId, sentenceId) {
+      const resp = await authFetch(`${BASE}/${noteId}/sentences/${encodeURIComponent(sentenceId)}`, {
+        method: 'DELETE', headers: { 'X-CSRF-Token': csrf() },
+      });
+      return jsonOrThrow(resp);
+    },
+
     async get(noteId) {
       const resp = await authFetch(`${BASE}/id/${noteId}`, { method: 'GET' });
       return jsonOrThrow(resp); // the full note {note_id, color, body, priority, flagged, tags, ...}

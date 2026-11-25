@@ -362,6 +362,16 @@ GitHub repo so they can open a PR. Single-user, single-repo, GitHub-only.
 
 - **No build step, no framework.** Vanilla JS, loaded via `<script>` tags in
   `index.html` in a specific order (see that file).
+- **Notes are one widget** (`notes/note-widget.js`) mounted in four places:
+  the book margin (`js/notes.js`), the pad's float and the pad's BLOCK
+  (`scratchpad/pad-notes.mjs`: `noteRef` = a text run, `noteBlock` = the
+  sticky note in the flow), and the landing card. Where a note appears is
+  a placement row (NOTE_PLACEMENTS_PLAN.md); the pad save mirrors its
+  `noteRef`/`noteBlock` ids into `note_scratchpad`. Existing notes are
+  placed through one picker (`notes/note-picker.js`, fed by
+  `GET /api/notes/recent`) from the pad's ↗ button and the margin's ↗ chip;
+  the margin's trash detaches a multi-placed note and deletes a last one
+  (NOTE_UI_PLAN.md).
 - **Paged.js** (CDN, loaded from `unpkg`) does book-style pagination.
 - **Renderer flow** (`renderer.js`):
   1. Fetch the migration's markdown, sentence list, and annotations via

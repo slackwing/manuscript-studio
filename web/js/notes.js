@@ -409,7 +409,7 @@ const WriteSysNotes = {
       onSaveText: (text) => this.saveNoteText(note.note_id, text),
       onColor: (color) => this.handleColorSelectionForNote(note.note_id, color),
       onDims: (patch) => this.updateNoteDims(note, patch, noteEl),
-      onDelete: () => this.deleteNote(note.note_id),
+      onDelete: () => this.removeOrDeleteNote(note),
       onComplete: () => this.completeNote(note.note_id),
       onScorePoints: (points) => this.scorePoints(note.note_id, points),
       onAddTag: (name) => this.addTagByName(note, noteEl, name),
@@ -420,6 +420,12 @@ const WriteSysNotes = {
       onHidden: (hidden) => this.relayoutAfterHide(hidden, note.note_id),
     }, { showPoints: canPoint, allowHide: true });
     noteEl.dataset.annotationId = note.note_id;
+    // A note on several sentences of this book: the trash takes it off THIS
+    // one (removeOrDeleteNote decides against the live placements).
+    if (this.placementRowsOf(note.note_id) > 1) {
+      const trash = noteEl.querySelector('.note-trash');
+      if (trash) trash.title = 'Remove from this sentence';
+    }
     return noteEl;
   },
 
@@ -581,6 +587,7 @@ const WriteSysNotes = {
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, false);
     this.addUncreatedTypeChip(note, textarea);
+    this.addUncreatedAttachChip(note);
 
     return note;
   },
@@ -609,6 +616,7 @@ const WriteSysNotes = {
     const textarea = note.querySelector('.note-input');
     this.setupUncreatedNoteHandlers(note, textarea, colorCircle, true);
     this.addUncreatedTypeChip(note, textarea);
+    this.addUncreatedAttachChip(note);
 
     note.addEventListener('mouseenter', () => {
       note.classList.add('hovered');
@@ -650,6 +658,85 @@ const WriteSysNotes = {
       },
     });
     list.insertBefore(chip, list.firstChild);
+  },
+
+  // The grey card's ↗ chip (NOTE_UI_PLAN.md phase 3), right-aligned after
+  // "n/a" and "+ tag": place an EXISTING note — from a pad, from elsewhere
+  // in the book — on this sentence. Notes already on the sentence are left
+  // out of the picker.
+  addUncreatedAttachChip(noteEl) {
+    const list = noteEl.querySelector('.tags-list');
+    if (!list || !window.WriteSysNotePicker || !window.WriteSysIcons) return;
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip dim-chip attach-chip';
+    chip.title = 'Existing note…';
+    chip.innerHTML = window.WriteSysIcons.goto(11);
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sid = this.currentSentenceId;
+      if (!sid) return;
+      const all = (window.WriteSysRenderer && window.WriteSysRenderer.currentNotes) || [];
+      const exclude = new Set(all.filter((n) => n.sentence_id === sid).map((n) => n.note_id));
+      window.WriteSysNotePicker.open(chip, { exclude, onPick: (n) => this.attachExistingNote(n.note_id, sid) });
+    });
+    list.appendChild(chip);
+  },
+
+  // Place an existing note on `sentenceId` and show it in the margin.
+  async attachExistingNote(noteId, sentenceId) {
+    try {
+      await window.WriteSysNoteAPI.attachSentence(noteId, sentenceId);
+      const resp = await authenticatedFetch(`${this.apiBaseUrl}/notes/sentence/${encodeURIComponent(sentenceId)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const row = (data.notes || []).find((n) => n.note_id === noteId);
+      if (!row) return;
+      row.sentence_id = sentenceId;
+      this._cacheAdd(row);
+      if (this.currentSentenceId === sentenceId) {
+        this.notes.push(row);
+        this.renderStickyNotes();
+        this.updateSentenceHighlights();
+      }
+      if (window.WriteSysRenderer && window.WriteSysRenderer.refreshRainbowBars) {
+        await window.WriteSysRenderer.refreshRainbowBars();
+      }
+    } catch (error) {
+      console.error('Failed to place note:', error);
+      alert('Failed to place note');
+    }
+  },
+
+  // How many margin rows (sentence placements in this book) a note has.
+  placementRowsOf(noteId) {
+    const all = (window.WriteSysRenderer && window.WriteSysRenderer.currentNotes) || [];
+    return all.filter((n) => n.note_id === noteId).length;
+  },
+
+  // The trash on a note that lives in more than one place (NOTE_UI_PLAN.md
+  // phase 3): REMOVE it from this sentence — it stays everywhere else. On
+  // its last placement the trash deletes, as always.
+  async removeOrDeleteNote(note) {
+    let total = 0;
+    try {
+      const p = await window.WriteSysNoteAPI.placements(note.note_id);
+      total = (p.sentences || []).length + (p.scratchpads || []).filter((s) => s.live).length;
+    } catch (e) { total = 0; }
+    if (total <= 1 || !note.sentence_id) return this.deleteNote(note.note_id);
+    try {
+      await window.WriteSysNoteAPI.detachSentence(note.note_id, note.sentence_id);
+      this.notes = this.notes.filter((a) => !(a.note_id === note.note_id && a.sentence_id === note.sentence_id));
+      const r = window.WriteSysRenderer;
+      if (r && Array.isArray(r.currentNotes)) {
+        r.currentNotes = r.currentNotes.filter((a) => !(a.note_id === note.note_id && a.sentence_id === note.sentence_id));
+      }
+      this.renderStickyNotes();
+      this.updateSentenceHighlights();
+      if (r && r.refreshRainbowBars) await r.refreshRainbowBars();
+    } catch (error) {
+      console.error('Failed to remove note from sentence:', error);
+      alert('Failed to remove note from this sentence');
+    }
   },
 
   createColorCircleForUncreated() {

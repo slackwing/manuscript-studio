@@ -769,6 +769,17 @@ textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
   padding: 0;
 }
 .sn-note-colorbtn:hover { outline: 2px solid rgba(0, 0, 0, 0.15); }
+/* The ↗ "existing note" button, right of the six colours. (Specific enough
+   to beat the generic .sp-toolbar button skin.) */
+.sp-toolbar .sn-note-pickbtn, .sn-note-pickbtn {
+  width: 18px; height: 18px; margin-left: 5px; padding: 0;
+  border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.18);
+  background: #f3efe4; color: #57503f;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.sp-toolbar .sn-note-pickbtn svg { width: 12px; height: 12px; flex: none; }
+.sp-toolbar .sn-note-pickbtn:hover { outline: 2px solid rgba(0, 0, 0, 0.15); color: #2a6fb0; background: #f3efe4; }
 
 /* A note BLOCK (NOTE_UI_PLAN.md phase 1): the sticky note itself in the
    flow — left-aligned at the standard note width, the pad's paragraph
