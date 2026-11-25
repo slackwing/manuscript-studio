@@ -143,3 +143,21 @@ updated — newest touch first, then everything else newest-updated first.
 shared widget (`POST /api/notes/{id}/touch`, any pointerdown on a saved
 card or focus in its text, once per note per 20 s); create and update
 touch server-side. Per viewer: your focusing moves nothing for anyone else.
+
+## 7. The note modal (2026-11-25)
+
+A note card on the landing, the daily board or a board no longer "opens in
+context" — with placements a note has no single source. It opens
+`WriteSysNoteModal` (`web/notes/note-modal.js`): the page greys out, the
+FULL note (the shared widget, editable through the note API) sits centred,
+and under it one card per placement — a manuscript card per sentence
+(`GET /api/notes/{id}/placements` now carries the sentence `text`, whether
+it is in the `current` version, and the `manuscript_name`), a pad card per
+scratchpad — tiled in a forming square (`cols = ⌈√n⌉`: 4 → 2×2, 5 → 3+2).
+Hovering a manuscript card shows the sentence as the book sets it
+(scratch-render's shadow-root pipeline — book.css typography, white paper,
+a shadow), as if snipped from the page; clicking goes to that sentence
+(`#note-sentence=`); a pad card opens the pad at the note. Escape / the
+backdrop close it and the page behind re-renders (`note-modal-closed`).
+The Notes "+" births a free note and opens it here. The inline-editable
+free-note card (§6) is gone — one editor, the modal.

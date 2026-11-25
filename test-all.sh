@@ -70,6 +70,7 @@ FAST_TESTS=(
   test-remember-at
   test-home-free-note
   test-boards
+  test-note-modal
   test-responsive-layout
   test-mobile-notes-stack
   test-tag-autocomplete

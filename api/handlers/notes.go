@@ -903,6 +903,17 @@ func (h *NoteHandlers) HandleGetNotePlacements(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Failed to load placements", http.StatusInternalServerError)
 		return
 	}
+	names := map[int]string{}
+	for i := range p.Sentences {
+		id := p.Sentences[i].ManuscriptID
+		if id == 0 {
+			continue
+		}
+		if _, ok := names[id]; !ok {
+			names[id] = manuscriptDisplayName(r.Context(), h.DB, h.Config, id)
+		}
+		p.Sentences[i].ManuscriptName = names[id]
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(p)
 }

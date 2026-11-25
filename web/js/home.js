@@ -22,6 +22,8 @@ const WriteSysHome = {
     // had 401'd — reload them, else the landing page stays broken until a
     // manual refresh.
     document.addEventListener('ms:session-restored', () => this.reload());
+    // The note modal edits notes in place; the cards behind it follow.
+    document.addEventListener('note-modal-closed', () => this.reload());
     await this.reload();
   },
 
@@ -246,36 +248,6 @@ const WriteSysHome = {
     matches.forEach(n => grid.appendChild(this.noteCardEl(n)));
   },
 
-  // A note with no context — born here with the Notes "+" (2026-11-25), or
-  // detached from everything — has nowhere to "open in", so its card IS
-  // its editor: the shared widget, live, saving through the note API.
-  isFreeNote(n) {
-    return !n.scratchpad_id && !n.manuscript_id && !n.sentence_id && !n.sketch_id && !n.completed_at;
-  },
-
-  freeNoteHandlers(n, card) {
-    const api = window.WriteSysNoteAPI;
-    return {
-      onSaveText: (text) => { n.body = text.trim() || null; api.update(n.note_id, { body: text.trim() }).catch(() => {}); },
-      onColor: (color) => {
-        const was = n.color;
-        n.color = color;
-        card.classList.remove('color-' + was);
-        card.classList.add('color-' + color);
-        api.update(n.note_id, { color }).catch(() => {});
-        card.replaceWith(this.noteCardEl(n)); // the palette re-renders (shows the other 5)
-      },
-      onDims: (patch) => { Object.assign(n, patch); api.update(n.note_id, patch).catch(() => {}); window.WriteSysNoteWidget.updateDims(card.querySelector('.sticky-note'), n); },
-      onDelete: () => { api.remove(n.note_id).catch(() => {}); card.remove(); },
-      onComplete: () => { api.complete(n.note_id).then(() => this.reload()).catch(() => {}); },
-      onScorePoints: (points) => { api.scorePoints(n.note_id, points).catch(() => {}); },
-      onAddTag: async (name) => { try { const r = await api.addTag(n.note_id, name); n.tags = (r && r.tags) || n.tags; } catch (e) { /* chips re-render from n */ } },
-      onRemoveTag: async (tagId) => { try { await api.removeTag(n.note_id, tagId); n.tags = (n.tags || []).filter((t) => t.tag_id !== tagId); } catch (e) { /* ditto */ } },
-      onLinkManuscript: async (mid) => { try { const r = await api.linkManuscript(n.note_id, mid); n.manuscript_id = r.manuscript_id || null; n.manuscript_name = r.manuscript_name || ''; } catch (e) { /* unchanged */ } },
-      onUnlinkManuscript: async () => { try { await api.linkManuscript(n.note_id, 0); n.manuscript_id = null; n.manuscript_name = ''; } catch (e) { /* unchanged */ } },
-    };
-  },
-
   noteCardEl(n) {
     const ctx = n.context || 'no context';
     const card = document.createElement('div');
@@ -285,17 +257,9 @@ const WriteSysHome = {
     if (n.scratchpad_id) card.dataset.scratchpadId = n.scratchpad_id;
     if (n.manuscript_id) card.dataset.manuscriptId = n.manuscript_id;
     if (n.sentence_id) card.dataset.sentenceId = n.sentence_id;
-    const free = this.isFreeNote(n) && !!window.WriteSysNoteWidget && !!window.WriteSysNoteAPI;
-    if (free) {
-      card.classList.add('card-note-free');
-      card.appendChild(window.WriteSysNoteWidget.buildNoteElement(
-        n, this.freeNoteHandlers(n, card), { card: true, showDelete: true, showComplete: true }));
-      // (No context line, no pin — the widget's own chips carry its dims.)
-      return card;
-    }
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
-    card.title = 'Open note in context';
+    card.title = 'Open note';
 
     // The note component, read-only + card look. No handlers → nothing editable.
     if (window.WriteSysNoteWidget) {
@@ -576,25 +540,13 @@ const WriteSysHome = {
     });
   },
 
-  // Note card → open in context. Scratchpad note: open the pad (later: scroll
-  // to the anchor). Manuscript note: go to the book. (A free note's card is
-  // its editor — role-less, so it is not wired here.)
+  // Note card → the NOTE MODAL (notes/note-modal.js, 2026-11-25): the full
+  // note, editable, with a card per placement under it. (It used to "open
+  // in context" — with placements a note has no single source.)
   wireNoteCards(root) {
     root.querySelectorAll('.card-note[role="button"]').forEach(card => {
       const noteId = parseInt(card.dataset.noteId, 10);
-      const open = () => {
-        const padId = card.dataset.scratchpadId;
-        const mId = card.dataset.manuscriptId;
-        if (padId && window.WriteSysScratchpadModal) {
-          // Open the pad and scroll to this note's inline anchor.
-          window.WriteSysScratchpadModal.open(parseInt(padId, 10), { noteId });
-        } else if (mId) {
-          // Manuscript note → open the book and scroll to the noted sentence.
-          const sid = card.dataset.sentenceId;
-          const href = `./?manuscript_id=${mId}` + (sid ? `#note-sentence=${encodeURIComponent(sid)}` : '');
-          if (!(window.WriteSysTabs && window.WriteSysTabs.route(href))) window.location.href = href;
-        }
-      };
+      const open = () => { if (window.WriteSysNoteModal) window.WriteSysNoteModal.open(noteId); };
       card.addEventListener('click', open);
       card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
     });
@@ -705,8 +657,7 @@ const WriteSysHome = {
     let made;
     try { made = await api.create({ color: 'yellow' }); } catch (e) { return; }
     await this.reload();
-    const ta = document.querySelector(`#home-root .card-note[data-note-id="${made.note_id}"] .note-input`);
-    if (ta) { ta.focus(); ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    if (window.WriteSysNoteModal) window.WriteSysNoteModal.open(made.note_id, { focus: true });
   },
 
   async createPad() {

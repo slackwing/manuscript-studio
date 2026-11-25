@@ -351,6 +351,13 @@ type SentencePlacement struct {
 	MigrationID  int       `json:"migration_id"`
 	Position     string    `json:"position"`
 	CreatedAt    time.Time `json:"created_at"`
+	// The note modal's placement cards (2026-11-25): the sentence's text
+	// (the hover hint renders it like the book), whether it is in the
+	// manuscript's current version, and the manuscript's display name
+	// (filled by the handler from config).
+	Text           string `json:"text"`
+	Current        bool   `json:"current"`
+	ManuscriptName string `json:"manuscript_name"`
 }
 
 type ScratchpadPlacement struct {
@@ -370,7 +377,9 @@ type NotePlacements struct {
 func (db *DB) GetNotePlacements(ctx context.Context, noteID int) (*NotePlacements, error) {
 	out := &NotePlacements{Sentences: []SentencePlacement{}, Scratchpads: []ScratchpadPlacement{}}
 	rows, err := db.Pool.Query(ctx, `
-		SELECT ns.sentence_id, COALESCE(m.manuscript_id, 0), COALESCE(s.migration_id, 0), ns.position, ns.created_at
+		SELECT ns.sentence_id, COALESCE(m.manuscript_id, 0), COALESCE(s.migration_id, 0), ns.position, ns.created_at,
+		       COALESCE(s.text, ''),
+		       COALESCE(s.migration_id = (SELECT max(mg2.migration_id) FROM migration mg2 WHERE mg2.manuscript_id = m.manuscript_id), false)
 		FROM note_sentence ns
 		LEFT JOIN sentence s ON s.sentence_id = ns.sentence_id
 		LEFT JOIN migration m ON m.migration_id = s.migration_id
@@ -382,7 +391,7 @@ func (db *DB) GetNotePlacements(ctx context.Context, noteID int) (*NotePlacement
 	}
 	for rows.Next() {
 		var p SentencePlacement
-		if err := rows.Scan(&p.SentenceID, &p.ManuscriptID, &p.MigrationID, &p.Position, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.SentenceID, &p.ManuscriptID, &p.MigrationID, &p.Position, &p.CreatedAt, &p.Text, &p.Current); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("placements: scan sentence: %w", err)
 		}
