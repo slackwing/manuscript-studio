@@ -98,7 +98,7 @@ const WriteSysNotes = {
     if (fragments.length === 0) return;
     document.querySelectorAll('.sentence.selected').forEach(s => s.classList.remove('selected'));
     fragments.forEach(f => f.classList.add('selected'));
-    if (renderer) renderer.currentSelectedSentenceId = id;
+    if (renderer) { renderer.currentSelectedSentenceId = id; if (renderer.rememberPosition) renderer.rememberPosition(id); }
     // sentenceMap has the full text; fragments[0] may only be a fragment.
     const fullText = (renderer && renderer.sentenceMap && renderer.sentenceMap[id])
       || fragments[0].textContent;

@@ -106,6 +106,8 @@ const MARK = ` [mobile-scroll ${TEST_USERNAME}]`;
   // A plain load: close() stamped ?scroll_to=A, and a reload would restore
   // THAT selection — the double-click's first tap would then be a re-click
   // that opens the modal and its second tap the backdrop that closes it.
+  // (The remembered spot — #at= / memory, 2026-11-25 — scrolls here too
+  // but does NOT select, so the double-click below is right.)
   await page.goto(TEST_URL);
   await waitForPagination(page);
   await spanA.scrollIntoViewIfNeeded();

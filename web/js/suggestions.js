@@ -1680,8 +1680,12 @@ function formatFallbackHTML(text) {
 
 // escapeHTML comes from text-markers.js (shared definition; loads first).
 
-// On a fresh page load, restore scroll position from ?scroll_to=. The
-// renderer fires renderManuscript() during init; we need to wait until
+// On a fresh page load, restore WHERE YOU WERE: ?scroll_to= (the post-edit
+// stamp, old links), else #at= (every sentence click stamps it — renderer
+// rememberPosition, 2026-11-25), else this manuscript's remembered spot in
+// localStorage (the tabbed shell reloads the panel from its own URL). A
+// #note-sentence= deep link owns the scroll instead (pagedjs-config.js).
+// The renderer fires renderManuscript() during init; we need to wait until
 // .sentence elements exist before trying to scroll. Poll briefly because
 // Paged.js doesn't expose a "render done" event we can hook.
 //
@@ -1689,9 +1693,24 @@ function formatFallbackHTML(text) {
 // banner stamps the sentence you were on): once the book has loaded and
 // the id isn't in it, ask the server for its counterpart in the current
 // version and scroll there instead.
-function restoreScrollFromURL() {
-  let target = new URLSearchParams(window.location.search).get('scroll_to');
-  if (!target) return;
+// → { id, select }: ?scroll_to= (a post-edit reload) also SELECTS the
+// sentence so the change is easy to spot; a remembered spot (#at= / the
+// memory) only scrolls there and flashes it — selecting would make the
+// reader's next click on it a re-click that opens the editor, with the
+// notes margin never shown.
+function rememberedSentenceFromURL() {
+  const q = new URLSearchParams(window.location.search);
+  const hash = window.location.hash || '';
+  const at = hash.match(/[#&]at=([^&]+)/);
+  if (q.get('scroll_to')) return { id: q.get('scroll_to'), select: true };
+  if (at) return { id: decodeURIComponent(at[1]), select: false };
+  if (/[#&]note-sentence=/.test(hash)) return null;
+  try { const id = localStorage.getItem('ms_at:' + q.get('manuscript_id')); return id ? { id, select: false } : null; } catch (e) { return null; }
+}
+function restoreScrollFromURL(explicit) {
+  const want = explicit ? { id: explicit, select: false } : rememberedSentenceFromURL();
+  if (!want) return;
+  let target = want.id;
   let escaped = CSS.escape(target);
   let forwarding = false;
   const start = Date.now();
@@ -1714,9 +1733,15 @@ function restoreScrollFromURL() {
     const el = document.querySelector(`.sentence[data-sentence-id="${escaped}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'auto', block: 'center' });
-      // Also mark it selected so the user instantly sees what changed.
-      document.querySelectorAll(`.sentence[data-sentence-id="${escaped}"]`).forEach(s => s.classList.add('selected'));
-      if (window.WriteSysRenderer) window.WriteSysRenderer.currentSelectedSentenceId = target;
+      if (want.select) {
+        // Also mark it selected so the user instantly sees what changed.
+        document.querySelectorAll(`.sentence[data-sentence-id="${escaped}"]`).forEach(s => s.classList.add('selected'));
+        if (window.WriteSysRenderer) window.WriteSysRenderer.currentSelectedSentenceId = target;
+      } else {
+        // Where you were: a flash says "here", the click semantics stay.
+        el.classList.add('flash-highlight');
+        setTimeout(() => el.classList.remove('flash-highlight'), 1200);
+      }
       return;
     }
     if (Date.now() - start < 10000) setTimeout(tick, 100);
@@ -1724,6 +1749,14 @@ function restoreScrollFromURL() {
   tick();
 }
 
-document.addEventListener('DOMContentLoaded', restoreScrollFromURL);
+document.addEventListener('DOMContentLoaded', () => restoreScrollFromURL());
+// The shell forwards a #at= into a LIVE panel (a home.html#tab=m1&at=<id>
+// link): follow it like a fresh load would.
+if (typeof window.addEventListener === 'function') { // unit tests stub window
+  window.addEventListener('hashchange', () => {
+    const m = (window.location.hash || '').match(/[#&]at=([^&]+)/);
+    if (m) restoreScrollFromURL(decodeURIComponent(m[1]));
+  });
+}
 
 window.WriteSysSuggestions = WriteSysSuggestions;

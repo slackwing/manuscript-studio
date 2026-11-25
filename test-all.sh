@@ -67,6 +67,7 @@ FAST_TESTS=(
   test-canonicalize
   test-canon-render-pipeline
   test-cheatsheet
+  test-remember-at
   test-responsive-layout
   test-mobile-notes-stack
   test-tag-autocomplete

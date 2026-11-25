@@ -1017,6 +1017,29 @@ const WriteSysRenderer = {
     tick();
   },
 
+  // Where you are (2026-11-25, Andrew: "whenever I click a sentence,
+  // remember that that's where I am … so that when I refresh I come back").
+  // A click stamps the sentence into the page's hash (#at=<id>), into
+  // localStorage per manuscript (the tabbed shell reloads this page from
+  // its own URL, so the hash alone would not survive a refresh there), and
+  // into the shell's hash (#tab=m1&at=<id> — a copyable link to the spot).
+  // restoreScrollFromURL (suggestions.js) reads them back on load.
+  rememberPosition(sentenceId) {
+    if (!sentenceId) return;
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete('scroll_to'); // one stamp at a time
+      url.hash = 'at=' + encodeURIComponent(sentenceId);
+      history.replaceState(null, '', url);
+    } catch (e) { /* URL surprise — the other two stores still land */ }
+    try { if (this.manuscriptId) localStorage.setItem('ms_at:' + this.manuscriptId, sentenceId); } catch (e) { /* storage blocked */ }
+    try {
+      if (window.self !== window.top && window.top.WriteSysTabs && window.top.WriteSysTabs.rememberAt) {
+        window.top.WriteSysTabs.rememberAt('m' + this.manuscriptId, sentenceId);
+      }
+    } catch (e) { /* cross-origin parent — standalone after all */ }
+  },
+
   // The first sentence still on screen — the re-render's scroll anchor.
   topVisibleSentenceId() {
     for (const el of document.querySelectorAll('.pagedjs_pages .sentence[data-sentence-id]')) {
@@ -1566,6 +1589,7 @@ const WriteSysRenderer = {
         });
 
         this.currentSelectedSentenceId = sentenceId;
+        this.rememberPosition(sentenceId);
 
         if (window.WriteSysNotes) {
           // sentenceMap has the full text; the clicked span may be a fragment.
@@ -1759,6 +1783,7 @@ const WriteSysRenderer = {
     });
 
     this.currentSelectedSentenceId = sentenceId;
+    this.rememberPosition(sentenceId);
 
     // MOBILE (≤1239px): the margin is hidden — the sentence's notes live in
     // the suggest-edit view's stack. A bar tap opens that view for the

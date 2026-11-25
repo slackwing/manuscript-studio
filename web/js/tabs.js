@@ -235,11 +235,28 @@ window.WriteSysTabs = (function () {
     ensureDivider(split);
   };
 
+  // Where the reader is in each manuscript panel (key → sentence id), as
+  // the panel reports it (renderer rememberPosition → rememberAt). The
+  // shell's hash carries the FOCUSED panel's spot — #tab=m1&at=<id> — so a
+  // refresh (and a copied link) lands back on the sentence.
+  const atByKey = new Map();
   const updateHash = () => {
     const url = new URL(location.href);
     const k = focusedActive();
-    url.hash = k ? 'tab=' + k : '';
+    const at = k && atByKey.get(k);
+    url.hash = k ? 'tab=' + k + (at ? '&at=' + encodeURIComponent(at) : '') : '';
     history.replaceState(null, '', url);
+  };
+  const rememberAt = (key, sentenceId) => {
+    if (!SHELL || !key || !sentenceId) return;
+    atByKey.set(key, sentenceId);
+    if (focusedActive() === key) updateHash();
+  };
+  // The &at= of a shell hash, as a panel hash (#at=…) for the manuscript
+  // panel it names — ridden in by ensureFrame (new) or forwarded (live).
+  const atHashOf = (hash) => {
+    const m = (hash || '').match(/[#&]at=([^&]+)/);
+    return m ? '#at=' + m[1] : '';
   };
 
   const activate = (key) => {
@@ -527,8 +544,16 @@ window.WriteSysTabs = (function () {
       return true;
     }
     if (c.kind === 'home') {
-      const m = (c.url.hash || '').match(/[#&]tab=([msg]\d+)/);
-      if (m && findByKey(m[1])) { activate(m[1]); return true; }
+      const m = (c.url.hash || '').match(/[#&]tab=([msgc]\d+)/);
+      if (m && findByKey(m[1])) {
+        const at = atHashOf(c.url.hash);
+        if (at && m[1][0] === 'm') {
+          atByKey.set(m[1], decodeURIComponent(at.slice(4)));
+          if (panels.has(m[1])) forwardHash(m[1], at); else pendingHash.set(m[1], at);
+        }
+        activate(m[1]);
+        return true;
+      }
       if (location.search !== c.url.search) history.pushState(null, '', 'home.html' + c.url.search);
       activate(null); // its updateHash keeps the search, drops the hash
       if (window.WriteSysHome) {
@@ -805,7 +830,11 @@ window.WriteSysTabs = (function () {
       loadSession();
       reconcileSplit();
       const m = (location.hash || '').match(/[#&]tab=([msgc]\d+)/);
-      if (m && read().some((p) => keyOf(p) === m[1])) activate(m[1]);
+      if (m && read().some((p) => keyOf(p) === m[1])) {
+        const at = atHashOf(location.hash);
+        if (at && m[1][0] === 'm') { atByKey.set(m[1], decodeURIComponent(at.slice(4))); pendingHash.set(m[1], at); }
+        activate(m[1]);
+      }
       [leftActive, rightActive].forEach((k) => touchMru(k));
       applyLayout();
       revealKey = focused === 'right' ? rightActive : leftActive;
@@ -830,6 +859,6 @@ window.WriteSysTabs = (function () {
   });
   render();
 
-  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, openCheatsheet, activate,
+  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, openCheatsheet, activate, rememberAt,
     route, _classify: classify };
 })();

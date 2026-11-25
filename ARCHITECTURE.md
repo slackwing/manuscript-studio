@@ -520,3 +520,15 @@ arrays (`FAST_TESTS`, `SLOW_TESTS`) at the top of `test-all.sh` enumerate
 every test file by basename. A sanity check at the start of the script
 **refuses to run** if any `tests/*.js` (other than `test-utils.js`) is
 unclassified — so when you add a new test file, classify it.
+
+## Where you are (2026-11-25)
+
+Clicking a sentence remembers it three ways (`renderer.rememberPosition`):
+`#at=<sentence_id>` on the book page's URL, `localStorage ms_at:<manuscript>`
+(the tabbed shell reloads a panel from its own URL, so the panel hash
+alone would not survive a refresh there), and the shell's hash
+`#tab=m<id>&at=<sentence_id>` (`WriteSysTabs.rememberAt`; the shell rides
+it into the panel's src on load and forwards it to a live panel). On load
+`restoreScrollFromURL` (suggestions.js) takes `?scroll_to=` first (the
+post-edit stamp, old links), then `#at=`, then the memory; a
+`#note-sentence=` deep link owns the scroll instead.
