@@ -48,8 +48,12 @@ const psql = (sql) => execSync(
   await page.keyboard.press('Enter');
 
   // ---- the 7th button opens the picker; it lists both seeds with context ----
-  check('the colour bar has the ↗ existing-note button after the six colours',
-    await page.evaluate(() => { const bar = document.querySelector('.sn-note-colorbar'); const kids = [...bar.children]; return kids.length === 7 && kids[6].classList.contains('sn-note-pickbtn') && !!kids[6].querySelector('svg'); }));
+  check('the colour bar has the ↗ existing-note button after the six colours, evenly spaced',
+    await page.evaluate(() => {
+      const bar = document.querySelector('.sn-note-colorbar'); const kids = [...bar.children];
+      const gaps = kids.slice(1).map((k, i) => Math.round(k.getBoundingClientRect().left - kids[i].getBoundingClientRect().right));
+      return kids.length === 7 && kids[6].classList.contains('sn-note-pickbtn') && !!kids[6].querySelector('svg') && gaps.every((g) => g === gaps[0]);
+    }));
   await page.locator('.sn-note-pickbtn').dispatchEvent('mousedown');
   await page.waitForSelector('.note-linkpop.note-pick button[data-nid]', { timeout: 8000 });
   const rows = () => page.evaluate(() => [...document.querySelectorAll('.note-linkpop.note-pick button[data-nid]')].map((b) => ({ id: +b.dataset.nid, text: b.querySelector('.note-pick-text').textContent, ctx: b.querySelector('.note-pick-ctx').textContent })));

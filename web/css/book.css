@@ -1258,6 +1258,15 @@ p.section-break {
   color: #333;
 }
 
+/* The grey card's ↗ "existing note" chip: right-aligned in the chip row.
+   The chip row normally shrinks to its chips (.tags-container is
+   inline-flex), so on the grey cards the container and list take the full
+   width — that is what gives the auto margin room to push the chip right. */
+.uncreated-note .tags-container { display: flex; flex: 1 1 100%; }
+.uncreated-note .tags-list { flex: 1 1 auto; }
+.tag-chip.attach-chip { margin-left: auto; padding: 4px 8px; color: #57503f; cursor: pointer; }
+.tag-chip.attach-chip svg { display: block; }
+.tag-chip.attach-chip:hover { color: #2a6fb0; }
 .tag-chip.new-tag {
   background: transparent;
   border: 1px dashed #ccc;

@@ -39,8 +39,10 @@ const psql = (sql) => execSync(
   const chipGeom = await page.evaluate(() => {
     const list = document.querySelector('.sticky-note.first-uncreated .tags-list');
     const chips = [...list.children].map((c) => c.className.replace(/\s*tag-chip\s*/, '').trim());
-    const chip = list.querySelector('.attach-chip').getBoundingClientRect(), row = list.getBoundingClientRect();
-    return { chips, rightAligned: row.right - chip.right < 4, svg: !!list.querySelector('.attach-chip svg') };
+    const chip = list.querySelector('.attach-chip').getBoundingClientRect();
+    const row = document.querySelector('.sticky-note.first-uncreated .sticky-bottom-controls').getBoundingClientRect();
+    const tag = list.querySelector('.new-tag').getBoundingClientRect();
+    return { chips, rightAligned: row.right - chip.right < 4 && chip.left - tag.right > 20, svg: !!list.querySelector('.attach-chip svg') };
   });
   check('grey card chips: type, + tag, then the ↗ chip right-aligned', chipGeom.chips.length === 3 && /attach-chip/.test(chipGeom.chips[2]) && chipGeom.rightAligned && chipGeom.svg, JSON.stringify(chipGeom));
 
