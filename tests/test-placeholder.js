@@ -1,10 +1,11 @@
-// &placeholder rendering end-to-end (PLACEHOLDER_PLAN.md): an inline
-// sentences-unit placeholder renders as an invisible hatched run inside its
-// host sentence (details chip on hover), a block paragraphs-unit placeholder
-// renders N hatched paragraphs with a persistent overlay chip and lists in
-// the outline exactly like an anchor, and a mis-syntaxed placeholder prints
-// as literal prose. Uses the suggestion preview path (same technique as
-// test-structural-suggestion.js) so the fixture manuscript is untouched.
+// &placeholder rendering end-to-end (PLACEHOLDER_PLAN.md v2): an inline
+// sentences-unit placeholder renders as a grey lorem run inside its host
+// sentence, a block paragraphs-unit placeholder renders N grey lorem
+// paragraphs that are ONE sentence and lists in the outline exactly like an
+// anchor, and a mis-syntaxed placeholder — including the old fourth
+// {details} arg — prints as literal prose. Uses the suggestion preview path
+// (same technique as test-structural-suggestion.js) so the fixture
+// manuscript is untouched.
 const { chromium } = require('playwright');
 const {
   TEST_URL,
@@ -72,17 +73,18 @@ const {
     const st0 = await put(chapterId, '&chapter{The Keg Party}');
     check('chapter suggestion PUT accepted', st0 === 200, `status ${st0}`);
 
-    // Inline: sentences-unit placeholder mid-sentence, plus a mis-syntaxed
-    // one that must print as literal prose.
+    // Inline: sentences-unit placeholder mid-sentence, plus two mis-syntaxed
+    // ones that must print as literal prose — a bad unit, and the old
+    // four-arg form with {details}.
     const st1 = await put(inlineId,
-      'She waited on the platform. &placeholder#reunion{sentences}{l}{Reunion beat}{They finally meet. Keep it wordless.} The end came quietly, and also &placeholder{words} stayed literal.');
+      'She waited on the platform. &placeholder#reunion{sentences}{l}{Reunion beat} The end came quietly, and also &placeholder{words} stayed literal, as did &placeholder{sentences}{s}{}{legacy details}.');
     check('inline suggestion PUT accepted', st1 === 200, `status ${st1}`);
 
     // Block: paragraphs-unit placeholder as the sentence's whole text, WITH
     // a leading paragraph-indent marker — the first filler paragraph must
     // honor it (regression: markers were dropped for block placeholders).
     const st2 = await put(blockId,
-      '\n\t&placeholder#the-argument{paragraphs}{s}{The argument}{Mara confronts him. Three beats, escalating.}');
+      '\n\t&placeholder#the-argument{paragraphs}{s}{The argument}');
     check('block suggestion PUT accepted', st2 === 200, `status ${st2}`);
 
     await page.reload();
@@ -94,79 +96,46 @@ const {
       const span = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`);
       if (!span) return { found: false };
       const ph = span.querySelector('.ph');
-      const chip = ph && ph.querySelector('.ph-chip');
       const phStyle = ph && getComputedStyle(ph);
+      const text = ph ? ph.textContent : '';
       return {
         found: true,
         hasPh: !!ph,
-        transparent: phStyle ? phStyle.color === 'rgba(0, 0, 0, 0)' : false,
-        hatched: phStyle ? /svg/.test(phStyle.backgroundImage) : false,
+        color: phStyle ? phStyle.color : '',
+        lorem: /^Lorem ipsum dolor sit amet/.test(text),
+        sentences: (text.match(/[.?](\s|$)/g) || []).length,
         unselectable: phStyle ? phStyle.userSelect === 'none' : false,
-        chipHidden: chip ? getComputedStyle(chip).visibility === 'hidden' : null,
-        literal: /&placeholder\{words\}/.test(span.textContent),
-        fillerVisibleText: ph ? /Lorem ipsum/.test(span.innerText) : null,
-        padVar: getComputedStyle(document.documentElement).getPropertyValue('--ph-pad').trim(),
+        chip: !!span.querySelector('.ph-chip'),
+        literalUnit: /&placeholder\{words\}/.test(span.textContent),
+        literalLegacy: /&placeholder\{sentences\}\{s\}\{\}\{legacy details\}/.test(span.textContent),
       };
     }, inlineId);
     check('inline .ph rendered inside host sentence', inline.found && inline.hasPh);
-    check('filler text is invisible (transparent)', inline.transparent === true);
-    check('hatch tile background applied', inline.hatched === true);
+    // The host sentence is a suggestion preview, so the run reads suggested-blue.
+    check('inline filler is visible lorem ipsum', inline.lorem === true);
+    check('inline run has l = 5 sentences', inline.sentences === 5, String(inline.sentences));
+    check('a suggested placeholder reads blue like other suggested text', inline.color === 'rgb(42, 111, 176)', inline.color);
     check('filler is unselectable', inline.unselectable === true);
-    check('details chip suppressed until hover', inline.chipHidden === true);
-    check('mis-syntaxed &placeholder{words} prints as literal prose', inline.literal === true);
-    check('row-bridge --ph-pad measured', /px$/.test(inline.padVar || ''), inline.padVar);
-
-    // Hover reveals the chip.
-    const phBox = await page.evaluate((id) => {
-      const ph = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"] .ph`);
-      if (!ph) return null;
-      const r = ph.getClientRects()[0];
-      return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
-    }, inlineId);
-    if (phBox) {
-      await page.mouse.move(phBox.x, phBox.y);
-      await page.waitForTimeout(300);
-      const chipShown = await page.evaluate((id) => {
-        const chip = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"] .ph .ph-chip`);
-        return chip ? getComputedStyle(chip).visibility === 'visible' : false;
-      }, inlineId);
-      check('hovering the region reveals the details chip', chipShown === true);
-    } else {
-      check('hovering the region reveals the details chip', false, 'no .ph rect');
-    }
+    check('no details chip anywhere', inline.chip === false);
+    check('mis-syntaxed &placeholder{words} prints as literal prose', inline.literalUnit === true);
+    check('the old four-arg {details} form prints as literal prose', inline.literalLegacy === true);
 
     // --- block form ---
     const block = await page.evaluate((id) => {
       // paged.js may split the block across pages — query across fragments.
       const divs = Array.from(document.querySelectorAll('.pagedjs_pages .cmd-placeholder'));
       if (divs.length === 0) return { found: false };
-      const chip = document.querySelector('.pagedjs_pages .cmd-placeholder .ph-chip-block');
       const phs = Array.from(document.querySelectorAll('.pagedjs_pages .cmd-placeholder p .ph'));
-      // Regression guards: (a) a suggested placeholder's filler must stay
-      // invisible even under the blue .cmd-suggested affordance; (b) hatched
-      // rows must butt-joint with no gap, INCLUDING inside the halves of a
-      // paragraph paged.js split across pages (it zeroes padding on split
-      // elements, which used to open --ph-pad-sized gaps).
       const first = phs[0] ? getComputedStyle(phs[0]) : null;
-      let maxGap = 0;
-      for (const ph of phs) {
-        const rows = Array.from(ph.getClientRects())
-          .filter(r => r.width > 1).sort((a, b) => a.top - b.top);
-        for (let i = 1; i < rows.length; i++) {
-          maxGap = Math.max(maxGap, rows[i].top - rows[i - 1].bottom);
-        }
-      }
       return {
         found: true,
         // A split paragraph clones its <p> across fragments, so >= 2.
         paragraphs: phs.length,
-        transparent: first ? first.color === 'rgba(0, 0, 0, 0)' : false,
-        // The suggested hatch is a SOLID light blue (#94b7d8), not the old
-        // translucent #2a6fb0 (stroke-opacity doubled to darker bands on overlap).
-        suggestedBlueHatch: first ? /94b7d8/.test(first.backgroundImage) : false,
-        maxGap: +maxGap.toFixed(3),
-        overlayText: chip ? chip.textContent : '',
-        overlayVisible: chip ? getComputedStyle(chip).visibility !== 'hidden' : false,
+        color: first ? first.color : '',
+        lorem: phs.every(p => /^(Lorem ipsum|Sed ut perspiciatis|At vero eos)/.test(p.textContent) || p.textContent.length > 0),
+        firstLorem: phs[0] ? /^Lorem ipsum dolor/.test(phs[0].textContent) : false,
+        oneSentence: phs.length > 0 && phs.every(p => p.dataset.sentenceId === id),
+        overlay: !!document.querySelector('.pagedjs_pages .cmd-placeholder .ph-overlay, .pagedjs_pages .ph-chip-block'),
         carriesSentenceId: divs.some(d => !!d.querySelector(`.sentence[data-sentence-id="${id}"]`)),
       };
     }, blockId);
@@ -174,13 +143,11 @@ const {
     const indented = await page.evaluate(() =>
       !!document.querySelector('.pagedjs_pages .cmd-placeholder p:first-of-type.indented'));
     check('leading \\n\\t marker indents the first filler paragraph', indented === true);
-    check('block has >= 2 hatched paragraphs (s = 2)', block.paragraphs >= 2, String(block.paragraphs));
-    check('suggested block filler stays invisible (no blue text)', block.transparent === true);
-    check('suggested placeholder hatch carries the blue affordance', block.suggestedBlueHatch === true);
-    check('no gaps between hatched rows (split halves included)', block.maxGap < 0.5, `maxGap ${block.maxGap}px`);
-    check('overlay chip persistent with slug — label + details', block.overlayVisible === true
-      && /#the-argument — The argument/.test(block.overlayText || '')
-      && /Three beats, escalating/.test(block.overlayText || ''), block.overlayText);
+    check('block has >= 2 lorem paragraphs (s = 2)', block.paragraphs >= 2, String(block.paragraphs));
+    check('block starts at the start of the passage', block.firstLorem === true);
+    check('suggested block reads blue', block.color === 'rgb(42, 111, 176)', block.color);
+    check('every filler paragraph is the SAME sentence (one id)', block.oneSentence === true);
+    check('no overlay chip', block.overlay === false);
     check('block region carries its sentence id', block.carriesSentenceId === true);
 
     // --- outline: placeholder lists exactly like an anchor ---

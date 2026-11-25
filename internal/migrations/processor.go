@@ -46,14 +46,14 @@ func NewProcessor(db *pgxpool.Pool) *Processor {
 func (p *Processor) SegmenterVersion() string { return p.segmenterVersion }
 
 type MigrationResult struct {
-	MigrationID         int    `json:"migration_id"`
-	Status              string `json:"status"`
-	SentenceCount       int    `json:"sentence_count"`
-	AdditionsCount      int    `json:"additions_count"`
-	DeletionsCount      int    `json:"deletions_count"`
-	ChangesCount        int    `json:"changes_count"`
-	NotesMigrated int    `json:"notes_migrated"`
-	Message             string `json:"message"`
+	MigrationID    int    `json:"migration_id"`
+	Status         string `json:"status"`
+	SentenceCount  int    `json:"sentence_count"`
+	AdditionsCount int    `json:"additions_count"`
+	DeletionsCount int    `json:"deletions_count"`
+	ChangesCount   int    `json:"changes_count"`
+	NotesMigrated  int    `json:"notes_migrated"`
+	Message        string `json:"message"`
 	// UnresolvedReferences are &reference#slug targets with no matching slug
 	// in this migration — dangling links. Surfaced (warned), never fatal.
 	UnresolvedReferences []string `json:"unresolved_references,omitempty"`
@@ -120,13 +120,13 @@ func (p *Processor) bootstrap(ctx context.Context, db *database.DB, log *slog.Lo
 	}
 
 	if err := db.MarkMigrationDone(ctx, &models.Migration{
-		MigrationID:     migrationID,
-		ManuscriptID:    manuscriptID,
-		CommitHash:      commitHash,
-		Segmenter:       p.segmenterVersion,
-		BranchName:      branchName,
-		SentenceCount:   len(newSentences),
-		AdditionsCount:  len(newSentences),
+		MigrationID:    migrationID,
+		ManuscriptID:   manuscriptID,
+		CommitHash:     commitHash,
+		Segmenter:      p.segmenterVersion,
+		BranchName:     branchName,
+		SentenceCount:  len(newSentences),
+		AdditionsCount: len(newSentences),
 		// Bootstrap by definition has no tracked changes (nothing to pair
 		// against), so changes_count is explicitly 0 — not "unset".
 		ChangesCount:    0,
@@ -200,6 +200,32 @@ func (p *Processor) migrate(ctx context.Context, db *database.DB, log *slog.Logg
 			if bestSim >= 0.8 {
 				plan[oldID] = plannedMove{NewSentenceID: bestID, Confidence: bestSim}
 			}
+		}
+	}
+
+	// TRIMMED-PLACEHOLDER pairing (2026-11-25, PLACEHOLDER_PLAN.md v2): a
+	// block &placeholder whose arguments changed — the old {details} trimmed
+	// off — shares no prose with its successor, so the matcher sees delete +
+	// add and the ordinal fallback parks its notes on a neighbor. Same #slug
+	// / unit / size / label (details ignored) IS the same placeholder; twins
+	// pair in document order at 0.9 — a real match, no stale tag.
+	if len(diff.Added) > 0 {
+		twins := map[string][]string{} // identity → added ids, document order
+		for _, newID := range diff.Added {
+			if id, ok := sentence.PlaceholderIdentity(newSentenceMap[newID]); ok {
+				twins[id] = append(twins[id], newID)
+			}
+		}
+		for _, old := range oldSentences {
+			if mv, ok := plan[old.SentenceID]; ok && mv.Confidence > 0 {
+				continue
+			}
+			id, ok := sentence.PlaceholderIdentity(old.Text)
+			if !ok || len(twins[id]) == 0 {
+				continue
+			}
+			plan[old.SentenceID] = plannedMove{NewSentenceID: twins[id][0], Confidence: 0.9}
+			twins[id] = twins[id][1:]
 		}
 	}
 

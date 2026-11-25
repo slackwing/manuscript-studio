@@ -58,7 +58,7 @@ const WriteSysCheatsheet = {
         { code: '&part#p1{I.}{The Gathering}', desc: 'Part page — {description} shows in the outline only.' },
         { code: '&chapter#p1c1{1.}{Smoke on the ridge}', desc: 'Chapter heading.' },
         { code: '&anchor#origin{Where it begins}', desc: 'Outline waypoint — renders nothing.' },
-        { code: '&placeholder#reunion{paragraphs}{m}{Reunion}{notes}', desc: 'Hatched space for unwritten prose — sizes xs–xxxl.' },
+        { code: '&placeholder#reunion{paragraphs}{m}{Reunion}', desc: 'Grey lorem ipsum for unwritten prose — sizes xs–xxxl; one sentence, note it.' },
         { code: '&end#reunion', desc: 'Closes a placed region (Canonize writes these).' },
       ],
     },
@@ -70,7 +70,7 @@ const WriteSysCheatsheet = {
         { code: 'The fire &anchor#mark{} spread.', desc: 'Inline marker.' },
         { code: 'It rained. &marker#weird{weak}', desc: 'Attention marker — {weak} 70%, {strong} 130%.' },
         { code: 'He left.&footnote{A note. *Italics* and **bold**.}', desc: 'Footnote — attaches to the sentence it follows.' },
-        { code: 'She waited. &placeholder{sentences}{l}', desc: 'Inline hatched space.' },
+        { code: 'She waited. &placeholder{sentences}{l}', desc: 'Inline lorem ipsum.' },
       ],
     },
     {

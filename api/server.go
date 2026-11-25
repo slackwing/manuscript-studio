@@ -184,6 +184,19 @@ func (s *Server) BackfillNoteDefaults(ctx context.Context) {
 	}
 }
 
+// BackfillPlaceholderDetailNotes: the old &placeholder {details} become
+// sticky notes on their placeholder (PLACEHOLDER_PLAN.md v2, 2026-11-25).
+func (s *Server) BackfillPlaceholderDetailNotes(ctx context.Context) {
+	n, err := s.dbWrapper.BackfillPlaceholderDetailNotes(ctx)
+	if err != nil {
+		log.Printf("placeholder details backfill: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("placeholder details backfill: %d note(s) created", n)
+	}
+}
+
 // RunWordcountCron drives the optional wordcount-history feature: one run
 // at startup (covers downtime — the day's row appears as soon as the server
 // is back), then on the CLOCK every configured interval — 15 minutes runs

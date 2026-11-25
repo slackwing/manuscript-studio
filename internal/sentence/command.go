@@ -17,13 +17,15 @@ import (
 //	&chapter#slug{text}{label?}
 //	&anchor#slug{label?}{details?}                       // details reserved, unrendered
 //	&reference#slug{notes?}                              // inline only
-//	&placeholder#slug{unit}{size?}{label?}{details?}     // see ParsePlaceholder
+//	&placeholder#slug{unit}{size?}{label?}               // see ParsePlaceholder
 //	&sketch#id{label}                                   // canon region opener (VARIATIONS_PLAN.md)
 //	&end#slug                                            // region terminator (SCRATCHPAD_PLAN.md)
 //
 // Argument vocabulary: {text} renders in the book, {label} shows in the
-// outline, {details} is auxiliary metadata (a placeholder's details overlay;
-// an anchor's details are parsed but unrendered for now).
+// outline, {details} is auxiliary metadata (an anchor's details are parsed
+// but unrendered for now; a placeholder's details arg is GONE since
+// 2026-11-25 — what a placeholder is meant to become is a sticky note on it,
+// see LegacyPlaceholderDetails).
 //
 // A '&' begins a command only when immediately followed by an exact keyword
 // and then '#' or '{'. #slug is [a-z0-9-]+. Block vs inline is a segmentation
@@ -40,7 +42,7 @@ const (
 	CmdReference   CommandKind = "reference"
 	CmdMeta        CommandKind = "meta"
 	CmdPlaceholder CommandKind = "placeholder"
-	CmdSketch     CommandKind = "sketch"
+	CmdSketch      CommandKind = "sketch"
 	CmdEnd         CommandKind = "end"
 )
 
@@ -56,7 +58,7 @@ var blockCommandKinds = map[CommandKind]bool{
 	CmdAnchor:      true,
 	CmdMeta:        true,
 	CmdPlaceholder: true, // block iff sole line content, same as anchor (segman's call)
-	CmdSketch:     true, // block iff sole line content; canon region opener (VARIATIONS_PLAN.md)
+	CmdSketch:      true, // block iff sole line content; canon region opener (VARIATIONS_PLAN.md)
 	CmdEnd:         true, // block iff sole line content; invisible region terminator
 }
 
@@ -80,18 +82,19 @@ var (
 )
 
 // PlaceholderSpec is the interpreted argument list of a &placeholder command:
-// {unit}{size?}{label?}{details?}. The size arg is positional but detected by
-// value: an arg that exactly matches a size keyword is the size, anything
-// else is the label (a label that IS literally a size keyword can force the
-// default by writing the size explicitly). Valid=false means the command is
-// mis-syntaxed and renders as literal prose.
+// {unit}{size?}{label?}. The size arg is positional but detected by value: an
+// arg that exactly matches a size keyword is the size, anything else is the
+// label (a label that IS literally a size keyword can force the default by
+// writing the size explicitly). Valid=false means the command is mis-syntaxed
+// and renders as literal prose — including the pre-2026-11-25 fourth
+// {details} arg, which is how an author finds the lines to trim after
+// BackfillPlaceholderDetailNotes has turned their details into sticky notes.
 type PlaceholderSpec struct {
-	Unit    string // "sentences" or "paragraphs"
-	Size    string // canonical size keyword; "m" when omitted
-	Count   int    // resolved count of Unit
-	Label   string // outline text (placeholder lists exactly like an anchor)
-	Details string // overlaid on the rendered placeholder region
-	Valid   bool
+	Unit  string // "sentences" or "paragraphs"
+	Size  string // canonical size keyword; "m" when omitted
+	Count int    // resolved count of Unit
+	Label string // outline text (placeholder lists exactly like an anchor)
+	Valid bool
 }
 
 // Placeholder t-shirt sizes. Sentences double-ish; paragraphs are Fibonacci.
@@ -107,7 +110,7 @@ var placeholderParagraphCounts = map[string]int{
 // web/js/command.js placeholderSpec — keep in lockstep.
 func ParsePlaceholder(cmd Command) PlaceholderSpec {
 	spec := PlaceholderSpec{Size: "m"}
-	if cmd.Kind != CmdPlaceholder || len(cmd.Args) == 0 || len(cmd.Args) > 4 {
+	if cmd.Kind != CmdPlaceholder || len(cmd.Args) == 0 || len(cmd.Args) > 3 {
 		return spec
 	}
 	spec.Unit = strings.TrimSpace(cmd.Args[0])
@@ -130,16 +133,95 @@ func ParsePlaceholder(cmd Command) PlaceholderSpec {
 		rest = rest[1:]
 	}
 	if len(rest) > 0 {
-		spec.Details = rest[0]
-		rest = rest[1:]
-	}
-	if len(rest) > 0 {
-		// More args than {unit}{size}{label}{details} can absorb.
+		// More args than {unit}{size}{label} can absorb (the old {details}).
 		return PlaceholderSpec{Size: "m"}
 	}
 	spec.Count = counts[spec.Size]
 	spec.Valid = true
 	return spec
+}
+
+// LegacyPlaceholderDetails returns the {details} text of every &placeholder
+// token in a stored sentence that still uses the pre-2026-11-25 grammar
+// {unit}{size?}{label?}{details?} — the same size-by-value rule, then label,
+// then details. Blank details are skipped. Used only by the one-time
+// backfill that turns those details into sticky notes
+// (database.BackfillPlaceholderDetailNotes).
+func LegacyPlaceholderDetails(text string) []string {
+	var out []string
+	runes := []rune(text)
+	for i := 0; i < len(runes); {
+		if runes[i] != '&' {
+			i++
+			continue
+		}
+		cmd, ok := ParseCommand(string(runes[i:]))
+		if !ok {
+			i++
+			continue
+		}
+		i += len([]rune(cmd.Raw))
+		if cmd.Kind != CmdPlaceholder || len(cmd.Args) < 3 || len(cmd.Args) > 4 {
+			continue
+		}
+		counts, unitOK := map[string]map[string]int{
+			"sentences":  placeholderSentenceCounts,
+			"paragraphs": placeholderParagraphCounts,
+		}[strings.TrimSpace(cmd.Args[0])]
+		if !unitOK {
+			continue
+		}
+		rest := cmd.Args[1:]
+		if _, isSize := counts[strings.TrimSpace(rest[0])]; isSize {
+			rest = rest[1:]
+		}
+		// rest = [label, details?] — details is the arg after the label.
+		if len(rest) != 2 {
+			continue
+		}
+		if d := strings.TrimSpace(rest[1]); d != "" {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// PlaceholderIdentity is what makes a block &placeholder "the same one"
+// across a migration when only its arguments changed: #slug + unit + size +
+// label, parsed leniently so the pre-2026-11-25 fourth {details} arg is
+// ignored — trimming it off must not read as delete + add. ok=false for
+// anything that is not a sentence consisting solely of a placeholder command
+// (an inline placeholder's host sentence has prose for the matcher to hold
+// on to).
+func PlaceholderIdentity(text string) (string, bool) {
+	body := strings.TrimSpace(text)
+	body = strings.TrimPrefix(body, MarkerSection)
+	body = strings.TrimPrefix(body, MarkerParagraph)
+	body = strings.TrimSpace(body)
+	cmd, ok := ParseCommand(body)
+	if !ok || cmd.Kind != CmdPlaceholder || cmd.Raw != body || len(cmd.Args) == 0 {
+		return "", false
+	}
+	unit := strings.TrimSpace(cmd.Args[0])
+	counts, unitOK := map[string]map[string]int{
+		"sentences":  placeholderSentenceCounts,
+		"paragraphs": placeholderParagraphCounts,
+	}[unit]
+	if !unitOK {
+		return "", false
+	}
+	size, label := "m", ""
+	rest := cmd.Args[1:]
+	if len(rest) > 0 {
+		if _, isSize := counts[strings.TrimSpace(rest[0])]; isSize {
+			size = strings.TrimSpace(rest[0])
+			rest = rest[1:]
+		}
+	}
+	if len(rest) > 0 {
+		label = strings.TrimSpace(rest[0])
+	}
+	return cmd.Slug + "|" + unit + "|" + size + "|" + label, true
 }
 
 // IsBlockCommandText reports whether a stored sentence is a block &-command

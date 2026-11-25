@@ -494,10 +494,8 @@ const WriteSysRenderer = {
 
       oldPages.forEach(el => el.remove());
 
-      // Placeholder hatch geometry (row-bridge padding + phase nudge) is
-      // DOM-position-derived, so it re-runs on the fresh pages. The
-      // scratchpad-import affordances are position-derived too.
-      if (window.WriteSysPlaceholder) window.WriteSysPlaceholder.layoutPass();
+      // The scratchpad-import affordances are position-derived, so they
+      // re-run on the fresh pages.
       if (window.WriteSysImportScratchpad) window.WriteSysImportScratchpad.refresh();
       if (window.WriteSysSuggestions && window.WriteSysSuggestions.markStaleSentences) window.WriteSysSuggestions.markStaleSentences();
       if (window.WriteSysNotes && window.WriteSysNotes.showIdleNoteNav) window.WriteSysNotes.showIdleNoteNav();

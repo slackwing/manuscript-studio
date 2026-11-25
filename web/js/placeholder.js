@@ -1,41 +1,42 @@
 /**
- * &placeholder rendering (PLACEHOLDER_PLAN.md).
+ * &placeholder rendering (PLACEHOLDER_PLAN.md v2, 2026-11-25).
  *
- * A placeholder reserves believable space for unwritten prose: invisible
- * lorem filler that justifies and wraps exactly like real text, painted with
- * a diagonal hatch that reads as one merged silhouette across lines.
+ * A placeholder reserves believable space for unwritten prose, sized by a
+ * guess about how long it will be (the xs–xxxl tables in command.js). It
+ * renders as LOREM IPSUM in a grey face — visibly filler, never mistaken for
+ * the book — and it is ONE sentence: the whole run (every filler paragraph
+ * of a block form) carries the command's sentence id, so a sticky note, a
+ * hover, a click address the placeholder, not a lorem sentence inside it.
  *
- * The hatch geometry is phase-aligned by construction:
- *   - tile: 6.4px SVG diagonal hatch (TILE)
- *   - book line-height: 12pt * 1.6 = 25.6px = 4 tiles, so stacked rows land
- *     on the same pattern phase
- *   - paragraph indent: 2em = 32px = 5 tiles
- *   - row bridge: vertical padding measured at runtime from the rendered
- *     font's real metrics (Linux substitutes Georgia, so it can't be
- *     hardcoded) makes line fragments butt-joint into one silhouette
- *   - phase nudge: an inline placeholder's first fragment starts mid-line at
- *     an arbitrary x; a 0-5px spacer shifts its start onto a tile boundary
- *     (invisible inside justified word-spacing)
- *
- * layoutPass() runs after paged.js finishes (pagedjs-config afterRendered and
- * renderer re-renders) — same hook family as the rainbow side-bars.
+ * The excerpt is derived from the size: the canonical passage, in order —
+ * a sentences-unit placeholder takes its first N sentences, a paragraphs-
+ * unit placeholder its first N paragraphs — wrapping around when the size
+ * outruns the passage. No seeding, no hatch, no layout pass: this is plain
+ * text that paginates like prose.
  */
 const WriteSysPlaceholder = {
-  TILE: 6.4,
-
-  // Deterministic filler: the classic lorem sentence pool. Seeded per
-  // placeholder (slug, else label, else signature) so the same command
-  // renders the same silhouette on every render/session, but different
-  // placeholders don't look like copies of one stamp.
+  // The canonical passage (the lipsum.com paragraphs), as sentences.
   LOREM: [
-    'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-    'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
-    'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.',
-    'Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
-    'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam.',
-    'Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione.',
-    'Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora.',
-    'At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti.',
+    [
+      'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+      'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
+      'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.',
+      'Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
+    ],
+    [
+      'Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.',
+      'Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.',
+      'Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.',
+      'Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur?',
+      'Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?',
+    ],
+    [
+      'At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga.',
+      'Et harum quidem rerum facilis est et expedita distinctio.',
+      'Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus, omnis voluptas assumenda est, omnis dolor repellendus.',
+      'Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae.',
+      'Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat.',
+    ],
   ],
 
   esc(text) {
@@ -47,79 +48,34 @@ const WriteSysPlaceholder = {
       .replace(/'/g, '&#39;');
   },
 
-  // mulberry32 PRNG over a simple string hash — tiny and deterministic.
-  rng(seedStr) {
-    let h = 2166136261 >>> 0;
-    for (const ch of String(seedStr)) {
-      h ^= ch.codePointAt(0);
-      h = Math.imul(h, 16777619);
-    }
-    let a = h >>> 0;
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  },
-
-  seedOf(spec, slug) {
-    return slug || spec.label || (spec.unit + spec.size);
-  },
-
-  fillerSentences(count, rand) {
+  // The first `count` sentences of the passage, in order, wrapping around.
+  excerptSentences(count) {
+    const flat = this.LOREM.flat();
     const out = [];
-    let last = -1;
-    for (let i = 0; i < count; i++) {
-      let pick = Math.floor(rand() * this.LOREM.length);
-      if (pick === last) pick = (pick + 1) % this.LOREM.length;
-      out.push(this.LOREM[pick]);
-      last = pick;
-    }
+    for (let i = 0; i < count; i++) out.push(flat[i % flat.length]);
     return out.join(' ');
   },
 
-  // Each filler paragraph is 3-5 sentences — about the length of lorem
-  // ipsum's classic first paragraph, with seeded variation.
-  fillerParagraphs(count, rand) {
+  // The first `count` paragraphs of the passage, in order, wrapping around.
+  excerptParagraphs(count) {
     const out = [];
-    for (let i = 0; i < count; i++) {
-      out.push(this.fillerSentences(3 + Math.floor(rand() * 3), rand));
-    }
+    for (let i = 0; i < count; i++) out.push(this.LOREM[i % this.LOREM.length].join(' '));
     return out;
   },
 
-  // The details chip: shows "#slug — label" and the details text. Inline
-  // placeholders suppress it until hover; the block form overlays it
-  // persistently, centered on the region.
-  chipInnerHTML(spec, slug) {
-    const head = [slug ? '#' + slug : '', spec.label].filter(Boolean).join(' — ');
-    const headHtml = head ? `<span class="ph-chip-head">${this.esc(head)}</span>` : '';
-    const detailsHtml = spec.details ? this.esc(spec.details) : '';
-    if (!headHtml && !detailsHtml) return '';
-    return headHtml + detailsHtml;
-  },
-
-  // Inline (sentences-unit) placeholder: a .ph run of invisible filler inside
-  // the host sentence, chip on hover. Also used when a sentences-unit
-  // placeholder is the sole content of its own line (it becomes a one-run
-  // paragraph). aria-hidden + unselectable: the filler must never leak into
-  // copy/paste, search, or a screen reader.
+  // Inline (sentences-unit) placeholder: a grey .ph run inside its host
+  // sentence. Also used when a sentences-unit placeholder is the sole content
+  // of its own line (it becomes a one-run paragraph). Unselectable and
+  // aria-hidden: filler must never leak into copy, search, or a screen reader.
   inlineHTML(spec, slug) {
-    const rand = this.rng(this.seedOf(spec, slug));
-    const filler = this.fillerSentences(spec.count, rand);
-    const chip = this.chipInnerHTML(spec, slug);
-    const chipHtml = chip ? `<span class="ph-chip" aria-hidden="true">${chip}</span>` : '';
     const slugAttr = slug ? ` data-slug="${this.esc(slug)}"` : '';
-    return `<span class="ph"${slugAttr} aria-hidden="true">${chipHtml}${this.esc(filler)}</span>`;
+    return `<span class="ph"${slugAttr} aria-hidden="true">${this.esc(this.excerptSentences(spec.count))}</span>`;
   },
 
-  // Block (paragraphs-unit) placeholder: N filler paragraphs in a wrapper,
-  // details chip overlaid persistently. Every span carries the sentence id so
-  // the whole region stays hoverable/annotatable as one sentence.
+  // Block (paragraphs-unit) placeholder: N grey paragraphs in a wrapper.
+  // Every span carries the sentence id so the whole region is one sentence.
   blockHTML(spec, slug, id, changed, escapeHtml, markerCls) {
-    const rand = this.rng(this.seedOf(spec, slug));
-    const paras = this.fillerParagraphs(spec.count, rand);
+    const paras = this.excerptParagraphs(spec.count);
     const slugAttr = slug ? ` data-slug="${this.esc(slug)}"` : '';
     const chCls = changed ? ' cmd-suggested' : '';
     const body = paras.map((p, i) => {
@@ -128,87 +84,7 @@ const WriteSysPlaceholder = {
       const cls = i === 0 ? (markerCls ? ` class="${markerCls}"` : '') : ' class="indented"';
       return `<p${cls}><span class="sentence ph" data-sentence-id="${escapeHtml(id)}" aria-hidden="true">${this.esc(p)}</span></p>`;
     }).join('');
-    const chip = this.chipInnerHTML(spec, slug);
-    // Overlay first in DOM order: if paged.js splits the block across pages,
-    // the chip rides the FIRST page fragment (where the region starts).
-    const overlay = chip ? `<div class="ph-overlay" aria-hidden="true"><div class="ph-chip-block">${chip}</div></div>` : '';
-    return `<div class="cmd-placeholder${chCls}"${slugAttr}>${overlay}${body}</div>`;
-  },
-
-  // ---- post-pagination layout pass -------------------------------------
-
-  // Row bridge: half the gap between the paragraph line-height and the
-  // rendered font's content-box height. Measured inside a real paged page so
-  // the metrics match the book context (font substitution, &meta{font}).
-  tunePad() {
-    const host = document.querySelector('.pagedjs_page_content') || document.body;
-    const p = document.createElement('p');
-    p.style.cssText = 'position:absolute;visibility:hidden;margin:0';
-    const probe = document.createElement('span');
-    probe.textContent = 'Hxg';
-    p.appendChild(probe);
-    host.appendChild(p);
-    const lh = parseFloat(getComputedStyle(p).lineHeight) || 25.6;
-    const pad = Math.max(0, (lh - probe.getBoundingClientRect().height) / 2);
-    p.remove();
-    document.documentElement.style.setProperty('--ph-pad', pad.toFixed(2) + 'px');
-  },
-
-  // Current scale applied to the paged container (renderer.applyResponsiveScaling
-  // sets transform: scale(N) on mobile). getClientRects() returns SCREEN px, but
-  // the hatch tile (TILE) and margins live in the element's OWN (unscaled) coord
-  // space, so screen deltas must be divided by this before tile math. 1 on
-  // desktop (no transform).
-  pageScale() {
-    const c = document.querySelector('.pagedjs_pages');
-    if (!c) return 1;
-    const t = getComputedStyle(c).transform;
-    if (!t || t === 'none') return 1;
-    const m = t.match(/matrix\(([^)]+)\)/);
-    if (!m) return 1;
-    const a = parseFloat(m[1].split(',')[0]);
-    return (a > 0.01 && a <= 1.5) ? a : 1;
-  },
-
-  // Phase nudge: shift each inline placeholder's start onto the next tile
-  // boundary so its first fragment's diagonals mesh with the rows below.
-  // The nudge itself reflows justification, so measure-and-repeat; bail out
-  // whenever the placeholder doesn't actually wrap (single fragment).
-  nudge() {
-    const TILE = this.TILE;
-    const scale = this.pageScale();   // 1 on desktop; <1 when the page is scaled (mobile)
-    document.querySelectorAll('.pagedjs_pages .ph').forEach(ph => {
-      let sp = ph.previousElementSibling;
-      if (sp && !sp.classList.contains('ph-nudge')) sp = null;
-      const rectsOf = () => Array.from(ph.getClientRects()).filter(r => r.width > 1 && r.height > 1);
-      for (let i = 0; i < 4; i++) {
-        const r = rectsOf();
-        if (r.length < 2) break;
-        // getClientRects() is SCREEN px; convert the delta to the page's own
-        // coord space (÷scale) so the tile math matches the un-scaled TILE.
-        const deltaLeft = (r[1].left - r[0].left) / scale;
-        let off = ((deltaLeft % TILE) + TILE) % TILE;
-        if (off < 0.35 || off > TILE - 0.35) break;
-        if (!sp) {
-          sp = document.createElement('span');
-          sp.className = 'ph-nudge';
-          ph.parentNode.insertBefore(sp, ph);
-        }
-        // Take the shorter path: right by off, or left by off - TILE. Small
-        // negative margins hide in justified word-spacing just as well.
-        // `off` is already in element space, and marginLeft is too, so no
-        // re-scaling here.
-        const shift = off <= TILE / 2 ? off : off - TILE;
-        const cur = parseFloat(sp.style.marginLeft) || 0;
-        sp.style.marginLeft = (cur + shift).toFixed(2) + 'px';
-      }
-    });
-  },
-
-  layoutPass() {
-    if (!document.querySelector('.pagedjs_pages .ph')) return;
-    this.tunePad();
-    this.nudge();
+    return `<div class="cmd-placeholder${chCls}"${slugAttr}>${body}</div>`;
   },
 };
 

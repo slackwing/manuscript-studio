@@ -1130,3 +1130,29 @@ func TestMigration_FreeNoteUntouched(t *testing.T) {
 		t.Fatalf("free note after a migration: placements=%d versions=%d, want 0 and 1", placements, versions)
 	}
 }
+
+// After the one-time details→note backfill, the author trims the old fourth
+// arg off the placeholder line. The sentence text changes, so the note must
+// ride the ordinary carry-forward onto the trimmed placeholder.
+func TestMigration_PlaceholderNoteCarriesWhenDetailsTrimmed(t *testing.T) {
+	f := newFixture(t)
+	v1 := "Anchor at the start.\n\n&placeholder{sentences}{l}{}{A sits down to wait for his flight.}\n\nAnchor at the end."
+	v2 := "Anchor at the start.\n\n&placeholder{sentences}{l}{}\n\nAnchor at the end."
+	find := func(migID int) string {
+		var sid string
+		if err := f.pool.QueryRow(f.ctx, `SELECT sentence_id FROM sentence WHERE migration_id = $1 AND text LIKE '%&placeholder%' ORDER BY ordinal LIMIT 1`, migID).Scan(&sid); err != nil {
+			t.Fatalf("placeholder sentence in migration %d: %v", migID, err)
+		}
+		return sid
+	}
+	m1 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "ph-v1", v1)
+	old := find(m1)
+	noteID := insertNote(t, f.ctx, f.db, old, f.username, "A sits down to wait for his flight.")
+
+	m2 := runProcessor(t, f.ctx, f.processor, f.db, f.manuscriptID, "ph-v2", v2)
+	want := find(m2)
+	got, conf := getPlacement(t, f.ctx, f.pool, noteID)
+	if got != want {
+		t.Fatalf("note should follow the trimmed placeholder: on %q, want %q (confidence %v)", got, want, conf)
+	}
+}

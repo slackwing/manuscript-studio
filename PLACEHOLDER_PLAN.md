@@ -1,9 +1,45 @@
 # PLACEHOLDER_PLAN — the `&placeholder` command
 
-**Status: implemented (2026-07-25).** This document is the design record for
-the `&placeholder` command and the argument-vocabulary standardization that
-came with it. Grammar/parser foundations live in TEX_COMMANDS_PLAN.md; this
-plan builds on them.
+**Status: v2 shipped 2026-11-25** (v1 2026-07-25). Grammar/parser
+foundations live in TEX_COMMANDS_PLAN.md; this plan builds on them.
+
+## v2 (2026-11-25) — grey lorem ipsum, no details
+
+The owner's call after living with the hatch: a placeholder should READ as
+placeholder. What changed:
+
+- **Rendering**: visible lorem ipsum in a grey face (`.ph`, `#9a9a9a`;
+  suggested → the usual blue), paginating like prose. The excerpt is
+  derived from the size: the canonical passage (the three lipsum paragraphs,
+  `WriteSysPlaceholder.LOREM`) in order — a `sentences` placeholder takes
+  its first N sentences, a `paragraphs` placeholder its first N paragraphs,
+  wrapping when the size outruns the passage. No seeding, no hatch, no
+  layout passes (`tunePad`/`nudge`/`layoutPass` and the tile constraint on
+  the book's line-height are gone; scratch-render's pass too).
+- **One sentence**: unchanged in the data — the command is one segman token
+  — and now visibly so: every filler paragraph of a block form carries the
+  command's sentence id, so hover, click and sticky notes address the
+  placeholder, never a lorem sentence inside it. Still unselectable and
+  aria-hidden (filler never leaks into copy or search).
+- **Grammar**: `&placeholder#slug{unit}{size?}{label?}`. The `{details}`
+  arg is gone — what a placeholder is meant to become is a sticky note ON
+  it. A fourth arg is mis-syntax and prints literally (the existing rule),
+  which is how the author finds the lines to trim.
+- **Migration of existing details**: `BackfillPlaceholderDetailNotes`
+  (boot, idempotent) gives every placeholder in each manuscript's latest
+  migration that still carries details under the old grammar a yellow
+  sticky note with that text, owned by the manuscript's `author` role
+  (else `admin`). When the author then trims the arg, the trimmed
+  placeholder is a different sentence text; the migration's
+  TRIMMED-PLACEHOLDER pairing (`sentence.PlaceholderIdentity`: slug + unit
+  + size + label, details ignored) pairs it with its predecessor at 0.9 so
+  the note rides along instead of falling on a neighbor
+  (`TestMigration_PlaceholderNoteCarriesWhenDetailsTrimmed`).
+- Sizes (§2 tables), block/inline rules (§4), the outline (§5) and the
+  Fill affordance (`.cmd-placeholder[data-slug]`, `p.ph-line .ph[data-slug]`)
+  are unchanged.
+
+Sections 2 and 6 below describe v1 and are kept as the record.
 
 ## 1. Purpose
 

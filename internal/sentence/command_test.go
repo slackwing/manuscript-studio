@@ -2,6 +2,7 @@ package sentence
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -22,20 +23,20 @@ func TestParseCommand(t *testing.T) {
 		{"&reference#origin{see the start}", true, CmdReference, "origin", []string{"see the start"}},
 		// Generic grammar: ANY &[a-z]+ with the '#'/'{' delimiter parses
 		// (Unknown=true — invisible by default; see TestParseCommand_Unknown).
-		{"&marker#interesting", true, "marker", "interesting", nil}, // the usage: bare #tag
+		{"&marker#interesting", true, "marker", "interesting", nil},  // the usage: bare #tag
 		{"&marker#slug-1#other-slug", true, "marker", "slug-1", nil}, // multi-slug, Slug = first
 		{"&marker#a#b{x}{y}", true, "marker", "a", []string{"x", "y"}},
 		{"&chapter#p1#alt{1.}{Smoke}", true, CmdChapter, "p1", []string{"1.", "Smoke"}},
 		{"&marker#digression", true, "marker", "digression", nil},
 		{"&marker{interesting}", true, "marker", "", []string{"interesting"}}, // brace form parses too
-		{"&custom#s1{x}", true, "custom", "s1", []string{"x"}},            // full general shape
+		{"&custom#s1{x}", true, "custom", "s1", []string{"x"}},                // full general shape
 		{"&unknown{x}", true, "unknown", "", []string{"x"}},
 		// Not commands:
 		{"Smith & Sons", false, "", "", nil},
 		{"R&D budget", false, "", "", nil},
 		{"&chapter of accidents", false, "", "", nil}, // no delimiter
 		{"&Mark{x}", false, "", "", nil},              // keywords are lowercase-only
-		{"&marker alone", false, "", "", nil},           // no '#'/'{' delimiter → prose
+		{"&marker alone", false, "", "", nil},         // no '#'/'{' delimiter → prose
 		{"&chapter#p1", false, "", "", nil},           // KNOWN kind: slug needs args
 		{"&chapter#p1{unterminated", false, "", "", nil},
 		{"&marker{unterminated", false, "", "", nil},
@@ -251,13 +252,14 @@ func TestParsePlaceholder(t *testing.T) {
 		// A label that IS a size keyword: write the size explicitly.
 		{"&placeholder{sentences}{m}{s}", PlaceholderSpec{Unit: "sentences", Size: "m", Count: 3, Label: "s", Valid: true}},
 		// Full signature.
-		{"&placeholder#r{sentences}{l}{Reunion}{They meet. Wordless.}",
-			PlaceholderSpec{Unit: "sentences", Size: "l", Count: 5, Label: "Reunion", Details: "They meet. Wordless.", Valid: true}},
-		// Label + details without size.
-		{"&placeholder{paragraphs}{The argument}{Three beats, escalating}",
-			PlaceholderSpec{Unit: "paragraphs", Size: "m", Count: 3, Label: "The argument", Details: "Three beats, escalating", Valid: true}},
-		// Mis-syntax: bad unit, or too many args for the signature.
+		{"&placeholder#r{sentences}{l}{Reunion}",
+			PlaceholderSpec{Unit: "sentences", Size: "l", Count: 5, Label: "Reunion", Valid: true}},
+		// Mis-syntax: bad unit, or too many args for the signature — which
+		// since 2026-11-25 includes the old fourth {details} arg (with or
+		// without a size): the line prints literally until the author trims it.
 		{"&placeholder{words}{m}", PlaceholderSpec{Size: "m", Unit: "words"}},
+		{"&placeholder#r{sentences}{l}{Reunion}{They meet. Wordless.}", PlaceholderSpec{Size: "m"}},
+		{"&placeholder{paragraphs}{The argument}{Three beats, escalating}", PlaceholderSpec{Size: "m"}},
 		{"&placeholder{sentences}{a}{b}{c}{d}", PlaceholderSpec{Size: "m"}},
 	}
 	for _, c := range cases {
@@ -272,7 +274,7 @@ func TestBuildOutline_Placeholder(t *testing.T) {
 	ids := []string{"s1", "s2", "s3", "s4"}
 	texts := map[string]string{
 		"s1": "&chapter#c1{1.}{Openings}",
-		"s2": "&placeholder#reunion{sentences}{l}{Reunion beat}{wordless}",
+		"s2": "&placeholder#reunion{sentences}{l}{Reunion beat}",
 		"s3": "&anchor#mark{a still moment}",
 		"s4": "&placeholder{paragraphs}{bogus-size-is-label}",
 	}
@@ -387,5 +389,59 @@ func TestParseCommand_MultiSlug(t *testing.T) {
 	}
 	if err := ValidateSentenceText("&chapter#ok#BAD{1.}{X}"); err == nil {
 		t.Fatalf("invalid second slug must fail validation")
+	}
+}
+
+func TestLegacyPlaceholderDetails(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"&placeholder{sentences}{l}{}{A sits down to wait.}", []string{"A sits down to wait."}},
+		{"\n\t&placeholder#k{paragraphs}{m}{The keg}{Three beats, escalating}", []string{"Three beats, escalating"}},
+		// Label + details without a size.
+		{"&placeholder{paragraphs}{The argument}{Three beats}", []string{"Three beats"}},
+		// Inline, inside prose, with sentence punctuation in the details (RULE 10).
+		{"She waited. &placeholder{sentences}{s}{}{They meet. Wordless.} Then left.", []string{"They meet. Wordless."}},
+		// Two tokens in one sentence.
+		{"&placeholder{sentences}{xs}{}{one} and &placeholder{sentences}{xs}{}{two}", []string{"one", "two"}},
+		// Nothing to migrate: new grammar, blank details, bad unit, prose.
+		{"&placeholder{sentences}{l}{Reunion}", nil},
+		{"&placeholder{sentences}{l}{Reunion}{   }", nil},
+		{"&placeholder{words}{l}{x}{y}", nil},
+		{"Smith & Sons placed an order.", nil},
+	}
+	for _, c := range cases {
+		got := LegacyPlaceholderDetails(c.in)
+		if strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("LegacyPlaceholderDetails(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestPlaceholderIdentity(t *testing.T) {
+	id := func(s string) string {
+		v, ok := PlaceholderIdentity(s)
+		if !ok {
+			return "<not a placeholder>"
+		}
+		return v
+	}
+	// The old four-arg form and its trimmed successor are the same placeholder.
+	if a, b := id("&placeholder{sentences}{l}{}{A sits down.}"), id("\n\n&placeholder{sentences}{l}{}"); a != b || a != "|sentences|l|" {
+		t.Errorf("trimmed details must keep the identity: %q vs %q", a, b)
+	}
+	if a, b := id("\n\t&placeholder#keg{paragraphs}{The keg}{three beats}"), id("&placeholder#keg{paragraphs}{The keg}"); a != b || a != "keg|paragraphs|m|The keg" {
+		t.Errorf("label without size: %q vs %q", a, b)
+	}
+	// Different size or label or slug = a different placeholder.
+	if id("&placeholder{sentences}{l}") == id("&placeholder{sentences}{xl}") || id("&placeholder#a{sentences}") == id("&placeholder#b{sentences}") {
+		t.Errorf("size and slug are part of the identity")
+	}
+	// Not block placeholders: inline host sentences, other commands, prose, bad unit.
+	for _, s := range []string{"She waited. &placeholder{sentences}{s}", "&anchor#x{y}", "Just prose.", "&placeholder{words}{m}"} {
+		if _, ok := PlaceholderIdentity(s); ok {
+			t.Errorf("%q should have no placeholder identity", s)
+		}
 	}
 }

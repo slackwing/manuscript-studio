@@ -68,6 +68,10 @@ func main() {
 	// 052: every note's default text (shown while its own text is blank).
 	go server.BackfillNoteDefaults(context.Background())
 
+	// 2026-11-25: a &placeholder's old {details} arg becomes a sticky note on
+	// the placeholder (PLACEHOLDER_PLAN.md v2). Idempotent.
+	go server.BackfillPlaceholderDetailNotes(context.Background())
+
 	// Optional wordcount-history cron (no-op unless enabled in config).
 	go server.RunWordcountCron(context.Background())
 

@@ -12,11 +12,11 @@
  *   &chapter#slug{text}{label?}
  *   &anchor#slug{label?}{details?}                    // details reserved, unrendered
  *   &reference#slug{notes?}                           // inline only
- *   &placeholder#slug{unit}{size?}{label?}{details?}  // see placeholderSpec
+ *   &placeholder#slug{unit}{size?}{label?}            // see placeholderSpec
  *   &end#slug                                         // region terminator (SCRATCHPAD_PLAN.md)
  *
  * Argument vocabulary: {text} renders in the book, {label} shows in the
- * outline, {details} is auxiliary metadata (a placeholder's details overlay;
+ * outline, {details} is auxiliary metadata (an anchor's, parsed, unrendered;
  * an anchor's details are parsed but unrendered for now).
  */
 
@@ -120,15 +120,17 @@ const WriteSysCommand = {
     return this.SLUG_RE.test(slug);
   },
 
-  // placeholderSpec interprets a &placeholder arg list {unit}{size?}{label?}
-  // {details?}. The size arg is positional but detected by value: an arg that
-  // exactly matches a size keyword is the size, anything else is the label (a
-  // label that IS literally a size keyword can force the default by writing
-  // the size explicitly). valid=false means mis-syntax → render as literal
-  // prose. Mirrors Go ParsePlaceholder — keep in lockstep.
+  // placeholderSpec interprets a &placeholder arg list {unit}{size?}{label?}.
+  // The size arg is positional but detected by value: an arg that exactly
+  // matches a size keyword is the size, anything else is the label (a label
+  // that IS literally a size keyword can force the default by writing the
+  // size explicitly). valid=false means mis-syntax → render as literal prose
+  // — including the pre-2026-11-25 fourth {details} arg (what a placeholder
+  // is meant to become is a sticky note on it now). Mirrors Go
+  // ParsePlaceholder — keep in lockstep.
   placeholderSpec(args) {
-    const spec = { unit: '', size: 'm', count: 0, label: '', details: '', valid: false };
-    if (!args || args.length === 0 || args.length > 4) return spec;
+    const spec = { unit: '', size: 'm', count: 0, label: '', valid: false };
+    if (!args || args.length === 0 || args.length > 3) return spec;
     spec.unit = String(args[0]).trim();
     const counts = spec.unit === 'sentences' ? this.PLACEHOLDER_SENTENCES
       : (spec.unit === 'paragraphs' ? this.PLACEHOLDER_PARAGRAPHS : null);
@@ -139,8 +141,7 @@ const WriteSysCommand = {
       rest = rest.slice(1);
     }
     if (rest.length > 0) { spec.label = rest[0]; rest = rest.slice(1); }
-    if (rest.length > 0) { spec.details = rest[0]; rest = rest.slice(1); }
-    if (rest.length > 0) return { unit: '', size: 'm', count: 0, label: '', details: '', valid: false };
+    if (rest.length > 0) return { unit: '', size: 'm', count: 0, label: '', valid: false };
     spec.count = counts[spec.size];
     spec.valid = true;
     return spec;
