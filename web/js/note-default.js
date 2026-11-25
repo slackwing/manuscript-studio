@@ -3,8 +3,9 @@
 // test suites). What a note shows while its owner's text is blank:
 //   - every {fill-in} in the text, in order, braces kept, space-joined
 //     ("{adjective} {something here}"); braces of &-commands don't count;
-//   - else the first three words + "..." ("The telephone rang..."); three
-//     words or fewer: the words themselves.
+//   - else the WHOLE sentence as plain prose (commands dropped, emphasis
+//     marks removed, whitespace folded) — 2026-11-25; it was the first
+//     three words + "...".
 // Sentence notes only (a sketch note's default comes from the server, which
 // can segment the sketch). The margin computes it live from the sentence
 // as you see it, so editing a suggestion updates the note's default.
@@ -36,25 +37,12 @@
     return out.trim();
   }
 
-  const isWord = (c) => /[\p{L}\p{N}]/u.test(c);
-  const isApostrophe = (c) => c === "'" || c === '’';
-
   function noteDefault(text) {
     const fills = stripCommands(String(text || '')).match(/\{[^{}]*[^{}\s][^{}]*\}/g);
     if (fills && fills.length) {
       return fills.map((f) => '{' + f.slice(1, -1).split(/\s+/u).filter(Boolean).join(' ') + '}').join(' ');
     }
-    const plain = Array.from(plainProse(String(text || '')));
-    let words = 0;
-    for (let i = 0; i < plain.length; i++) {
-      if (!isWord(plain[i])) continue;
-      while (i < plain.length && (isWord(plain[i]) || (isApostrophe(plain[i]) && i + 1 < plain.length && isWord(plain[i + 1])))) i++;
-      if (++words === 3) {
-        if (!plain.slice(i).some(isWord)) return plain.join(''); // three words or fewer
-        return plain.slice(0, i).join('') + '...';
-      }
-    }
-    return plain.join('');
+    return plainProse(String(text || ''));
   }
 
   const api = { noteDefault, stripCommands, plainProse };

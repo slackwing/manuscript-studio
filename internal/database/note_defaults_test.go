@@ -97,7 +97,7 @@ func TestSentenceNoteDefaults(t *testing.T) {
 	if err := f.db.RefreshSentenceNoteDefaults(f.ctx, []string{sids[0]}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.noteDefault(t, note.NoteID); got != "The telephone rang..." {
+	if got := f.noteDefault(t, note.NoteID); got != "The telephone rang twice before anyone moved." {
 		t.Errorf("committed text: default = %q", got)
 	}
 	// The OWNER's suggested edit is the sentence as they see it.
@@ -118,7 +118,7 @@ func TestSentenceNoteDefaults(t *testing.T) {
 	// A deletion proposal keeps the committed text.
 	f.db.UpsertSuggestion(f.ctx, sids[0], f.username, "")
 	f.db.RefreshSentenceNoteDefaults(f.ctx, []string{sids[0]})
-	if got := f.noteDefault(t, note.NoteID); got != "The telephone rang..." {
+	if got := f.noteDefault(t, note.NoteID); got != "The telephone rang twice before anyone moved." {
 		t.Errorf("deletion proposal: default = %q", got)
 	}
 	// Per-migration refresh + backfill.

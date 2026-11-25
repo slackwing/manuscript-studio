@@ -86,11 +86,13 @@ func (db *DB) RefreshNoteDefaultsForMigration(ctx context.Context, migrationID i
 	return db.refreshSentenceNoteDefaults(ctx, `s.migration_id = $1`, migrationID)
 }
 
-// BackfillNoteDefaults fills default_body for every live note still
-// without one: sentence notes from their sentence, sketch notes from the
-// sketch's most recently edited variation. Idempotent; runs at startup.
+// BackfillNoteDefaults runs at startup: it recomputes EVERY live
+// sentence-born note's default (the rule changed on 2026-11-25 from the
+// first three words to the whole sentence; recomputing is idempotent and
+// only touches rows whose default differs) and fills sketch notes still
+// without one from the sketch's most recently edited variation.
 func (db *DB) BackfillNoteDefaults(ctx context.Context) (int, error) {
-	n, err := db.refreshSentenceNoteDefaults(ctx, `n.default_body IS NULL AND $1::boolean`, true)
+	n, err := db.refreshSentenceNoteDefaults(ctx, `$1::boolean`, true)
 	if err != nil {
 		return n, err
 	}

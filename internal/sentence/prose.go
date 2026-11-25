@@ -29,8 +29,9 @@ func FirstProseSentence(text string) string {
 // (2026-10-24) — the default, never written over their text:
 //   - every {fill-in} in the text, in order, braces kept, space-joined
 //     ("{adjective} {something here}") — braces of &-commands don't count;
-//   - else, for a sentence note, the first three words + "..." ("The
-//     telephone rang..."; three words or fewer: the words themselves);
+//   - else, for a sentence note, the WHOLE sentence as plain prose
+//     (commands dropped, emphasis marks removed, whitespace folded) —
+//     2026-11-25, Andrew's ask; it was the first three words + "...";
 //     for a sketch note (wholeSentence), its first prose sentence.
 //
 // text is a sentence note's sentence as its owner sees it (their suggested
@@ -46,26 +47,7 @@ func NoteDefault(text string, wholeSentence bool) string {
 	if wholeSentence {
 		return FirstProseSentence(text)
 	}
-	plain := []rune(plainProse(text))
-	// A word is a run of letters/digits (an apostrophe inside one keeps
-	// it going): dashes and punctuation separate words, so "So it
-	// was—the…" cuts at "was".
-	words := 0
-	for i := 0; i < len(plain); i++ {
-		if !isWordRune(plain[i]) {
-			continue
-		}
-		for i < len(plain) && (isWordRune(plain[i]) || (isApostrophe(plain[i]) && i+1 < len(plain) && isWordRune(plain[i+1]))) {
-			i++
-		}
-		if words++; words == 3 {
-			if strings.TrimFunc(string(plain[i:]), func(r rune) bool { return !isWordRune(r) }) == "" {
-				return string(plain) // three words or fewer: all of it
-			}
-			return string(plain[:i]) + "..."
-		}
-	}
-	return string(plain)
+	return plainProse(text)
 }
 
 func isWordRune(r rune) bool   { return unicode.IsLetter(r) || unicode.IsDigit(r) }

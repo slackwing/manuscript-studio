@@ -1,6 +1,6 @@
 // Note defaults (052): a note whose own text is blank shows a DEFAULT —
 // every {fill-in} of its sentence (as its owner sees it: their suggested
-// edit counts), else the first three words + "..." — as the placeholder of
+// edit counts), else the whole sentence (2026-11-25) — as the placeholder of
 // its text box, and quietly on read-only cards. Never written into the
 // note's text. SHOT_DIR=<dir> saves screenshots.
 const { chromium } = require('playwright');
@@ -29,7 +29,9 @@ const psql = (sql) => execSync(`PGPASSWORD=manuscript_dev psql -h localhost -p 5
     });
     const want = (txt) => page.evaluate((t) => window.WriteSysNoteDefault.noteDefault(t), txt);
     const sDefault = await want(pick.sText);
-    check('fixture: a prose sentence and its three-word default', /\.\.\.$/.test(sDefault), `${pick.sText.trim().slice(0, 50)} → ${sDefault}`);
+    const sPlain = await page.evaluate((t) => window.WriteSysNoteDefault.plainProse(t), pick.sText);
+    check('fixture: a prose sentence and its default — the WHOLE sentence, no "..." (2026-11-25)',
+      sDefault === sPlain && sDefault.split(' ').length > 6 && !/\.\.\.$/.test(sDefault), `${pick.sText.trim().slice(0, 50)} → ${sDefault}`);
 
     // A blank note through the real API: the server derives its default.
     const csrf = await page.evaluate(() => localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token') || '');

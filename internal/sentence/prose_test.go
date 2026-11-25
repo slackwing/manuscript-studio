@@ -46,7 +46,7 @@ func TestUnderscoreItalicsSegmentLikeAsterisks(t *testing.T) {
 	}
 }
 
-// 2026-10-24: a blank note's default — fill-ins, else three words + "...".
+// 2026-10-24: a blank note's default — fill-ins, else (2026-11-25) the whole sentence.
 // The cases live in tests/fixtures/note-default-cases.json: the browser's
 // mirror (web/js/note-default.js) runs the same table (test-note-default-units).
 func TestNoteDefault(t *testing.T) {
