@@ -212,10 +212,21 @@ func (h *HomeHandlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Boards (059): the viewer's saved note views, with how many notes each
+	// shows right now. Best-effort like notes.
+	boards := make([]boardOut, 0)
+	if rows, err := h.DB.ListBoards(ctx, session.Username); err == nil {
+		bh := &BoardHandlers{DB: h.DB, SessionStore: h.SessionStore, Config: h.Config}
+		for i := range rows {
+			boards = append(boards, bh.boardSummary(r, session.Username, &rows[i]))
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"manuscripts": manuscripts,
 		"scratchpads": scratchpads,
+		"boards":      boards,
 		"notes":       notes,
 	})
 }

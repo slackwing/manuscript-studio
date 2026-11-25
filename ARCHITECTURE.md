@@ -532,3 +532,15 @@ it into the panel's src on load and forwards it to a live panel). On load
 `restoreScrollFromURL` (suggestions.js) takes `?scroll_to=` first (the
 post-edit stamp, old links), then `#at=`, then the memory; a
 `#note-sentence=` deep link owns the scroll instead.
+
+## Boards (2026-11-25)
+
+A board is a saved view of the viewer's notes (BOARDS_PLAN.md): `board`
+(059) holds a name and `manuscript_ids` (empty = all); its rules are
+`daily_rule` rows with `board_id` set (NULL = the daily-task rules). The
+shared rules editor (`web/notes/rules-editor.js`) renders both — the
+settings page binds it to `api/daily-rules` with the manuscript picker
+off; a board page (`home.html?view=board&board_id=N`, a landing VIEW that
+opens as tab type `board`) binds it to `api/boards/{id}/rules` with the
+picker on. `ListBoardNotes` + `ApplyBoardRules` (no rules → all; any rule
+matches, per-rule cap) feed the page and the landing's note counts.

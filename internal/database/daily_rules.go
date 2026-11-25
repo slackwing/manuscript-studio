@@ -16,7 +16,9 @@ import (
 // the daily page may show. Nil selector = "any"; selectors AND together
 // (tags: the rule's tags must ALL be on the task). MaxPerDay -1 = unlimited.
 type DailyRule struct {
-	RuleID    int      `json:"rule_id"`
+	RuleID int `json:"rule_id"`
+	// BoardID (059): set for a BOARD's rule; nil for the user's daily rules.
+	BoardID   *int     `json:"board_id,omitempty"`
 	TaskType  *string  `json:"task_type,omitempty"`
 	Priority  *string  `json:"priority,omitempty"`
 	Impact    *string  `json:"impact,omitempty"`
@@ -26,29 +28,36 @@ type DailyRule struct {
 	Tags      []string `json:"tags"`
 }
 
-// ListDailyRules: the user's rules (settings page, the live board).
+// ListDailyRules: the user's DAILY rules (settings page, the daily board) —
+// board_id NULL; a board's rules are ListBoardRules.
 func (db *DB) ListDailyRules(ctx context.Context, username string) ([]DailyRule, error) {
-	return db.listDailyRules(ctx, username, nil)
+	return db.listDailyRules(ctx, username, nil, nil)
+}
+
+// ListBoardRules (059): the rules of one board (the caller owns the board).
+func (db *DB) ListBoardRules(ctx context.Context, username string, boardID int) ([]DailyRule, error) {
+	return db.listDailyRules(ctx, username, nil, &boardID)
 }
 
 // ListDailyRulesAsOf (049): the rules that existed at asOf (created_at) —
 // the points backfill's view of a past board. Edits and deleted rules have
 // no history, so a past board sees today's version of each surviving rule.
 func (db *DB) ListDailyRulesAsOf(ctx context.Context, username string, asOf time.Time) ([]DailyRule, error) {
-	return db.listDailyRules(ctx, username, &asOf)
+	return db.listDailyRules(ctx, username, &asOf, nil)
 }
 
-func (db *DB) listDailyRules(ctx context.Context, username string, asOf *time.Time) ([]DailyRule, error) {
+func (db *DB) listDailyRules(ctx context.Context, username string, asOf *time.Time, boardID *int) ([]DailyRule, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT r.rule_id, r.task_type, r.priority, r.impact, r.color, r.blocked, r.max_per_day,
+		SELECT r.rule_id, r.board_id, r.task_type, r.priority, r.impact, r.color, r.blocked, r.max_per_day,
 		       COALESCE((SELECT array_agg(t.tag_name ORDER BY t.tag_name)
 		                 FROM daily_rule_tag rt JOIN tag t ON t.tag_id = rt.tag_id
 		                 WHERE rt.rule_id = r.rule_id), '{}')
 		FROM daily_rule r
 		WHERE r.user_id = $1
 		  AND ($2::timestamptz IS NULL OR r.created_at <= $2)
+		  AND (($3::int IS NULL AND r.board_id IS NULL) OR r.board_id = $3)
 		ORDER BY r.position, r.rule_id
-	`, username, asOf)
+	`, username, asOf, boardID)
 	if err != nil {
 		return nil, fmt.Errorf("list daily rules: %w", err)
 	}
@@ -56,7 +65,7 @@ func (db *DB) listDailyRules(ctx context.Context, username string, asOf *time.Ti
 	out := []DailyRule{}
 	for rows.Next() {
 		var r DailyRule
-		if err := rows.Scan(&r.RuleID, &r.TaskType, &r.Priority, &r.Impact, &r.Color, &r.Blocked, &r.MaxPerDay, &r.Tags); err != nil {
+		if err := rows.Scan(&r.RuleID, &r.BoardID, &r.TaskType, &r.Priority, &r.Impact, &r.Color, &r.Blocked, &r.MaxPerDay, &r.Tags); err != nil {
 			return nil, fmt.Errorf("scan daily rule: %w", err)
 		}
 		out = append(out, r)
@@ -72,11 +81,12 @@ func (db *DB) CreateDailyRule(ctx context.Context, username string, r DailyRule)
 	defer tx.Rollback(ctx)
 	var id int
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO daily_rule (user_id, task_type, priority, impact, color, blocked, max_per_day, position)
-		VALUES ($1::varchar, $2, $3, $4, $5, $6, $7,
-		        (SELECT COALESCE(MAX(position), 0) + 1 FROM daily_rule WHERE user_id = $1::varchar))
+		INSERT INTO daily_rule (user_id, board_id, task_type, priority, impact, color, blocked, max_per_day, position)
+		VALUES ($1::varchar, $8, $2, $3, $4, $5, $6, $7,
+		        (SELECT COALESCE(MAX(position), 0) + 1 FROM daily_rule
+		         WHERE user_id = $1::varchar AND (($8::int IS NULL AND board_id IS NULL) OR board_id = $8)))
 		RETURNING rule_id
-	`, username, r.TaskType, r.Priority, r.Impact, r.Color, r.Blocked, r.MaxPerDay).Scan(&id); err != nil {
+	`, username, r.TaskType, r.Priority, r.Impact, r.Color, r.Blocked, r.MaxPerDay, r.BoardID).Scan(&id); err != nil {
 		return fmt.Errorf("insert daily rule: %w", err)
 	}
 	for _, name := range r.Tags {
@@ -95,7 +105,18 @@ func (db *DB) CreateDailyRule(ctx context.Context, username string, r DailyRule)
 }
 
 func (db *DB) DeleteDailyRule(ctx context.Context, username string, ruleID int) (bool, error) {
-	tag, err := db.Pool.Exec(ctx, `DELETE FROM daily_rule WHERE rule_id = $1 AND user_id = $2`, ruleID, username)
+	return db.deleteRule(ctx, username, ruleID, nil)
+}
+
+// DeleteBoardRule (059): one of a board's rules (scoped: a daily rule id
+// passed with a board, or another board's id, deletes nothing).
+func (db *DB) DeleteBoardRule(ctx context.Context, username string, boardID, ruleID int) (bool, error) {
+	return db.deleteRule(ctx, username, ruleID, &boardID)
+}
+
+func (db *DB) deleteRule(ctx context.Context, username string, ruleID int, boardID *int) (bool, error) {
+	tag, err := db.Pool.Exec(ctx, `DELETE FROM daily_rule WHERE rule_id = $1 AND user_id = $2
+		AND (($3::int IS NULL AND board_id IS NULL) OR board_id = $3)`, ruleID, username, boardID)
 	if err != nil {
 		return false, fmt.Errorf("delete daily rule %d: %w", ruleID, err)
 	}

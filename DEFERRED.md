@@ -53,3 +53,8 @@ away. Prune when shipped.
   margin's grey card, detach-vs-delete). Left for later: creating a note
   from the landing page with no home at all, and a "·2"/hop list on a note
   that lives in several places. Origin: NOTE_UI_PLAN.md §4.
+- **Daily tasks as a board (2026-11-25, Andrew's hunch):** the model allows
+  it — a board with `manuscript_ids = [m]`, the daily rules as its rules —
+  but the daily page also has pins-first, the date-seeded pick, the 16 cap
+  and the points stamp (`DailyBoard` is one function for all three). Doing
+  it means a board *kind* that carries that policy; not started.

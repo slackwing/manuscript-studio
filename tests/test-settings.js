@@ -268,28 +268,28 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
 
   // --- Daily task rules: builder wears the note's chips; add + delete ---
   await page.goto(SETTINGS_URL);
-  await page.waitForSelector('#dr-builder .dim-type', { timeout: 6000 });
+  await page.waitForSelector('#dr-editor .rules-builder .dim-type', { timeout: 6000 });
   const builder = await page.evaluate(() => ({
-    type: document.querySelector('#dr-builder .dim-type .dim-label').textContent,
-    blocked: !!document.querySelector('#dr-builder .blocked-chip'),
-    colorDot: !!document.querySelector('#dr-builder .color-dot-solo'),
-    dotSize: (document.querySelector('#dr-builder .color-dot-current') || {}).offsetWidth || 0,
-    blockedSize: (document.querySelector('#dr-builder .blocked-chip') || {}).offsetWidth || 0,
-    tagInput: !!document.querySelector('#dr-builder .dr-tag-input'),
-    count: !!document.querySelector('#dr-builder .dr-count'),
+    type: document.querySelector('#dr-editor .rules-builder .dim-type .dim-label').textContent,
+    blocked: !!document.querySelector('#dr-editor .rules-builder .blocked-chip'),
+    colorDot: !!document.querySelector('#dr-editor .rules-builder .color-dot-solo'),
+    dotSize: (document.querySelector('#dr-editor .rules-builder .color-dot-current') || {}).offsetWidth || 0,
+    blockedSize: (document.querySelector('#dr-editor .rules-builder .blocked-chip') || {}).offsetWidth || 0,
+    tagInput: !!document.querySelector('#dr-editor .rules-builder .dr-tag-input'),
+    count: !!document.querySelector('#dr-editor .rules-builder .dr-count'),
   }));
   check('rule builder: type chip defaults to any', builder.type === 'any', builder.type);
   check('rule builder: blocked circle + color dot + tag + count present',
     builder.blocked && builder.colorDot && builder.tagInput && builder.count, JSON.stringify(builder));
   check('color dot matches the blocked icon diameter', builder.dotSize === builder.blockedSize,
     `${builder.dotSize} vs ${builder.blockedSize}`);
-  await page.locator('#dr-builder .dim-priority').click();
+  await page.locator('#dr-editor .rules-builder .dim-priority').click();
   await page.waitForSelector('.dim-pop button[data-v="must"]');
   await page.locator('.dim-pop button[data-v="must"]').click();
   await page.waitForTimeout(300);
-  await page.fill('#dr-builder .dr-count', '2');
-  await page.locator('#dr-builder .dr-count').dispatchEvent('change');
-  await page.locator('#dr-add').click();
+  await page.fill('#dr-editor .rules-builder .dr-count', '2');
+  await page.locator('#dr-editor .rules-builder .dr-count').dispatchEvent('change');
+  await page.locator('#dr-editor .dr-add').click();
   await page.waitForSelector('.dr-rule', { timeout: 5000 });
   const ruleRow = await page.locator('.dr-rule').first().innerText();
   check('rule listed (must ≤ 2 / day)', /must/.test(ruleRow) && /≤ 2 \/ day/.test(ruleRow), ruleRow.replace(/\n/g, ' '));

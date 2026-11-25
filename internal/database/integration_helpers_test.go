@@ -152,6 +152,7 @@ func (f *itFixture) nuke(t *testing.T) {
 			`DELETE FROM note WHERE user_id = $1`,
 			`DELETE FROM suggested_change WHERE user_id = $1`,
 			`DELETE FROM daily_rule WHERE user_id = $1`, // cascades daily_rule_tag
+			`DELETE FROM board WHERE user_id = $1`,      // 059 (its rules cascaded above)
 			`UPDATE sketch SET canon_variation_id = NULL, placed_from_variation_id = NULL WHERE user_id = $1`,
 			`DELETE FROM variation WHERE sketch_id IN (SELECT sketch_id FROM sketch WHERE user_id = $1)`,
 			`DELETE FROM sketch WHERE user_id = $1`,

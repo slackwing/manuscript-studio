@@ -28,6 +28,11 @@ const WriteSysHome = {
   async reload() {
     try {
       this.data = await fetchJSON('api/home', {}, false);
+      // A board (BOARDS_PLAN.md): its own payload — board, rules, notes.
+      if (this.view() === 'board') {
+        const bid = new URLSearchParams(window.location.search).get('board_id') || '';
+        this.board = await fetchJSON('api/boards/' + encodeURIComponent(bid), {}, false);
+      }
       // The daily-tasks view has its own payload (date-seeded task pick).
       if (this.view() === 'daily') {
         const mid = new URLSearchParams(window.location.search).get('manuscript_id') || '';
@@ -149,7 +154,7 @@ const WriteSysHome = {
   // sits after the last card — faint outline, centered +, label on hover.
   // Both grids use the same component; only kind/label differ.
   ghostCard(kind) {
-    const label = kind === 'manuscript' ? 'New manuscript' : (kind === 'note' ? 'New note' : 'New scratchpad');
+    const label = { manuscript: 'New manuscript', note: 'New note', board: 'New board' }[kind] || 'New scratchpad';
     return `<button type="button" class="card card-ghost" data-ghost="${kind}" title="${label}">
       <span class="ghost-plus">+</span>
     </button>`;
@@ -164,6 +169,22 @@ const WriteSysHome = {
       <p class="card-title">${this.esc(s.title)}</p>
       <p class="card-sketch">${this.esc(s.sketch || '')}</p>
       <p class="card-meta"><span>updated ${this.esc(this.when(s.updated_at))}</span>${badge}</p>
+    </div>`;
+  },
+
+  // A board card (BOARDS_PLAN.md): name, its rules as chips, how many notes
+  // it shows now. Clicking opens the board's tab.
+  boardCard(b) {
+    const chips = (b.rules || []).slice(0, 4).map((r) => {
+      const bits = [r.task_type, r.priority, r.impact, r.blocked ? '⊘' : null].filter(Boolean).concat(r.tags || []);
+      return `<span class="tag-chip dim-chip">${this.esc(bits.join(' · ') || 'any')}</span>`;
+    }).join('');
+    return `<div class="card card-board" data-board-id="${b.board_id}" tabindex="0" role="button">
+      <span class="card-kindbar"></span>
+      <button type="button" class="card-del" title="Delete board">${window.WriteSysIcons.trash(13)}</button>
+      <p class="card-title">${this.esc(b.name)}</p>
+      <p class="card-sketch card-board-rules">${chips}</p>
+      <p class="card-meta"><span>${b.note_count} ${b.note_count === 1 ? 'note' : 'notes'}</span></p>
     </div>`;
   },
 
@@ -352,6 +373,7 @@ const WriteSysHome = {
     root.dataset.view = view;
     const ms = this.data.manuscripts || [];
     const sp = this.data.scratchpads || [];
+    const bd = this.data.boards || [];
     const nt = this.data.notes || [];
     // Note cards are BUILT AS ELEMENTS (they mount the shared note component),
     // so their sections render an empty grid placeholder here and get populated
@@ -368,6 +390,23 @@ const WriteSysHome = {
       noteList = nt;
       html = `<a class="home-back" href="home.html">← Home</a>` +
         this.section('All notes', nt.length, '', { notes: true, ghost: 'note' });
+    } else if (view === 'boards') {
+      html = `<a class="home-back" href="home.html">← Home</a>` +
+        this.section('All boards', bd.length, bd.map(b => this.boardCard(b)).join(''), { ghost: 'board' });
+    } else if (view === 'board') {
+      // The board page (BOARDS_PLAN.md): name · Delete, the shared rules
+      // editor (with the manuscript picker), then the notes it shows.
+      const B = this.board || { board: { name: '' }, notes: [], rules: [], manuscripts: [] };
+      noteList = B.notes || [];
+      html = `<section class="home-section board-page" data-board-id="${B.board.board_id}">
+        <div class="home-section-head board-head">
+          <input class="board-name" value="${this.esc(B.board.name)}" aria-label="Board name">
+          <span class="home-count">${noteList.length}</span>
+          <button type="button" class="board-delete" title="Delete board">Delete</button>
+        </div>
+        <div class="settings-section board-rules" id="board-rules"></div>
+        <div class="card-grid" data-note-grid></div>
+      </section>`;
     } else if (view === 'daily') {
       const daily = this.daily || { notes: [] };
       noteList = daily.notes || [];
@@ -394,6 +433,9 @@ const WriteSysHome = {
         + this.section('Scratchpads', sp.length,
           sp.slice(0, this.RECENT).map(s => this.scratchpadCard(s)).join(''),
           { ghost: 'scratchpad', ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
+        + this.section('Boards', bd.length,
+          bd.slice(0, this.RECENT).map(b => this.boardCard(b)).join(''),
+          { ghost: 'board', ...(bd.length > this.RECENT ? { seeAll: 'boards' } : {}) })
         + this.section('Notes', live.length, '',
           { notes: true, ghost: 'note', ...(live.length > this.RECENT ? { seeAll: 'notes' } : {}) });
     }
@@ -482,26 +524,7 @@ const WriteSysHome = {
       el.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(e); });
     });
 
-    // Note card → open in context. Scratchpad note: open the pad (later: scroll
-    // to the anchor). Manuscript note: go to the book.
-    root.querySelectorAll('.card-note').forEach(card => {
-      const noteId = parseInt(card.dataset.noteId, 10);
-      const open = () => {
-        const padId = card.dataset.scratchpadId;
-        const mId = card.dataset.manuscriptId;
-        if (padId && window.WriteSysScratchpadModal) {
-          // Open the pad and scroll to this note's inline anchor.
-          window.WriteSysScratchpadModal.open(parseInt(padId, 10), { noteId });
-        } else if (mId) {
-          // Manuscript note → open the book and scroll to the noted sentence.
-          const sid = card.dataset.sentenceId;
-          const href = `./?manuscript_id=${mId}` + (sid ? `#note-sentence=${encodeURIComponent(sid)}` : '');
-          if (!(window.WriteSysTabs && window.WriteSysTabs.route(href))) window.location.href = href;
-        }
-      };
-      card.addEventListener('click', open);
-      card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
-    });
+    this.wireNoteCards(root);
 
     // "See all" / "← Home" links are plain hrefs: the tabs link router
     // (tabs.js) turns them into in-place view changes with history entries.
@@ -511,9 +534,25 @@ const WriteSysHome = {
       if (g.dataset.ghost === 'note') return; // bound where it mounts (after the note cards)
       g.addEventListener('click', () => {
         if (g.dataset.ghost === 'scratchpad') this.createPad();
+        else if (g.dataset.ghost === 'board') this.createBoard();
         else if (window.WriteSysManuscriptModal) window.WriteSysManuscriptModal.openCreate();
       });
     });
+    root.querySelectorAll('.card-board').forEach(card => {
+      const id = parseInt(card.dataset.boardId, 10);
+      const name = card.querySelector('.card-title').textContent;
+      const open = () => { if (window.WriteSysTabs) window.WriteSysTabs.openBoard(id, name); };
+      card.addEventListener('click', (e) => { if (!e.target.closest('.card-del')) open(); });
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+      card.querySelector('.card-del').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!window.confirm(`Delete board "${name}"?`)) return;
+        await this.api(`api/boards/${id}`, { method: 'DELETE' }).catch(() => {});
+        if (window.WriteSysTabs) window.WriteSysTabs.unpin('board', id);
+        this.reload();
+      });
+    });
+    if (view === 'board' && this.board && this.board.board) this.wireBoardPage(root);
     root.querySelectorAll('.card-scratchpad').forEach(card => {
       const id = parseInt(card.dataset.scratchpadId, 10);
       card.addEventListener('click', (e) => {
@@ -534,6 +573,109 @@ const WriteSysHome = {
         this.reload();
       });
     });
+  },
+
+  // Note card → open in context. Scratchpad note: open the pad (later: scroll
+  // to the anchor). Manuscript note: go to the book. (A free note's card is
+  // its editor — role-less, so it is not wired here.)
+  wireNoteCards(root) {
+    root.querySelectorAll('.card-note[role="button"]').forEach(card => {
+      const noteId = parseInt(card.dataset.noteId, 10);
+      const open = () => {
+        const padId = card.dataset.scratchpadId;
+        const mId = card.dataset.manuscriptId;
+        if (padId && window.WriteSysScratchpadModal) {
+          // Open the pad and scroll to this note's inline anchor.
+          window.WriteSysScratchpadModal.open(parseInt(padId, 10), { noteId });
+        } else if (mId) {
+          // Manuscript note → open the book and scroll to the noted sentence.
+          const sid = card.dataset.sentenceId;
+          const href = `./?manuscript_id=${mId}` + (sid ? `#note-sentence=${encodeURIComponent(sid)}` : '');
+          if (!(window.WriteSysTabs && window.WriteSysTabs.route(href))) window.location.href = href;
+        }
+      };
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+    });
+  },
+
+  api(url, opts = {}) {
+    const csrf = (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
+    return fetch(url, Object.assign({ credentials: 'same-origin' }, opts, {
+      headers: Object.assign({ 'X-CSRF-Token': csrf }, opts.body ? { 'Content-Type': 'application/json' } : {}, opts.headers || {}),
+    })).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.status === 204 ? null : r.json(); });
+  },
+
+  // ---- Boards (BOARDS_PLAN.md) -------------------------------------------
+  async createBoard() {
+    let b;
+    try { b = await this.api('api/boards', { method: 'POST', body: JSON.stringify({ name: 'Board' }) }); } catch (e) { return; }
+    await this.reload();
+    if (window.WriteSysTabs) window.WriteSysTabs.openBoard(b.board_id, b.name);
+  },
+
+  // The board page: name saves on change (and renames the tab), Delete
+  // closes the tab; the shared rules editor (picker on) refreshes the grid
+  // after every change.
+  wireBoardPage(root) {
+    const B = this.board;
+    const id = B.board.board_id;
+    const nameEl = root.querySelector('.board-name');
+    nameEl.addEventListener('change', async () => {
+      const name = nameEl.value.trim();
+      if (!name) { nameEl.value = B.board.name; return; }
+      try {
+        await this.api(`api/boards/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
+        B.board.name = name;
+        this.renameTab(id, name);
+      } catch (e) { nameEl.value = B.board.name; }
+    });
+    nameEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameEl.blur(); });
+    root.querySelector('.board-delete').addEventListener('click', async () => {
+      if (!window.confirm(`Delete board "${B.board.name}"?`)) return;
+      await this.api(`api/boards/${id}`, { method: 'DELETE' }).catch(() => {});
+      this.closeBoardTab(id);
+    });
+    const RE = window.WriteSysRulesEditor;
+    const host = root.querySelector('#board-rules');
+    if (RE && host) {
+      const cfg = RE.forBoard(id);
+      cfg.manuscripts = {
+        list: B.manuscripts || [],
+        selected: (B.board.manuscript_ids || []).slice(),
+        onChange: (ids) => this.api(`api/boards/${id}`, { method: 'PUT', body: JSON.stringify({ manuscript_ids: ids }) }),
+      };
+      cfg.onChange = () => this.refreshBoardNotes();
+      this.boardEditor = RE.mount(host, cfg);
+    }
+  },
+
+  async refreshBoardNotes() {
+    const id = this.board && this.board.board && this.board.board.board_id;
+    if (!id) return;
+    try { this.board = await fetchJSON('api/boards/' + id, {}, false); } catch (e) { return; }
+    const grid = document.querySelector('#home-root .board-page [data-note-grid]');
+    const count = document.querySelector('#home-root .board-head .home-count');
+    if (!grid) return;
+    grid.innerHTML = '';
+    (this.board.notes || []).forEach((n) => grid.appendChild(this.noteCardEl(n)));
+    if (count) count.textContent = String((this.board.notes || []).length);
+    this.wireNoteCards(grid);
+  },
+
+  renameTab(id, name) {
+    try {
+      const T = (window.top && window.top.WriteSysTabs) || window.WriteSysTabs;
+      if (T && T.rename) T.rename('board', id, name);
+    } catch (e) { /* standalone */ }
+  },
+
+  closeBoardTab(id) {
+    try {
+      const T = (window.top && window.top.WriteSysTabs) || window.WriteSysTabs;
+      if (T && T.unpin) { T.unpin('board', id); return; }
+    } catch (e) { /* standalone */ }
+    window.location.href = 'home.html';
   },
 
   // A free note, born on the landing (2026-11-25): yellow, blank, placed

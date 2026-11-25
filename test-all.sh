@@ -69,6 +69,7 @@ FAST_TESTS=(
   test-cheatsheet
   test-remember-at
   test-home-free-note
+  test-boards
   test-responsive-layout
   test-mobile-notes-stack
   test-tag-autocomplete

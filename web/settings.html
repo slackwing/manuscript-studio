@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="css/book.css?v=246">
   <link rel="stylesheet" href="notes/note-widget.css?v=3">
   <link rel="stylesheet" href="css/chrome.css?v=27">
-  <link rel="stylesheet" href="css/home.css?v=46">
+  <link rel="stylesheet" href="css/home.css?v=47">
   <!-- Pane-widget layout (sn-cols/rails) for the suggested-edit history
        dialog — same sheet the book page loads. -->
   <link rel="stylesheet" href="scratchpad/scratchpad.css?v=72">
@@ -17,7 +17,7 @@
   <!-- Shared top bar — filled synchronously by chrome.js (must load right here). -->
   <div id="controls" class="pagedjs_ignore"></div>
   <script src="js/chrome.js?v=6"></script>
-  <script src="js/tabs.js?v=19"></script>
+  <script src="js/tabs.js?v=20"></script>
 
   <main class="home-main" id="settings-root">
     <section class="home-section">
@@ -45,9 +45,7 @@
         <h2>Daily task rules</h2>
       </div>
       <div class="settings-section">
-        <div id="dr-list"></div>
-        <div id="dr-builder" class="dr-row"></div>
-        <div id="dr-status" class="settings-hint"></div>
+        <div id="dr-editor"></div>
       </div>
     </section>
     <section class="home-section">
@@ -86,6 +84,7 @@
   <script src="js/icons.js?v=14"></script>
   <script src="js/global-search.js?v=5"></script>
   <script src="notes/note-widget.js?v=33"></script>
+  <script src="notes/rules-editor.js?v=1"></script>
   <!-- Suggested-edit history dialog: the manuscript modal's own pieces
        (pane-widget shell, mono edit panes, word-diff) — see suggestions.js
        openHistoryDialog. -->
@@ -102,6 +101,6 @@
     })();
   </script>
   <script src="js/marker-symbols.js?v=3"></script>
-  <script src="js/settings.js?v=20"></script>
+  <script src="js/settings.js?v=21"></script>
 </body>
 </html>

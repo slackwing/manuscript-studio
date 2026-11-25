@@ -186,7 +186,8 @@ window.WriteSysTabs = (function () {
   const panelSrc = (p) => (p.type === 'manuscript'
     ? './?manuscript_id=' + p.id
     : (p.type === 'settings' ? 'settings.html'
-      : (p.type === 'cheatsheet' ? 'cheatsheet.html' : 'pad.html?scratchpad_id=' + p.id)));
+      : (p.type === 'cheatsheet' ? 'cheatsheet.html'
+        : (p.type === 'board' ? 'home.html?view=board&board_id=' + p.id : 'pad.html?scratchpad_id=' + p.id))));
 
   const ensureFrame = (key) => {
     if (!key || panels.has(key)) return;
@@ -455,6 +456,7 @@ window.WriteSysTabs = (function () {
   };
   const openManuscript = (id, name) => openTab('manuscript', id, name);
   const openPad = (id, name) => openTab('scratchpad', id, name);
+  const openBoard = (id, name) => openTab('board', id, name);
   // Settings is a NORMAL tab (drags, closes, one instance — pin() dedupes
   // the singleton id); the gear in the header opens it instead of navigating.
   const openSettings = () => openTab('settings', 1, 'Settings');
@@ -485,6 +487,10 @@ window.WriteSysTabs = (function () {
     if (u.origin !== location.origin) return null;
     const file = u.pathname.split('/').pop();
     const q = u.searchParams;
+    // A board (BOARDS_PLAN.md) is a landing VIEW that opens as its own tab.
+    if (file === 'home.html' && q.get('view') === 'board' && +q.get('board_id')) {
+      return { kind: 'tab', type: 'board', id: +q.get('board_id'), hash: u.hash };
+    }
     if (file === 'home.html') return { kind: 'home', url: u };
     if (file === 'settings.html') return { kind: 'tab', type: 'settings', id: 1, name: 'Settings', hash: u.hash };
     if (file === 'cheatsheet.html') return { kind: 'tab', type: 'cheatsheet', id: 1, name: 'Syntax', hash: u.hash };
@@ -509,6 +515,10 @@ window.WriteSysTabs = (function () {
       if (type === 'scratchpad') {
         const s = (d.scratchpads || []).find((x) => x.scratchpad_id === id);
         return s ? (s.title || '') : '';
+      }
+      if (type === 'board') {
+        const b = (d.boards || []).find((x) => x.board_id === id);
+        return b ? (b.name || '') : '';
       }
     } catch (e) { /* no landing data */ }
     return '';
@@ -544,7 +554,7 @@ window.WriteSysTabs = (function () {
       return true;
     }
     if (c.kind === 'home') {
-      const m = (c.url.hash || '').match(/[#&]tab=([msgc]\d+)/);
+      const m = (c.url.hash || '').match(/[#&]tab=([msgcb]\d+)/);
       if (m && findByKey(m[1])) {
         const at = atHashOf(c.url.hash);
         if (at && m[1][0] === 'm') {
@@ -829,7 +839,7 @@ window.WriteSysTabs = (function () {
       // browser tab's session, then let #tab=m42 (link compat) win focus.
       loadSession();
       reconcileSplit();
-      const m = (location.hash || '').match(/[#&]tab=([msgc]\d+)/);
+      const m = (location.hash || '').match(/[#&]tab=([msgcb]\d+)/);
       if (m && read().some((p) => keyOf(p) === m[1])) {
         const at = atHashOf(location.hash);
         if (at && m[1][0] === 'm') { atByKey.set(m[1], decodeURIComponent(at.slice(4))); pendingHash.set(m[1], at); }
@@ -859,6 +869,6 @@ window.WriteSysTabs = (function () {
   });
   render();
 
-  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, openCheatsheet, activate, rememberAt,
+  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, openCheatsheet, openBoard, activate, rememberAt,
     route, _classify: classify };
 })();

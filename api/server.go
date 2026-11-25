@@ -40,6 +40,7 @@ type Server struct {
 	markerHandlers     *handlers.MarkerHandlers
 	noteActionHandlers *handlers.NoteActionHandlers
 	dailyRuleHandlers  *handlers.DailyRuleHandlers
+	boardHandlers      *handlers.BoardHandlers
 	homeHandlers       *handlers.HomeHandlers
 	adminHandlers      *handlers.AdminHandlers
 	signupHandlers     *handlers.SignupHandlers
@@ -111,6 +112,11 @@ func NewServer(cfg *config.Config, db *pgxpool.Pool) *Server {
 		dailyRuleHandlers: &handlers.DailyRuleHandlers{
 			DB:           dbWrapper,
 			SessionStore: sessionStore,
+		},
+		boardHandlers: &handlers.BoardHandlers{
+			DB:           dbWrapper,
+			SessionStore: sessionStore,
+			Config:       cfg,
 		},
 		homeHandlers: &handlers.HomeHandlers{
 			DB:           dbWrapper,
@@ -351,6 +357,15 @@ func (s *Server) setupRouter() {
 			r.Get("/daily-rules", s.dailyRuleHandlers.HandleList)
 			r.Post("/daily-rules", s.dailyRuleHandlers.HandleCreate)
 			r.Delete("/daily-rules/{rule_id}", s.dailyRuleHandlers.HandleDelete)
+			// Boards (059, BOARDS_PLAN.md): saved note views; rules reuse the daily-rule shape.
+			r.Get("/boards", s.boardHandlers.HandleList)
+			r.Post("/boards", s.boardHandlers.HandleCreate)
+			r.Get("/boards/{board_id}", s.boardHandlers.HandleGet)
+			r.Put("/boards/{board_id}", s.boardHandlers.HandleUpdate)
+			r.Delete("/boards/{board_id}", s.boardHandlers.HandleDelete)
+			r.Get("/boards/{board_id}/rules", s.boardHandlers.HandleListRules)
+			r.Post("/boards/{board_id}/rules", s.boardHandlers.HandleCreateRule)
+			r.Delete("/boards/{board_id}/rules/{rule_id}", s.boardHandlers.HandleDeleteRule)
 			r.Post("/manuscripts/{manuscript_id}/opened", s.homeHandlers.HandleManuscriptOpened)
 
 			// Scratchpads (SCRATCHPAD_PLAN.md): user-owned, not

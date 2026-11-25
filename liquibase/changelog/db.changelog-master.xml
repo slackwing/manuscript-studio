@@ -65,5 +65,6 @@
     <include file="changelog/056-note-placements-readers.xml"/>
     <include file="changelog/057-note-placements-drop-legacy.xml"/>
     <include file="changelog/058-note-touch.xml"/>
+    <include file="changelog/059-boards.xml"/>
 
 </databaseChangeLog>
