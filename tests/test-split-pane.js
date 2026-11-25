@@ -317,7 +317,7 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
   check('dragging the handle out restores the pane (50/50, classes gone)', Math.abs(s.pct - 50) < 0.5 && !s.edgeL && !s.edgeR && s.L && s.L.left === 0 && s.L.width === 800, JSON.stringify(s));
   await drag(800, 1540);
   s = await panes();
-  check('snap on the right: dividerPct 100, right pane fully off-screen, handle on the right edge', s.pct === 100 && s.edgeR && s.R && s.R.left >= 1600 && s.D.right === 1600 && s.D.width === 12, JSON.stringify(s));
+  check('snap on the right: dividerPct 100, right pane fully off-screen, 24px handle on the right edge (inner half clears an overlay scrollbar)', s.pct === 100 && s.edgeR && s.R && s.R.left >= 1600 && s.D.right === 1600 && s.D.width === 24, JSON.stringify(s));
   await drag(1300, 1200);
   s = await panes();
   check('seam at 1200 (right pane below the floor): right pane keeps 480 wide and hangs off the right edge', s.R && s.R.left === 1200 && s.R.width === 480 && !s.edgeR, JSON.stringify(s));

@@ -428,9 +428,21 @@ html.ms-split-edge-right #ms-split-divider {
   box-shadow: inset 0 0 0 1px #cfc6b2;
 }
 html.ms-split-edge-left #ms-split-divider { left: 0; }
-html.ms-split-edge-right #ms-split-divider { left: auto; right: 0; }
+/* Parked RIGHT, the edge is where a vertical scrollbar lives — Firefox's
+   overlay scrollbar paints over anything in its ~12px, so a 12px handle
+   there can't be grabbed. The right handle is 24px wide: its outer half is
+   transparent and sits under the scrollbar, its inner 12px (tint, line,
+   grip) stands clear of it and takes the pointer. */
+html.ms-split-edge-right #ms-split-divider {
+  left: auto;
+  right: 0;
+  width: 24px;
+  background: linear-gradient(to right, #e2dbcb 12px, transparent 12px);
+  box-shadow: none;
+}
 html.ms-split-edge-left #ms-split-divider::after { left: auto; right: 0; }
 html.ms-split-edge-right #ms-split-divider::after { left: 0; }
+html.ms-split-edge-right #ms-split-divider::before { left: 5px; }
 html.ms-split-edge-left #ms-split-divider::before,
 html.ms-split-edge-right #ms-split-divider::before {
   content: '';

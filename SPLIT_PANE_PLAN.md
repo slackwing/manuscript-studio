@@ -143,7 +143,10 @@ seam moves) but let the drag continue past the old halt.
   (`dividerPct` 0 or 100, persisted — `splitRead` no longer treats 0 as
   "unset"). Parked, it becomes a 12px tinted handle with a dotted grip on
   that edge (`html.ms-split-edge-left/right`); drag it out or double-click
-  to restore. The collapsed pane's tab bar collapses with it.
+  to restore. The collapsed pane's tab bar collapses with it. On the RIGHT
+  edge the handle is 24px with a transparent outer half: Firefox's overlay
+  scrollbar paints over the outermost ~12px, so the grabbable, tinted part
+  sits inboard of it (owner hit this within minutes, 2026-11-25).
 - **Strip scrolling.** A bar with more tabs than fit scrolls with the
   wheel (vertical delta → `scrollLeft`, delegated on `#ms-tabs`). Rebuilds
   keep each bar's scroll position. The strip scrolls back to the tab in
