@@ -81,8 +81,9 @@ const psql = (sql) => execSync(
   await page.click('.sticky-note.uncreated-note.first-uncreated .note-input');
   await page.keyboard.type('Only here.');
   await page.waitForSelector(`#sticky-notes-container .sticky-note[data-note-id]:not(.uncreated-note)`, { timeout: 10000 });
-  await page.waitForTimeout(1200);
   const soloId = await page.evaluate(() => parseInt(document.querySelector('#sticky-notes-container .sticky-note[data-note-id]:not(.uncreated-note)').dataset.noteId, 10));
+  // Its text save has landed (so no late PUT follows the delete).
+  for (let i = 0; i < 20 && psql(`SELECT COALESCE(body,'') FROM note WHERE note_id=${soloId}`) !== 'Only here.'; i++) await page.waitForTimeout(250);
   const t2 = page.locator(`#sticky-notes-container .sticky-note[data-note-id="${soloId}"] .note-trash`);
   await page.hover(`#sticky-notes-container .sticky-note[data-note-id="${soloId}"]`);
   await t2.click(); await page.waitForTimeout(150); await t2.click();
