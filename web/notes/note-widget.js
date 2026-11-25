@@ -532,6 +532,20 @@
     });
   }
 
+  // The viewer's LAST 3 (2026-11-25): any click into a saved note, or focus
+  // in its text, tells the server — at most once per note per 20 s. The ↗
+  // picker lists those notes first. (Create and update touch server-side.)
+  const touchedAt = new Map();
+  function touchRecent(note) {
+    const id = note && (note.note_id || note.noteId);
+    const api = window.WriteSysNoteAPI;
+    if (!id || !api || !api.touch) return;
+    const now = Date.now();
+    if ((touchedAt.get(id) || 0) > now - 20000) return;
+    touchedAt.set(id, now);
+    api.touch(id);
+  }
+
   function buildNoteElement(note, handlers, opts) {
     handlers = handlers || {};
     opts = opts || {};
@@ -556,6 +570,7 @@
     if (readOnly) noteEl.classList.add('sticky-note-readonly');
     if (card) noteEl.classList.add('sticky-note-card'); // compact-chips + clamp look
     noteEl.dataset.noteId = esc(note.note_id);
+    noteEl.addEventListener('pointerdown', () => touchRecent(note));
     if (note.color) noteEl.classList.add(`color-${note.color}`);
 
     // The body: an editable textarea live, a clamped preview when read-only.
@@ -650,7 +665,7 @@
     const commit = () => handlers.onCommit && handlers.onCommit();
     let saveTimer;
     if (ta) {
-      ta.addEventListener('focus', () => handlers.onFocus && handlers.onFocus());
+      ta.addEventListener('focus', () => { touchRecent(note); handlers.onFocus && handlers.onFocus(); });
       ta.addEventListener('blur', () => handlers.onBlur && handlers.onBlur());
       ta.addEventListener('input', () => {
         autoResize(ta);

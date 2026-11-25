@@ -245,6 +245,26 @@ func (db *DB) HideNote(ctx context.Context, username string, noteID int) error {
 	return nil
 }
 
+// TouchNote (2026-11-25): the viewer's LAST 3 — the notes they most
+// recently focused, created or updated. The picker's feed lists them
+// first. Capped at 3 rows per viewer on write; a soft-deleted note is not
+// touchable (it would hold a slot the feed never shows).
+func (db *DB) TouchNote(ctx context.Context, username string, noteID int) error {
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO note_touch (username, note_id)
+		SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM note WHERE note_id = $2 AND deleted_at IS NULL)
+		ON CONFLICT (username, note_id) DO UPDATE SET touched_at = now()`, username, noteID); err != nil {
+		return fmt.Errorf("touch note: %w", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		DELETE FROM note_touch WHERE username = $1 AND note_id NOT IN (
+			SELECT note_id FROM note_touch WHERE username = $1
+			ORDER BY touched_at DESC, note_id DESC LIMIT 3)`, username); err != nil {
+		return fmt.Errorf("touch note prune: %w", err)
+	}
+	return nil
+}
+
 func (db *DB) UnhideNote(ctx context.Context, username string, noteID int) error {
 	_, err := db.Pool.Exec(ctx,
 		`DELETE FROM note_hide WHERE username = $1 AND note_id = $2`, username, noteID)

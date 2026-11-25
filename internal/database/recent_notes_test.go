@@ -78,6 +78,66 @@ func TestListRecentNotesForUser(t *testing.T) {
 	if ids[theirs].ManuscriptID != nil || ids[theirs].PlacedManuscriptID == nil || *ids[theirs].PlacedManuscriptID != f.manuscriptID {
 		t.Fatalf("placed manuscript fallback: %v / %v", ids[theirs].ManuscriptID, ids[theirs].PlacedManuscriptID)
 	}
+
+	// The viewer's last 3 (note_touch, 058): a touched note leads, newest
+	// touch first; someone else's touch moves nothing for me; the 4th touch
+	// evicts the oldest, which falls back into the updated_at order.
+	orderOf := func() []int {
+		got, err := f.db.ListRecentNotesForUser(f.ctx, f.username, "", 50)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		var o []int
+		for _, h := range got {
+			if h.NoteID == mine.NoteID || h.NoteID == minePad.NoteID || h.NoteID == theirs {
+				o = append(o, h.NoteID)
+			}
+		}
+		return o
+	}
+	same := func(a, b []int) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				return false
+			}
+		}
+		return true
+	}
+	if err := f.db.TouchNote(f.ctx, f.username, mine.NoteID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.TouchNote(f.ctx, other, theirs); err != nil {
+		t.Fatal(err)
+	}
+	if o := orderOf(); !same(o, []int{mine.NoteID, theirs, minePad.NoteID}) {
+		t.Fatalf("touched note first, then updated order: got %v", o)
+	}
+	for _, id := range []int{minePad.NoteID, theirs, hidden.NoteID} {
+		if err := f.db.TouchNote(f.ctx, f.username, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var touches int
+	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_touch WHERE username = $1`, f.username).Scan(&touches)
+	if touches != 3 {
+		t.Fatalf("touch rows capped at 3: got %d", touches)
+	}
+	if o := orderOf(); !same(o, []int{theirs, minePad.NoteID, mine.NoteID}) {
+		t.Fatalf("after 4 touches: last 3 lead (hidden stays hidden), evicted one falls back: got %v", o)
+	}
+	// A soft-deleted note is not touchable.
+	f.pool.Exec(f.ctx, `UPDATE note SET deleted_at = now() WHERE note_id = $1`, mine.NoteID)
+	if err := f.db.TouchNote(f.ctx, f.username, mine.NoteID); err != nil {
+		t.Fatal(err)
+	}
+	var deletedTouched int
+	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note_touch WHERE username = $1 AND note_id = $2`, f.username, mine.NoteID).Scan(&deletedTouched)
+	if deletedTouched != 0 {
+		t.Fatalf("a deleted note must not take a slot")
+	}
 	// Search narrows by text, case-insensitively.
 	got, err = f.db.ListRecentNotesForUser(f.ctx, f.username, "IN A PAD", 50)
 	if err != nil || len(got) != 1 || got[0].NoteID != minePad.NoteID {

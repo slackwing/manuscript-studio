@@ -132,3 +132,14 @@ pads, or nowhere. This plan gives the author ways to USE that.
   Gotcha found: two test runs on the shared dev DB wipe each other's pads
   (cleanupTestNotes hard-deletes every pad of user `test`) — never run
   DB-touching tests or probes in parallel.
+
+## 6. Last 3 (2026-11-25)
+
+The ↗ picker's feed (`GET /api/notes/recent`) leads with the viewer's
+**last 3** notes — the ones they most recently focused, created or
+updated — newest touch first, then everything else newest-updated first.
+`note_touch (username, note_id, touched_at)` (changeset 058) holds at most
+3 rows per viewer (`TouchNote` prunes on write). Focus is reported by the
+shared widget (`POST /api/notes/{id}/touch`, any pointerdown on a saved
+card or focus in its text, once per note per 20 s); create and update
+touch server-side. Per viewer: your focusing moves nothing for anyone else.

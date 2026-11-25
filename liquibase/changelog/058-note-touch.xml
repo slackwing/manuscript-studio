@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 058 (2026-11-25): note_touch — a viewer's LAST 3 notes: the ones they
+         most recently focused, created or updated (TouchNote prunes past 3).
+         The ↗ picker's feed (/api/notes/recent) lists these first, newest
+         touch first, then everything else by updated_at. Per viewer: your
+         focusing a note moves it for you alone. -->
+    <changeSet id="058-note-touch" author="claude">
+        <createTable tableName="note_touch">
+            <column name="username" type="VARCHAR(255)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_note_touch_user"
+                             references="user(username)"/>
+            </column>
+            <column name="note_id" type="INTEGER">
+                <constraints nullable="false"
+                             foreignKeyName="fk_note_touch_note"
+                             references="note(note_id)"
+                             deleteCascade="true"/>
+            </column>
+            <column name="touched_at" type="TIMESTAMPTZ" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addPrimaryKey tableName="note_touch" columnNames="username, note_id"
+                       constraintName="pk_note_touch"/>
+    </changeSet>
+</databaseChangeLog>

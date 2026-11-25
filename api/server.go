@@ -399,6 +399,7 @@ func (s *Server) setupRouter() {
 			r.Post("/notes/{note_id}/pin", s.noteHandlers.HandlePinNote)
 			r.Post("/notes/{note_id}/unpin", s.noteHandlers.HandleUnpinNote)
 			r.Post("/notes/{note_id}/points", s.noteHandlers.HandleScoreNotePoints)
+			r.Post("/notes/{note_id}/touch", s.noteHandlers.HandleTouchNote) // the viewer's last 3 (058)
 			// Placements (NOTE_PLACEMENTS_PLAN.md): where a note is, and
 			// putting it on / taking it off a sentence. Pad placements are
 			// the pad doc's business (mirrored on save).

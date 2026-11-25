@@ -5,7 +5,7 @@
 // on its last placement it deletes.
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
-const { TEST_URL, loginAsTestUser, cleanupTestNotes, waitForPagination } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, loginAsTestUser, cleanupTestNotes, waitForPagination } = require('./test-utils');
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf8' }).trim();
@@ -60,8 +60,31 @@ const psql = (sql) => execSync(
   check('the pad note now sits in the margin on this sentence, with its text and colour', placed.body === 'Born in a pad, placed on a sentence' && placed.orange && placed.inCache, JSON.stringify(placed));
   check('DB: a sentence placement was added; the pad placement stays', psql(`SELECT count(*) FROM note_sentence WHERE note_id=${seed.noteId} AND sentence_id='${sids[0]}'`) === '1' && psql(`SELECT count(*) FROM note_scratchpad WHERE note_id=${seed.noteId} AND removed_at IS NULL`) === '1');
   check('default text was set where the note was born: still none', psql(`SELECT COALESCE(default_body,'<null>') FROM note WHERE note_id=${seed.noteId}`) === '<null>');
-  // The picker no longer offers it for this sentence.
-  await page.click('.sticky-note.uncreated-note .attach-chip');
+  // ---- the viewer's last 3 (2026-11-25): a click into a note registers it;
+  // the picker leads with the last-touched notes, then the rest ----
+  const seedC = await page.evaluate(async (padId) => {
+    const H = { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionStorage.getItem('csrf_token') };
+    const n = await (await fetch('api/notes', { method: 'POST', headers: H, body: JSON.stringify({ scratchpad_id: padId, color: 'blue', body: 'Newest by creation' }) })).json();
+    return n.note_id;
+  }, seed.padId);
+  psql(`UPDATE note SET updated_at = now() - interval '1 hour' WHERE note_id=${seed.noteId}`); // old by update…
+  await page.click(`#sticky-notes-container .sticky-note[data-note-id="${seed.noteId}"] .note-input`); // …focused now
+  let touched = false;
+  for (let i = 0; i < 40 && !touched; i++) { await page.waitForTimeout(100); touched = psql(`SELECT count(*) FROM note_touch WHERE note_id=${seed.noteId} AND username='${TEST_USERNAME}'`) === '1'; }
+  check('a click into a margin note records it as touched', touched);
+  await page.click(`.pagedjs_pages .sentence[data-sentence-id="${sids[1]}"]`);
+  await page.waitForSelector('.sticky-note.uncreated-note.first-uncreated .attach-chip', { timeout: 10000 });
+  await page.click('.sticky-note.first-uncreated .attach-chip');
+  await page.waitForSelector('.note-linkpop.note-pick button[data-nid]', { timeout: 8000 });
+  const lead = await page.evaluate(() => [...document.querySelectorAll('.note-linkpop.note-pick button[data-nid]')].slice(0, 2).map((b) => parseInt(b.dataset.nid, 10)));
+  check('the picker leads with the last-touched note, then the newest-created', lead[0] === seed.noteId && lead[1] === seedC, JSON.stringify(lead));
+  await page.keyboard.press('Escape');
+  await page.click(`.pagedjs_pages .sentence[data-sentence-id="${sids[0]}"]`);
+  await page.waitForSelector(`#sticky-notes-container .sticky-note[data-note-id="${seed.noteId}"]`, { timeout: 10000 });
+
+  // The picker no longer offers it for this sentence. (The "add another"
+  // card's chips show on hover — dispatch the click rather than aim.)
+  await page.locator('.sticky-note.uncreated-note .attach-chip').first().dispatchEvent('click');
   await page.waitForSelector('.note-linkpop.note-pick', { timeout: 8000 });
   await page.waitForTimeout(500);
   check('a note already on the sentence is not offered again', (await page.locator(`.note-linkpop.note-pick button[data-nid="${seed.noteId}"]`).count()) === 0);

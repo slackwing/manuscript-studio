@@ -525,6 +525,12 @@ func (h *NoteHandlers) HandleCreateNote(w http.ResponseWriter, r *http.Request) 
 	if err := h.DB.RefreshSentenceNoteDefaults(ctx, []string{req.SentenceID}); err != nil {
 		log.Printf("notes: default for new note on %s: %v", req.SentenceID, err)
 	}
+	// Creating a note is touching it (the creator's last 3).
+	if s, err := auth.GetSession(r); err == nil {
+		if err := h.DB.TouchNote(ctx, s.Username, note.NoteID); err != nil {
+			log.Printf("notes: touch new note %d: %v", note.NoteID, err)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -622,6 +628,12 @@ func (h *NoteHandlers) HandleUpdateNote(w http.ResponseWriter, r *http.Request) 
 	}
 	existing.Color, existing.Body, existing.Priority = updated.Color, updated.Body, updated.Priority
 	existing.TaskType, existing.Impact, existing.Blocked, existing.UpdatedAt = updated.TaskType, updated.Impact, updated.Blocked, updated.UpdatedAt
+	// Updating a note is touching it (the editor's last 3).
+	if s, err := auth.GetSession(r); err == nil {
+		if err := h.DB.TouchNote(r.Context(), s.Username, existing.NoteID); err != nil {
+			log.Printf("notes: touch updated note %d: %v", existing.NoteID, err)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(existing)
@@ -1138,6 +1150,32 @@ func (h *NoteHandlers) HandleRemoveTagFromNote(w http.ResponseWriter, r *http.Re
 // HandleHideNote / HandleUnhideNote: per-viewer, reversible, owner-invisible
 // (v3, PERMISSIONS_PLAN §5). Anyone who can SEE the note may hide it from
 // their own view — the note itself is untouched and the owner never knows.
+// HandleTouchNote: POST /api/notes/{note_id}/touch — the viewer focused
+// (clicked into) this note; it joins their last 3 for the ↗ picker
+// (2026-11-25). Create and update touch on their own, server-side.
+func (h *NoteHandlers) HandleTouchNote(w http.ResponseWriter, r *http.Request) {
+	noteID, err := strconv.Atoi(chi.URLParam(r, "note_id"))
+	if err != nil {
+		http.Error(w, "Invalid note_id", http.StatusBadRequest)
+		return
+	}
+	session, err := auth.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !auth.ValidateCSRFToken(r, h.SessionStore, r.Header.Get("X-CSRF-Token")) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	if err := h.DB.TouchNote(r.Context(), session.Username, noteID); err != nil {
+		log.Printf("notes: touch %d: %v", noteID, err)
+		http.Error(w, "Failed to touch note", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *NoteHandlers) HandleHideNote(w http.ResponseWriter, r *http.Request) {
 	h.handleHideUnhide(w, r, true)
 }

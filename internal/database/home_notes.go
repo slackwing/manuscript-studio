@@ -256,7 +256,9 @@ func (db *DB) ListPinnedDailyNotes(ctx context.Context, username string, manuscr
 // ListRecentNotesForUser (NOTE_UI_PLAN.md phase 2): the notes a user may
 // PLACE somewhere — live notes they own, plus live notes others placed on
 // (or linked to) a manuscript the user holds a role on — minus the ones
-// they hid, newest first, optionally filtered by text. The picker's feed.
+// they hid, optionally filtered by text. The picker's feed. Order: the
+// viewer's last 3 touched (focused / created / updated — note_touch, 058)
+// newest touch first, then the rest newest-updated first.
 func (db *DB) ListRecentNotesForUser(ctx context.Context, username, q string, limit int) ([]HomeNote, error) {
 	rows, err := db.Pool.Query(ctx, homeNoteSelect+`, n.user_id,
 		       (SELECT mg.manuscript_id FROM sentence s JOIN migration mg ON mg.migration_id = s.migration_id
@@ -272,7 +274,8 @@ func (db *DB) ListRecentNotesForUser(ctx context.Context, username, q string, li
 		       OR (n.manuscript_id IS NOT NULL
 		           AND EXISTS (SELECT 1 FROM role r WHERE r.manuscript_id = n.manuscript_id AND r.username = $1)))
 		  AND ($2 = '' OR n.body ILIKE '%' || $2 || '%' OR n.default_body ILIKE '%' || $2 || '%')
-		ORDER BY n.updated_at DESC
+		ORDER BY (SELECT t.touched_at FROM note_touch t WHERE t.note_id = n.note_id AND t.username = $1) DESC NULLS LAST,
+		         n.updated_at DESC
 		LIMIT $3
 	`, username, q, limit)
 	if err != nil {

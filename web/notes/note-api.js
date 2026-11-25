@@ -95,6 +95,11 @@
 
     // The picker's feed (NOTE_UI_PLAN.md): notes I may place somewhere —
     // mine, plus others' on manuscripts I hold a role on — newest first.
+    // The viewer focused a note (2026-11-25): it joins their last 3, which
+    // `recent` lists first. Fire-and-forget.
+    touch(noteId) {
+      return authFetch(`${BASE}/${noteId}/touch`, { method: 'POST', headers: { 'X-CSRF-Token': csrf() }, keepalive: true }).catch(() => {});
+    },
     async recent(q = '', limit = 40) {
       const resp = await authFetch(`${BASE}/recent?q=${encodeURIComponent(q)}&limit=${limit}`, { method: 'GET' });
       return jsonOrThrow(resp); // { notes: [{note_id, color, body, default_body, context, owner, ...}] }
