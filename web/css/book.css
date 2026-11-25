@@ -3098,8 +3098,9 @@ p.section-break {
          + transform-origin: top left). Here we:
          (a) clear the top space for BOTH fixed bars via #app-container padding
              — NOT .pagedjs_pages, which carries the scale transform;
-         (b) hug the left instead of flex-centering, so the scaled sheet sits at
-             the gutter rather than drifting off-screen;
+         (b) no flex-centering (it drifts under the transform): the renderer
+             sets the left margin itself — the gutter while the sheet fills the
+             width, a centering margin when it doesn't (2026-11-25);
          (c) PRESERVE the grey backdrop, inter-page gap, page border and drop
              shadow so each sheet still reads as a physical book page. (An early
              version stripped all of these to "maximize" width — that made the

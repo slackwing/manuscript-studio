@@ -602,10 +602,16 @@ const WriteSysRenderer = {
       const pageWidth = 576; // the fixed sheet width (see .pagedjs_page)
       // Fill the widest available width, leaving only a slight gutter each side
       // (not the old 70% that wasted ~30% of the screen). transform-origin is
-      // top-LEFT so the scaled sheet hugs the left gutter rather than centering
-      // and drifting; the CSS zeroes .pagedjs_pages padding on mobile.
+      // top-LEFT so the scaled sheet sits at a computed left margin rather than
+      // flex-centering and drifting; the CSS zeroes .pagedjs_pages padding on
+      // mobile.
       const GUTTER = 12; // px each side
       const scale = Math.min(1, (window.innerWidth - GUTTER * 2) / pageWidth);
+      // Where the sheet does NOT fill the width (600–768px: a half pane at
+      // a zoom level, where scale is 1 and up to 180px is spare) it must
+      // CENTER, not hug the left. Flex-centering drifts under a top-left
+      // transform, so the centering is this explicit margin instead.
+      const marginLeft = Math.max(GUTTER, (window.innerWidth - pageWidth * scale) / 2);
       // Fit the fixed publishable page to the viewport via transform: scale —
       // words-per-page must stay identical across viewports (it's a print form),
       // so we scale the whole sheet rather than reflow. transform doesn't shrink
@@ -617,7 +623,7 @@ const WriteSysRenderer = {
       const naturalH = pagesContainer.getBoundingClientRect().height;
       pagesContainer.style.transform = `scale(${scale})`;
       pagesContainer.style.transformOrigin = "top left";
-      pagesContainer.style.marginLeft = GUTTER + "px";
+      pagesContainer.style.marginLeft = marginLeft + "px";
       pagesContainer.style.marginBottom = -(naturalH * (1 - scale)) + "px";
       // Keep the grey book backdrop so each scaled sheet still reads as a page
       // (transparent here erased that look). The container is scaled, so paint

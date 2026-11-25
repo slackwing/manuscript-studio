@@ -44,6 +44,21 @@ function check(name, cond, detail) {
   await waitForPagination(page);
   await page.waitForTimeout(600);
 
+  console.log('\n[sheet centers when it does not fill the width]');
+  // 600–768px (a half pane at some zoom): scale is 1, the 576px sheet has
+  // spare room — it must center, not hug the left gutter.
+  await page.setViewportSize({ width: 740, height: 900 });
+  await page.waitForTimeout(500);
+  const wide = await page.evaluate(() => {
+    const c = document.querySelector('.pagedjs_pages');
+    return { ml: parseFloat(c.style.marginLeft), tf: c.style.transform, iw: window.innerWidth };
+  });
+  check('740px viewport: scale 1, sheet centered (margin ≈ (740 − 576) / 2)', wide.tf === 'scale(1)' && Math.abs(wide.ml - 82) < 1, JSON.stringify(wide));
+  await page.setViewportSize({ width: 400, height: 900 });
+  await page.waitForTimeout(500);
+  const narrow = await page.evaluate(() => ({ ml: parseFloat(document.querySelector('.pagedjs_pages').style.marginLeft), tf: document.querySelector('.pagedjs_pages').style.transform }));
+  check('400px viewport: sheet fills the width, 12px gutter as before', Math.abs(narrow.ml - 12) < 0.5 && /scale\(0\.6/.test(narrow.tf), JSON.stringify(narrow));
+
   console.log('\n[outline scroll override]');
   await page.evaluate((o) => window.WriteSysOutline.render(o), SYNTH_OUTLINE);
   await page.evaluate(() => window.dispatchEvent(new Event('resize')));
