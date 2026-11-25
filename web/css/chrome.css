@@ -179,8 +179,9 @@ a#brand::before { top: -4px; }
 a#brand::after { bottom: -4px; }
 
 /* Light ink for the cloth: bar links, gear, logout. */
-#controls a#settings-link, #controls a#settings-link:visited { color: #e8dcbd; }
-#controls a#settings-link:hover { color: #fff; }
+#controls a#settings-link, #controls a#settings-link:visited,
+#controls a#cheatsheet-link, #controls a#cheatsheet-link:visited { color: #e8dcbd; }
+#controls a#settings-link:hover, #controls a#cheatsheet-link:hover { color: #fff; }
 #controls #logout-btn { color: #e8dcbd; border-color: rgba(211, 192, 140, 0.55); }
 #controls #logout-btn:hover { color: #fff; border-color: var(--gold); background: rgba(255, 255, 255, 0.08); }
 
@@ -462,8 +463,8 @@ html.embedded #controls, html.embedded #ms-tabs { display: none !important; }
 /* (The title band keeps its DESKTOP size at every width — owner call.) */
 
 /* Icon-only tabs (Home, Settings): center the glyph, trim the padding. */
-.ms-tab-home .ms-tab-label, .ms-tab-settings .ms-tab-label { display: inline-flex; align-items: center; }
-.ms-tab-home, .ms-tab-settings { padding: 0 12px; --edge: transparent; }
+.ms-tab-home .ms-tab-label, .ms-tab-settings .ms-tab-label, .ms-tab-cheatsheet .ms-tab-label { display: inline-flex; align-items: center; }
+.ms-tab-home, .ms-tab-settings, .ms-tab-cheatsheet { padding: 0 12px; --edge: transparent; }
 
 /* Icon pair, right side: gear + exit door, equal height, roomy gap. */
 #controls .control-group-right { display: flex; align-items: center; gap: 18px; }
@@ -476,4 +477,4 @@ html.embedded #controls, html.embedded #ms-tabs { display: none !important; }
   display: inline-flex;
   align-items: center;
 }
-#controls a#settings-link { display: inline-flex; align-items: center; }
+#controls a#settings-link, #controls a#cheatsheet-link { display: inline-flex; align-items: center; }

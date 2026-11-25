@@ -64,7 +64,8 @@ window.WriteSysTabs = (function () {
   const bookId = () => parseInt(new URLSearchParams(location.search).get('manuscript_id'), 10) || null;
   const onHomePage = () => /home\.html$/.test(location.pathname);
   const SHELL = !EMBED && onHomePage();
-  // 'm42' / 's7877' / 'g1' — settings takes 'g' (gear); 's' is scratchpads'.
+  // 'm42' / 's7877' / 'g1' / 'c1' — settings takes 'g' (gear), the syntax
+  // cheatsheet 'c'; 's' is scratchpads'.
   const keyOf = (p) => (p.type === 'settings' ? 'g' : p.type[0]) + p.id;
   const findByKey = (key) => read().find((p) => keyOf(p) === key);
   // WriteSysScratchpadModal starts as a lazy-loader shim (scratchpad-modal.js)
@@ -184,7 +185,8 @@ window.WriteSysTabs = (function () {
 
   const panelSrc = (p) => (p.type === 'manuscript'
     ? './?manuscript_id=' + p.id
-    : (p.type === 'settings' ? 'settings.html' : 'pad.html?scratchpad_id=' + p.id));
+    : (p.type === 'settings' ? 'settings.html'
+      : (p.type === 'cheatsheet' ? 'cheatsheet.html' : 'pad.html?scratchpad_id=' + p.id)));
 
   const ensureFrame = (key) => {
     if (!key || panels.has(key)) return;
@@ -439,6 +441,8 @@ window.WriteSysTabs = (function () {
   // Settings is a NORMAL tab (drags, closes, one instance — pin() dedupes
   // the singleton id); the gear in the header opens it instead of navigating.
   const openSettings = () => openTab('settings', 1, 'Settings');
+  // The syntax cheatsheet: the same kind of singleton icon tab (ⓘ in the header).
+  const openCheatsheet = () => openTab('cheatsheet', 1, 'Syntax');
 
   // ---- LINK ROUTER (2026-09-11) ------------------------------------------
   // ONE layer for every same-origin link: a click on any <a href> in the
@@ -466,6 +470,7 @@ window.WriteSysTabs = (function () {
     const q = u.searchParams;
     if (file === 'home.html') return { kind: 'home', url: u };
     if (file === 'settings.html') return { kind: 'tab', type: 'settings', id: 1, name: 'Settings', hash: u.hash };
+    if (file === 'cheatsheet.html') return { kind: 'tab', type: 'cheatsheet', id: 1, name: 'Syntax', hash: u.hash };
     if (file === 'pad.html' && +q.get('scratchpad_id')) {
       return { kind: 'tab', type: 'scratchpad', id: +q.get('scratchpad_id'), hash: u.hash };
     }
@@ -665,6 +670,12 @@ window.WriteSysTabs = (function () {
     };
     const mkPinTab = (bar, p, active) => {
       const tab = mkTab(bar, 'ms-tab-' + p.type, p.name, active, () => go(p));
+      if (p.type === 'cheatsheet') {
+        // Icon tab, like Home and Settings — the ⓘ; title carries the name.
+        tab.querySelector('.ms-tab-label').innerHTML =
+          '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.6" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+          + '<circle cx="8" cy="5" r="1" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M8 7.4v4"/></svg>';
+      }
       if (p.type === 'settings') {
         // Icon tab, like Home — the gear; title carries the name.
         tab.querySelector('.ms-tab-label').innerHTML =
@@ -723,6 +734,7 @@ window.WriteSysTabs = (function () {
     const activeOf = (p) => {
       if (!SHELL) {
         if (p.type === 'settings') return /settings\.html$/.test(location.pathname);
+        if (p.type === 'cheatsheet') return /cheatsheet\.html$/.test(location.pathname);
         return p.type === 'manuscript' ? p.id === bookId() && !openPadId() : p.id === openPadId();
       }
       const k = keyOf(p);
@@ -778,6 +790,8 @@ window.WriteSysTabs = (function () {
     // elsewhere it routes to the shell like any tab click).
     const gear = document.getElementById('settings-link');
     if (gear) gear.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
+    const info = document.getElementById('cheatsheet-link');
+    if (info) info.addEventListener('click', (e) => { e.preventDefault(); openCheatsheet(); });
     if (SHELL) {
       // Manuscript cards (and every other link) open IN PLACE as tabs —
       // the link router above, installed at module init.
@@ -790,7 +804,7 @@ window.WriteSysTabs = (function () {
       // browser tab's session, then let #tab=m42 (link compat) win focus.
       loadSession();
       reconcileSplit();
-      const m = (location.hash || '').match(/[#&]tab=([msg]\d+)/);
+      const m = (location.hash || '').match(/[#&]tab=([msgc]\d+)/);
       if (m && read().some((p) => keyOf(p) === m[1])) activate(m[1]);
       [leftActive, rightActive].forEach((k) => touchMru(k));
       applyLayout();
@@ -816,6 +830,6 @@ window.WriteSysTabs = (function () {
   });
   render();
 
-  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, activate,
+  return { pin, unpin, toggle, rename, isPinned, render, openManuscript, openPad, openSettings, openCheatsheet, activate,
     route, _classify: classify };
 })();

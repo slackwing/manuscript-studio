@@ -11,10 +11,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
 
   <!-- Book-style CSS -->
-  <link rel="stylesheet" href="css/book.css?v=244">
+  <link rel="stylesheet" href="css/book.css?v=245">
   <link rel="stylesheet" href="notes/note-widget.css?v=3">
   <link rel="stylesheet" href="scratchpad/scratchpad.css?v=72">
-  <link rel="stylesheet" href="css/chrome.css?v=26">
+  <link rel="stylesheet" href="css/chrome.css?v=27">
 
   <!-- Paged.js for book pagination - loaded but not auto-run -->
   <script>
@@ -28,15 +28,11 @@
   <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"></script>
 </head>
 <body>
-  <!-- Top bar (not paginated) — shared, filled synchronously by chrome.js.
-       data-extras adds this page's cheatsheet toggle to the right group. -->
-  <div id="controls" class="pagedjs_ignore" data-extras="cheatsheet"></div>
-  <script src="js/chrome.js?v=5"></script>
-  <script src="js/tabs.js?v=17"></script>
+  <!-- Top bar (not paginated) — shared, filled synchronously by chrome.js. -->
+  <div id="controls" class="pagedjs_ignore"></div>
+  <script src="js/chrome.js?v=6"></script>
+  <script src="js/tabs.js?v=18"></script>
 
-  <!-- Syntax cheatsheet: slide-in right panel toggled by #cheatsheet-icon -->
-  <div id="cheatsheet-panel" class="pagedjs_ignore" aria-hidden="true"></div>
-  <div id="cheatsheet-backdrop" class="pagedjs_ignore" hidden></div>
 
   <!-- Note margin container (floating in right grey margin) -->
   <div id="note-margin" class="pagedjs_ignore">
@@ -141,12 +137,12 @@
   <script src="js/canonicalize.js?v=7"></script>
   <script src="js/placeholder.js?v=4"></script>
   <script src="js/marker-symbols.js?v=3"></script>
-  <script src="js/renderer.js?v=157"></script>
+  <script src="js/renderer.js?v=158"></script>
   <!-- Shared note component — must load BEFORE notes.js (the manuscript margin
        renders through it). -->
   <script src="notes/note-api.js?v=8"></script>
   <script src="notes/note-widget.js?v=31"></script>
-  <script src="notes/note-picker.js?v=1"></script>
+  <script src="notes/note-picker.js?v=2"></script>
   <script src="js/notes.js?v=79"></script>
   <script src="js/vendor/diff-match-patch.js"></script>
   <script src="js/history.js?v=12"></script>
@@ -169,6 +165,5 @@
   <script src="js/copy-selection.js?v=2"></script>
   <script src="js/global-search.js?v=5"></script>
   <script src="js/scratchpad-modal.js?v=87"></script>
-  <script src="js/cheatsheet.js?v=6"></script>
 </body>
 </html>

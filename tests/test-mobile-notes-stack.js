@@ -79,6 +79,24 @@ const LONG_BODY = 'Long mobile note. '.repeat(30) + `(${TEST_USERNAME})`;
   check('backdrop click closes modal + stack',
     (await page.locator('#sgm-notes-stack').count()) === 0);
 
+  // ---- a rainbow bar tap on mobile opens the suggest-edit view for its
+  // sentence and puts the caret in THAT note (2026-11-25) ----
+  const tapped = await page.evaluate((sid) => {
+    const bar = document.querySelector(`.rainbow-bar[data-sentence-id="${sid}"][data-color="green"]`);
+    if (!bar) return { bar: false };
+    bar.click();
+    return { bar: true };
+  }, sid);
+  check('the sentence has a green rainbow bar to tap', tapped.bar === true);
+  await page.waitForSelector('#suggestion-modal', { timeout: 8000 });
+  await page.waitForSelector('#sgm-notes-stack .sticky-note', { timeout: 8000 });
+  await page.waitForFunction((b) => document.activeElement && document.activeElement.classList.contains('note-input') && document.activeElement.value === b, LONG_BODY, { timeout: 5000 }).catch(() => {});
+  const focused = await page.evaluate(() => ({ cls: document.activeElement && document.activeElement.className, val: document.activeElement && document.activeElement.value }));
+  check('tapping the green bar opens the view for its sentence with the GREEN note focused', !!focused.cls && /note-input/.test(focused.cls) && focused.val === LONG_BODY, JSON.stringify({ cls: focused.cls, val: (focused.val || '').slice(0, 30) }));
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
+  await page.evaluate(() => document.getElementById('suggestion-modal-overlay').click());
+  await page.waitForSelector('#suggestion-modal', { state: 'detached', timeout: 8000 });
+
   // ---- create affordance: a NOTE-LESS sentence still offers the same
   // grey first-note card the desktop margin shows; typing births a real
   // note and the gradient + card takes its place below. ----
@@ -92,6 +110,20 @@ const LONG_BODY = 'Long mobile note. '.repeat(30) + `(${TEST_USERNAME})`;
   await page.waitForSelector('#suggestion-modal', { timeout: 8000 });
   check('note-less sentence: stack shows the first-note create card',
     (await page.locator('#sgm-notes-stack .sticky-note.first-uncreated .note-input').count()) === 1);
+  // The grey card's ↗ picker opens ON SCREEN in the phone view (the body is
+  // pinned there; document coordinates used to put it a screenful up).
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.locator('#sgm-notes-stack .sticky-note.first-uncreated .attach-chip').click();
+  await page.waitForSelector('.note-linkpop.note-pick button[data-nid]', { timeout: 8000 });
+  const pick = await page.evaluate(() => {
+    const p = document.querySelector('.note-linkpop.note-pick').getBoundingClientRect();
+    const chip = document.querySelector('#sgm-notes-stack .attach-chip').getBoundingClientRect();
+    return { onScreen: p.top >= 0 && p.left >= 0 && p.bottom <= window.innerHeight + 1 && p.right <= window.innerWidth + 1, nearChip: Math.abs(p.top - chip.bottom) < 80 || p.top < chip.top, rows: document.querySelectorAll('.note-linkpop.note-pick button[data-nid]').length };
+  });
+  check('the ↗ picker opens on screen in the phone suggest-edit view, with notes to pick', pick.onScreen && pick.rows > 0, JSON.stringify(pick));
+  if (process.env.SHOT2) await page.screenshot({ path: process.env.SHOT2 });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.note-linkpop.note-pick', { state: 'detached', timeout: 5000 }).catch(() => {});
   await page.locator('#sgm-notes-stack .note-input').first().click();
   await page.keyboard.type('Stack-born note');
   await page.waitForFunction(() =>

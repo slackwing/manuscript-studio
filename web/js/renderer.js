@@ -1713,6 +1713,22 @@ const WriteSysRenderer = {
 
     this.currentSelectedSentenceId = sentenceId;
 
+    // MOBILE (≤1239px): the margin is hidden — the sentence's notes live in
+    // the suggest-edit view's stack. A bar tap opens that view for the
+    // sentence and puts the caret in the note the bar stands for
+    // (2026-11-25). (While a view is open its backdrop covers the bars, so
+    // the tap always finds the view closed.)
+    if (window.matchMedia('(max-width: 1239px)').matches && window.WriteSysSuggestions) {
+      window.WriteSysSuggestions.openModal(sentenceId);
+      const focusNote = (tries) => {
+        const ta = document.querySelector(`#sgm-notes-stack .sticky-note[data-note-id="${noteId}"] .note-input`);
+        if (ta) { ta.scrollIntoView({ block: 'center' }); ta.focus(); return; }
+        if (tries > 0) setTimeout(() => focusNote(tries - 1), 80);
+      };
+      setTimeout(() => focusNote(10), 50);
+      return;
+    }
+
     if (window.WriteSysNotes) {
       const fullText = this.sentenceMap[sentenceId] || '';
       window.WriteSysNotes.showNotesForSentence(sentenceId, fullText);

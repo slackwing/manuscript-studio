@@ -1,129 +1,62 @@
 /**
- * Syntax cheatsheet — a slide-in right panel toggled by #cheatsheet-icon.
+ * Syntax cheatsheet — the content of cheatsheet.html (a tab, opened by the
+ * ⓘ between the gear and Logout; 2026-11-25).
  *
- * A quick reference for the &-command grammar. Content is grounded in the real
- * parser (command.js / internal/sentence/command.go): block commands stand
- * alone on their own line (own paragraph); inline commands live inside a
- * sentence's prose. Kept deliberately terse — this is a reminder, not docs.
+ * EXTREMELY terse by design: the command shapes, nothing else. `{…}` is an
+ * argument, `a|b` the choices. What a line does is for the author to try in
+ * the editor; this is a reminder, not documentation.
  */
 const WriteSysCheatsheet = {
-  iconEl: null,
-  panelEl: null,
-  backdropEl: null,
-  open: false,
-
-  init() {
-    this.iconEl = document.getElementById('cheatsheet-icon');
-    this.panelEl = document.getElementById('cheatsheet-panel');
-    this.backdropEl = document.getElementById('cheatsheet-backdrop');
-    if (!this.iconEl || !this.panelEl) return;
-
-    this.panelEl.innerHTML = this.buildHTML();
-
-    this.iconEl.addEventListener('click', () => this.toggle());
-    this.iconEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggle(); }
-    });
-    if (this.backdropEl) this.backdropEl.addEventListener('click', () => this.setOpen(false));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.open) this.setOpen(false);
-    });
-    // Delegate the close button inside the panel.
-    this.panelEl.addEventListener('click', (e) => {
-      if (e.target.closest('.cheatsheet-close')) this.setOpen(false);
-    });
-  },
-
-  toggle() { this.setOpen(!this.open); },
-
-  setOpen(v) {
-    this.open = v;
-    this.panelEl.classList.toggle('is-open', v);
-    this.panelEl.setAttribute('aria-hidden', v ? 'false' : 'true');
-    this.iconEl.setAttribute('aria-expanded', v ? 'true' : 'false');
-    this.iconEl.classList.toggle('is-active', v);
-    if (this.backdropEl) this.backdropEl.hidden = !v;
-  },
-
-  // Each row: { code, desc }. A section groups rows under a heading with an
-  // optional note. code is shown verbatim (monospace), desc as prose.
-  // Each row: { code, desc }. Terse by design (2026-08-20): one example,
-  // one line of description — try it in the editor to learn the rest.
   SECTIONS: [
     {
-      title: 'Block commands',
-      note: 'Alone on their own line. These build the left-margin outline.',
+      title: 'Alone on a line',
       rows: [
-        { code: '&title{The Wildfire}', desc: 'Book title page.' },
-        { code: '&part#p1{I.}{The Gathering}', desc: 'Part page — {description} shows in the outline only.' },
-        { code: '&chapter#p1c1{1.}{Smoke on the ridge}', desc: 'Chapter heading.' },
-        { code: '&anchor#origin{Where it begins}', desc: 'Outline waypoint — renders nothing.' },
-        { code: '&placeholder#reunion{paragraphs}{m}{Reunion}', desc: 'Grey lorem ipsum for unwritten prose — sizes xs–xxxl; one sentence, note it.' },
-        { code: '&end#reunion', desc: 'Closes a placed region (Canonize writes these).' },
+        '&title{…}',
+        '&part#slug{…}{…}',
+        '&chapter#slug{…}{…}',
+        '&anchor#slug{…}',
+        '&placeholder#slug{sentences|paragraphs}{xs|s|m|l|xl|xxl|xxxl}{…}',
+        '&sketch#id{…} … &end#id',
+        '&meta{title-align|part-align|chapter-align}{left|center}',
+        '&meta{divider-folios}{on|off}',
+        '&meta{footnote-marks}{numbers|symbols}',
+        '&meta{footnote-reset}{page|chapter|never}',
+        '&meta{font}{Georgia}',
       ],
     },
     {
-      title: 'Inline commands',
-      note: 'Mid-sentence, inside prose.',
+      title: 'Inside a sentence',
       rows: [
-        { code: 'See &reference#origin{the opening}.', desc: 'Link to a #slug.' },
-        { code: 'The fire &anchor#mark{} spread.', desc: 'Inline marker.' },
-        { code: 'It rained. &marker#weird{weak}', desc: 'Attention marker — {weak} 70%, {strong} 130%.' },
-        { code: 'He left.&footnote{A note. *Italics* and **bold**.}', desc: 'Footnote — attaches to the sentence it follows.' },
-        { code: 'She waited. &placeholder{sentences}{l}', desc: 'Inline lorem ipsum.' },
+        '&reference#slug{…}',
+        '&anchor#slug{}',
+        '&marker#slug{weak|strong}',
+        '&footnote{…}',
+        '&placeholder{sentences}{l}',
       ],
     },
     {
-      title: 'Formatting',
-      note: '',
+      title: 'Text',
       rows: [
-        { code: '*emphasis*  or  _emphasis_', desc: 'Italics.' },
-        { code: '**strong**  or  __strong__', desc: 'Bold.' },
-        { code: '#my-slug-2', desc: 'Slugs: lowercase letters, digits, dashes.' },
-      ],
-    },
-    {
-      title: '&meta settings',
-      note: 'Its own line; renders nothing; last one wins.',
-      rows: [
-        { code: '&meta{title-align}{left|center}', desc: 'Title alignment.' },
-        { code: '&meta{part-align}{left|center}', desc: 'Part-page alignment.' },
-        { code: '&meta{chapter-align}{left|center}', desc: 'Chapter-heading alignment.' },
-        { code: '&meta{divider-folios}{on|off}', desc: 'Page numbers on divider pages.' },
-        { code: '&meta{footnote-marks}{numbers|symbols}', desc: 'Footnote marks.' },
-        { code: '&meta{footnote-reset}{page|chapter|never}', desc: 'Where footnote numbering restarts.' },
-        { code: '&meta{font}{Georgia}', desc: 'Body font.' },
+        '*italic*   **bold**',
+        '#slug  =  a-z 0-9 -',
       ],
     },
   ],
 
-  buildHTML() {
-    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const rowHTML = (r) => `<div class="cheatsheet-row">` +
-      `<code class="cheatsheet-code">${esc(r.code)}</code>` +
-      `<div class="cheatsheet-desc">${esc(r.desc)}</div>` +
-      `</div>`;
-    const sectionHTML = (s) => `<section class="cheatsheet-section">` +
-      `<h3 class="cheatsheet-h">${esc(s.title)}</h3>` +
-      (s.note ? `<p class="cheatsheet-note">${esc(s.note)}</p>` : '') +
-      s.rows.map(rowHTML).join('') +
-      `</section>`;
-    return `<div class="cheatsheet-inner">` +
-      `<div class="cheatsheet-header">` +
-      `<span class="cheatsheet-title">Syntax cheatsheet</span>` +
-      `<button class="cheatsheet-close" aria-label="Close cheatsheet" title="Close">&times;</button>` +
-      `</div>` +
-      `<div class="cheatsheet-body">` +
-      this.SECTIONS.map(sectionHTML).join('') +
-      `</div></div>`;
+  render(root) {
+    if (!root) return;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    root.innerHTML = this.SECTIONS.map((s) =>
+      `<section class="cheatsheet-section"><h3 class="cheatsheet-h">${esc(s.title)}</h3>`
+      + s.rows.map((r) => `<div class="cheatsheet-row"><code class="cheatsheet-code">${esc(r)}</code></div>`).join('')
+      + '</section>').join('');
   },
+
+  init() { this.render(document.getElementById('cheatsheet-root')); },
 };
 
 if (typeof document !== 'undefined') {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => WriteSysCheatsheet.init());
-  } else {
-    WriteSysCheatsheet.init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => WriteSysCheatsheet.init());
+  else WriteSysCheatsheet.init();
 }
 if (typeof window !== 'undefined') window.WriteSysCheatsheet = WriteSysCheatsheet;

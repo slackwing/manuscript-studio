@@ -24,10 +24,16 @@
       '<input type="text" class="note-linkpop-q" placeholder="Search notes…" autocomplete="off">' +
       '<div class="note-linkpop-list"><span class="note-linkpop-empty">Loading…</span></div>';
     document.body.appendChild(pop);
+    // VIEWPORT coordinates (position: fixed): the phone suggest-edit view
+    // pins the body at -scrollY, where document coordinates land the
+    // popover a screenful above the anchor — invisible (2026-11-25). A
+    // transient popover never needs to scroll with the page; it closes on
+    // the next outside press. Kept inside the viewport on both axes.
     const r = anchorEl.getBoundingClientRect();
-    pop.style.position = 'absolute';
-    pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
-    pop.style.left = (window.scrollX + Math.max(8, Math.min(r.left, window.innerWidth - 310))) + 'px';
+    const H = 340; // input + list (max-height 220) + padding
+    pop.style.position = 'fixed';
+    pop.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - H)) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 310)) + 'px';
 
     const close = () => { document.removeEventListener('mousedown', outside, true); pop.remove(); };
     const outside = (e) => { if (!pop.contains(e.target)) close(); };
