@@ -14,9 +14,11 @@ import (
 // to become is a sticky note ON it now. For every manuscript's latest done
 // migration, each placeholder token still carrying details under the old
 // grammar gets a yellow note with that text, placed on the token's sentence
-// and owned by the manuscript's author (first "author" role, else first
-// "admin"). Idempotent: a live note with that exact body already on that
-// sentence means it was done. Returns how many notes it created.
+// and owned by the manuscript's author: the "author" role holder with the
+// most notes on the manuscript (the human, not the bootstrap admin account
+// that also carries the role), else the busiest "admin". Idempotent: a live
+// note with that exact body already on that sentence means it was done.
+// Returns how many notes it created.
 //
 // The lines themselves stay the author's to trim (a four-arg placeholder
 // prints literally in the book until they do); when they trim, the sentence
@@ -80,13 +82,18 @@ func (db *DB) BackfillPlaceholderDetailNotes(ctx context.Context) (int, error) {
 		}
 
 		var owner string
-		err = db.Pool.QueryRow(ctx, `
-			SELECT username FROM role WHERE manuscript_id = $1 AND role = 'author' ORDER BY username LIMIT 1
-		`, h.manuscriptID).Scan(&owner)
+		pick := func(role string) error {
+			return db.Pool.QueryRow(ctx, `
+				SELECT r.username FROM role r
+				WHERE r.manuscript_id = $1 AND r.role = $2
+				ORDER BY (SELECT count(*) FROM note n WHERE n.user_id = r.username AND n.manuscript_id = r.manuscript_id AND n.deleted_at IS NULL) DESC,
+				         r.username
+				LIMIT 1
+			`, h.manuscriptID, role).Scan(&owner)
+		}
+		err = pick("author")
 		if err != nil {
-			err = db.Pool.QueryRow(ctx, `
-				SELECT username FROM role WHERE manuscript_id = $1 AND role = 'admin' ORDER BY username LIMIT 1
-			`, h.manuscriptID).Scan(&owner)
+			err = pick("admin")
 		}
 		if err != nil || owner == "" {
 			log.Printf("placeholder details backfill: manuscript %d has %d placeholder detail(s) but no author/admin role — skipped", h.manuscriptID, len(work))

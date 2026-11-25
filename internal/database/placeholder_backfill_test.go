@@ -18,6 +18,21 @@ func TestBackfillPlaceholderDetailNotes(t *testing.T) {
 	if _, err := f.pool.Exec(f.ctx, `INSERT INTO role (username, manuscript_id, role) VALUES ($1, $2, 'author') ON CONFLICT DO NOTHING`, f.username, f.manuscriptID); err != nil {
 		t.Fatal(err)
 	}
+	// A bootstrap-style account that ALSO holds the author role and sorts
+	// first alphabetically, but has never written a note here: the human
+	// author (who has) must own the migrated notes.
+	bot := "aaa-bot-" + f.username
+	if _, err := f.pool.Exec(f.ctx, `INSERT INTO "user" (username, password_hash, role) VALUES ($1, 'x', 'author') ON CONFLICT DO NOTHING`, bot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(f.ctx, `INSERT INTO role (username, manuscript_id, role) VALUES ($1, $2, 'author') ON CONFLICT DO NOTHING`, bot, f.manuscriptID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		f.pool.Exec(f.ctx, `DELETE FROM role WHERE username = $1`, bot)
+		f.pool.Exec(f.ctx, `DELETE FROM "user" WHERE username = $1`, bot)
+	})
+	f.createNote(t, sids[0], "the human author's existing note")
 
 	n, err := f.db.BackfillPlaceholderDetailNotes(f.ctx)
 	if err != nil {
@@ -43,10 +58,15 @@ func TestBackfillPlaceholderDetailNotes(t *testing.T) {
 	if got := bodyOn(sids[2]); got != "They meet. Wordless." {
 		t.Fatalf("inline placeholder: the note sits on the HOST sentence: %q", got)
 	}
-	for _, sid := range []string{sids[0], sids[3], sids[4]} {
+	for _, sid := range []string{sids[3], sids[4]} {
 		if got := bodyOn(sid); got[:6] != "<none:" {
 			t.Fatalf("sentence %s should get no note, got %q", sid, got)
 		}
+	}
+	var botNotes int
+	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note WHERE user_id = $1`, bot).Scan(&botNotes)
+	if botNotes != 0 {
+		t.Fatalf("the never-wrote bootstrap author must not own the migrated notes (%d)", botNotes)
 	}
 	var color, priority string
 	var mid *int
@@ -61,7 +81,7 @@ func TestBackfillPlaceholderDetailNotes(t *testing.T) {
 	}
 	var mine int
 	f.pool.QueryRow(f.ctx, `SELECT count(*) FROM note n JOIN note_sentence ns USING (note_id) WHERE ns.sentence_id = ANY($1) AND n.deleted_at IS NULL`, sids).Scan(&mine)
-	if mine != 2 {
-		t.Fatalf("idempotent: want 2 notes on this fixture after a second run (created %d more overall), got %d", again, mine)
+	if mine != 3 {
+		t.Fatalf("idempotent: want 3 notes on this fixture after a second run (the human's own + 2 migrated; created %d more overall), got %d", again, mine)
 	}
 }
