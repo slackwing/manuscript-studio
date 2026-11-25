@@ -235,13 +235,22 @@ const WriteSysCommand = {
   // A sentence's effective text may be multi-block (a suggestion like
   // "&meta{...}\n\n&title{...}"), so we scan each \n\n / \n\t-separated block
   // for a whole-block &meta, not just whole-sentence meta.
+  //
+  // &meta is FRONT MATTER (2026-11-25, mirrors sentence.ExtractSettings): it
+  // counts only before the first prose block — whole-line commands and blank
+  // blocks are not prose; the first block that is ends the scan.
   extractSettings(ids, effectiveTextById) {
     const values = {};
+    let done = false;
     const consume = (blockText) => {
+      if (done) return;
       const t = String(blockText).trim();
+      if (!t) return;
+      const whole = this.parse(t);
+      if (!whole || whole.raw !== t) { done = true; return; } // prose
       if (!t.startsWith('&meta')) return;
-      const cmd = this.parse(t);
-      if (!cmd || cmd.kind !== 'meta' || cmd.raw !== t) return;
+      const cmd = whole;
+      if (cmd.kind !== 'meta') return;
       if (cmd.args.length < 2) return;
       const prop = (cmd.args[0] || '').trim();
       const val = (cmd.args[1] || '').trim();
@@ -252,6 +261,7 @@ const WriteSysCommand = {
       values[prop] = val; // last-wins
     };
     for (const id of ids) {
+      if (done) break;
       const text = effectiveTextById[id];
       if (text == null) continue;
       // Split into blocks on \n\n or \n\t (the structural boundaries).

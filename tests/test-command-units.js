@@ -203,9 +203,14 @@ console.log('=== C11 extractSettings-vocabulary ===');
   eq('single-arg meta dropped', ex({ a: '&meta{font}' }), {});
   eq('font accepts any non-empty value', ex({ a: '&meta{font}{Baskerville}' }), { font: 'Baskerville' });
   eq('non-whole-block meta ignored', ex({ a: '&meta{chapter-align}{center} trailing' }), {});
-  eq('multi-block text scanned per block',
-    ex({ a: 'Prose first.\n\n&meta{title-align}{left}\n\t&meta{divider-folios}{off}' }),
+  eq('multi-block text scanned per block (commands before it keep the front matter open)',
+    ex({ a: '&title{T}\n\n&meta{title-align}{left}\n\t&meta{divider-folios}{off}' }),
     { 'title-align': 'left', 'divider-folios': 'off' });
+  // &meta is FRONT MATTER (2026-11-25): the first prose block ends the scan.
+  eq('a &meta after prose is ignored', ex({ a: 'Prose first.\n\n&meta{title-align}{left}' }), {});
+  eq('a &meta after a prose SENTENCE is ignored', ex({ a: '&meta{chapter-align}{center}', b: 'Prose.', c: '&meta{chapter-align}{left}' }), { 'chapter-align': 'center' });
+  eq('blank blocks and whole-line commands are not prose',
+    ex({ a: '   ', b: '&chapter#c1{1.}{One}', c: '&meta{font}{Georgia}' }), { font: 'Georgia' });
   eq('null effective text skipped', cmd.extractSettings(['a'], {}), {});
   eq('part-align validated', ex({ a: '&meta{part-align}{center}' }), { 'part-align': 'center' });
   eq('divider-folios out-of-range dropped', ex({ a: '&meta{divider-folios}{maybe}' }), {});

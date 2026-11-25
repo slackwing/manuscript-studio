@@ -32,6 +32,27 @@ func TestExtractSettings(t *testing.T) {
 	}
 }
 
+// &meta is front matter (2026-11-25): commands and blanks before the text
+// keep it open; the first prose sentence closes it — a later &meta (and a
+// later unknown property) is ignored.
+func TestExtractSettingsFrontMatter(t *testing.T) {
+	s := ExtractSettings([]string{"t", "m1", "blank", "c", "p", "m2", "u"}, map[string]string{
+		"t":     "&title{The Book}",
+		"m1":    "&meta{chapter-align}{center}",
+		"blank": "   ",
+		"c":     "&chapter#c1{1.}{One}",
+		"p":     "The first sentence of prose.",
+		"m2":    "&meta{chapter-align}{left}", // after prose → ignored
+		"u":     "&meta{bogus}{x}",            // after prose → not even reported
+	})
+	if s.Values["chapter-align"] != "center" {
+		t.Errorf("a &meta after prose must not apply: got %q, want center", s.Values["chapter-align"])
+	}
+	if len(s.Unknown) != 0 {
+		t.Errorf("unknowns after prose are not reported: %v", s.Unknown)
+	}
+}
+
 // Footnote settings (FOOTNOTES_PLAN.md §3): the two properties validate
 // against their closed value sets; an unmappable value is dropped.
 func TestExtractSettingsFootnotes(t *testing.T) {

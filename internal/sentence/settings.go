@@ -31,6 +31,12 @@ type Settings struct {
 // ExtractSettings scans (ordinal-ordered) sentences for &meta commands and
 // returns the validated settings plus any unknown/invalid property names.
 // Last occurrence of a property wins.
+//
+// &meta is FRONT MATTER (2026-11-25): it counts only before the first prose
+// sentence. Whole-line commands (&title, &part, &chapter, &anchor, …) and
+// blank lines are not prose, so the usual opening block still works; a
+// &meta after the text has begun is ignored (the browser's extractSettings
+// mirrors this — keep them in lockstep).
 func ExtractSettings(ids []string, textByID map[string]string) Settings {
 	s := Settings{Values: map[string]string{}}
 	seenUnknown := map[string]bool{}
@@ -39,8 +45,15 @@ func ExtractSettings(ids []string, textByID map[string]string) Settings {
 		if !ok {
 			continue
 		}
-		cmd, ok := ParseCommand(strings.TrimSpace(text))
-		if !ok || cmd.Kind != CmdMeta || cmd.Raw != strings.TrimSpace(text) {
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			continue
+		}
+		cmd, ok := ParseCommand(trimmed)
+		if !ok || cmd.Raw != trimmed {
+			break // prose: the front matter is over
+		}
+		if cmd.Kind != CmdMeta {
 			continue
 		}
 		if len(cmd.Args) < 2 {

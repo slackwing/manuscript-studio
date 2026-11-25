@@ -2586,8 +2586,10 @@ p.section-break {
 
 /* ---- Syntax cheatsheet (cheatsheet.html — a tab since 2026-11-25) ------ */
 body.home-page main.cheatsheet-main {
-  max-width: 560px;
-  width: auto;
+  /* Centered, never wider than 560px, and never flush with the viewport:
+     16px of air each side however narrow the pane gets. */
+  width: min(560px, calc(100% - 32px));
+  max-width: none;
   margin: 28px auto 60px;
   padding: 18px 26px 26px;
   background: rgba(255, 255, 255, 0.96);

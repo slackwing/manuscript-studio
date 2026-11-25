@@ -17,11 +17,6 @@ const WriteSysCheatsheet = {
         '&anchor#slug{…}',
         '&placeholder#slug{sentences|paragraphs}{xs|s|m|l|xl|xxl|xxxl}{…}',
         '&sketch#id{…} … &end#id',
-        '&meta{title-align|part-align|chapter-align}{left|center}',
-        '&meta{divider-folios}{on|off}',
-        '&meta{footnote-marks}{numbers|symbols}',
-        '&meta{footnote-reset}{page|chapter|never}',
-        '&meta{font}{Georgia}',
       ],
     },
     {
@@ -39,6 +34,18 @@ const WriteSysCheatsheet = {
       rows: [
         '*italic*   **bold**',
         '#slug  =  a-z 0-9 -',
+      ],
+    },
+    {
+      // Front matter: these count only before the first prose sentence
+      // (sentence.ExtractSettings / command.js extractSettings, 2026-11-25).
+      title: 'Top of manuscript',
+      rows: [
+        '&meta{title-align|part-align|chapter-align}{left|center}',
+        '&meta{divider-folios}{on|off}',
+        '&meta{footnote-marks}{numbers|symbols}',
+        '&meta{footnote-reset}{page|chapter|never}',
+        '&meta{font}{Georgia}',
       ],
     },
   ],
