@@ -214,6 +214,18 @@ const { suggestEditor } = require('./test-utils');
     const line = await render([{ id: 'r7c', text: '&placeholder#ps{sentences}' }]);
     check('R7: sentences unit alone → one-run ph-line paragraph',
       /<p class="ph-line"/.test(line) && line.includes('class="ph"'), line.slice(0, 120));
+    // Indent by context (PLACEHOLDER_PLAN.md v2): a flush placeholder after a
+    // paragraph is a follower; after a heading it opens the section.
+    const afterProse = await render([{ id: 'r7d1', text: 'A paragraph of prose.' }, { id: 'r7d2', text: '\n\n&placeholder{sentences}{s}' }]);
+    check('R7: flush placeholder after prose → indented follower', /<p class="ph-line indented"/.test(afterProse), afterProse.slice(-160));
+    const afterChapter = await render([{ id: 'r7e1', text: '&chapter{One}' }, { id: 'r7e2', text: '\n\n&placeholder{sentences}{s}' }]);
+    check('R7: flush placeholder after a heading → opens the section (no indent)', /<p class="ph-line section-break"/.test(afterChapter), afterChapter.slice(-160));
+    const blockAfterProse = await render([{ id: 'r7f1', text: 'A paragraph of prose.' }, { id: 'r7f2', text: '\n\n&placeholder{paragraphs}{s}' }]);
+    check('R7: flush block placeholder after prose → first filler paragraph indented', /<div class="cmd-placeholder"><p class="indented">/.test(blockAfterProse), blockAfterProse.slice(-200));
+    const explicitTab = await render([{ id: 'r7g1', text: '&chapter{One}' }, { id: 'r7g2', text: '\n\t&placeholder{sentences}{s}' }]);
+    check('R7: an explicit \\n\\t placeholder stays indented even after a heading', /<p class="ph-line indented"/.test(explicitTab), explicitTab.slice(-160));
+    const throughMeta = await render([{ id: 'r7h1', text: 'Prose.' }, { id: 'r7h2', text: '&meta{font}{Georgia}' }, { id: 'r7h3', text: '\n\n&placeholder{sentences}{s}' }]);
+    check('R7: context looks through invisible &meta', /<p class="ph-line indented"/.test(throughMeta), throughMeta.slice(-160));
   }
 
   // ---- R8: carried marker strength --------------------------------------

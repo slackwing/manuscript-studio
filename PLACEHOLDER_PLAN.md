@@ -35,6 +35,12 @@ placeholder. What changed:
   + size + label, details ignored) pairs it with its predecessor at 0.9 so
   the note rides along instead of falling on a neighbor
   (`TestMigration_PlaceholderNoteCarriesWhenDetailsTrimmed`).
+- **Indent by context** (owner, same evening): a placeholder is typed
+  flush on its own line, so its marker says nothing. After a paragraph it
+  is a follower (indented); after a heading, a part page or nothing it
+  opens the section (flush, section gap); `\n\t` stays an explicit indent;
+  `&meta`/`&end`/quiet anchor lines are looked through
+  (`renderer.placeholderBreakClass`).
 - Sizes (§2 tables), block/inline rules (§4), the outline (§5) and the
   Fill affordance (`.cmd-placeholder[data-slug]`, `p.ph-line .ph[data-slug]`)
   are unchanged.

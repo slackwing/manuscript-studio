@@ -820,7 +820,7 @@ const WriteSysRenderer = {
           // Otherwise a block command fragment → render its result, no diff.
           // &meta renders nothing. All share this sentence's id.
           flush();
-          const html = this.renderBlockCommandFrag(f.cmd, id, changed, f.marker);
+          const html = this.renderBlockCommandFrag(f.cmd, id, changed, f.marker, out);
           if (html) out.push(html);
           continue;
         }
@@ -1037,6 +1037,25 @@ const WriteSysRenderer = {
     return '';
   },
 
+  // placeholderBreakClass: a placeholder is typed flush on its own line
+  // ("\n\n&placeholder{…}" — nobody tabs a command), so its own marker says
+  // nothing about the paragraph it stands in for. Decide like a reader
+  // would, from what precedes it in the flow: after a paragraph (prose or
+  // another placeholder) it is a FOLLOWER → indented; after a heading, a
+  // part page, or nothing it OPENS the section → the marker's own class
+  // (section-break gap, flush). Invisible scaffolding (&meta, &end, a quiet
+  // anchor line) is looked through. An explicit "\n\t" stays an indent.
+  placeholderBreakClass(markerCls, out) {
+    if (markerCls === 'indented') return markerCls;
+    for (let i = out.length - 1; i >= 0; i--) {
+      const h = out[i];
+      if (/^<div class="cmd-(meta|end|anchor)[ "]/.test(h)) continue;
+      if (/^<p[ >]/.test(h) || /^<div class="cmd-placeholder[ "]/.test(h)) return 'indented';
+      return markerCls;
+    }
+    return markerCls;
+  },
+
   // markerClass maps a fragment's leading structural marker to its paragraph
   // break class: '\n\n' → section-break, '\n\t' → indented, else ''.
   markerClass(marker) {
@@ -1074,11 +1093,12 @@ const WriteSysRenderer = {
   // element (heading / part page / anchor marker), or nothing for &meta. The
   // .sentence span carries the given id so the fragment is hoverable/
   // annotatable and shares identity with the rest of the sentence.
-  renderBlockCommandFrag(cmd, id, changed, marker) {
-    // Structural break class from the fragment's leading marker — block
-    // placeholders honor \n\t (indent) and \n\n (section) like prose does.
-    const markerCls = this.markerClass(marker);
+  renderBlockCommandFrag(cmd, id, changed, marker, out) {
+    // Structural break class from the fragment's leading marker. A block
+    // placeholder decides by CONTEXT instead (placeholderBreakClass).
+    let markerCls = this.markerClass(marker);
     if (cmd.kind === 'placeholder') {
+      markerCls = this.placeholderBreakClass(markerCls, out || []);
       const lib = window.WriteSysPlaceholder;
       const spec = window.WriteSysCommand.placeholderSpec(cmd.args);
       const sugClass = changed ? ' has-suggestion' : '';
