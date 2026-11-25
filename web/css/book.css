@@ -2216,8 +2216,10 @@ p.section-break {
   transform-origin: center center;
 }
 
-#first-edit-btn, #first-split .mc-menu-item { font-size: 10px; font-weight: 600; }
+#first-split .mc-menu-item { font-size: 10px; font-weight: 600; }
 .mc-first-sub { font-size: 9px; margin-left: 2px; }
+/* A numeral as an icon (the footnotes toggle's "1"). */
+.mc-num { font: 600 11px/1 "Helvetica", sans-serif; }
 .mc-count { font: 600 9px "Helvetica", sans-serif; color: #57503f; margin-left: 4px; }
 
 /* History bars on the LEFT margin: 3 lanes encoding "what changed across
@@ -2874,16 +2876,31 @@ p.section-break {
   align-items: stretch;
   gap: 4px;
 }
-/* Under-title controls: settings pinned left, Push/Commit pinned right. */
-#manuscript-chrome .mc-controls-row {
+/* Under-title controls: THREE rows, each centered in the chrome, the same
+   at every width (the mobile block below only re-spaces). The button
+   containers inside a row are display:contents so every button and split
+   joins the row's own gap; menus anchor to .mc-split, not the container. */
+#manuscript-chrome .mc-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  margin-top: 2px;
+}
+#manuscript-chrome .mc-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 22px;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-height: 24px;
 }
-#manuscript-chrome #push-button-container,
-#manuscript-chrome #push-button-container * {
+#manuscript-chrome .mc-row:empty,
+#manuscript-chrome .mc-row:not(:has(.mc-btn)) { display: none; }
+#manuscript-chrome .mc-row .mc-btn,
+#manuscript-chrome .mc-row .mc-caret,
+#manuscript-chrome .mc-row .mc-menu,
+#manuscript-chrome .mc-row .mc-menu * {
   pointer-events: auto;
 }
 /* Pane tabs (STATS_PLAN): flat letterspaced text links just above the
@@ -2927,9 +2944,6 @@ p.section-break {
   letter-spacing: 0.02em;
   color: #a39d90;
 }
-/* Compact push controls: the grouped primary+caret read as ONE button
-   (rounded outer corners only), matching the old top-bar multi-button. */
-#manuscript-chrome .push-button-container { position: relative; flex: none; }
 
 /* ============================================================
    Narrow layout — MUST be last in the file (equal-specificity rules win by
@@ -3003,20 +3017,9 @@ p.section-break {
   #manuscript-chrome .mc-left { align-items: center; text-align: center; }
   #mc-name { font-size: 13px; white-space: normal; line-height: 1.15; text-align: center; }
   #mc-info { font-size: 9px; text-align: center; }
-  /* Controls flow in a CENTERED WRAP — pairs share a row when they fit,
-     then wrap (the old horizontal row clipped at the cell edge; strict
-     one-per-row wasted height). display:contents lets each split join the
-     wrap directly; menus anchor to .mc-split (position:relative), not the
-     container, so nothing moves. */
-  #manuscript-chrome .mc-controls-row {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 6px;
-  }
-  #manuscript-chrome #push-button-container {
-    margin-top: 0;
-    display: contents;
-  }
+  /* The three control rows are the same markup as desktop, a little
+     tighter so name + info + three rows fit the 200px cell. */
+  #manuscript-chrome .mc-controls { gap: 4px; margin-top: 0; }
   /* Updated-line: drop the dot, commit hash on its own line. */
   #mc-info .mc-info-sep { display: none; }
   #mc-info .mc-commit { display: block; }
@@ -3383,7 +3386,33 @@ body.range-delete-mode .pagedjs_pages {
 /* Daily tasks stands out — blue at rest, everywhere it appears. */
 .mc-btn.mc-daily { color: #2a6fb0; }
 .mc-btn:disabled { opacity: 0.4; cursor: default; }
-.push-button-container { display: inline-flex; gap: 6px; align-items: center; }
+.push-button-container { display: contents; }
+/* View toggles (row 3): pressed = ink; pending = disabled + a spinner over
+   the (hidden, still laid-out) icon, so the width never changes. */
+.mc-btn.mc-toggle { position: relative; }
+.mc-btn.mc-toggle[aria-pressed="true"] {
+  background: #57503f;
+  border-color: #57503f;
+  color: #faf8f2;
+}
+.mc-btn.mc-toggle[aria-pressed="true"]:hover:not(:disabled) { background: #6a624f; border-color: #6a624f; color: #fff; }
+.mc-btn.mc-toggle:disabled { opacity: 1; color: #a8a08c; cursor: default; }
+.mc-btn.mc-toggle[aria-pressed="true"]:disabled { color: #c9c1ad; }
+.mc-btn.mc-toggle:disabled > * { visibility: hidden; }
+.mc-btn.mc-toggle:disabled::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -6px 0 0 -6px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: mc-toggle-spin 0.8s linear infinite;
+}
+@keyframes mc-toggle-spin { to { transform: rotate(360deg); } }
 .mc-split { position: relative; display: inline-flex; }
 .mc-split .mc-btn { border-radius: 6px 0 0 6px; }
 .mc-caret {
@@ -3707,64 +3736,7 @@ body.range-delete-mode .pagedjs_pages {
    documented there. */
 .attention-overlay { display: none; }
 html.attention-held .attention-overlay { display: block; }
-/* Stats-pane toggles, one wrapping row: markers · attention · footnotes.
-   aria-pressed paints the on-state. Attention (the touch counterpart of
-   Tab) pins the envelope on; markers start off and footnotes on, and each
-   re-paginates the book with or without its layer (renderer.setLayerHidden). */
-.stats-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.stats-toggle {
-  position: relative;
-  padding: 4px 12px;
-  border: 1px solid #d9d4c7;
-  border-radius: 4px;
-  background: #faf8f2;
-  color: #57503f;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.stats-toggle:active { background: #efece3; }
-.stats-toggle[aria-pressed="true"] {
-  background: #57503f;
-  border-color: #57503f;
-  color: #faf8f2;
-}
-.stats-toggle[aria-pressed="true"]:active { background: #6a624f; }
-/* Pending (attention's overlay build, a markers/footnotes reflow):
-   disabled + spinner. The spinner lives in the right padding and the label
-   shifts left by what that padding grew — same width, so the row never
-   re-wraps mid-reflow (in Firefox one inline spinner wrapped it). */
-.stats-toggle:disabled { color: #a8a08c; cursor: default; padding-left: 6px; padding-right: 18px; }
-.stats-toggle:disabled:active { background: #faf8f2; }
-.stats-toggle:disabled::after {
-  content: '';
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  width: 9px;
-  height: 9px;
-  margin-top: -6px;
-  border: 1.5px solid #d9d4c7;
-  border-top-color: #8a8270;
-  border-radius: 50%;
-  animation: stats-toggle-spin 0.8s linear infinite;
-}
-/* A pressed toggle can be pending too (markers / footnotes turning back
-   on): light ring on the dark face. */
-.stats-toggle[aria-pressed="true"]:disabled { color: #c9c1ad; }
-.stats-toggle[aria-pressed="true"]:disabled:active { background: #57503f; }
-.stats-toggle[aria-pressed="true"]:disabled::after {
-  border-color: rgba(250, 248, 242, 0.3);
-  border-top-color: #faf8f2;
-}
-@keyframes stats-toggle-spin { to { transform: rotate(360deg); } }
+
 
 
 

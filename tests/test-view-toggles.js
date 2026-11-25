@@ -1,5 +1,5 @@
-// Stats-pane view toggles e2e: markers · attention · footnotes in one
-// wrapping row. Every load starts with markers OFF and footnotes on; a
+// View toggles e2e: markers · attention · footnotes — the chrome's third
+// row (layer-toggles.js; the statistics pane until 2026-11-25). Every load starts with markers OFF and footnotes on; a
 // released layer is stripped from the page HTML and Paged.js re-paginates
 // without it (renderer.setLayerHidden) — notes give their space back to
 // the body, lines close up where the glyphs were. A hidden marker still
@@ -15,7 +15,7 @@ const check = (name, ok, detail = '') => {
 };
 
 (async () => {
-  console.log('=== stats-pane view toggles e2e ===\n');
+  console.log('=== view toggles e2e (chrome row 3) ===\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   await loginAsTestUser(page);
@@ -47,9 +47,8 @@ const check = (name, ok, detail = '') => {
       const tick = () => (document.body.dataset.paginated !== before ? res() : setTimeout(tick, 50));
       tick();
     });
-    window.WriteSysStats.setPane('stats');
   });
-  await page.waitForSelector('#stats-footnotes', { timeout: 8000 });
+  await page.waitForSelector('#mc-footnotes', { timeout: 8000 });
 
   // Click a toggle and wait for the re-pagination it triggers. The click
   // runs in-page so the pending look is read in the same tick: disabled
@@ -60,12 +59,12 @@ const check = (name, ok, detail = '') => {
     const pending = await page.evaluate((sel) => {
       const b = document.querySelector(sel);
       const w0 = b.getBoundingClientRect().width;
-      const h0 = document.querySelector('.stats-toggles').getBoundingClientRect().height;
+      const h0 = document.querySelector('#mc-row-3').getBoundingClientRect().height;
       b.click();
       const fresh = document.querySelector(sel);
       return { disabled: fresh.disabled, spinner: getComputedStyle(fresh, '::after').animationName,
         sameWidth: Math.abs(fresh.getBoundingClientRect().width - w0) < 0.5,
-        sameRow: Math.abs(document.querySelector('.stats-toggles').getBoundingClientRect().height - h0) < 0.5 };
+        sameRow: Math.abs(document.querySelector('#mc-row-3').getBoundingClientRect().height - h0) < 0.5 };
     }, id);
     await page.waitForFunction((b) => document.body.dataset.paginated !== b
       && !window.WriteSysRenderer._renderInFlight, before, { timeout: 30000 });
@@ -77,10 +76,10 @@ const check = (name, ok, detail = '') => {
     const pages = [...document.querySelectorAll('.pagedjs_pages .pagedjs_page')];
     const pressed = (id) => { const b = document.getElementById(id); return b && b.getAttribute('aria-pressed'); };
     return {
-      order: [...document.querySelectorAll('.stats-toggles .stats-toggle')].map((b) => b.id),
-      wrap: getComputedStyle(document.querySelector('.stats-toggles')).flexWrap,
-      markersPressed: pressed('stats-markers'),
-      footnotesPressed: pressed('stats-footnotes'),
+      order: [...document.querySelectorAll('#mc-row-3 .mc-toggle')].map((b) => b.id),
+      centered: (() => { const row = document.getElementById('mc-row-3').getBoundingClientRect(); const bs = [...document.querySelectorAll('#mc-row-3 .mc-btn')]; const l = bs[0].getBoundingClientRect().left - row.left; const r = row.right - bs[bs.length - 1].getBoundingClientRect().right; return { ok: Math.abs(l - r) < 3, l: Math.round(l), r: Math.round(r), n: bs.length }; })(),
+      markersPressed: pressed('mc-markers'),
+      footnotesPressed: pressed('mc-footnotes'),
       glyphs: document.querySelectorAll('.pagedjs_pages .cmd-diamond[data-kind="marker"]').length,
       dataSpans: document.querySelectorAll('.pagedjs_pages .inline-cmd[data-kind="marker"]').length,
       calls: document.querySelectorAll('.pagedjs_pages [data-footnote-call]').length,
@@ -99,9 +98,9 @@ const check = (name, ok, detail = '') => {
   // Every load starts with markers OFF and footnotes on.
   const start = await state();
   check('three toggles in order: markers · attention · footnotes',
-    JSON.stringify(start.order) === JSON.stringify(['stats-markers', 'stats-attention', 'stats-footnotes']),
+    JSON.stringify(start.order) === JSON.stringify(['mc-markers', 'mc-attention', 'mc-footnotes']),
     JSON.stringify(start.order));
-  check('the toggle row wraps', start.wrap === 'wrap', start.wrap);
+  check('the toggle row is centered in the chrome', start.centered.ok === true, JSON.stringify(start.centered));
   check('defaults: markers released, footnotes pressed',
     start.markersPressed === 'false' && start.footnotesPressed === 'true',
     `markers=${start.markersPressed} footnotes=${start.footnotesPressed}`);
@@ -112,7 +111,7 @@ const check = (name, ok, detail = '') => {
     `${start.harvested} markers, ${start.overlays} overlays`);
 
   // Press markers → re-paginated with every glyph.
-  await toggle('#stats-markers');
+  await toggle('#mc-markers');
   const mk = await state();
   check('markers pressed: every marker wears its glyph',
     mk.markersPressed === 'true' && mk.glyphs === start.dataSpans && mk.dataSpans === 0,
@@ -123,14 +122,14 @@ const check = (name, ok, detail = '') => {
   check('footnotes untouched by the markers toggle', mk.calls === start.calls && mk.bodies === start.bodies);
 
   // Release markers again → back to the default layout, exactly.
-  await toggle('#stats-markers');
+  await toggle('#mc-markers');
   const mkOff = await state();
   check('markers released again: no glyphs, default layout restored exactly',
     mkOff.glyphs === 0 && JSON.stringify(mkOff.layout) === JSON.stringify(start.layout),
     `${start.layout} vs ${mkOff.layout}`);
 
   // Release footnotes → notes gone, the body takes the whole page.
-  await toggle('#stats-footnotes');
+  await toggle('#mc-footnotes');
   const fn = await state();
   check('footnotes released: no calls, no note bodies',
     fn.footnotesPressed === 'false' && fn.calls === 0 && fn.bodies === 0, `calls=${fn.calls} bodies=${fn.bodies}`);
@@ -161,7 +160,7 @@ const check = (name, ok, detail = '') => {
     const el = document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`);
     return { id, top: el.getBoundingClientRect().top };
   });
-  await toggle('#stats-footnotes');
+  await toggle('#mc-footnotes');
   const after = await page.evaluate((id) =>
     document.querySelector(`.pagedjs_pages .sentence[data-sentence-id="${id}"]`).getBoundingClientRect().top, anchor.id);
   check('toggling keeps the top sentence where it was on screen',
@@ -174,8 +173,8 @@ const check = (name, ok, detail = '') => {
     JSON.stringify(back.layout) === JSON.stringify(start.layout) ? '' : `${start.layout} vs ${back.layout}`);
 
   check('every toggle waited disabled with the spinner while reflowing, then came back',
-    pend.length === 4 && pend.every((p) => p.disabled && p.spinner === 'stats-toggle-spin'),
-    JSON.stringify(pend.filter((p) => !(p.disabled && p.spinner === 'stats-toggle-spin'))));
+    pend.length === 4 && pend.every((p) => p.disabled && p.spinner === 'mc-toggle-spin'),
+    JSON.stringify(pend.filter((p) => !(p.disabled && p.spinner === 'mc-toggle-spin'))));
   check('the spinner never changes the button width or re-wraps the row',
     pend.every((p) => p.sameWidth && p.sameRow),
     JSON.stringify(pend.filter((p) => !(p.sameWidth && p.sameRow))));
@@ -184,11 +183,11 @@ const check = (name, ok, detail = '') => {
   const gated = await page.evaluate(() => {
     const saved = window.currentSession;
     window.currentSession = { accessible_manuscripts: [] };
-    window.WriteSysStats.render();
-    const r = { markers: !!document.getElementById('stats-markers'),
-      footnotes: !!document.getElementById('stats-footnotes') };
+    window.WriteSysLayerToggles.refresh();
+    const r = { markers: !!document.getElementById('mc-markers'),
+      footnotes: !!document.getElementById('mc-footnotes') };
     window.currentSession = saved;
-    window.WriteSysStats.render();
+    window.WriteSysLayerToggles.refresh();
     return r;
   });
   check('without see-markers/manage-suggestions → no markers toggle, footnotes remain',

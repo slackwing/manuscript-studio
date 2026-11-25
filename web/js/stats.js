@@ -51,10 +51,6 @@ const WriteSysStats = {
     window.addEventListener('manuscript-modal-saved', () => this.load());
     // Overlay build lands after pagination — flip the HOLD button from
     // its disabled/spinner state (or drop it, if the session said no).
-    document.addEventListener('ms:attention-rebuilt', () => {
-      if (this.pane === 'stats') this.render();
-    });
-    document.addEventListener('ms:layers-reflowed', () => this.syncLayerButtons());
 
     document.addEventListener('visibilitychange', () => this.onVisible());
 
@@ -242,37 +238,12 @@ const WriteSysStats = {
       }
     }
 
-    // Attention toggle for touch devices (ATTENTION_PLAN.md §5): no Tab key
-    // on a phone, so the statistics pane offers a TOGGLE button — click to
-    // pin the envelope on, click again to release (2026-09-11; was
-    // press-and-hold). Same gate as the key: see-attention. The session
-    // bootstrap and the overlay build both land async — until then the
-    // button sits disabled with a spinner (ms:attention-rebuilt re-renders)
-    // instead of popping in later; it drops out only once the session
-    // actually denies the action. Pressed state comes from the pin itself
-    // so a re-render draws the button the way the page already is.
-    const attnDenied = window.currentSession && !(window.WriteSysActions
-      && window.WriteSysActions.has(window.WriteSysActions.currentManuscriptId(), 'see-attention'));
-    const attnReady = !!(window.WriteSysAttention && window.WriteSysAttention._pages.length);
-    const attnOn = !!(window.WriteSysAttention && window.WriteSysAttention.pinned);
-    const attnBtn = attnDenied ? ''
-      : `<button type="button" id="stats-attention" class="stats-toggle" aria-pressed="${attnOn}"${attnReady ? '' : ' disabled'}>attention</button>`;
-    // Markers / footnotes view toggles flank it (2026-10-08). Markers only
-    // for eyes that can see a marker glyph at all — committed (see-markers
-    // + the settings display) or in a diff (manage-suggestions).
-    const R = window.WriteSysRenderer;
-    const mkDenied = window.currentSession && !(R && (R.canSeeMarkers() || R.canSeeCommandGlyphs()));
-    const hidden = (R && R.hiddenLayers) || {};
-    const reflowing = (R && R.reflowingLayers) || {};
-    const layerBtn = (kind) =>
-      `<button type="button" id="stats-${kind}" class="stats-toggle" data-layer="${kind}" aria-pressed="${!hidden[kind]}"${reflowing[kind] ? ' disabled' : ''}>${kind}</button>`;
-    const toggles = (mkDenied ? '' : layerBtn('markers')) + attnBtn + layerBtn('footnotes');
-
-    this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}<div class="stats-toggles">${toggles}</div></div>`;
+    // The markers · attention · footnotes toggles moved to the chrome's
+    // third row (layer-toggles.js, 2026-11-25) — the pane is numbers and
+    // graphs only.
+    this.el.innerHTML = `<div class="stats-pane">${rowsHTML}${graphHTML}</div>`;
     this.flashChanged();
     this.wireHover();
-    this.wireAttentionToggle();
-    this.wireLayerToggles();
   },
 
   // Click toggles the pin; aria-pressed mirrors it (CSS paints the on-state).
@@ -295,41 +266,6 @@ const WriteSysStats = {
       }
     });
     this._shown = now;
-  },
-
-  wireAttentionToggle() {
-    const btn = document.getElementById('stats-attention');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-      const on = window.WriteSysAttention.togglePinned();
-      btn.setAttribute('aria-pressed', String(on));
-    });
-  },
-
-  // Markers / footnotes: the renderer owns the state and re-paginates
-  // without the hidden layer (renderer.setLayerHidden).
-  wireLayerToggles() {
-    const R = window.WriteSysRenderer;
-    if (!R) return;
-    this.el.querySelectorAll('.stats-toggle[data-layer]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const kind = btn.dataset.layer;
-        const hide = !R.hiddenLayers[kind];
-        btn.setAttribute('aria-pressed', String(!hide));
-        R.setLayerHidden(kind, hide);
-        this.syncLayerButtons();
-      });
-    });
-  },
-
-  // Disabled + spinner (the attention button's pending look) while the
-  // layer's re-pagination runs.
-  syncLayerButtons() {
-    const R = window.WriteSysRenderer;
-    if (!this.el || !R) return;
-    this.el.querySelectorAll('.stats-toggle[data-layer]').forEach((btn) => {
-      btn.disabled = !!R.reflowingLayers[btn.dataset.layer];
-    });
   },
 
   // buildGraph returns the SVG string. Flat: plain x/y axis lines, one

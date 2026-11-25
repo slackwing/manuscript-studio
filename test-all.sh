@@ -20,6 +20,7 @@ set -u
 #        require waiting on hover-out timeouts and animation settles.
 FAST_TESTS=(
   test-api-tokens
+  test-chrome-rows
   test-tabs
   test-split-pane
   test-manuscript-normalize

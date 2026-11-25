@@ -129,18 +129,17 @@ const check = (name, ok, detail = '') => {
   await page.keyboard.up('Tab');
   await page.evaluate(() => { window.currentSession = window.__saved; });
 
-  // ---- stats-pane TOGGLE button (the touch counterpart of Tab) --------
+  // ---- chrome TOGGLE button, row 3 (the touch counterpart of Tab) --------
   // Click pins the envelope on; it stays through pointer-leave, Tab
   // release and re-renders; a second click releases.
   await page.evaluate(() => { window.currentSession = window.__saved; window.WriteSysAttention.rebuild(); });
-  await page.evaluate(() => window.WriteSysStats && window.WriteSysStats.setPane && window.WriteSysStats.setPane('stats'));
-  await page.waitForSelector('#stats-attention', { timeout: 8000 });
+  await page.waitForSelector('#mc-attention', { timeout: 8000 });
   const pressed = () => page.evaluate(() =>
-    document.getElementById('stats-attention').getAttribute('aria-pressed'));
+    document.getElementById('mc-attention').getAttribute('aria-pressed'));
   check('button starts unpressed', (await pressed()) === 'false');
-  await page.click('#stats-attention');
+  await page.click('#mc-attention');
   await page.waitForFunction(() => document.documentElement.classList.contains('attention-held'));
-  check('clicking the stats button pins the overlays on', true);
+  check('clicking the chrome button pins the overlays on', true);
   check('button reads pressed', (await pressed()) === 'true');
   await page.mouse.move(5, 5); // pointer leaves the button
   await page.keyboard.down('Tab');
@@ -154,11 +153,11 @@ const check = (name, ok, detail = '') => {
     document.documentElement.classList.contains('attention-held')
     && getComputedStyle(document.querySelector('.attention-overlay')).display === 'block')
     && (await pressed()) === 'true');
-  await page.click('#stats-attention');
+  await page.click('#mc-attention');
   await page.waitForFunction(() => !document.documentElement.classList.contains('attention-held'));
   check('second click releases', (await pressed()) === 'false');
   // Losing the action while pinned drops the pin with the overlays.
-  await page.click('#stats-attention');
+  await page.click('#mc-attention');
   await page.waitForFunction(() => document.documentElement.classList.contains('attention-held'));
   const denied = await page.evaluate(() => {
     window.currentSession = { accessible_manuscripts: [{ manuscript_id: 1, actions: ['see-manuscript'] }] };
@@ -175,21 +174,21 @@ const check = (name, ok, detail = '') => {
   // (spinner); the ms:attention-rebuilt dispatch flips it live in place.
   const pending = await page.evaluate(() => {
     window.WriteSysAttention.teardown();
-    window.WriteSysStats.render();
-    const b1 = document.getElementById('stats-attention');
+    window.WriteSysLayerToggles.refresh();
+    const b1 = document.getElementById('mc-attention');
     const wasDisabled = !!(b1 && b1.disabled);
     window.WriteSysAttention.rebuild(); // synchronous event → stats re-render
-    const b2 = document.getElementById('stats-attention');
+    const b2 = document.getElementById('mc-attention');
     return { wasDisabled, enabledAfter: !!(b2 && !b2.disabled) };
   });
   check('button disabled while overlays are pending', pending.wasDisabled);
   check('ms:attention-rebuilt enables the button', pending.enabledAfter);
   const gated = await page.evaluate(() => {
     window.currentSession = { accessible_manuscripts: [{ manuscript_id: 1, actions: ['see-manuscript'] }] };
-    window.WriteSysStats.render();
-    return !document.getElementById('stats-attention');
+    window.WriteSysLayerToggles.refresh();
+    return !document.getElementById('mc-attention');
   });
-  check('no see-attention → no stats button', gated);
+  check('no see-attention → no attention button', gated);
   await page.evaluate(() => { window.currentSession = window.__saved; });
 
   // ---- Suggested edits: the envelope follows the EFFECTIVE text -------

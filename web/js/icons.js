@@ -80,6 +80,25 @@
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"',
         '<path d="M3.2 8.4l3.1 3.1 6.5-6.7"/>');
     },
+    // Speech bubble with three dots — suggested edits (the chrome's
+    // "go to the first suggested edit").
+    chat(size) {
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"',
+        '<path d="M2.6 2.6h10.8c.72 0 1.3.58 1.3 1.3v5.6c0 .72-.58 1.3-1.3 1.3H7.2L4 13.4v-2.6H2.6c-.72 0-1.3-.58-1.3-1.3V3.9c0-.72.58-1.3 1.3-1.3z"/>'
+        + '<circle cx="5.3" cy="6.8" r=".95" fill="currentColor" stroke="none"/><circle cx="8" cy="6.8" r=".95" fill="currentColor" stroke="none"/><circle cx="10.7" cy="6.8" r=".95" fill="currentColor" stroke="none"/>');
+    },
+    // Bell curve over a baseline — the attention envelope (its red/green
+    // plots are curves over the page).
+    bellCurve(size) {
+      return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"',
+        '<path d="M1.5 13.5h13"/><path d="M1.5 13.2C5.5 13.2 6.4 3 8 3s2.5 10.2 6.5 10.2"/>');
+    },
+    // Diamond — the beacon / marker glyph (marker-symbols' default shape,
+    // same 9:13 proportion), as the markers view toggle.
+    diamond(size) {
+      return svg(size, '0 0 16 16', 'fill="currentColor"',
+        '<path d="M8 1.5 12.5 8 8 14.5 3.5 8z"/>');
+    },
     // Split pane — a frame with a center seam (the tab strip's split button).
     splitPane(size) {
       return svg(size, '0 0 16 16', 'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"',

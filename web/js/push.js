@@ -1,8 +1,11 @@
 /**
- * Manuscript action buttons (v3.3 — Slackwing's spec, 2026-08-21):
- * a uniform icon-button row in the chrome's controls strip:
+ * Manuscript action buttons (v3.3 — Slackwing's spec, 2026-08-21; three
+ * centered rows since 2026-11-25): uniform icon buttons in the chrome's
+ * controls block, the same markup at every width:
  *
- *   [⚙ settings] [✓✗ accept ▾] [push/commit ▾] [view]
+ *   row 1  [⚙ settings] [☑ daily] [push/commit ▾] [view]      (#push-button-container)
+ *   row 2  [💬 first suggested edit ▾] [✓✗ accept ▾]            (#review-button-container)
+ *   row 3  [◆ markers] [∩ attention] [1 footnotes]              (layer-toggles.js)
  *
  *   - ACCEPT pair: batch-accept is ALWAYS uncontested-only (contested
  *     sentences take manual verdicts in the suggest modal). Variants: my /
@@ -39,7 +42,8 @@ const ICON_PERSONS3 = `<svg viewBox="0 0 34 16" width="26" height="13" aria-hidd
 
 const WriteSysPush = {
   apiBaseUrl: 'api',
-  _container: null,
+  _container: null, // row 1: push pair + view
+  _review: null,    // row 2: first suggested edit + accept pair
   _openMenu: null,
   _branchExists: false, // server-reported
   _compareURL: '',      // server-computed; empty when no slug configured
@@ -47,6 +51,7 @@ const WriteSysPush = {
 
   init() {
     this._container = document.getElementById('push-button-container');
+    this._review = document.getElementById('review-button-container');
     if (!this._container) return;
     document.addEventListener('click', (e) => {
       if (this._openMenu && !this._openMenu.parentNode.contains(e.target)) this._closeMenus();
@@ -115,18 +120,21 @@ const WriteSysPush = {
     };
     const verb = this._verb();
 
-    let html = '';
-    // "1": jump to the first suggested edit (opens its modal — the nav
-    // flippers tour from there). The caret's alternate "1○" jumps to the
-    // first UNACCEPTED (still-pending) one. Shown while suggestions live.
+    let html = '';   // row 1
+    let review = ''; // row 2
+    // Speech bubble: jump to the first suggested edit (opens its modal —
+    // the nav flippers tour from there). The caret's alternate "○" jumps
+    // to the first UNACCEPTED (still-pending) one. Shown while suggestions
+    // live.
     const tour = S.suggestedOrder ? S.suggestedOrder() : [];
     const pendingTour = S.suggestedOrder ? S.suggestedOrder('pending') : [];
+    const chat = window.WriteSysIcons && window.WriteSysIcons.chat ? window.WriteSysIcons.chat(14) : '…';
     if (tour.length) {
-      html += `<span class="mc-split" id="first-split" data-variant="own">
-        <button type="button" class="mc-btn" id="first-edit-btn" data-variant="own" title="Go to first suggested edit">1</button>
+      review += `<span class="mc-split" id="first-split" data-variant="own">
+        <button type="button" class="mc-btn" id="first-edit-btn" data-variant="own" title="Go to first suggested edit">${chat}</button>
         <button type="button" class="mc-caret" aria-haspopup="true" aria-expanded="false">▾</button>
         <span class="mc-menu" hidden>
-          <button type="button" class="mc-menu-item" data-variant="all" title="Go to first unaccepted suggested edit" ${pendingTour.length ? '' : 'disabled'}>1<span class="mc-first-sub">○</span></button>
+          <button type="button" class="mc-menu-item" data-variant="all" title="Go to first unaccepted suggested edit" ${pendingTour.length ? '' : 'disabled'}>${chat}<span class="mc-first-sub">○</span></button>
         </span>
       </span>`;
     }
@@ -136,7 +144,7 @@ const WriteSysPush = {
       // when every suggested edit on it has a verdict).
       const rs = S.reviewedSentences ? S.reviewedSentences() : { reviewed: 0, total: 0 };
       const ownCount = `<span class="mc-count">${rs.reviewed}/${rs.total}</span>`;
-      html += this._pairHTML('accept', pend, { base: ICON_CHECKX },
+      review += this._pairHTML('accept', pend, { base: ICON_CHECKX },
         { own: 'Accept my uncontested', all: "Accept everyone's uncontested" },
         { own: ownCount });
     }
@@ -151,9 +159,12 @@ const WriteSysPush = {
       }
     }
     this._container.innerHTML = html;
+    if (this._review) this._review.innerHTML = review;
+    if (window.WriteSysLayerToggles) window.WriteSysLayerToggles.refresh(); // row 3 re-gates with the session
 
-
-    this._container.querySelectorAll('.mc-split').forEach(split => {
+    const splits = [...this._container.querySelectorAll('.mc-split'),
+      ...(this._review ? this._review.querySelectorAll('.mc-split') : [])];
+    splits.forEach(split => {
       const id = split.id.replace('-split', '');
       const act = (variant) => id === 'first' ? this._gotoFirst(variant)
         : id === 'accept' ? this._accept(variant) : this._push(variant);

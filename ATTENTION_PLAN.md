@@ -209,4 +209,5 @@ multiplies. Any other brace argument is a plain tag (no weight).
 - Multi-column/mobile-scaled pages: v1 targets the desktop book layout;
   the scaled mobile sheet inherits the SVG (it scales with the page), but
   Tab-hold on mobile has no keyboard — future gesture, out of scope.
-  (Resolved 2026-09-11: the stats-pane toggle button.)
+  (Resolved 2026-09-11: a toggle button — in the statistics pane until
+  2026-11-25, in the chrome's third row since; layer-toggles.js.)
