@@ -769,10 +769,18 @@ textarea.sn-mono-ro.sn-frozen, textarea.sn-mono-ro.sn-superseded,
   padding: 0;
 }
 .sn-note-colorbtn:hover { outline: 2px solid rgba(0, 0, 0, 0.15); }
-.sn-note-colorbar-disabled { opacity: 0.4; }
-.sn-note-colorbar-disabled .sn-note-colorbtn { cursor: default; }
-/* Disabled (nothing selected): no hover affordance — it isn't clickable. */
-.sn-note-colorbar-disabled .sn-note-colorbtn:hover { outline: none; }
+
+/* A note BLOCK (NOTE_UI_PLAN.md phase 1): the sticky note itself in the
+   flow — left-aligned at the standard note width, the pad's paragraph
+   rhythm around it. The widget inside is the shared component untouched. */
+.sn-note-block {
+  display: block;
+  width: var(--sticky-note-width, 232px);
+  margin: 10px 0;
+  position: relative;
+}
+.sn-note-block .sticky-note { margin: 0; }
+.sn-note-block-selected { outline: 2px solid #2a6fb0; outline-offset: 4px; border-radius: 6px; }
 
 /* The atomic noteRef: a colored square + the verbatim text, rendered inline so
    it reads like normal HIGHLIGHTED prose (same font/size as the surrounding

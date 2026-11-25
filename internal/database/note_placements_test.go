@@ -171,13 +171,15 @@ func TestPlacements_LegacyNoteAnchorShapeIsRead(t *testing.T) {
 		{"type":"noteAnchor","attrs":{"note_id":41,"color":"yellow"}},
 		{"type":"text","text":"x","marks":[{"type":"noteHighlight","attrs":{"color":"yellow"}}]},
 		{"type":"noteRef","attrs":{"noteId":42,"text":"y"}},
-		{"type":"noteRef","attrs":{"noteId":42,"text":"again"}}]}]}`)
+		{"type":"noteRef","attrs":{"noteId":42,"text":"again"}}]},
+		{"type":"noteBlock","attrs":{"noteId":43}},
+		{"type":"paragraph","content":[{"type":"noteRef","attrs":{"noteId":43,"text":"z"}}]}]}`)
 	ids, err := noteIDsInDoc(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fmt.Sprint(ids) != "[41 42]" {
-		t.Fatalf("want [41 42] (deduped, doc order), got %v", ids)
+	if fmt.Sprint(ids) != "[41 42 43]" {
+		t.Fatalf("want [41 42 43] (deduped, doc order; a noteBlock counts), got %v", ids)
 	}
 }
 

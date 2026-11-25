@@ -21,6 +21,7 @@ set -u
 FAST_TESTS=(
   test-api-tokens
   test-chrome-rows
+  test-pad-block-notes
   test-tabs
   test-split-pane
   test-manuscript-normalize

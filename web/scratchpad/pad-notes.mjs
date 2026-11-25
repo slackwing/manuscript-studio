@@ -11,11 +11,17 @@
  * teardown/suppress flags are gone; setEditorTearingDown stays as an inert
  * seam for editor-core's teardown bracket.
  *
+ * NOTE_UI_PLAN.md phase 1 (2026-11-25): a colour button with NOTHING
+ * selected inserts the sticky note itself as a BLOCK at the caret
+ * (noteBlock atom → NoteBlockView, which mounts the shared widget). A block
+ * is a placement like a ref: leaving the doc closes it, the trash deletes.
+ *
  * Module-boundary state (activeView) is shared through exported
  * getter/setter FUNCTIONS, not mutable exported bindings.
  */
+import { TextSelection } from './vendor/prosemirror.mjs';
 import { getCurrentScratchpadId } from './api.mjs?v=2';
-import { holdScroll } from './scroll.mjs?v=7';
+import { holdScroll } from './scroll.mjs?v=8';
 
 // ---- Scratchpad notes (NOTES_PLAN.md Phase 2, atomic) --------------------
 // Creating a note from a selection replaces the selected text with ONE atomic
@@ -166,12 +172,62 @@ async function ensureNoteCached(noteId, fresh = false) {
   return noteCache.get(noteId) || null;
 }
 
-// Create a scratchpad note from the current selection in `color`.
+// Insert noteBlock{noteId} at the selection and leave the caret in a
+// paragraph right after it (splitting the current paragraph when the caret
+// is mid-line; adding a trailing paragraph when the block lands at the end).
+export function insertNoteBlock(noteId) {
+  const view = activeView;
+  if (!view) return false;
+  const sc = view.state.schema;
+  let tr = view.state.tr.replaceSelectionWith(sc.nodes.noteBlock.create({ noteId }));
+  let end = -1;
+  tr.doc.descendants((node, pos) => {
+    if (end < 0 && node.type === sc.nodes.noteBlock && node.attrs.noteId === noteId) end = pos + node.nodeSize;
+    return end < 0;
+  });
+  if (end >= 0) {
+    const $end = tr.doc.resolve(end);
+    const next = $end.nodeAfter;
+    if (!next || !next.isTextblock) tr = tr.insert(end, sc.nodes.paragraph.create());
+    tr = tr.setSelection(TextSelection.create(tr.doc, end + 1));
+  }
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+  return true;
+}
+
+// A colour button with nothing selected: a bare note (no text, no default —
+// the widget's placeholder shows) placed in this pad as a block at the caret.
+async function createBlockNote(color) {
+  const view = activeView;
+  if (!view || !window.WriteSysNoteAPI) return;
+  let created;
+  try {
+    created = await window.WriteSysNoteAPI.create({ color, body: null, ctx: { scratchpad_id: getCurrentScratchpadId() } });
+  } catch (e) { console.error('create block note failed', e); return; }
+  const noteId = created && created.note_id;
+  if (!noteId) return;
+  noteCache.set(noteId, {
+    color, body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [],
+    manuscript_id: created.manuscript_id || null,
+    manuscript_name: created.manuscript_name || '',
+  });
+  insertNoteBlock(noteId);
+  // Hand focus to the new note's textarea: the author clicked "note", so
+  // the next keystrokes are the note.
+  requestAnimationFrame(() => {
+    const ta = view.dom.querySelector(`.sn-note-block[data-note-id="${noteId}"] .note-input`);
+    if (ta) ta.focus();
+  });
+}
+
+// Create a scratchpad note from the current selection in `color` — or, with
+// nothing selected, a block note at the caret.
 async function createNoteFromSelection(color) {
   const view = activeView;
   if (!view || !window.WriteSysNoteAPI) return;
   const { from, to, empty } = view.state.selection;
-  if (empty) return; // nothing selected → no-op (the color bar ignores it too)
+  if (empty) return createBlockNote(color);
   // Snapshot the highlighted text: it becomes BOTH the note body (so the note
   // shows what it's about, incl. on the landing page) AND the verbatim text the
   // atomic noteRef renders inline. The snapshot doesn't re-sync on doc edits.
@@ -228,6 +284,8 @@ function removeNoteFromDoc(noteId) {
   view.state.doc.descendants((node, pos) => {
     if (node.type === sc.nodes.noteRef && node.attrs.noteId === noteId) {
       found.push([pos, pos + node.nodeSize, node.attrs.text || '']);
+    } else if (node.type === sc.nodes.noteBlock && node.attrs.noteId === noteId) {
+      found.push([pos, pos + node.nodeSize, '']); // a block has no text to give back
     }
   });
   if (!found.length) return false;
@@ -354,6 +412,62 @@ export class NoteRefView {
   ignoreMutation() { return true; }
 }
 
+// NodeView for the noteBlock atom (NOTE_UI_PLAN.md phase 1): the sticky
+// note itself, mounted from the SHARED widget — the exact element the margin
+// and the float draw — inside a left-aligned block. Registered with the
+// ref-view registry so a recolor anywhere (float, another ref) redraws it.
+// Every pointer/keyboard event belongs to the widget (typing in its textarea,
+// chips, trash) — ProseMirror never sees them; the block is removed by the
+// doc's own means (Backspace onto it, cut, undo), which closes the placement
+// on save without touching the note.
+export class NoteBlockView {
+  constructor(node, view, getPos) {
+    this.node = node;
+    this.view = view;
+    this.getPos = getPos;
+    this.noteId = node.attrs.noteId;
+    this.dom = document.createElement('div');
+    this.dom.className = 'sn-note-block';
+    this.dom.dataset.noteId = String(this.noteId);
+    this.dom.contentEditable = 'false';
+    registerNoteRefView(this.noteId, this);
+    this.mount();
+  }
+  async mount() {
+    const cached = await ensureNoteCached(this.noteId);
+    if (this.destroyed) return;
+    this.render(cached || noteCache.get(this.noteId) || { color: 'yellow', body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [] });
+  }
+  render(cached) {
+    cached = cached || noteCache.get(this.noteId);
+    if (!cached || !window.WriteSysNoteWidget) return;
+    const note = noteFromCache(this.noteId, cached);
+    const widget = window.WriteSysNoteWidget.buildNoteElement(note, noteWidgetHandlers(this.noteId, note, cached, {
+      hostEl: () => this.dom.firstChild,
+      rerender: () => this.render(),
+      anchorEl: this.dom,
+    }), { showDelete: !note.sketch_id });
+    this.dom.replaceChildren(widget);
+    // buildNoteElement sized the textarea while detached — size it in place.
+    const ta = widget.querySelector('.note-input');
+    if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+  }
+  applyColor() { this.render(); } // the cache already carries the new colour
+  update(node) {
+    if (node.type !== this.node.type || node.attrs.noteId !== this.noteId) return false;
+    this.node = node;
+    return true;
+  }
+  selectNode() { this.dom.classList.add('sn-note-block-selected'); }
+  deselectNode() { this.dom.classList.remove('sn-note-block-selected'); }
+  destroy() {
+    this.destroyed = true;
+    unregisterNoteRefView(this.noteId, this);
+  }
+  stopEvent() { return true; }
+  ignoreMutation() { return true; }
+}
+
 // ---- The floating note (only one open at a time) ---------------------------
 let openNoteFloat = null;
 export function closeNoteFloat() {
@@ -384,42 +498,25 @@ function markSketchSquaresCompleted(noteId) {
   });
 }
 
-export async function openNoteFloatFor(noteId, anchorEl) {
-  closeNoteFloat();
-  if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
+// The widget's handlers for a note shown in this pad — ONE set for the float
+// and the block (NOTE_UI_PLAN.md). `hostEl()` is the mounted widget element
+// (for updateDims); `rerender()` redraws the host after a recolor.
+function noteWidgetHandlers(noteId, note, cached, { hostEl, rerender, anchorEl }) {
   const api = window.WriteSysNoteAPI;
-  // A sketch note's body follows its sketch's text server-side (050) — read
-  // it fresh, not from a cache filled before the latest variation save.
-  const prior = noteCache.get(noteId);
-  const fetched = await ensureNoteCached(noteId, !!(prior && prior.sketch_id));
-  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [] };
-  const note = {
-    noteId, note_id: noteId,
-    color: cached.color, body: cached.body, default_body: cached.default_body || null,
-    priority: cached.priority || 'none',
-    task_type: cached.task_type || '', impact: cached.impact || 'n/a', blocked: !!cached.blocked,
-    tags: cached.tags || [],
-    manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
-    sketch_id: cached.sketch_id || null,
-    pinned_at: cached.pinned_at || null,
-  };
   const isSketchNote = !!note.sketch_id;
-  if (openNoteFloat) return; // a newer open superseded us while fetching
-  const float = document.createElement('div');
-  float.className = 'sn-note-float';
-  const widget = window.WriteSysNoteWidget.buildNoteElement(note, {
+  return {
     // '' — not null: the server reads a null body as "unchanged" (clearing
     // the text never saved).
     onSaveText: (text) => { note.body = text.trim() || null; cached.body = note.body; trackWrite(noteId, api.update(noteId, { body: text.trim() })).catch(() => {}); },
     onColor: (color) => {
       note.color = color;
       recolorNote(noteId, color); // updates row + cache + all ref views (no doc edit)
-      openNoteFloatFor(noteId, anchorEl); // re-render palette (shows other 5)
+      rerender(); // re-render palette (shows other 5)
     },
     onDims: (patch) => {
       Object.assign(note, patch); Object.assign(cached, patch);
       trackWrite(noteId, api.update(noteId, patch)).catch(() => {});
-      window.WriteSysNoteWidget.updateDims(float.firstChild, note);
+      window.WriteSysNoteWidget.updateDims(hostEl(), note);
     },
     // A sketch's note can't be deleted (it lives with the sketch); its
     // completion greys the widget square to a green check instead of
@@ -437,7 +534,42 @@ export async function openNoteFloatFor(noteId, anchorEl) {
     onRemoveTag: async (tagId) => { try { await api.removeTag(noteId, tagId); note.tags = (note.tags || []).filter(t => t.tag_id !== tagId); cached.tags = note.tags; } catch (e) {} },
     onLinkManuscript: async (mid) => { try { const r = await api.linkManuscript(noteId, mid); note.manuscript_id = r.manuscript_id || null; note.manuscript_name = r.manuscript_name || ''; } catch (e) {} },
     onUnlinkManuscript: async () => { try { await api.linkManuscript(noteId, 0); note.manuscript_id = null; note.manuscript_name = ''; } catch (e) {} },
-  }, { showDelete: !isSketchNote });
+  };
+}
+
+// The note object the widget renders, from the cache entry.
+function noteFromCache(noteId, cached) {
+  return {
+    noteId, note_id: noteId,
+    color: cached.color, body: cached.body, default_body: cached.default_body || null,
+    priority: cached.priority || 'none',
+    task_type: cached.task_type || '', impact: cached.impact || 'n/a', blocked: !!cached.blocked,
+    tags: cached.tags || [],
+    manuscript_id: cached.manuscript_id || null, manuscript_name: cached.manuscript_name || '',
+    sketch_id: cached.sketch_id || null,
+    pinned_at: cached.pinned_at || null,
+  };
+}
+
+export async function openNoteFloatFor(noteId, anchorEl) {
+  closeNoteFloat();
+  if (!window.WriteSysNoteWidget || !window.WriteSysNoteAPI) return;
+  const api = window.WriteSysNoteAPI;
+  // A sketch note's body follows its sketch's text server-side (050) — read
+  // it fresh, not from a cache filled before the latest variation save.
+  const prior = noteCache.get(noteId);
+  const fetched = await ensureNoteCached(noteId, !!(prior && prior.sketch_id));
+  const cached = fetched || noteCache.get(noteId) || { color: noteColorOf(noteId), body: null, priority: 'none', task_type: '', impact: 'n/a', blocked: false, tags: [] };
+  const note = noteFromCache(noteId, cached);
+  const isSketchNote = !!note.sketch_id;
+  if (openNoteFloat) return; // a newer open superseded us while fetching
+  const float = document.createElement('div');
+  float.className = 'sn-note-float';
+  const widget = window.WriteSysNoteWidget.buildNoteElement(note, noteWidgetHandlers(noteId, note, cached, {
+    hostEl: () => float.firstChild,
+    rerender: () => openNoteFloatFor(noteId, anchorEl),
+    anchorEl,
+  }), { showDelete: !isSketchNote });
   float.appendChild(widget);
   document.body.appendChild(float);
   openNoteFloat = float;
@@ -454,9 +586,9 @@ export async function openNoteFloatFor(noteId, anchorEl) {
 }
 
 // The right-aligned 6-color note bar. Each square creates a note from the
-// current selection. Registers the group in the module-level noteColorGroups
-// list (reset per editor instance), which updateToolbar() walks to toggle the
-// disabled look (empty selection → can't create a note).
+// current selection — or, with nothing selected, a block note at the caret
+// (NOTE_UI_PLAN.md phase 1). The group registers in noteColorGroups (reset
+// per editor instance) for the toolbar's bookkeeping.
 export const noteColorGroups = [];
 export function buildNoteColorBar(toolbarEl, getView) {
   const group = document.createElement('span');
@@ -465,11 +597,10 @@ export function buildNoteColorBar(toolbarEl, getView) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'sn-note-colorbtn color-' + color;
-    btn.title = 'Note (' + color + ') — select text first';
+    btn.title = 'Note (' + color + ')';
     btn.style.backgroundColor = 'var(--highlight-' + color + ')';
     btn.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      if (getView().state.selection.empty) return;
       createNoteFromSelection(color);
     });
     group.appendChild(btn);

@@ -74,13 +74,19 @@ function psql(sql) {
         return route.continue();
       });
       await page.keyboard.press('End'); // caret only, no selection
-      await page.waitForFunction(() =>
-        document.querySelector('.sn-note-colorbar').classList.contains('sn-note-colorbar-disabled'));
-      check('empty selection disables the color bar', true);
+      check('empty selection leaves the color bar live (NOTE_UI_PLAN.md phase 1)',
+        !(await page.evaluate(() => document.querySelector('.sn-note-colorbar').classList.contains('sn-note-colorbar-disabled'))));
       await page.locator('.sn-note-colorbar .sn-note-colorbtn.color-yellow').click();
+      await page.waitForSelector('.sn-note-block .sticky-note', { timeout: 8000 });
       await page.waitForTimeout(300);
-      check('clicking a square with no selection creates nothing',
-        notePosts === 0 && (await page.locator('.sn-note-ref').count()) === 0, `posts=${notePosts}`);
+      check('clicking a square with no selection creates ONE note, as a block (no text ref)',
+        notePosts === 1 && (await page.locator('.sn-note-ref').count()) === 0 && (await page.locator('.sn-note-block').count()) === 1, `posts=${notePosts}`);
+      // Trash it so the rest of the walk starts from prose only.
+      await page.locator('.sn-note-block .note-trash').click();
+      await page.waitForTimeout(150);
+      await page.locator('.sn-note-block .note-trash').click();
+      await page.waitForFunction(() => !document.querySelector('.sn-note-block'));
+      await page.locator('.spm-editor .ProseMirror').click();
       await page.unroute('**/api/notes');
     }
 

@@ -162,7 +162,9 @@ func closeScratchpadPlacements(ctx context.Context, q pgExecer, scratchpadID int
 }
 
 // noteIDsInDoc walks a ProseMirror doc and collects the note ids of every
-// noteRef atom ({"type":"noteRef","attrs":{"noteId":N,"text":"…"}}). The
+// noteRef atom ({"type":"noteRef","attrs":{"noteId":N,"text":"…"}}) and
+// every noteBlock atom (the sticky note drawn as a block, NOTE_UI_PLAN.md —
+// same attrs shape without the text). The
 // pre-2026-08 shape (a noteAnchor node with a note_id attr) is read too, in
 // case a client ever saves one unmodernized. Dedupes; order is doc order.
 func noteIDsInDoc(doc json.RawMessage) ([]int, error) {
@@ -177,7 +179,7 @@ func noteIDsInDoc(doc json.RawMessage) ([]int, error) {
 		if node == nil {
 			return
 		}
-		if t, _ := node["type"].(string); t == "noteRef" || t == "noteAnchor" {
+		if t, _ := node["type"].(string); t == "noteRef" || t == "noteAnchor" || t == "noteBlock" {
 			if attrs, ok := node["attrs"].(map[string]any); ok {
 				id := 0
 				if v, ok := attrs["noteId"].(float64); ok {

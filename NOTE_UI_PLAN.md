@@ -72,7 +72,7 @@ pads, or nowhere. This plan gives the author ways to USE that.
 
 ## 3. Phases
 
-### Phase 1 — pad block notes (deploy #1)
+### Phase 1 — pad block notes (deploy #1) — SHIPPED 2026-11-25
 - schema `noteBlock`; `NoteBlockView` mounting the shared widget (handlers
   mirror the float's: save text, recolor → every view of the note, dims,
   delete via doc, complete → remove block, tags, link); registry so a

@@ -30,29 +30,29 @@ import {
   tableEditing, columnResizing, goToNextCell,
   addRowAfter, deleteRow, addColumnAfter, deleteColumn, deleteTable,
 } from './vendor/prosemirror.mjs';
-import { schema, modernizeDoc } from './schema.mjs?v=2';
+import { schema, modernizeDoc } from './schema.mjs?v=3';
 import { csrf, bookData, variationApi, uploadImage } from './api.mjs?v=2';
-import { scrollDiag } from './scroll.mjs?v=7';
+import { scrollDiag } from './scroll.mjs?v=8';
 import {
   SketchView, variationFlushers, dirtyVariations, refreshSketchSiblings,
-} from './sketch-view.mjs?v=10';
+} from './sketch-view.mjs?v=11';
 import {
-  NoteRefView, buildNoteColorBar, noteColorGroups, noteCache, closeNoteFloat,
+  NoteRefView, NoteBlockView, buildNoteColorBar, noteColorGroups, noteCache, closeNoteFloat,
   setActiveView, getActiveView, setEditorTearingDown,
-} from './pad-notes.mjs?v=7';
+} from './pad-notes.mjs?v=8';
 import {
   insertBlockSafely, markActive, headingActive, inTable, inBlockquote,
   toggleBlockquote, buildTablePicker, buildSketchMenu,
-} from './menus.mjs?v=8';
+} from './menus.mjs?v=9';
 
 // Re-exports: the one public surface (modal.mjs and the unit tests import
 // ONLY from this module; the sibling modules are an internal layout).
-export { schema, modernizeDoc } from './schema.mjs?v=2';
+export { schema, modernizeDoc } from './schema.mjs?v=3';
 export { apiCall, bookData, variationApi, setCurrentScratchpadId } from './api.mjs?v=2';
-export { suspendScrollHolds } from './scroll.mjs?v=7';
-export { letterOf, parseVariationRef } from './sketch-view.mjs?v=10';
-export { findNormalized } from './pad-notes.mjs?v=7';
-export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=8';
+export { suspendScrollHolds } from './scroll.mjs?v=8';
+export { letterOf, parseVariationRef } from './sketch-view.mjs?v=11';
+export { findNormalized } from './pad-notes.mjs?v=8';
+export { fmtDeleted, insertBlockSafely } from './menus.mjs?v=9';
 
 // ---------------------------------------------------------------- helpers
 
@@ -237,8 +237,8 @@ export async function createScratchpadEditor(els, scratchpadId) {
       if (b._item.active) b.classList.toggle('active', b._item.active(view.state));
     });
     dyn.forEach(el => el.classList.toggle('tb-hidden', !el._item.show(view.state)));
-    // Note-color squares are disabled when there's no selection to note.
-    noteColorGroups.forEach(g => g.classList.toggle('sn-note-colorbar-disabled', view.state.selection.empty));
+    // The note-colour squares are live either way: a selection makes a text
+    // note, none makes a block note (NOTE_UI_PLAN.md phase 1).
   };
 
   // ---- editor ----
@@ -313,6 +313,7 @@ export async function createScratchpadEditor(els, scratchpadId) {
       // schema def), not the UI term.
       sketch: (node, v, getPos) => new SketchView(node, v, getPos),
       noteRef: (node, v, getPos) => new NoteRefView(node, v, getPos),
+      noteBlock: (node, v, getPos) => new NoteBlockView(node, v, getPos),
     },
     dispatchTransaction(tr) {
       if (destroyed) return;

@@ -89,6 +89,21 @@ const coreNodes = {
       class: 'sn-note-ref',
     }, n.attrs.text],
   },
+  // A note BLOCK (NOTE_UI_PLAN.md phase 1): the sticky note itself, drawn in
+  // the pad as a left-aligned block atom. Like noteRef it is a PLACEMENT of
+  // the note in this pad (the save mirrors both node types into
+  // note_scratchpad); the doc stores only the note id — the NodeView mounts
+  // the shared widget on the note's live data. Removing the block closes
+  // the placement; only the widget's trash deletes the note.
+  noteBlock: {
+    group: 'block', atom: true, selectable: true, draggable: true,
+    attrs: { noteId: { default: 0 } },
+    parseDOM: [{
+      tag: 'div[data-note-block]',
+      getAttrs: dom => ({ noteId: parseInt(dom.getAttribute('data-note-block'), 10) || 0 }),
+    }],
+    toDOM: n => ['div', { 'data-note-block': String(n.attrs.noteId), class: 'sn-note-block' }],
+  },
   text: { group: 'inline' },
   hard_break: {
     group: 'inline', inline: true, selectable: false,
