@@ -118,10 +118,22 @@
       pop.className = 'note-linkpop dim-pop';
       pop.innerHTML = '<div class="note-linkpop-list"><span class="note-linkpop-empty">Loading…</span></div>';
       document.body.appendChild(pop);
+      // VIEWPORT coordinates (position: fixed), kept on screen: the phone
+      // suggest-edit view pins the body at -scrollY, where document
+      // coordinates put this menu a screenful above its chip — the type
+      // could not be set from a phone (2026-11-25). Below the chip when it
+      // fits, else above.
       const r = chip.getBoundingClientRect();
-      pop.style.position = 'absolute';
-      pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
-      pop.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 200)) + 'px';
+      const W = 220; // .note-linkpop width (book.css)
+      const place = () => {
+        const h = pop.offsetHeight || 60;
+        const below = r.bottom + 4;
+        const top = below + h <= window.innerHeight - 8 ? below : Math.max(8, r.top - 4 - h);
+        pop.style.position = 'fixed';
+        pop.style.top = top + 'px';
+        pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - W - 8)) + 'px';
+      };
+      place();
       const close = () => { document.removeEventListener('mousedown', outside, true); pop.remove(); };
       const outside = (ev) => { if (!pop.contains(ev.target)) close(); };
       setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
@@ -134,6 +146,7 @@
         : '<span class="note-linkpop-empty">No options</span>';
       const btns = list.querySelectorAll('button[data-v]');
       options.forEach((o, i) => { btns[i].textContent = o.label; });
+      place(); // the list has its real height now
       list.addEventListener('click', (ev) => {
         const b = ev.target.closest('button[data-v]');
         if (!b) return;

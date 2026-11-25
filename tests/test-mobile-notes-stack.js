@@ -132,6 +132,23 @@ const LONG_BODY = 'Long mobile note. '.repeat(30) + `(${TEST_USERNAME})`;
   check('typing in the create card births a real note in the stack', true);
   check('…and the gradient + card follows it', await page.evaluate(() =>
     !!document.querySelector('#sgm-notes-stack .sticky-note.uncreated-note:not(.first-uncreated)')));
+  // The type chip's menu (and every widget popover) must open ON SCREEN in
+  // the pinned phone view too — it opened a screenful up, so the type could
+  // not be set from a phone (2026-11-25, "the n/a button is broken").
+  await page.click('#sgm-notes-stack .sticky-note:not(.uncreated-note) .dim-type');
+  await page.waitForSelector('.dim-pop button[data-v]', { timeout: 8000 });
+  const typeMenu = await page.evaluate(() => {
+    const p = document.querySelector('.dim-pop').getBoundingClientRect();
+    const chip = document.querySelector('#sgm-notes-stack .sticky-note:not(.uncreated-note) .dim-type').getBoundingClientRect();
+    return { onScreen: p.top >= 0 && p.left >= 0 && p.bottom <= innerHeight + 1 && p.right <= innerWidth + 1, nearChip: Math.abs(p.top - chip.bottom) < 60 || Math.abs(p.bottom - chip.top) < 60, options: document.querySelectorAll('.dim-pop button[data-v]').length };
+  });
+  check('phone: the type chip\'s menu opens on screen by the chip, with options', typeMenu.onScreen && typeMenu.nearChip && typeMenu.options > 1, JSON.stringify(typeMenu));
+  await page.click('.dim-pop button[data-v="reminder"]');
+  await page.waitForFunction(() => (document.querySelector('#sgm-notes-stack .sticky-note:not(.uncreated-note) .dim-type .dim-label') || {}).textContent === 'reminder', null, { timeout: 8000 }).catch(() => {});
+  const bornId = await page.evaluate(() => document.querySelector('#sgm-notes-stack .sticky-note:not(.uncreated-note)').dataset.noteId);
+  let typed = '';
+  for (let i = 0; i < 30 && typed !== 'reminder'; i++) { await page.waitForTimeout(150); typed = psql(`SELECT coalesce(task_type,'') FROM note WHERE note_id=${bornId}`); }
+  check('phone: picking a type sets the note\'s chip (and lands in the DB)', (await page.locator('#sgm-notes-stack .sticky-note:not(.uncreated-note) .dim-type .dim-label').textContent()) === 'reminder' && typed === 'reminder', typed);
   await page.evaluate(() => {
     const n = (window.WriteSysNotes.notes || []).find(x => (x.body || '').startsWith('Stack-born'));
     if (n) return fetch(`api/notes/${n.note_id}`, { method: 'DELETE', headers: { 'X-CSRF-Token': localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token') || '' }, credentials: 'same-origin' });
