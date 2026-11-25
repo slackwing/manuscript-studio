@@ -86,11 +86,9 @@ var (
 // arg that exactly matches a size keyword is the size, anything else is the
 // label (a label that IS literally a size keyword can force the default by
 // writing the size explicitly). Valid=false means the command is mis-syntaxed
-// and renders as literal prose. The pre-2026-11-25 fourth {details} arg is
-// ACCEPTED AND IGNORED — a book must never show raw text over a line the
-// author wrote under the old grammar; BackfillPlaceholderDetailNotes has
-// already turned those details into sticky notes, and the author trims the
-// arg at leisure.
+// and renders as literal prose — including the pre-2026-11-25 fourth
+// {details} arg, which is how an author finds the lines to trim after
+// BackfillPlaceholderDetailNotes has turned their details into sticky notes.
 type PlaceholderSpec struct {
 	Unit  string // "sentences" or "paragraphs"
 	Size  string // canonical size keyword; "m" when omitted
@@ -112,7 +110,7 @@ var placeholderParagraphCounts = map[string]int{
 // web/js/command.js placeholderSpec — keep in lockstep.
 func ParsePlaceholder(cmd Command) PlaceholderSpec {
 	spec := PlaceholderSpec{Size: "m"}
-	if cmd.Kind != CmdPlaceholder || len(cmd.Args) == 0 || len(cmd.Args) > 4 {
+	if cmd.Kind != CmdPlaceholder || len(cmd.Args) == 0 || len(cmd.Args) > 3 {
 		return spec
 	}
 	spec.Unit = strings.TrimSpace(cmd.Args[0])
@@ -135,11 +133,7 @@ func ParsePlaceholder(cmd Command) PlaceholderSpec {
 		rest = rest[1:]
 	}
 	if len(rest) > 0 {
-		// The old {details} arg: ignored (its text lives in a note now).
-		rest = rest[1:]
-	}
-	if len(rest) > 0 {
-		// More args than {unit}{size}{label}{legacy details} can absorb.
+		// More args than {unit}{size}{label} can absorb (the old {details}).
 		return PlaceholderSpec{Size: "m"}
 	}
 	spec.Count = counts[spec.Size]

@@ -254,15 +254,12 @@ func TestParsePlaceholder(t *testing.T) {
 		// Full signature.
 		{"&placeholder#r{sentences}{l}{Reunion}",
 			PlaceholderSpec{Unit: "sentences", Size: "l", Count: 5, Label: "Reunion", Valid: true}},
-		// The old fourth {details} arg (with or without a size) is accepted
-		// and ignored — the book never shows raw text over a legacy line.
-		{"&placeholder#r{sentences}{l}{Reunion}{They meet. Wordless.}",
-			PlaceholderSpec{Unit: "sentences", Size: "l", Count: 5, Label: "Reunion", Valid: true}},
-		{"&placeholder{paragraphs}{The argument}{Three beats, escalating}",
-			PlaceholderSpec{Unit: "paragraphs", Size: "m", Count: 3, Label: "The argument", Valid: true}},
-		{"&placeholder{paragraphs}{m}{}{}", PlaceholderSpec{Unit: "paragraphs", Size: "m", Count: 3, Valid: true}},
-		// Mis-syntax: bad unit, or too many args for the signature.
+		// Mis-syntax: bad unit, or too many args for the signature — which
+		// since 2026-11-25 includes the old fourth {details} arg (with or
+		// without a size): the line prints literally until the author trims it.
 		{"&placeholder{words}{m}", PlaceholderSpec{Size: "m", Unit: "words"}},
+		{"&placeholder#r{sentences}{l}{Reunion}{They meet. Wordless.}", PlaceholderSpec{Size: "m"}},
+		{"&placeholder{paragraphs}{The argument}{Three beats, escalating}", PlaceholderSpec{Size: "m"}},
 		{"&placeholder{sentences}{a}{b}{c}{d}", PlaceholderSpec{Size: "m"}},
 	}
 	for _, c := range cases {
