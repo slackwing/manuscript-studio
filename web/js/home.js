@@ -402,6 +402,7 @@ const WriteSysHome = {
         <div class="home-section-head board-head">
           <input class="board-name" value="${this.esc(B.board.name)}" aria-label="Board name">
           <span class="home-count">${noteList.length}</span>
+          <span class="board-sort" id="board-sort"></span>
           <button type="button" class="board-delete" title="Delete board">Delete</button>
         </div>
         <div class="settings-section board-rules" id="board-rules"></div>
@@ -636,6 +637,24 @@ const WriteSysHome = {
       await this.api(`api/boards/${id}`, { method: 'DELETE' }).catch(() => {});
       this.closeBoardTab(id);
     });
+    // The sort (060), applied after the rules: recent | manuscript.
+    const sortHost = root.querySelector('#board-sort');
+    const W = window.WriteSysNoteWidget;
+    const mountSort = () => {
+      if (!sortHost || !W) return;
+      sortHost.innerHTML = '';
+      sortHost.appendChild(W.buildDimChip({
+        cls: 'dim-sort',
+        value: B.board.sort || 'recent',
+        loadOptions: async () => ['recent', 'manuscript'].map((v) => ({ value: v, label: v })),
+        onPick: async (v) => {
+          try { await this.api(`api/boards/${id}`, { method: 'PUT', body: JSON.stringify({ sort: v }) }); B.board.sort = v; } catch (e) { /* unchanged */ }
+          mountSort();
+          this.refreshBoardNotes();
+        },
+      }));
+    };
+    mountSort();
     const RE = window.WriteSysRulesEditor;
     const host = root.querySelector('#board-rules');
     if (RE && host) {

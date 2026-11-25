@@ -28,6 +28,21 @@ manuscript settings where it's not needed."*
   it (a rule ANDs its selectors, as on the daily board) and that rule has
   quota. Newest-updated first. No pins, no date seeding, no 16 cap.
 
+## Sort (060, 2026-11-25)
+
+Applied AFTER the rules; saved per board (`board.sort`), chosen with a chip
+in the board head:
+
+- **recent** (default): the viewer's last-touched notes first (newest touch
+  first — `note_touch` holds at most 3), then newest-updated — the ↗
+  picker's order.
+- **manuscript**: notes placed on a sentence first — by manuscript (the
+  board's picked order, else id), the current text before older versions,
+  then sentence order — then everything else in *recent* order. A note
+  merely linked to a manuscript (no sentence) counts as "everything else".
+
+The rule cap is a chip dropdown — `∞` or `≤ N` — never a bare -1.
+
 ## API
 
 `GET/POST /api/boards`, `GET/PUT/DELETE /api/boards/{id}`,

@@ -276,7 +276,7 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
     dotSize: (document.querySelector('#dr-editor .rules-builder .color-dot-current') || {}).offsetWidth || 0,
     blockedSize: (document.querySelector('#dr-editor .rules-builder .blocked-chip') || {}).offsetWidth || 0,
     tagInput: !!document.querySelector('#dr-editor .rules-builder .dr-tag-input'),
-    count: !!document.querySelector('#dr-editor .rules-builder .dr-count'),
+    count: !!document.querySelector('#dr-editor .rules-builder .dim-cap'),
   }));
   check('rule builder: type chip defaults to any', builder.type === 'any', builder.type);
   check('rule builder: blocked circle + color dot + tag + count present',
@@ -287,8 +287,11 @@ const wipeTypes = () => psql(`DELETE FROM task_type WHERE name IN ('${TT}','${TD
   await page.waitForSelector('.dim-pop button[data-v="must"]');
   await page.locator('.dim-pop button[data-v="must"]').click();
   await page.waitForTimeout(300);
-  await page.fill('#dr-editor .rules-builder .dr-count', '2');
-  await page.locator('#dr-editor .rules-builder .dr-count').dispatchEvent('change');
+  // The cap is a chip dropdown (∞ / ≤ N) since 2026-11-25.
+  await page.locator('#dr-editor .rules-builder .dim-cap').click();
+  await page.waitForSelector('.dim-pop button[data-v="≤ 2"]');
+  await page.locator('.dim-pop button[data-v="≤ 2"]').click();
+  await page.waitForTimeout(200);
   await page.locator('#dr-editor .dr-add').click();
   await page.waitForSelector('.dr-rule', { timeout: 5000 });
   const ruleRow = await page.locator('.dr-rule').first().innerText();

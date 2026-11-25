@@ -543,4 +543,4 @@ settings page binds it to `api/daily-rules` with the manuscript picker
 off; a board page (`home.html?view=board&board_id=N`, a landing VIEW that
 opens as tab type `board`) binds it to `api/boards/{id}/rules` with the
 picker on. `ListBoardNotes` + `ApplyBoardRules` (no rules → all; any rule
-matches, per-rule cap) feed the page and the landing's note counts.
+matches, per-rule cap) then `SortBoardNotes` (`board.sort`: recent = last-touched then newest-updated; manuscript = sentence-placed first in text order) feed the page and the landing's note counts.

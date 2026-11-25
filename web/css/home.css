@@ -583,7 +583,7 @@ body.home-page {
 .mk-att { width: 52px; text-align: right; }
 
 /* ---- Boards (BOARDS_PLAN.md, 2026-11-25) ---- */
-.card-board .card-kindbar { background: #8a6d1f; }
+.card-board .card-kindbar { background: #a8443b; } /* a red, not the manuscripts' brown */
 .card-board-rules { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
 .card-board-rules .tag-chip { font-size: 11px; }
 .board-head { align-items: center; gap: 12px; }
@@ -617,3 +617,5 @@ body.home-page {
 .rules-ms { cursor: pointer; opacity: 0.55; }
 .rules-ms:hover { opacity: 0.85; }
 .rules-ms.on { opacity: 1; background: #2a6fb0; color: #fff; border-color: #2a6fb0; }
+.board-sort { display: inline-flex; }
+.board-sort .dim-chip { margin: 0; }

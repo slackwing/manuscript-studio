@@ -10,6 +10,7 @@
  *     add:    async (rule) => void,          // the same shape, no rule_id
  *     remove: async (ruleId) => void,
  *     defaultMax: 1,                         // the builder's starting cap (-1 = unlimited)
+ *     caps: [-1, 1, 2, 3, 4, 5, 8, 10, 16],   // the cap chip's choices (∞ = -1)
  *     capLabel: (n) => n === -1 ? '∞ / day' : `≤ ${n} / day`,
  *     empty: 'No rules — …',                 // status when there are none
  *     manuscripts: null | {                  // the picker — null hides it (settings)
@@ -112,15 +113,17 @@
     const renderBuilder = () => {
       builder.innerHTML = '';
       W.buildCriteriaRow(builder, crit, renderBuilder);
-      const count = document.createElement('input');
-      count.type = 'number';
-      count.className = 'dr-count';
-      count.min = '-1';
-      count.max = '999';
-      count.value = String(crit.max);
-      count.title = 'Max matching notes (-1 = unlimited)';
-      count.addEventListener('change', () => { crit.max = parseInt(count.value, 10); });
-      builder.appendChild(count);
+      // The cap: a chip dropdown like the others — ∞ (unlimited) or ≤ N
+      // (2026-11-25: it was a number box showing -1).
+      const CAPS = cfg.caps || [-1, 1, 2, 3, 4, 5, 8, 10, 16];
+      const capText = (n) => (n === -1 ? '∞' : '≤ ' + n);
+      const capOf = (s) => (s === '∞' ? -1 : parseInt(String(s).replace('≤', '').trim(), 10));
+      builder.appendChild(W.buildDimChip({
+        cls: 'dim-cap',
+        value: capText(crit.max),
+        loadOptions: async () => CAPS.map((n) => ({ value: capText(n), label: capText(n) })),
+        onPick: (v) => { crit.max = capOf(v); renderBuilder(); },
+      }));
       const add = document.createElement('button');
       add.type = 'button';
       add.className = 'dr-add';
@@ -165,6 +168,7 @@
     add: (rule) => call('api/daily-rules', { method: 'POST', body: JSON.stringify(rule) }),
     remove: (id) => call(`api/daily-rules/${id}`, { method: 'DELETE' }),
     defaultMax: 1,
+    caps: [-1, 1, 2, 3, 4, 5, 8, 10, 16],
     capLabel: (n) => (n === -1 ? '∞ / day' : `≤ ${n} / day`),
     empty: 'No rules — the daily page shows any 16 tasks.',
     manuscripts: null,
@@ -174,6 +178,7 @@
     add: (rule) => call(`api/boards/${boardId}/rules`, { method: 'POST', body: JSON.stringify(rule) }),
     remove: (id) => call(`api/boards/${boardId}/rules/${id}`, { method: 'DELETE' }),
     defaultMax: -1,
+    caps: [-1, 1, 2, 3, 5, 8, 10, 16, 32],
     capLabel: (n) => (n === -1 ? '∞' : `≤ ${n}`),
     empty: '',
   });

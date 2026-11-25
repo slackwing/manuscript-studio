@@ -50,10 +50,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const first = await frame.evaluate(() => ({
     notes: document.querySelectorAll('.board-page [data-note-grid] .card-note').length,
     picker: [...document.querySelectorAll('.rules-manuscripts .rules-ms')].map((c) => c.textContent),
-    builder: !!document.querySelector('.rules-builder .dr-count') && !!document.querySelector('.rules-builder .dr-add'),
+    builder: !!document.querySelector('.rules-builder .dim-cap') && !!document.querySelector('.rules-builder .dr-add'),
+    cap: (document.querySelector('.rules-builder .dim-cap .dim-label') || {}).textContent,
     name: document.querySelector('.board-name').value,
   }));
   check('board page: the rules editor (picker + builder) sits above ALL the notes', first.notes >= 3 && first.picker.length >= 1 && first.builder && first.name === 'Board', JSON.stringify(first));
+  check('the cap chip reads ∞ by default on a board (no -1 anywhere)', first.cap === '∞', first.cap);
 
   // ---- a tag rule narrows the board ----
   await frame.fill('.rules-builder .dr-tag-input', 'hone-me');
@@ -76,6 +78,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await frame.waitForFunction((n) => document.querySelectorAll('.board-page [data-note-grid] .card-note').length === n, 2, { timeout: 10000 }).catch(() => {});
   check('unpicking (none) means all books again', (await frame.locator('.board-page [data-note-grid] .card-note').count()) === 2);
 
+  // ---- sort (060): recent = last-touched first; manuscript = sentence order first ----
+  const sids = psql(`SELECT s.sentence_id FROM sentence s JOIN migration mg ON mg.migration_id=s.migration_id WHERE mg.manuscript_id=${TEST_MANUSCRIPT_ID} AND mg.migration_id=(SELECT max(migration_id) FROM migration WHERE manuscript_id=${TEST_MANUSCRIPT_ID}) AND s.ordinal IN (2,5) ORDER BY s.ordinal`).split('\n');
+  const placed = await frame.evaluate(async ({ s2, s5 }) => {
+    const H = { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionStorage.getItem('csrf_token') || localStorage.getItem('csrf_token') };
+    const mk = async (body, sid) => (await (await fetch('api/notes', { method: 'POST', headers: H, body: JSON.stringify({ color: 'blue', body, sentence_id: sid }) })).json()).note_id;
+    const tag = (id) => fetch(`api/notes/${id}/tags`, { method: 'POST', headers: H, body: JSON.stringify({ tag_name: 'hone-me' }) });
+    const n2 = await mk('Sort note on sentence 2', s2); await tag(n2);
+    const n5 = await mk('Sort note on sentence 5', s5); await tag(n5); // created LAST → touched last
+    return { n2, n5 };
+  }, { s2: sids[0], s5: sids[1] });
+  await frame.evaluate(() => window.WriteSysHome.refreshBoardNotes());
+  await frame.waitForFunction((n) => document.querySelectorAll('.board-page [data-note-grid] .card-note').length === n, 4, { timeout: 10000 }).catch(() => {});
+  const recentOrder = await frame.evaluate(() => [...document.querySelectorAll('.board-page [data-note-grid] .card-note')].map((c) => parseInt(c.dataset.noteId, 10)));
+  check('default sort: the last-touched note leads (created last)', recentOrder[0] === placed.n5, JSON.stringify(recentOrder));
+  await frame.click('.board-sort .dim-sort');
+  await frame.waitForSelector('.dim-pop button[data-v="manuscript"]', { timeout: 5000 });
+  await frame.click('.dim-pop button[data-v="manuscript"]');
+  await frame.waitForFunction((n) => { const l = [...document.querySelectorAll('.board-page [data-note-grid] .card-note')].map((c) => parseInt(c.dataset.noteId, 10)); return l[0] === n; }, placed.n2, { timeout: 10000 }).catch(() => {});
+  const msOrder = await frame.evaluate(() => [...document.querySelectorAll('.board-page [data-note-grid] .card-note')].map((c) => parseInt(c.dataset.noteId, 10)));
+  check('manuscript sort: sentence 2 before sentence 5, then the unplaced', msOrder[0] === placed.n2 && msOrder[1] === placed.n5 && msOrder.length === 4, JSON.stringify(msOrder));
+  check('DB: the sort is saved on the board', psql(`SELECT sort FROM board WHERE board_id=${boardId}`) === 'manuscript');
+
   // ---- rename renames the tab; the landing card shows the board ----
   await frame.fill('.board-name', 'Hone list');
   await frame.press('.board-name', 'Enter');
@@ -86,7 +110,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => window.WriteSysHome.reload());
   await page.waitForFunction((id) => !!document.querySelector(`#home-root .card-board[data-board-id="${id}"]`), boardId, { timeout: 15000 });
   const card = await page.evaluate((id) => { const c = document.querySelector(`#home-root .card-board[data-board-id="${id}"]`); return { title: c.querySelector('.card-title').textContent, meta: c.querySelector('.card-meta').textContent, chips: c.querySelectorAll('.card-board-rules .tag-chip').length }; }, boardId);
-  check('landing card: name, rule chips, note count', card.title === 'Hone list' && /2 notes/.test(card.meta) && card.chips === 1, JSON.stringify(card));
+  check('landing card: name, rule chips, note count', card.title === 'Hone list' && /4 notes/.test(card.meta) && card.chips === 1, JSON.stringify(card));
 
   // ---- Delete from the board page closes the tab ----
   await page.evaluate((id) => window.WriteSysTabs.openBoard(id, 'Hone list'), parseInt(boardId, 10));

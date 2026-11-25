@@ -146,6 +146,7 @@ func (h *BoardHandlers) HandleList(w http.ResponseWriter, r *http.Request) {
 type boardPatch struct {
 	Name          *string `json:"name"`
 	ManuscriptIDs []int   `json:"manuscript_ids"`
+	Sort          *string `json:"sort"` // 060: recent | manuscript
 }
 
 // HandleCreate: POST /api/boards {name?, manuscript_ids?} → the board
@@ -254,7 +255,11 @@ func (h *BoardHandlers) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	updated, err := h.DB.UpdateBoard(r.Context(), username, b.BoardID, req.Name, req.ManuscriptIDs)
+	if req.Sort != nil && !database.BoardSorts[*req.Sort] {
+		http.Error(w, "sort must be recent or manuscript", http.StatusBadRequest)
+		return
+	}
+	updated, err := h.DB.UpdateBoard(r.Context(), username, b.BoardID, req.Name, req.ManuscriptIDs, req.Sort)
 	if err != nil {
 		log.Printf("boards: update %d: %v", b.BoardID, err)
 		http.Error(w, "Failed to update board", http.StatusInternalServerError)

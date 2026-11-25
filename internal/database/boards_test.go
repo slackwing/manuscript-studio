@@ -49,7 +49,7 @@ func TestBoards(t *testing.T) {
 		t.Fatalf("another user must not see the board")
 	}
 	name := "Hone list!"
-	if upd, err := f.db.UpdateBoard(f.ctx, f.username, b.BoardID, &name, nil); err != nil || upd.Name != name || len(upd.ManuscriptIDs) != 0 {
+	if upd, err := f.db.UpdateBoard(f.ctx, f.username, b.BoardID, &name, nil, nil); err != nil || upd.Name != name || len(upd.ManuscriptIDs) != 0 {
 		t.Fatalf("rename: %+v %v", upd, err)
 	}
 
@@ -64,7 +64,7 @@ func TestBoards(t *testing.T) {
 	}
 
 	// ---- manuscripts filter: only the note placed on the book ----
-	if _, err := f.db.UpdateBoard(f.ctx, f.username, b.BoardID, nil, []int{f.manuscriptID}); err != nil {
+	if _, err := f.db.UpdateBoard(f.ctx, f.username, b.BoardID, nil, []int{f.manuscriptID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	b, _ = f.db.GetBoard(f.ctx, f.username, b.BoardID)
@@ -73,7 +73,7 @@ func TestBoards(t *testing.T) {
 		t.Fatalf("manuscript filter: want only the book note, got %v", have)
 	}
 	// Back to all; a tag rule picks the pad notes; a cap of 1 admits one.
-	if _, err := f.db.UpdateBoard(f.ctx, f.username, b.BoardID, nil, []int{}); err != nil {
+	if _, err := f.db.UpdateBoard(f.ctx, f.username, b.BoardID, nil, []int{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	b, _ = f.db.GetBoard(f.ctx, f.username, b.BoardID)
@@ -124,6 +124,54 @@ func TestBoards(t *testing.T) {
 	}
 	if ok, _ := f.db.DeleteBoardRule(f.ctx, f.username, bid, daily[0].RuleID); ok {
 		t.Fatalf("a daily rule must not be deletable through a board")
+	}
+
+	// ---- sort (060): drop the rule; default "recent" = touched first, then
+	// newest-updated; "manuscript" = sentence-placed first in text order ----
+	if rs, _ := f.db.ListBoardRules(f.ctx, f.username, bid); len(rs) == 1 {
+		f.db.DeleteBoardRule(f.ctx, f.username, bid, rs[0].RuleID)
+	}
+	onBook2 := f.createNote(t, sids[1], "on the book, second sentence")
+	f.pool.Exec(f.ctx, `UPDATE note SET updated_at = now() - interval '1 hour' WHERE note_id = $1`, onBook.NoteID)
+	f.pool.Exec(f.ctx, `UPDATE note SET updated_at = now() - interval '2 hour' WHERE note_id = $1`, onBook2.NoteID)
+	if err := f.db.TouchNote(f.ctx, f.username, onBook2.NoteID); err != nil {
+		t.Fatal(err)
+	}
+	notes, _ = f.db.BoardNotes(f.ctx, f.username, b)
+	if len(notes) < 4 || notes[0].NoteID != onBook2.NoteID {
+		t.Fatalf("recent sort: the touched note leads; got %v", func() []int {
+			var o []int
+			for _, n := range notes {
+				o = append(o, n.NoteID)
+			}
+			return o
+		}())
+	}
+	for i := 1; i+1 < len(notes); i++ {
+		if notes[i].UpdatedAt.Before(notes[i+1].UpdatedAt) {
+			t.Fatalf("recent sort: after the touched, newest-updated first")
+		}
+	}
+	ms := "manuscript"
+	if _, err := f.db.UpdateBoard(f.ctx, f.username, bid, nil, nil, &ms); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = f.db.GetBoard(f.ctx, f.username, bid)
+	if b.Sort != "manuscript" {
+		t.Fatalf("sort saved: %q", b.Sort)
+	}
+	notes, _ = f.db.BoardNotes(f.ctx, f.username, b)
+	if len(notes) < 4 || notes[0].NoteID != onBook.NoteID || notes[1].NoteID != onBook2.NoteID || notes[2].PlaceOrdinal != nil {
+		t.Fatalf("manuscript sort: sentence 0's note, then sentence 1's, then the unplaced; got %v", func() []int {
+			var o []int
+			for _, n := range notes {
+				o = append(o, n.NoteID)
+			}
+			return o
+		}())
+	}
+	if notes[2].TouchedAt != nil && notes[3].TouchedAt == nil {
+		// fine: the unplaced group keeps the recent order (touched first)
 	}
 
 	// ---- delete: gone from the list; its rules cascade ----

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- 060 (2026-11-25): a board's SORT, applied after its rules —
+         'recent' (the viewer's last-touched notes first, then newest-updated:
+         the picker's order) or 'manuscript' (notes placed on sentences first,
+         in text order; then the rest in 'recent' order). BOARDS_PLAN.md. -->
+    <changeSet id="060-board-sort" author="claude">
+        <sql>
+            ALTER TABLE board ADD COLUMN sort VARCHAR(20) NOT NULL DEFAULT 'recent';
+        </sql>
+    </changeSet>
+</databaseChangeLog>

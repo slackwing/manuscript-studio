@@ -50,9 +50,14 @@ type HomeNote struct {
 	// be someone else's (notes on a manuscript you hold a role on).
 	Owner string
 	// PlacedManuscriptID: the manuscript of the note's primary sentence
-	// placement (ListRecentNotesForUser) — the context when manuscript_id
-	// was never stamped on the row (legacy / raw-inserted notes).
+	// placement (ListRecentNotesForUser, ListBoardNotes) — the context when
+	// manuscript_id was never stamped on the row (legacy / raw-inserted notes).
 	PlacedManuscriptID *int
+	// Board sort inputs (060, ListBoardNotes only): the viewer's touch, and
+	// the primary placement's migration + ordinal (nil = not on a sentence).
+	TouchedAt        *time.Time
+	PlaceMigrationID *int
+	PlaceOrdinal     *int
 }
 
 // homeNoteSelect is the shared column list of the two home-note readers
