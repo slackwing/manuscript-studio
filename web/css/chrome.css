@@ -229,7 +229,7 @@ html.embedded, html.embedded.has-ms-tabs { --tabs-h: -52px; } /* one bar height 
    viewport length; the strip's 12px padding offsets it). */
 #ms-tabs.split .ms-tabbar-left {
   flex: none;
-  width: calc(var(--split-x, 50vw) - 12px);
+  width: max(calc(var(--split-x, 50vw) - 12px), 0px);
 }
 #ms-tabs.split .ms-tabbar-right { padding-left: 8px; }
 /* Focus indication, kept light: the unfocused pane's active tab loses its
@@ -349,6 +349,7 @@ html.has-ms-tabs #controls { border-bottom-color: transparent; }
   left: 0; right: 0; bottom: 0;
   z-index: 800;
   background: #f5f5f5;
+  overflow: hidden; /* a pane pushed past the seam floor clips at the screen edge */
 }
 #ms-tab-panels[hidden] { display: none; }
 .ms-panel {
@@ -366,20 +367,25 @@ html.has-ms-tabs #controls { border-bottom-color: transparent; }
    assignment is the .pane-right class and the seam is --split-x (a vw
    length set by tabs.js). Each pane is its own iframe viewport, so the
    framed pages' 1239px mobile breakpoint applies per pane for free. */
+/* Beyond the floor (480px, tabs.js MIN_PANE): a pane's content keeps that
+   width and slides off ITS screen edge — the left pane leftward, the right
+   pane rightward — down to nothing (the host clips). Above the floor these
+   resolve to exactly the old seam math, so content scaling is untouched. */
 #ms-tab-panels.split .ms-panel.active:not(.pane-right) {
   right: auto;
-  width: var(--split-x, 50vw);
+  left: min(0px, calc(var(--split-x, 50vw) - 480px));
+  width: max(var(--split-x, 50vw), 480px);
 }
 #ms-tab-panels.split .ms-panel.active.pane-right {
   left: var(--split-x, 50vw);
   /* NOT width:auto — an iframe is a replaced element, so auto resolves to
      its intrinsic 300px, not a left/right stretch. */
-  width: calc(100% - var(--split-x, 50vw));
+  width: max(calc(100% - var(--split-x, 50vw)), 480px);
 }
 /* Home in the left pane: the landing page IS the shell document, so the
    host shrinks to the right region and the page underneath stays live. */
 #ms-tab-panels.split.home-left { left: var(--split-x, 50vw); }
-#ms-tab-panels.split.home-left .ms-panel.active.pane-right { left: 0; width: 100%; }
+#ms-tab-panels.split.home-left .ms-panel.active.pane-right { left: 0; width: max(100%, 480px); }
 html.ms-split body.home-page .home-main {
   max-width: none;
   width: var(--split-x, 50vw);
@@ -412,6 +418,28 @@ html.ms-split body.home-page .home-main {
 html.ms-divider-drag #ms-split-divider::after { background: #2a6fb0; }
 html.ms-divider-drag { cursor: col-resize; user-select: none; }
 html.ms-divider-drag .ms-panel { pointer-events: none; }
+/* Parked at an edge (a pane shrunk to nothing): the divider becomes a
+   12px handle on that edge — tinted, with a dotted grip — so the way back
+   is obvious. Drag it out (or double-click) to restore the pane. */
+html.ms-split-edge-left #ms-split-divider,
+html.ms-split-edge-right #ms-split-divider {
+  width: 12px;
+  background: #ebe6da;
+}
+html.ms-split-edge-left #ms-split-divider { left: 0; }
+html.ms-split-edge-right #ms-split-divider { left: auto; right: 0; }
+html.ms-split-edge-left #ms-split-divider::after { left: auto; right: 0; }
+html.ms-split-edge-right #ms-split-divider::after { left: 0; }
+html.ms-split-edge-left #ms-split-divider::before,
+html.ms-split-edge-right #ms-split-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  height: 28px;
+  margin-top: -14px;
+  border-left: 2px dotted #8c8470;
+}
 
 /* Inside a panel the page is chrome-less — the shell owns header + tabs. */
 html.embedded #controls, html.embedded #ms-tabs { display: none !important; }

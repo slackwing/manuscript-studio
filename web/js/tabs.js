@@ -32,7 +32,8 @@ window.WriteSysTabs = (function () {
   const KEY = 'ms_pinned_tabs';
   const SPLIT_KEY = 'ms_split'; // { right: [keys], dividerPct } — shared layout
   const SESSION_KEY = 'ms_split_session'; // { leftActive, rightActive, focused }
-  const MIN_PANE = 480; // px — divider clamp
+  const MIN_PANE = 480; // px — a pane's CONTENT never lays out narrower than this
+  const SNAP = 140;     // px — closer than this to a screen edge, the divider magnets shut
   // Inside a panel iframe: no bar, no auto-pin, page hides its own chrome.
   const EMBED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
   if (EMBED) document.documentElement.classList.add('embedded');
@@ -53,7 +54,7 @@ window.WriteSysTabs = (function () {
   const splitRead = () => {
     try {
       const s = JSON.parse(localStorage.getItem(SPLIT_KEY)) || {};
-      return { right: Array.isArray(s.right) ? s.right : [], dividerPct: +s.dividerPct || 50 };
+      return { right: Array.isArray(s.right) ? s.right : [], dividerPct: Number.isFinite(+s.dividerPct) ? +s.dividerPct : 50 };
     } catch (e) { return { right: [], dividerPct: 50 }; }
   };
   const splitWrite = (s) => localStorage.setItem(SPLIT_KEY, JSON.stringify(s));
@@ -140,9 +141,30 @@ window.WriteSysTabs = (function () {
   const setFocus = (pane) => {
     if (!SHELL || focused === pane || (pane === 'right' && !isSplit())) return;
     focused = pane;
+    revealKey = pane === 'right' ? rightActive : leftActive;
     updateHash();
     saveSession();
     render();
+  };
+
+  // ---- tab strip scrolling ----------------------------------------------
+  // A bar holding more tabs than fit scrolls (overflow-x) — the wheel does
+  // it, and the strip scrolls back to the tab in focus whenever a tab opens
+  // or its content is clicked (revealKey is consumed by the next render;
+  // revealPane does it without a render).
+  let revealKey = null;
+  const revealTab = (tab) => {
+    const bar = tab && tab.closest('.ms-tabbar');
+    if (!bar) return;
+    const tr = tab.getBoundingClientRect(), br = bar.getBoundingClientRect();
+    if (tr.left < br.left) bar.scrollLeft += tr.left - br.left - 8;
+    else if (tr.right > br.right) bar.scrollLeft += tr.right - br.right + 8;
+  };
+  const revealPane = (pane) => {
+    const k = pane === 'right' ? rightActive : leftActive;
+    if (k) { revealTab(document.querySelector(`#ms-tabs .ms-tab[data-key="${k}"]`)); return; }
+    const bar = document.querySelector('#ms-tabs .ms-tabbar-left'); // Home sits at the far left
+    if (bar) bar.scrollLeft = 0;
   };
 
   // ---- panels (shell only): one kept-alive iframe per activated pin ------
@@ -177,7 +199,11 @@ window.WriteSysTabs = (function () {
     // (the tab may have been dragged across since load).
     frame.addEventListener('load', () => {
       try {
-        frame.contentWindow.addEventListener('pointerdown', () => setFocus(isSplit() ? paneOf(key) : 'left'));
+        frame.contentWindow.addEventListener('pointerdown', () => {
+          const pane = isSplit() ? paneOf(key) : 'left';
+          setFocus(pane);
+          revealPane(pane); // even when the pane was already the focused one
+        });
       } catch (e) { /* teardown race */ }
     });
     panels.set(key, frame);
@@ -194,6 +220,7 @@ window.WriteSysTabs = (function () {
     const split = s.right.length > 0;
     document.documentElement.classList.toggle('ms-split', split);
     document.documentElement.style.setProperty('--split-x', s.dividerPct + 'vw');
+    setEdgeClasses(split ? s.dividerPct : 50);
     ensureFrame(leftActive);
     ensureFrame(rightActive);
     host.classList.toggle('split', split);
@@ -224,6 +251,7 @@ window.WriteSysTabs = (function () {
       if (pane === 'right') rightActive = key; else leftActive = key;
       focused = pane;
       touchMru(key);
+      revealKey = key;
     }
     applyLayout();
     updateHash();
@@ -254,6 +282,7 @@ window.WriteSysTabs = (function () {
     rightActive = key;
     leftActive = mruFallback('left', key); // next most recent stays left
     focused = 'right';
+    revealKey = key;
     applyLayout();
     updateHash();
     saveSession();
@@ -271,7 +300,16 @@ window.WriteSysTabs = (function () {
   };
 
   // ---- divider -----------------------------------------------------------
-  let dividerPending = 0;
+  // The seam moves freely from edge to edge. A pane's content scales down
+  // with it until MIN_PANE, then holds that width and is pushed off its
+  // screen edge (chrome.css: left pane slides left, right pane right);
+  // within SNAP of an edge the divider magnets shut and parks there as a
+  // visible handle (html.ms-split-edge-*) to pull the pane back.
+  let dividerPending = null;
+  const setEdgeClasses = (pct) => {
+    document.documentElement.classList.toggle('ms-split-edge-left', pct <= 0.01);
+    document.documentElement.classList.toggle('ms-split-edge-right', pct >= 99.99);
+  };
   const ensureDivider = (split) => {
     let d = document.getElementById('ms-split-divider');
     if (!split) { if (d) d.remove(); return; }
@@ -283,18 +321,22 @@ window.WriteSysTabs = (function () {
       try { d.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointers can't capture */ }
       // Iframes swallow pointermove — freeze them for the drag's duration.
       document.documentElement.classList.add('ms-divider-drag');
-      dividerPending = splitRead().dividerPct;
+      dividerPending = null;
     });
     d.addEventListener('pointermove', (e) => {
       if (!document.documentElement.classList.contains('ms-divider-drag')) return;
-      const px = Math.min(Math.max(e.clientX, MIN_PANE), window.innerWidth - MIN_PANE);
+      let px = Math.min(Math.max(e.clientX, 0), window.innerWidth);
+      if (px < SNAP) px = 0; else if (px > window.innerWidth - SNAP) px = window.innerWidth;
       dividerPending = (px / window.innerWidth) * 100;
       document.documentElement.style.setProperty('--split-x', dividerPending + 'vw');
+      setEdgeClasses(dividerPending);
     });
     d.addEventListener('pointerup', () => {
       document.documentElement.classList.remove('ms-divider-drag');
       const s = splitRead();
-      splitWrite({ right: s.right, dividerPct: dividerPending || s.dividerPct });
+      splitWrite({ right: s.right, dividerPct: dividerPending === null ? s.dividerPct : dividerPending });
+      dividerPending = null;
+      applyLayout();
       render(); // bar widths track the seam
     });
     d.addEventListener('dblclick', () => {
@@ -568,6 +610,19 @@ window.WriteSysTabs = (function () {
     // The tab bar is ALWAYS there (Home anchors it, uncloseable).
     document.documentElement.classList.add('has-ms-tabs');
     host.hidden = false;
+    // The bars are rebuilt below; their scroll positions must survive it.
+    const keepScroll = {};
+    host.querySelectorAll('.ms-tabbar').forEach((b) => { keepScroll[b.classList.contains('ms-tabbar-right') ? 'right' : 'left'] = b.scrollLeft; });
+    if (!host.dataset.wheel) {
+      host.dataset.wheel = '1';
+      host.addEventListener('wheel', (e) => {
+        const bar = e.target.closest && e.target.closest('.ms-tabbar');
+        if (!bar || bar.scrollWidth <= bar.clientWidth + 1) return;
+        const d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * (e.deltaMode === 1 ? 16 : 1);
+        bar.scrollLeft += d;
+        e.preventDefault();
+      }, { passive: false });
+    }
     host.replaceChildren();
     host.classList.toggle('split', split);
     const controls = document.getElementById('controls');
@@ -672,10 +727,12 @@ window.WriteSysTabs = (function () {
     };
     pins.filter((p) => !split || paneOf(keyOf(p)) === 'left')
       .forEach((p) => mkPinTab(leftBar, p, activeOf(p)));
+    leftBar.scrollLeft = keepScroll.left || 0;
     if (split) {
       const rightBar = mkBar('right');
       pins.filter((p) => paneOf(keyOf(p)) === 'right')
         .forEach((p) => mkPinTab(rightBar, p, activeOf(p)));
+      rightBar.scrollLeft = keepScroll.right || 0;
     }
 
     // Split button: shell-only, hidden while split (the split ends by
@@ -690,6 +747,12 @@ window.WriteSysTabs = (function () {
         ? window.WriteSysIcons.splitPane(13) : '';
       btn.addEventListener('click', doSplit);
       host.appendChild(btn);
+    }
+    // Reveal LAST: the split button just took its share of the strip, so
+    // the bar's width is final only now.
+    if (revealKey) {
+      revealTab(host.querySelector(`.ms-tab[data-key="${revealKey}"]`));
+      revealKey = null;
     }
   };
 
@@ -728,6 +791,7 @@ window.WriteSysTabs = (function () {
       if (m && read().some((p) => keyOf(p) === m[1])) activate(m[1]);
       [leftActive, rightActive].forEach((k) => touchMru(k));
       applyLayout();
+      revealKey = focused === 'right' ? rightActive : leftActive;
       render(); // icons.js has loaded by now — the split button gets its glyph
       return;
     }

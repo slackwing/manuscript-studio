@@ -227,6 +227,105 @@ const HOME_URL = new URL('home.html', TEST_URL).href;
     JSON.parse(localStorage.getItem('ms_pinned_tabs')).length === 2
     && JSON.parse(localStorage.getItem('ms_split')).right.length === 0));
 
+  // ======================================================================
+  // 2026-11-25 (SPLIT_PANE_PLAN.md §9): the strip scrolls; the seam goes
+  // past the floor.
+  // ======================================================================
+
+  // ---- strip: overflow scrolls with the wheel; the focused tab is revealed ----
+  await page.setViewportSize({ width: 640, height: 900 });
+  const stripPads = await page.evaluate(async () => {
+    const csrf = (localStorage.getItem('csrf_token') || sessionStorage.getItem('csrf_token')) || '';
+    const H = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf };
+    const ids = [];
+    for (let i = 1; i <= 7; i++) {
+      ids.push((await (await fetch('api/scratchpads', { method: 'POST', headers: H, body: JSON.stringify({ title: 'strip pad number ' + i }) })).json()).scratchpad_id);
+    }
+    return ids;
+  });
+  for (const id of stripPads) await page.evaluate((id) => window.WriteSysTabs.openPad(id, 'strip pad number ' + id), id);
+  const lastKey = 's' + stripPads[stripPads.length - 1];
+  await page.waitForSelector(`#ms-tab-panels iframe[src*="scratchpad_id=${stripPads[stripPads.length - 1]}"].active`, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const barGeom = () => page.evaluate((k) => {
+    const bar = document.querySelector('#ms-tabs .ms-tabbar-left');
+    const tab = document.querySelector(`#ms-tabs .ms-tab[data-key="${k}"]`);
+    const br = bar.getBoundingClientRect(), tr = tab.getBoundingClientRect();
+    return { overflow: bar.scrollWidth > bar.clientWidth + 1, scrollLeft: Math.round(bar.scrollLeft),
+      visible: tr.left >= br.left - 1 && tr.right <= br.right + 1 };
+  }, lastKey);
+  let g = await barGeom();
+  check('narrow strip: more tabs than fit → the bar overflows', g.overflow, JSON.stringify(g));
+  check('opening a tab reveals it (scrolled into view)', g.visible && g.scrollLeft > 0, JSON.stringify(g));
+  const barBox = await page.locator('#ms-tabs .ms-tabbar-left').boundingBox();
+  await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2);
+  await page.mouse.wheel(0, -1200);
+  await page.waitForTimeout(250);
+  g = await barGeom();
+  check('wheel over the strip scrolls it (back to the start; the open tab leaves view)', g.scrollLeft === 0 && !g.visible, JSON.stringify(g));
+  await page.mouse.wheel(0, 300);
+  await page.waitForTimeout(250);
+  g = await barGeom();
+  check('wheel the other way scrolls it right again', g.scrollLeft > 0, JSON.stringify(g));
+  await page.mouse.wheel(0, -1200);
+  await page.waitForTimeout(250);
+  // Clicking the pane's content (already the focused pane) scrolls the strip back to its tab.
+  // (The pad page lays out with fixed boxes — its <html> has no height for
+  // Playwright to click — so fire the pointerdown the shell listens for.)
+  await page.frames().find((f) => f.url().includes('scratchpad_id=' + stripPads[stripPads.length - 1]))
+    .evaluate(() => document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+  await page.waitForTimeout(250);
+  g = await barGeom();
+  check('clicking the tab content scrolls the strip back to its tab', g.visible, JSON.stringify(g));
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.waitForTimeout(300);
+
+  // ---- divider beyond the floor: push-off, snap, persist 0, restore ----
+  await page.evaluate((k) => document.querySelector(`.ms-tab[data-key="${k}"]`).click(), keyA);
+  await page.waitForFunction(() => !document.getElementById('ms-split-btn').disabled);
+  await page.click('#ms-split-btn');
+  await page.waitForSelector('#ms-tabs.split', { timeout: 8000 });
+  const panes = () => page.evaluate(() => {
+    const L = document.querySelector('#ms-tab-panels .ms-panel.active:not(.pane-right)');
+    const R = document.querySelector('#ms-tab-panels .ms-panel.active.pane-right');
+    const D = document.getElementById('ms-split-divider');
+    const r = (el) => { const b = el.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width) }; };
+    return { L: L ? r(L) : null, R: R ? r(R) : null, D: r(D), pct: JSON.parse(localStorage.getItem('ms_split')).dividerPct,
+      edgeL: document.documentElement.classList.contains('ms-split-edge-left'), edgeR: document.documentElement.classList.contains('ms-split-edge-right') };
+  });
+  const drag = async (from, to) => {
+    await page.dispatchEvent('#ms-split-divider', 'pointerdown', { pointerId: 9, clientX: from, clientY: 500 });
+    await page.dispatchEvent('#ms-split-divider', 'pointermove', { pointerId: 9, clientX: to, clientY: 500 });
+    await page.dispatchEvent('#ms-split-divider', 'pointerup', { pointerId: 9, clientX: to, clientY: 500 });
+    await page.waitForTimeout(150);
+  };
+  await drag(800, 300);
+  let s = await panes();
+  check('seam at 300px (below the 480 floor): left pane keeps 480 wide, pushed off the left edge', s.L && s.L.width === 480 && s.L.left === -180 && s.L.right === 300, JSON.stringify(s));
+  check('…right pane starts at the seam', s.R && s.R.left === 300, JSON.stringify(s));
+  await drag(300, 60);
+  s = await panes();
+  check('within the snap zone → magnets shut: dividerPct 0, left pane fully off-screen', s.pct === 0 && s.L && s.L.right <= 0 && s.edgeL, JSON.stringify(s));
+  check('parked divider is a 12px handle on the left edge', s.D.left === 0 && s.D.width === 12, JSON.stringify(s));
+  await page.reload();
+  await page.waitForSelector('#ms-split-divider', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  s = await panes();
+  check('a collapsed left pane survives reload (0 is not "unset")', s.pct === 0 && s.edgeL && s.D.left === 0, JSON.stringify(s));
+  await drag(6, 800);
+  s = await panes();
+  check('dragging the handle out restores the pane (50/50, classes gone)', Math.abs(s.pct - 50) < 0.5 && !s.edgeL && !s.edgeR && s.L && s.L.left === 0 && s.L.width === 800, JSON.stringify(s));
+  await drag(800, 1540);
+  s = await panes();
+  check('snap on the right: dividerPct 100, right pane fully off-screen, handle on the right edge', s.pct === 100 && s.edgeR && s.R && s.R.left >= 1600 && s.D.right === 1600 && s.D.width === 12, JSON.stringify(s));
+  await drag(1300, 1200);
+  s = await panes();
+  check('seam at 1200 (right pane below the floor): right pane keeps 480 wide and hangs off the right edge', s.R && s.R.left === 1200 && s.R.width === 480 && !s.edgeR, JSON.stringify(s));
+  await page.dispatchEvent('#ms-split-divider', 'dblclick');
+  await page.waitForTimeout(150);
+  s = await panes();
+  check('dblclick resets to 50/50 from anywhere', Math.abs(s.pct - 50) < 0.01 && s.L.width === 800 && s.R.left === 800, JSON.stringify(s));
+
   await page.evaluate(() => { localStorage.removeItem('ms_pinned_tabs'); localStorage.removeItem('ms_split'); sessionStorage.removeItem('ms_split_session'); });
   await cleanupTestAnnotations();
   await browser.close();

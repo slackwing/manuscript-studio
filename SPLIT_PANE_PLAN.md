@@ -32,7 +32,7 @@ pane only** and is not draggable.
    the focused tab is a pin (Home never splits; the left pane must fall
    back to a real tab, not Home).
 3. No duplicate tabs — a document is one pin in exactly one pane.
-4. Divider is draggable (min pane width 480px, double-click resets 50/50).
+4. Divider is draggable (double-click resets 50/50). Content floor 480px; beyond it the pane slides off its edge — see §9.
 5. Layout survives reload.
 6. Per-pane mobile mode (free — §1).
 7. Focus indication kept light: the active tab of the UNFOCUSED pane
@@ -127,3 +127,28 @@ without reload; dragging the last right tab left collapses the split,
 (e) reload restores split + divider, (f) divider drag updates `--split-x`
 and persists, (g) × on the last right tab collapses the split. Cleanup
 wipes both localStorage keys. Classified in test-all.sh.
+
+## 9. Beyond the floor, and a scrolling strip (2026-11-25)
+
+Owner's ask: keep exactly today's feel (pane content scales down as the
+seam moves) but let the drag continue past the old halt.
+
+- **Floor, not clamp.** 480px is now the pane CONTENT's minimum layout
+  width (`MIN_PANE`), no longer a clamp on the seam. Below it the panel
+  keeps 480px and slides off its own screen edge — left pane leftward
+  (`left: min(0, --split-x − 480px)`), right pane rightward (`width:
+  max(100% − --split-x, 480px)`, the host clips) — down to nothing. Above
+  the floor the CSS resolves to the old numbers, so scaling is untouched.
+- **Magnet.** Within `SNAP` (140px) of an edge the divider snaps shut
+  (`dividerPct` 0 or 100, persisted — `splitRead` no longer treats 0 as
+  "unset"). Parked, it becomes a 12px tinted handle with a dotted grip on
+  that edge (`html.ms-split-edge-left/right`); drag it out or double-click
+  to restore. The collapsed pane's tab bar collapses with it.
+- **Strip scrolling.** A bar with more tabs than fit scrolls with the
+  wheel (vertical delta → `scrollLeft`, delegated on `#ms-tabs`). Rebuilds
+  keep each bar's scroll position. The strip scrolls back to the tab in
+  focus when a tab opens (`activate`, split) and when a pane's content is
+  clicked (`revealPane`, even if that pane was already focused), and on
+  load.
+- Tests: tests/test-split-pane.js — push-off geometry, snap both ways,
+  persistence of 0 across reload, restore; overflow + wheel + reveal.
