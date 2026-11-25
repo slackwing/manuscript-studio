@@ -68,6 +68,7 @@ FAST_TESTS=(
   test-canon-render-pipeline
   test-cheatsheet
   test-remember-at
+  test-home-free-note
   test-responsive-layout
   test-mobile-notes-stack
   test-tag-autocomplete

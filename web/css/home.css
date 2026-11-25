@@ -157,6 +157,9 @@ body.home-page {
 /* A note card wears its color as its background (reusing the sticky tints) and
    shows a clipped body + a context line. Clicking opens it in context. */
 .card-note { cursor: pointer; }
+/* A free note (no context) edits in place — its card is not a button. */
+.card-note.card-note-free { cursor: default; }
+.card-note.card-note-free .note-input { cursor: text; }
 /* Pin to the daily-tasks board (048): faint in the bottom-right corner,
    darker under the pointer, lit (house blue) once pinned. */
 .card-pin {

@@ -149,7 +149,7 @@ const WriteSysHome = {
   // sits after the last card — faint outline, centered +, label on hover.
   // Both grids use the same component; only kind/label differ.
   ghostCard(kind) {
-    const label = kind === 'manuscript' ? 'New manuscript' : 'New scratchpad';
+    const label = kind === 'manuscript' ? 'New manuscript' : (kind === 'note' ? 'New note' : 'New scratchpad');
     return `<button type="button" class="card card-ghost" data-ghost="${kind}" title="${label}">
       <span class="ghost-plus">+</span>
     </button>`;
@@ -225,6 +225,36 @@ const WriteSysHome = {
     matches.forEach(n => grid.appendChild(this.noteCardEl(n)));
   },
 
+  // A note with no context — born here with the Notes "+" (2026-11-25), or
+  // detached from everything — has nowhere to "open in", so its card IS
+  // its editor: the shared widget, live, saving through the note API.
+  isFreeNote(n) {
+    return !n.scratchpad_id && !n.manuscript_id && !n.sentence_id && !n.sketch_id && !n.completed_at;
+  },
+
+  freeNoteHandlers(n, card) {
+    const api = window.WriteSysNoteAPI;
+    return {
+      onSaveText: (text) => { n.body = text.trim() || null; api.update(n.note_id, { body: text.trim() }).catch(() => {}); },
+      onColor: (color) => {
+        const was = n.color;
+        n.color = color;
+        card.classList.remove('color-' + was);
+        card.classList.add('color-' + color);
+        api.update(n.note_id, { color }).catch(() => {});
+        card.replaceWith(this.noteCardEl(n)); // the palette re-renders (shows the other 5)
+      },
+      onDims: (patch) => { Object.assign(n, patch); api.update(n.note_id, patch).catch(() => {}); window.WriteSysNoteWidget.updateDims(card.querySelector('.sticky-note'), n); },
+      onDelete: () => { api.remove(n.note_id).catch(() => {}); card.remove(); },
+      onComplete: () => { api.complete(n.note_id).then(() => this.reload()).catch(() => {}); },
+      onScorePoints: (points) => { api.scorePoints(n.note_id, points).catch(() => {}); },
+      onAddTag: async (name) => { try { const r = await api.addTag(n.note_id, name); n.tags = (r && r.tags) || n.tags; } catch (e) { /* chips re-render from n */ } },
+      onRemoveTag: async (tagId) => { try { await api.removeTag(n.note_id, tagId); n.tags = (n.tags || []).filter((t) => t.tag_id !== tagId); } catch (e) { /* ditto */ } },
+      onLinkManuscript: async (mid) => { try { const r = await api.linkManuscript(n.note_id, mid); n.manuscript_id = r.manuscript_id || null; n.manuscript_name = r.manuscript_name || ''; } catch (e) { /* unchanged */ } },
+      onUnlinkManuscript: async () => { try { await api.linkManuscript(n.note_id, 0); n.manuscript_id = null; n.manuscript_name = ''; } catch (e) { /* unchanged */ } },
+    };
+  },
+
   noteCardEl(n) {
     const ctx = n.context || 'no context';
     const card = document.createElement('div');
@@ -234,6 +264,14 @@ const WriteSysHome = {
     if (n.scratchpad_id) card.dataset.scratchpadId = n.scratchpad_id;
     if (n.manuscript_id) card.dataset.manuscriptId = n.manuscript_id;
     if (n.sentence_id) card.dataset.sentenceId = n.sentence_id;
+    const free = this.isFreeNote(n) && !!window.WriteSysNoteWidget && !!window.WriteSysNoteAPI;
+    if (free) {
+      card.classList.add('card-note-free');
+      card.appendChild(window.WriteSysNoteWidget.buildNoteElement(
+        n, this.freeNoteHandlers(n, card), { card: true, showDelete: true, showComplete: true }));
+      // (No context line, no pin — the widget's own chips carry its dims.)
+      return card;
+    }
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     card.title = 'Open note in context';
@@ -302,7 +340,7 @@ const WriteSysHome = {
         ${opts.seeAll ? `<a class="home-seeall" href="home.html?view=${opts.seeAll}" data-view="${opts.seeAll}">See all →</a>` : ''}
       </div>
       ${opts.notes
-        ? '<div class="card-grid" data-note-grid></div>'
+        ? `<div class="card-grid" data-note-grid${opts.ghost === 'note' ? ' data-note-ghost="1"' : ''}></div>`
         : ((cardsHTML || ghost) ? `<div class="card-grid">${cardsHTML}${ghost}</div>` : '<div class="home-empty">Nothing here yet.</div>')}
     </section>`;
   },
@@ -329,7 +367,7 @@ const WriteSysHome = {
     } else if (view === 'notes') {
       noteList = nt;
       html = `<a class="home-back" href="home.html">← Home</a>` +
-        this.section('All notes', nt.length, '', { notes: true });
+        this.section('All notes', nt.length, '', { notes: true, ghost: 'note' });
     } else if (view === 'daily') {
       const daily = this.daily || { notes: [] };
       noteList = daily.notes || [];
@@ -357,13 +395,25 @@ const WriteSysHome = {
           sp.slice(0, this.RECENT).map(s => this.scratchpadCard(s)).join(''),
           { ghost: 'scratchpad', ...(sp.length > this.RECENT ? { seeAll: 'scratchpads' } : {}) })
         + this.section('Notes', live.length, '',
-          { notes: true, ...(live.length > this.RECENT ? { seeAll: 'notes' } : {}) });
+          { notes: true, ghost: 'note', ...(live.length > this.RECENT ? { seeAll: 'notes' } : {}) });
     }
     root.innerHTML = html;
 
     // Populate the note grid with shared-component cards.
     if (noteList) {
       const grid = root.querySelector('[data-note-grid]');
+      // The Notes "+" (a ghost card like the other sections', after the
+      // last card — 2026-11-25): a free note, editable right here.
+      if (grid && grid.dataset.noteGhost) {
+        const mountGhost = () => grid.insertAdjacentHTML('beforeend', this.ghostCard('note'));
+        // After the cards (below) — queue it; the cards are appended synchronously.
+        setTimeout(mountGhost, 0);
+        const ghostsBound = () => {
+          const g = grid.querySelector('.card-ghost[data-ghost="note"]');
+          if (g && !g._bound) { g._bound = true; g.addEventListener('click', () => this.createFreeNote()); }
+        };
+        setTimeout(ghostsBound, 0);
+      }
       // The daily board is at most 4 across (4 × 4 = its 16), narrower
       // only when the window is.
       if (grid && view === 'daily') grid.classList.add('daily-grid');
@@ -458,6 +508,7 @@ const WriteSysHome = {
     // Ghost cards: scratchpad → create immediately (as the old + did);
     // manuscript → the creation modal.
     root.querySelectorAll('.card-ghost').forEach(g => {
+      if (g.dataset.ghost === 'note') return; // bound where it mounts (after the note cards)
       g.addEventListener('click', () => {
         if (g.dataset.ghost === 'scratchpad') this.createPad();
         else if (window.WriteSysManuscriptModal) window.WriteSysManuscriptModal.openCreate();
@@ -483,6 +534,18 @@ const WriteSysHome = {
         this.reload();
       });
     });
+  },
+
+  // A free note, born on the landing (2026-11-25): yellow, blank, placed
+  // nowhere — its card is live, so the caret lands in it at once.
+  async createFreeNote() {
+    const api = window.WriteSysNoteAPI;
+    if (!api) return;
+    let made;
+    try { made = await api.create({ color: 'yellow' }); } catch (e) { return; }
+    await this.reload();
+    const ta = document.querySelector(`#home-root .card-note[data-note-id="${made.note_id}"] .note-input`);
+    if (ta) { ta.focus(); ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   },
 
   async createPad() {
