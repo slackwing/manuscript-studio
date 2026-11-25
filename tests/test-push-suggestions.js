@@ -26,8 +26,7 @@ const {
   TEST_URL,
   cleanupTestAnnotations, resetTestManuscript, ensureWorkerUniquified,
   loginAsTestUser,
-  TEST_USERNAME, TEST_MANUSCRIPT_NAME,
-} = require('./test-utils');
+  TEST_USERNAME, TEST_MANUSCRIPT_NAME, DEV_CONFIG_DIR } = require('./test-utils');
 const { suggestEditor } = require('./test-utils');
 
 function psql(sql) {
@@ -37,10 +36,10 @@ function psql(sql) {
   ).trim();
 }
 
-const REPO_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', TEST_MANUSCRIPT_NAME);
+const REPO_DIR = path.join(DEV_CONFIG_DIR, 'repos', TEST_MANUSCRIPT_NAME);
 // Since the git/[local,remote] layout (037): see test-sketch-place-push.js —
 // the fixture repo IS the push remote; rewinds must nuke the server clone.
-const CHECKOUT_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', 'git', 'remote', TEST_MANUSCRIPT_NAME);
+const CHECKOUT_DIR = path.join(DEV_CONFIG_DIR, 'repos', 'git', 'remote', TEST_MANUSCRIPT_NAME);
 
 function git(args, cwd) {
   return execSync(`git -C "${cwd || REPO_DIR}" ${args}`, { encoding: 'utf-8' }).trim();

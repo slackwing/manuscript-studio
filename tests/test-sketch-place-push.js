@@ -17,19 +17,19 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { chromium } = require('playwright');
-const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, TEST_MANUSCRIPT_NAME, loginAsTestUser, waitForPagination, cleanupTestNotes, resetTestManuscript, ensureWorkerUniquified } = require('./test-utils');
+const { TEST_URL, TEST_USERNAME, TEST_PASSWORD, TEST_MANUSCRIPT_NAME, loginAsTestUser, waitForPagination, cleanupTestNotes, resetTestManuscript, ensureWorkerUniquified, DEV_CONFIG_DIR } = require('./test-utils');
 
 const psql = (sql) => execSync(
   `PGPASSWORD=manuscript_dev psql -h localhost -p 5433 -U manuscript_dev -d manuscript_studio_dev -At -c "${sql.replace(/"/g, '\\"')}"`,
   { encoding: 'utf-8' }).trim().split('\n')[0];
 
-const REPO_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', TEST_MANUSCRIPT_NAME);
+const REPO_DIR = path.join(DEV_CONFIG_DIR, 'repos', TEST_MANUSCRIPT_NAME);
 // Since the git/[local,remote] layout (037), the server works in a CLONE of
 // the fixture; pushed suggestion branches land back in the fixture repo
 // itself (its origin). The old temp bare remote is gone: the fixture IS the
 // remote to assert on, and rewinding it must nuke the server's clone so the
 // next access re-clones instead of failing a non-ff pull.
-const CHECKOUT_DIR = path.join(os.homedir(), '.config/manuscript-studio-dev/repos', 'git', 'remote', TEST_MANUSCRIPT_NAME);
+const CHECKOUT_DIR = path.join(DEV_CONFIG_DIR, 'repos', 'git', 'remote', TEST_MANUSCRIPT_NAME);
 const git = (args, cwd) => execSync(`git -C "${cwd || REPO_DIR}" ${args}`, { encoding: 'utf-8' }).trim();
 
 function setupBareRemote() {

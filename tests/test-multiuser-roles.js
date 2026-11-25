@@ -8,13 +8,12 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const {
-  BASE_URL, API_BASE_URL, TEST_USERNAME, SYSTEM_TOKEN, loginAsTestUser, waitForPagination, psql,
-} = require('./test-utils');
+  BASE_URL, API_BASE_URL, TEST_USERNAME, SYSTEM_TOKEN, loginAsTestUser, waitForPagination, psql, DEV_CONFIG_DIR } = require('./test-utils');
 
 const SLUG = `mu-${TEST_USERNAME}-${Date.now()}`;
 const EDITOR2 = `mu2${TEST_USERNAME}`;
 const READER3 = `mu3${TEST_USERNAME}`;
-const LOCAL_REPO_DIR = path.join(os.homedir(), '.config', 'manuscript-studio-dev', 'repos', 'git', 'local', SLUG);
+const LOCAL_REPO_DIR = path.join(DEV_CONFIG_DIR, 'repos', 'git', 'local', SLUG);
 
 function cleanup() {
   if (process.env.KEEP_STATE) { console.log('[KEEP_STATE] skipping cleanup'); return; }

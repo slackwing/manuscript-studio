@@ -1,3 +1,5 @@
+const path = require('path');
+const os = require('os');
 /**
  * Test utilities for Manuscript Studio integration tests.
  *
@@ -345,7 +347,17 @@ async function waitForPadSelection(page, timeout = 10000) {
   }, null, { timeout });
 }
 
+// The dev config directory the SERVER runs from — repos live under it
+// (<dir>/repos/...). Tests that look into the git repos must use THIS, not
+// a hardcoded ~/.config/manuscript-studio-dev: a stack started with
+// MANUSCRIPT_STUDIO_DEV_CONFIG_DIR elsewhere keeps its repos there, and the
+// three push/role tests failed for weeks "in this environment" for exactly
+// that reason (2026-11-25).
+const DEV_CONFIG_DIR = process.env.MANUSCRIPT_STUDIO_DEV_CONFIG_DIR
+  || path.join(os.homedir(), '.config', 'manuscript-studio-dev');
+
 module.exports = {
+  DEV_CONFIG_DIR,
   waitForPadSelection,
   suggestEditor,
   ensureWorkerUniquified,
